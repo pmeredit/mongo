@@ -2,9 +2,9 @@
 
 ## Table of Contents
 
--   [High Level Overview](#high-level-overview)
-    -   [Runtime Configuration](#runtime-configuration)
--   [Encrypted Audit Logs](#encrypted-audit-logs)
+- [High Level Overview](#high-level-overview)
+  - [Runtime Configuration](#runtime-configuration)
+- [Encrypted Audit Logs](#encrypted-audit-logs)
 
 ## High Level Overview
 

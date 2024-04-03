@@ -1,66 +1,66 @@
 # Queryable Encryption (FLE2) Protocol
 
--   [Queryable Encryption (FLE2) Protocol](#queryable-encryption-fle2-protocol)
--   [Terminology](#terminology)
--   [Walkthrough: Insert](#walkthrough-insert)
--   [Walkthrough: Delete](#walkthrough-delete)
--   [Walkthrough: Find](#walkthrough-find)
--   [Walkthrough: Update](#walkthrough-update)
--   [Walkthrough: Explicit Encryption and Decryption](#walkthrough-explicit-encryption-and-decryption)
--   [Walkthrough: Explicit Equality Comparison](#walkthrough-explicit-equality-comparison)
--   [Reference: Cryptography](#reference-cryptography)
--   [Reference: BinData 6 subtypes](#reference-bindata-6-subtypes)
--   [Reference: Keys and Tokens](#reference-keys-and-tokens)
--   [Reference: Schema](#reference-schema)
--   [Reference: Naming rules for State collections](#reference-naming-rules-for-state-collections)
--   [Reference: Unindexed Encrypted Payload](#reference-unindexed-encrypted-payload)
--   [Reference: Indexed Equality Encrypted Values](#reference-indexed-equality-encrypted-values)
--   [Reference: ESC Schema](#reference-esc-schema)
-    -   [Null Anchor record](#null-anchor-record)
-    -   [Anchor record](#anchor-record)
-    -   [Non-anchor record](#non-anchor-record)
--   [Reference: ECOC Schema](#reference-ecoc-schema)
--   [Reference: Insert pseudo-code](#reference-insert-pseudo-code)
-    -   [Insert: Client-side](#insert-client-side)
-    -   [Insert: Server-side](#insert-server-side)
--   [Reference: Find pseudo-code](#reference-find-pseudo-code)
-    -   [Find: Client-side](#find-client-side)
-    -   [Find: Server-side](#find-server-side)
--   [Reference: Update pseudo-code](#reference-update-pseudo-code)
-    -   [Update: Server-side](#update-server-side)
--   [Reference: CompactStructuredEncryptionData](#reference-compactstructuredencryptiondata)
--   [Reference: CleanupStructuredEncryptionData](#reference-cleanupstructuredencryptiondata)
--   [Reference: Payloads](#reference-payloads)
-    -   [Formats for Create Collection and listCollections](#formats-for-create-collection-and-listcollections)
-    -   [Formats for Query Analysis](#formats-for-query-analysis)
-    -   [Formats for client -\> server CRUD](#formats-for-client---server-crud)
-    -   [Formats for client -\> server Query](#formats-for-client---server-query)
--   [Compact Command](#compact-command)
--   [Cleanup Command](#cleanup-command)
--   [Reference: Server Status Compact and Cleanup](#reference-server-status-compact-and-cleanup)
--   [Reference: Explicit Encryption and Decryption](#reference-explicit-encryption-and-decryption)
--   [Reference: Explicit Equality Comparison](#reference-explicit-equality-comparison)
+- [Queryable Encryption (FLE2) Protocol](#queryable-encryption-fle2-protocol)
+- [Terminology](#terminology)
+- [Walkthrough: Insert](#walkthrough-insert)
+- [Walkthrough: Delete](#walkthrough-delete)
+- [Walkthrough: Find](#walkthrough-find)
+- [Walkthrough: Update](#walkthrough-update)
+- [Walkthrough: Explicit Encryption and Decryption](#walkthrough-explicit-encryption-and-decryption)
+- [Walkthrough: Explicit Equality Comparison](#walkthrough-explicit-equality-comparison)
+- [Reference: Cryptography](#reference-cryptography)
+- [Reference: BinData 6 subtypes](#reference-bindata-6-subtypes)
+- [Reference: Keys and Tokens](#reference-keys-and-tokens)
+- [Reference: Schema](#reference-schema)
+- [Reference: Naming rules for State collections](#reference-naming-rules-for-state-collections)
+- [Reference: Unindexed Encrypted Payload](#reference-unindexed-encrypted-payload)
+- [Reference: Indexed Equality Encrypted Values](#reference-indexed-equality-encrypted-values)
+- [Reference: ESC Schema](#reference-esc-schema)
+  - [Null Anchor record](#null-anchor-record)
+  - [Anchor record](#anchor-record)
+  - [Non-anchor record](#non-anchor-record)
+- [Reference: ECOC Schema](#reference-ecoc-schema)
+- [Reference: Insert pseudo-code](#reference-insert-pseudo-code)
+  - [Insert: Client-side](#insert-client-side)
+  - [Insert: Server-side](#insert-server-side)
+- [Reference: Find pseudo-code](#reference-find-pseudo-code)
+  - [Find: Client-side](#find-client-side)
+  - [Find: Server-side](#find-server-side)
+- [Reference: Update pseudo-code](#reference-update-pseudo-code)
+  - [Update: Server-side](#update-server-side)
+- [Reference: CompactStructuredEncryptionData](#reference-compactstructuredencryptiondata)
+- [Reference: CleanupStructuredEncryptionData](#reference-cleanupstructuredencryptiondata)
+- [Reference: Payloads](#reference-payloads)
+  - [Formats for Create Collection and listCollections](#formats-for-create-collection-and-listcollections)
+  - [Formats for Query Analysis](#formats-for-query-analysis)
+  - [Formats for client -\> server CRUD](#formats-for-client---server-crud)
+  - [Formats for client -\> server Query](#formats-for-client---server-query)
+- [Compact Command](#compact-command)
+- [Cleanup Command](#cleanup-command)
+- [Reference: Server Status Compact and Cleanup](#reference-server-status-compact-and-cleanup)
+- [Reference: Explicit Encryption and Decryption](#reference-explicit-encryption-and-decryption)
+- [Reference: Explicit Equality Comparison](#reference-explicit-equality-comparison)
 
 # Terminology
 
--   EDC - Encrypted Data Collection (i.e. the user collection)
--   ECC - Encrypted Cache Collection (QE Protocol V1 only, Obsolete)
--   ECOC - Encrypted Compaction Collection
--   ESC - Encrypted State Collection
+- EDC - Encrypted Data Collection (i.e. the user collection)
+- ECC - Encrypted Cache Collection (QE Protocol V1 only, Obsolete)
+- ECOC - Encrypted Compaction Collection
+- ESC - Encrypted State Collection
 
--   || - concatenates 1 or more fixed sized values together
--   BSON() is a function that converts to the enclosed JSON into BSON
--   byte() denotes something is 8-bit sized
--   DecryptAEAD() decrypts a value with a encryption AEAD cipher and cipher mode
--   Decrypt() decrypts a value with a encryption non-AEAD cipher and cipher mode
--   Derive() compute one or more tokens from the specified token. See Keys and Tokens.
--   EncryptAEAD() encrypts a value with a encryption AEAD cipher and cipher mode
--   Encrypt() encrypts a value with a encryption non-AEAD cipher and cipher mode
--   HMAC() - computes a HMAC and returns the bytes
+- || - concatenates 1 or more fixed sized values together
+- BSON() is a function that converts to the enclosed JSON into BSON
+- byte() denotes something is 8-bit sized
+- DecryptAEAD() decrypts a value with a encryption AEAD cipher and cipher mode
+- Decrypt() decrypts a value with a encryption non-AEAD cipher and cipher mode
+- Derive() compute one or more tokens from the specified token. See Keys and Tokens.
+- EncryptAEAD() encrypts a value with a encryption AEAD cipher and cipher mode
+- Encrypt() encrypts a value with a encryption non-AEAD cipher and cipher mode
+- HMAC() - computes a HMAC and returns the bytes
 
 Assumptions
 
--   All integers are written with little-endian encoding
+- All integers are written with little-endian encoding
 
 # Walkthrough: Insert
 
@@ -68,22 +68,22 @@ User create a collection named "testColl" in "testDB"
 
 ```js
 dbTest.createCollection("testColl", {
-    encryptedFields: {
-        fields: [
-            {
-                path: "encryptedField",
-                keyId: UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                bsonType: "string",
-                queries: {queryType: "equality"},
-            },
-            {
-                path: "nested.otherEncryptedField",
-                keyId: UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                bsonType: "string",
-                queries: [{queryType: "equality"}],
-            },
-        ],
-    },
+  encryptedFields: {
+    fields: [
+      {
+        path: "encryptedField",
+        keyId: UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+        bsonType: "string",
+        queries: {queryType: "equality"},
+      },
+      {
+        path: "nested.otherEncryptedField",
+        keyId: UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+        bsonType: "string",
+        queries: [{queryType: "equality"}],
+      },
+    ],
+  },
 });
 ```
 
@@ -139,11 +139,11 @@ User creates this insert for testDB.testColl
 
 ```json
 {
-    "_id": 1,
-    "encryptedField": "secret",
-    "nested": {
-        "otherEncryptedField": "secret"
-    }
+  "_id": 1,
+  "encryptedField": "secret",
+  "nested": {
+    "otherEncryptedField": "secret"
+  }
 }
 ```
 
@@ -382,12 +382,12 @@ User creates this update for testDB.testColl
 
 ```js
 testDB.testColl.update(
-    {
-        _id: 1,
-    },
-    {
-        $set: {encryptedField: "newSecret"},
-    },
+  {
+    _id: 1,
+  },
+  {
+    $set: {encryptedField: "newSecret"},
+  },
 );
 ```
 
@@ -503,9 +503,9 @@ When a user does not have implicit encryption, they will need to manually encryp
 
 ```js
 client.encrypt(
-    UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-    "secret",
-    (optional_contention = 1),
+  UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+  "secret",
+  (optional_contention = 1),
 );
 ```
 
@@ -608,11 +608,11 @@ Since it is possible for `IndexKey == UserKey`, we choose the key and HMAC compo
 
 **Key Derivation**
 
--   AEAD AES Key (aka `Ke`) is the first 32 bytes of `IndexKey`.
--   AEAD HMAC Key (aka `Km`) is the second 32 bytes of `IndexKey`.
--   Token HMAC Key is the third 32 bytes of `IndexKey`.
-    They key derivation is different then FLE1.
-    Terminology:
+- AEAD AES Key (aka `Ke`) is the first 32 bytes of `IndexKey`.
+- AEAD HMAC Key (aka `Km`) is the second 32 bytes of `IndexKey`.
+- Token HMAC Key is the third 32 bytes of `IndexKey`.
+  They key derivation is different then FLE1.
+  Terminology:
 
 ```
 Key = Function to derive it = Latex description
@@ -654,9 +654,9 @@ ServerZerosEncryptionToken = HMAC(ServerDerivedFromDataToken, 2) = Fs[f,2,v,2]
 
 Four collections ( r = read, w = write)
 
--   EDC - (user data) - all
--   ESC - insert(r/w), query(r), update(r/w), compact (r/w)
--   ECOC - insert(w), update(w), delete(w), compact (r/w)
+- EDC - (user data) - all
+- ESC - insert(r/w), query(r), update(r/w), compact (r/w)
+- ECOC - insert(w), update(w), delete(w), compact (r/w)
 
 # Reference: Naming rules for State collections
 
@@ -778,8 +778,8 @@ Null records, also known as \bot records, store the start of the anchor records.
 
 ```js
 {
-    _id: HMAC(ESCTwiceDerivedTagToken, 0 || 0);
-    value: Encrypt(ESCTwiceDerivedValueToken, apos || cpos);
+  _id: HMAC(ESCTwiceDerivedTagToken, 0 || 0);
+  value: Encrypt(ESCTwiceDerivedValueToken, apos || cpos);
 }
 ```
 
@@ -789,8 +789,8 @@ Anchor records are sequentially numbered records. They are used to find non-anch
 
 ```js
 {
-    _id: HMAC(ESCTwiceDerivedTagToken, 0 || apos);
-    value: Encrypt(ESCTwiceDerivedValueToken, 0 || cpos);
+  _id: HMAC(ESCTwiceDerivedTagToken, 0 || apos);
+  value: Encrypt(ESCTwiceDerivedValueToken, 0 || cpos);
 }
 ```
 
@@ -800,7 +800,7 @@ Non-Anchor records are sequentially numbered records. They are used to find numb
 
 ```js
 {
-    _id: HMAC(ESCTwiceDerivedTagToken, cpos);
+  _id: HMAC(ESCTwiceDerivedTagToken, cpos);
 }
 ```
 
@@ -835,61 +835,61 @@ When the server receives an insert command with an `encryptionInformation` field
 
 1. Each `InsertUpdatePayloadV2` value in the document is assigned a "counter" value, which is just a number that tracks how many times the underlying plaintext value has been inserted using a specific contention factor value, and is incremented on every insertion of that value.
 
-    e.g. If `"encryptedField"` is an equality encrypted field, then the first five insertions of `{ encryptedField: "secret" }` at contention factor 0 will be assigned counter values 1 through 5.
+   e.g. If `"encryptedField"` is an equality encrypted field, then the first five insertions of `{ encryptedField: "secret" }` at contention factor 0 will be assigned counter values 1 through 5.
 
-    The server can tell which `InsertUpdatePayloadV2` are alike since they will have the same `ESCDerivedFromDataAndContentionFactorToken`.
+   The server can tell which `InsertUpdatePayloadV2` are alike since they will have the same `ESCDerivedFromDataAndContentionFactorToken`.
 
-    The server keeps track of which counter values have been used by inserting this counter-derived information in the ESC collection:
+   The server keeps track of which counter values have been used by inserting this counter-derived information in the ESC collection:
 
-    `{ _id: HMAC(HMAC(ESCDerivedFromDataAndContentionFactorToken, 1), counter) }`.
+   `{ _id: HMAC(HMAC(ESCDerivedFromDataAndContentionFactorToken, 1), counter) }`.
 
 2. Using the counter value and the `EDCDerivedFromDataAndContentionFactorToken`, the server calculates a globally unique identifier or "tag" for this particular field value insertion:
 
-    `tag = HMAC(HMAC(EDCDerivedFromDataAndContentionFactorToken, 1), counter)`
+   `tag = HMAC(HMAC(EDCDerivedFromDataAndContentionFactorToken, 1), counter)`
 
-    All tags created for this document are included in the final BSON document, in an array field called `__safeContent__`.
+   All tags created for this document are included in the final BSON document, in an array field called `__safeContent__`.
 
 3. Each `InsertUpdatePayloadV2` value is transformed to its final on-disk format. For equality fields, this takes the form:
 
-    ```js
-    BinData(
-        6,
-        byte(0xe) ||
+   ```js
+   BinData(
+     6,
+     byte(0xe) ||
+       index_key_id ||
+       bson_type ||
+       server_encrypted_value ||
+       encrypted_counter_and_tag,
+   );
+   ```
+
+   where `byte(0xE)` stands for a `FLE2EqualityIndexedValueV2` type.
+
+   `server_encrypted_value` is the re-encrypted user ciphertext, calculated by the server as:
+
+   `AES_256_CTR_Encrypt(ServerDataEncryptionLevel1Token, v)`
+
+   The `encrypted_counter_and_tag` is an additional binary blob that also includes the `tag` generated for this `InsertUpdatePayloadV2`. This `tag` is used during updates, for when we need to remove stale tags from `__safeContent__`.
+
+   For example, when inserting this document:
+
+   `{ "_id": 1, "encryptedField": "secret" }`
+
+   The final document inserted will look like:
+
+   ```js
+   {
+       "_id": 1,
+       "encryptedField": BinData(6,
+           (byte(0xE) ||
             index_key_id ||
             bson_type ||
             server_encrypted_value ||
-            encrypted_counter_and_tag,
-    );
-    ```
-
-    where `byte(0xE)` stands for a `FLE2EqualityIndexedValueV2` type.
-
-    `server_encrypted_value` is the re-encrypted user ciphertext, calculated by the server as:
-
-    `AES_256_CTR_Encrypt(ServerDataEncryptionLevel1Token, v)`
-
-    The `encrypted_counter_and_tag` is an additional binary blob that also includes the `tag` generated for this `InsertUpdatePayloadV2`. This `tag` is used during updates, for when we need to remove stale tags from `__safeContent__`.
-
-    For example, when inserting this document:
-
-    `{ "_id": 1, "encryptedField": "secret" }`
-
-    The final document inserted will look like:
-
-    ```js
-    {
-        "_id": 1,
-        "encryptedField": BinData(6,
-            (byte(0xE) ||
-             index_key_id ||
-             bson_type ||
-             server_encrypted_value ||
-             encrypted_counter_and_tag)),
-        "__safeContent__": [
-            BinData(0, tag)
-        ]
-    }
-    ```
+            encrypted_counter_and_tag)),
+       "__safeContent__": [
+           BinData(0, tag)
+       ]
+   }
+   ```
 
 ### How does the server find the next counter value to use?
 
@@ -967,14 +967,14 @@ In a nutshell, the query rewrite (for equality) works as follows:
 
 1. For every `FindEqualityPayloadV2` in the filter query, generate all the cryptographic tags that were ever created for the underlying plaintext value, for every contention factor between 0 and `cm`.
 
-    So, for every value `c in range(0, cm)`, calculate:
+   So, for every value `c in range(0, cm)`, calculate:
 
-    ```python
-    edcDerivedFromDataAndContentionFactorToken = HMAC(edcDerivedFromDataToken, c)
-    escDerivedFromDataAndContentionFactorToken = HMAC(escDerivedFromDataToken, c)
-    lastUsedCounter = EmuBinary(escDerivedFromDataAndConentionFactorToken)
-    tags = HMAC(HMAC(edcDerivedFromDataAndContentionFactorToken, 1), counter) for counter in range(1, lastUsedCounter + 1)
-    ```
+   ```python
+   edcDerivedFromDataAndContentionFactorToken = HMAC(edcDerivedFromDataToken, c)
+   escDerivedFromDataAndContentionFactorToken = HMAC(escDerivedFromDataToken, c)
+   lastUsedCounter = EmuBinary(escDerivedFromDataAndConentionFactorToken)
+   tags = HMAC(HMAC(edcDerivedFromDataAndContentionFactorToken, 1), counter) for counter in range(1, lastUsedCounter + 1)
+   ```
 
 2. Rewrite the query such that occurrences of `{$eq: FindEqualityPayload}` are removed, and becomes a `$in` lookup over `__safeContent__`.
 
@@ -982,9 +982,9 @@ The final query filter becomes:
 
 ```js
 {
-    __safeContent__: {
-        $in: tags;
-    }
+  __safeContent__: {
+    $in: tags;
+  }
 }
 ```
 
@@ -1114,51 +1114,51 @@ Payloads are described in server's IDL format.
 
 ```yaml
 QueryTypeConfig:
-    description: "Information about query support for a field"
-    strict: true
-    fields:
-        queryType:
-            description: "Type of supported queries"
-            type: QueryType
-        contention:
-            description: "Contention factor for field, 0 means it has extremely high set number of distinct values"
-            type: long
-            default: 0
+  description: "Information about query support for a field"
+  strict: true
+  fields:
+    queryType:
+      description: "Type of supported queries"
+      type: QueryType
+    contention:
+      description: "Contention factor for field, 0 means it has extremely high set number of distinct values"
+      type: long
+      default: 0
 
 EncryptedField:
-    description: "Information about encrypted fields"
-    strict: true
-    fields:
-        keyId:
-            description: "UUID of key in key vault to use for encryption"
-            type: uuid
-        path:
-            description: "Path to field to encrypt"
-            type: string
-        bsonType:
-            description: "BSON type of field to encrypt"
-            type: string
-        queries:
-            description: "List of supported query types"
-            type:
-                variant: [QueryTypeConfig, array<QueryTypeConfig>]
-            optional: true
+  description: "Information about encrypted fields"
+  strict: true
+  fields:
+    keyId:
+      description: "UUID of key in key vault to use for encryption"
+      type: uuid
+    path:
+      description: "Path to field to encrypt"
+      type: string
+    bsonType:
+      description: "BSON type of field to encrypt"
+      type: string
+    queries:
+      description: "List of supported query types"
+      type:
+        variant: [QueryTypeConfig, array<QueryTypeConfig>]
+      optional: true
 
 EncryptedFieldConfig:
-    description: "Information about encrypted fields and state collections"
-    strict: true
+  description: "Information about encrypted fields and state collections"
+  strict: true
+  fields:
+    escCollection:
+      description: "Encrypted State Collection name, defaults to enxcol_.<collection>.esc"
+      type: string
+      optional: true
+    ecocCollection:
+      description: "Encrypted Compaction Collection name, defaults to enxcol_.<collection>.ecoc"
+      type: string
+      optional: true
     fields:
-        escCollection:
-            description: "Encrypted State Collection name, defaults to enxcol_.<collection>.esc"
-            type: string
-            optional: true
-        ecocCollection:
-            description: "Encrypted Compaction Collection name, defaults to enxcol_.<collection>.ecoc"
-            type: string
-            optional: true
-        fields:
-            description: "Array of encrypted fields"
-            type: array<EncryptedField>
+      description: "Array of encrypted fields"
+      type: array<EncryptedField>
 ```
 
 ## Formats for Query Analysis
@@ -1167,16 +1167,16 @@ EncryptedFieldConfig:
 
 ```yaml
 EncryptionInformation:
-    description: "Implements Encryption Information which includes the schema for FLE 2 that is consumed by query_analysis and write_ops"
-    strict: true
-    fields:
-        type:
-            description: "The version number"
-            type: safeInt
-            default: 1
-        schema:
-            description: "A map of namespaces paths to EncryptedFieldConfig"
-            type: object
+  description: "Implements Encryption Information which includes the schema for FLE 2 that is consumed by query_analysis and write_ops"
+  strict: true
+  fields:
+    type:
+      description: "The version number"
+      type: safeInt
+      default: 1
+    schema:
+      description: "A map of namespaces paths to EncryptedFieldConfig"
+      type: object
 ```
 
 The encryption placeholder payload is returned by query analysis for each encrypted field. Here is the format. It is stored inside a bindata 6 field with a prefix byte of 0x3. Note that the `u` for the keys must be between [0,u) if u != 0.
@@ -1237,58 +1237,58 @@ FLE2InsertUpdatePayloadV2 and EncryptionInformation describe the per-field paylo
 
 ```yaml
 FLE2InsertUpdatePayloadV2:
-    description: "Payload of an indexed field to insert or update"
-    strict: true
-    fields:
-        d:
-            description: "EDCDerivedFromDataTokenAndCounter"
-            type: bindata_generic
-            cpp_name: edcDerivedToken
-        s:
-            description: "ESCDerivedFromDataTokenAndCounter"
-            type: bindata_generic
-            cpp_name: escDerivedToken
-        p:
-            description: "Encrypted tokens"
-            type: bindata_generic
-            cpp_name: encryptedTokens
-        u:
-            description: "Index KeyId"
-            type: uuid
-            cpp_name: indexKeyId
-        t:
-            description: "Encrypted type"
-            type: safeInt
-            cpp_name: type
-        v:
-            description: "Encrypted value"
-            type: bindata_generic
-            cpp_name: value
-        e:
-            description: "ServerDataEncryptionLevel1Token"
-            type: bindata_generic
-            cpp_name: serverEncryptionToken
-        l:
-            description: "ServerDerivedFromDataToken"
-            type: bindata_generic
-            cpp_name: serverDerivedFromDataToken
-        k:
-            description: "Randomly sampled contention factor value"
-            type: long
-            cpp_name: contentionFactor
-            validator: {gte: 0}
+  description: "Payload of an indexed field to insert or update"
+  strict: true
+  fields:
+    d:
+      description: "EDCDerivedFromDataTokenAndCounter"
+      type: bindata_generic
+      cpp_name: edcDerivedToken
+    s:
+      description: "ESCDerivedFromDataTokenAndCounter"
+      type: bindata_generic
+      cpp_name: escDerivedToken
+    p:
+      description: "Encrypted tokens"
+      type: bindata_generic
+      cpp_name: encryptedTokens
+    u:
+      description: "Index KeyId"
+      type: uuid
+      cpp_name: indexKeyId
+    t:
+      description: "Encrypted type"
+      type: safeInt
+      cpp_name: type
+    v:
+      description: "Encrypted value"
+      type: bindata_generic
+      cpp_name: value
+    e:
+      description: "ServerDataEncryptionLevel1Token"
+      type: bindata_generic
+      cpp_name: serverEncryptionToken
+    l:
+      description: "ServerDerivedFromDataToken"
+      type: bindata_generic
+      cpp_name: serverDerivedFromDataToken
+    k:
+      description: "Randomly sampled contention factor value"
+      type: long
+      cpp_name: contentionFactor
+      validator: {gte: 0}
 
 EncryptionInformation:
-    description: "Implements Encryption Information which includes the schema for FLE 2 that is consumed by query_analysis, queries and write_ops"
-    strict: true
-    fields:
-        type:
-            description: "The version number"
-            type: safeInt
-            default: 1
-        schema:
-            description: "A map of NamespaceString to EncryptedFieldConfig"
-            type: object
+  description: "Implements Encryption Information which includes the schema for FLE 2 that is consumed by query_analysis, queries and write_ops"
+  strict: true
+  fields:
+    type:
+      description: "The version number"
+      type: safeInt
+      default: 1
+    schema:
+      description: "A map of NamespaceString to EncryptedFieldConfig"
+      type: object
 ```
 
 where the values in `FLE2InsertUpdatePayloadV2` are computed as follows:
@@ -1324,26 +1324,26 @@ $eq : {
 
 ```yaml
 FLE2FindEqualityPayloadV2:
-    description: "Payload for an equality find"
-    strict: true
-    fields:
-        d:
-            description: "EDCDerivedFromDataToken"
-            type: bindata_generic
-            cpp_name: edcDerivedToken
-        s:
-            description: "ESCDerivedFromDataToken"
-            type: bindata_generic
-            cpp_name: escDerivedToken
-        l:
-            description: "ServerDerivedFromDataToken"
-            type: bindata_generic
-            cpp_name: serverDerivedFromDataToken
-        cm:
-            description: "FLE2 max counter"
-            type: long
-            cpp_name: maxCounter
-            optional: true
+  description: "Payload for an equality find"
+  strict: true
+  fields:
+    d:
+      description: "EDCDerivedFromDataToken"
+      type: bindata_generic
+      cpp_name: edcDerivedToken
+    s:
+      description: "ESCDerivedFromDataToken"
+      type: bindata_generic
+      cpp_name: escDerivedToken
+    l:
+      description: "ServerDerivedFromDataToken"
+      type: bindata_generic
+      cpp_name: serverDerivedFromDataToken
+    cm:
+      description: "FLE2 max counter"
+      type: long
+      cpp_name: maxCounter
+      optional: true
 ```
 
 where the values in `FLE2FindEqualityPayload` are computed as follows:
@@ -1360,71 +1360,71 @@ where the values in `FLE2FindEqualityPayload` are computed as follows:
 
 ```yaml
 compactStructuredEncryptionData:
-    description: "Parser for the 'compactStructuredEncryptionData ' Command"
-    command_name: compactStructuredEncryptionData
-    api_version: ""
-    namespace: concatenate_with_db
-    strict: true
-    reply_type: CompactStructuredEncryptionDataCommandReply
-    fields:
-        compactionTokens:
-            description: "Map of field path to ECOCToken"
-            type: object
+  description: "Parser for the 'compactStructuredEncryptionData ' Command"
+  command_name: compactStructuredEncryptionData
+  api_version: ""
+  namespace: concatenate_with_db
+  strict: true
+  reply_type: CompactStructuredEncryptionDataCommandReply
+  fields:
+    compactionTokens:
+      description: "Map of field path to ECOCToken"
+      type: object
 
 ECOCStats:
-    description: "Stats about records in ECOC compact touched"
-    fields:
-        read: exactInt64
-        deleted: exactInt64
+  description: "Stats about records in ECOC compact touched"
+  fields:
+    read: exactInt64
+    deleted: exactInt64
 
 ECStats:
-    description: "Stats about records in ESC compact touched"
-    fields:
-        read: exactInt64
-        inserted: exactInt64
-        updated: exactInt64
-        deleted: exactInt64
+  description: "Stats about records in ESC compact touched"
+  fields:
+    read: exactInt64
+    inserted: exactInt64
+    updated: exactInt64
+    deleted: exactInt64
 
 CompactStats:
-    description: "Stats about records in ECOC and ESC compact touched"
-    fields:
-        ecoc: ECOCStats
-        esc: ECStats
+  description: "Stats about records in ECOC and ESC compact touched"
+  fields:
+    ecoc: ECOCStats
+    esc: ECStats
 
 CompactStructuredEncryptionDataCommandReply:
-    description: "Reply from the {compactStructuredEncryptionData: ...} command"
-    strict: true
-    fields:
-        stats: CompactStats
+  description: "Reply from the {compactStructuredEncryptionData: ...} command"
+  strict: true
+  fields:
+    stats: CompactStats
 ```
 
 # Cleanup Command
 
 ```yaml
 cleanupStructuredEncryptionData:
-    description: "Parser for the 'cleanupStructuredEncryptionData' command"
-    command_name: cleanupStructuredEncryptionData
-    api_version: ""
-    namespace: concatenate_with_db
-    strict: true
-    reply_type: CleanupStructuredEncryptionDataCommandReply
-    fields:
-        cleanupTokens:
-            description: "Map of field path to ECOCToken"
-            type: object
+  description: "Parser for the 'cleanupStructuredEncryptionData' command"
+  command_name: cleanupStructuredEncryptionData
+  api_version: ""
+  namespace: concatenate_with_db
+  strict: true
+  reply_type: CleanupStructuredEncryptionDataCommandReply
+  fields:
+    cleanupTokens:
+      description: "Map of field path to ECOCToken"
+      type: object
 
 CleanupStats:
-    description: "Stats about records in ECOC and ESC cleanup touched"
-    fields:
-        ecoc: ECOCStats
-        esc: ECStats
+  description: "Stats about records in ECOC and ESC cleanup touched"
+  fields:
+    ecoc: ECOCStats
+    esc: ECStats
 
 CleanupStructuredEncryptionDataCommandReply:
-    description: "Reply from the {cleanupStructuredEncryptionData: ...} command"
-    strict: true
-    is_command_reply: true
-    fields:
-        stats: CleanupStats
+  description: "Reply from the {cleanupStructuredEncryptionData: ...} command"
+  strict: true
+  is_command_reply: true
+  fields:
+    stats: CleanupStats
 ```
 
 # Reference: Server Status Compact and Cleanup

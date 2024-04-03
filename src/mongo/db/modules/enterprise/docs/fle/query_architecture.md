@@ -4,17 +4,17 @@ This document is the architecture guide for the query-owned components of Field 
 
 ## Terms
 
--   **FLE**: Field-level encryption. The internal name for the database features that encrypt specific fields in a collection end-to-end so that they are always unreadable on the server. The term is broad and covers multiple customer-facing features, but is still useful because much of the architecture and code is shared between them.
--   **Client-side Field-Level Encryption**: The customer-facing name for the feature often referred to internally as **FLE1**. Launched in 2019, [CSFLE](https://www.mongodb.com/docs/manual/core/csfle/) gives users the ability to encrypt certain fields in the database on the driver side, and allows limited queryability if users select deterministic encryption, which offers less security than random encryption.
--   **Queryable Encryption**: The customer-facing name for the feature often referred to internally as **FLE2**. Launched in 2022, [Queryable Encryption](https://www.mongodb.com/docs/manual/core/queryable-encryption/), sometimes abbreviated as QE, is an implementation of Structured Encryption. Structured Encryption is a novel cryptographic scheme originally developed at Brown University and then Aroki before the company was acquired by MongoDB. Queryable Encryption lets users query for encrypted values even when those values are randomly encrypted. Additionally, the encryption scheme supports more than just equality queries, with support available for range queries as well, and more on the way.
--   **Deterministic Encryption**: A cryptosystem which always produces the same ciphertext for a given plaintext and key, even over separate executions of the encryption algorithm ([Wikipedia](https://en.wikipedia.org/wiki/Deterministic_encryption)). Deterministic encryption leaks information about the statistical distribution of fields. For example, if `age` is encrypted deterministically, an attacker with access to the ciphertext can use available statistics about the age distribution in the United States to determine which ciphertext corresponds to which plaintext age.
--   **Random Encryption**: A cryptosystem which adds some randomness to the output such that encrypting the same plaintext with the same key multiple times will generally yield different ciphertexts ([Wikipedia](https://en.wikipedia.org/wiki/Probabilistic_encryption)). This prevents the same kind of statistical attack possible with deterministic encryption.
--   **Query Analysis**: Functionality that lets users write queries as if they were against unencrypted data and have them automatically rewritten to support encrypted collections. Query analysis is developed in the enterprise repository and is only available to paying enterprise customers.
-    -   Also referred to as **Automatic Encryption** or **Implicit Encryption**
--   **Manual Encryption** or **Explicit Encryption**: The term for when users bypass query analysis and manually create encrypted payloads to stand in for literals in their queries. This functionality is exposed by driver helpers and still makes use of the encryption functionality in libmongocrypt, but _does not_ rely on query analysis.
--   **Encryption Placeholder** or **"Intent-to-encrypt" placeholder**: A BinData blob which never leaves the client. Produced by query analysis and consumed by the encryption/cryptography system. It indicates that a literal in the corresponding position in the original query should be marked for encryption by the cryptography code.
--   **Encrypted Payload**: The actual BinData blob which is sent from the client to the server. For FLE1, this is simply the ciphertext of the encrypted field. In FLE2, this encrypted payload differs between insert and find, and contains the necessary cryptographic tokens required to update and query the encrypted metadata collections.
--   **Encrypted Index**: A term for the set of data structures that allow users to query randomly encrypted fields with different predicates in FLE2. At the time of writing, there are two encrypted indexes which are available: equality and range.
+- **FLE**: Field-level encryption. The internal name for the database features that encrypt specific fields in a collection end-to-end so that they are always unreadable on the server. The term is broad and covers multiple customer-facing features, but is still useful because much of the architecture and code is shared between them.
+- **Client-side Field-Level Encryption**: The customer-facing name for the feature often referred to internally as **FLE1**. Launched in 2019, [CSFLE](https://www.mongodb.com/docs/manual/core/csfle/) gives users the ability to encrypt certain fields in the database on the driver side, and allows limited queryability if users select deterministic encryption, which offers less security than random encryption.
+- **Queryable Encryption**: The customer-facing name for the feature often referred to internally as **FLE2**. Launched in 2022, [Queryable Encryption](https://www.mongodb.com/docs/manual/core/queryable-encryption/), sometimes abbreviated as QE, is an implementation of Structured Encryption. Structured Encryption is a novel cryptographic scheme originally developed at Brown University and then Aroki before the company was acquired by MongoDB. Queryable Encryption lets users query for encrypted values even when those values are randomly encrypted. Additionally, the encryption scheme supports more than just equality queries, with support available for range queries as well, and more on the way.
+- **Deterministic Encryption**: A cryptosystem which always produces the same ciphertext for a given plaintext and key, even over separate executions of the encryption algorithm ([Wikipedia](https://en.wikipedia.org/wiki/Deterministic_encryption)). Deterministic encryption leaks information about the statistical distribution of fields. For example, if `age` is encrypted deterministically, an attacker with access to the ciphertext can use available statistics about the age distribution in the United States to determine which ciphertext corresponds to which plaintext age.
+- **Random Encryption**: A cryptosystem which adds some randomness to the output such that encrypting the same plaintext with the same key multiple times will generally yield different ciphertexts ([Wikipedia](https://en.wikipedia.org/wiki/Probabilistic_encryption)). This prevents the same kind of statistical attack possible with deterministic encryption.
+- **Query Analysis**: Functionality that lets users write queries as if they were against unencrypted data and have them automatically rewritten to support encrypted collections. Query analysis is developed in the enterprise repository and is only available to paying enterprise customers.
+  - Also referred to as **Automatic Encryption** or **Implicit Encryption**
+- **Manual Encryption** or **Explicit Encryption**: The term for when users bypass query analysis and manually create encrypted payloads to stand in for literals in their queries. This functionality is exposed by driver helpers and still makes use of the encryption functionality in libmongocrypt, but _does not_ rely on query analysis.
+- **Encryption Placeholder** or **"Intent-to-encrypt" placeholder**: A BinData blob which never leaves the client. Produced by query analysis and consumed by the encryption/cryptography system. It indicates that a literal in the corresponding position in the original query should be marked for encryption by the cryptography code.
+- **Encrypted Payload**: The actual BinData blob which is sent from the client to the server. For FLE1, this is simply the ciphertext of the encrypted field. In FLE2, this encrypted payload differs between insert and find, and contains the necessary cryptographic tokens required to update and query the encrypted metadata collections.
+- **Encrypted Index**: A term for the set of data structures that allow users to query randomly encrypted fields with different predicates in FLE2. At the time of writing, there are two encrypted indexes which are available: equality and range.
 
 ## High-level overview
 
@@ -70,9 +70,9 @@ Query analysis is just one step in the process of properly encrypting queries:
 
 In order to properly encrypt constants in queries and warn users when they write queries that are not supported by FLE, query analysis needs information about the schema of the collection. To keep track of what fields are encrypted and what type each field holds we maintain an [EncryptionSchemaTree](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/encryption_schema_tree.h) data structure. The SchemaTree keeps track of what fields are encrypted or not encrypted. Encrypted nodes in the schema tree also have a [ResolvedEncryptionInfo](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/resolved_encryption_info.h) object, which holds metadata about the type of encryption involved. This metadata includes:
 
--   Algorithm (Deterministic or Random for FLE1. Unindexed, Equality or Range for FLE2)
--   BSONType
--   Additional metadata about FLE2 query type (like min/max bounds for range index)
+- Algorithm (Deterministic or Random for FLE1. Unindexed, Equality or Range for FLE2)
+- BSONType
+- Additional metadata about FLE2 query type (like min/max bounds for range index)
 
 FLE1 and FLE2 use different data structures as the input to the encryption schema tree. FLE1 makes use of JSON Schema and the `$jsonSchema` validator option in MongoDB. FLE2 has a new [encrypted field config](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/crypto/encryption_fields.idl#L131-L154) which is an optional parameter that can be added when [creating a collection](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/commands/create.idl#L195-L199). This struct must be sent along with every CRUD operation on an encrypted collection.
 
@@ -105,13 +105,13 @@ Most traversal behavior is shared between all encrypted predicate analysis. This
 As the walker visits each expression in an expression tree, it must keep track of the context of the current expression. Encryption is only allowed in contexts that will use the encrypted value for a comparison and the result of the comparison will be used as a boolean. To keep track of this state, the visitor maintains a stack where the top value of the stack represents the context in which its children should be evaluating encrypted fields. We refer to one of these contexts as a [Subtree](https://github.com/10gen/mongo-enterprise-modules/blob/aaadc8eed7e072a30b4f0fa49a0b991bd7aed5ee/src/fle/query_analysis/agg_expression_encryption_intender_base.h#L46). A Subtree can be one of the following types:
 
 1. Forwarded
-    - A forwarded context means the data will be sent to the user and not be used for any processing. All values are allowed here, as it is permitted to return both unencrypted and encrypted values as query results.
+   - A forwarded context means the data will be sent to the user and not be used for any processing. All values are allowed here, as it is permitted to return both unencrypted and encrypted values as query results.
 2. Compared
-    - This context indicates that the output of this context will be used in a comparison that will produce a boolean. For FLE1 this meant that all children in a compared subtree must have an encryption type that allowed comparison. In FLE2 comparison between encrypted fields is forbidden. The only allowed comparisons in a Compared Subtree are unencrypted fields to each other or literals, or a single encrypted field path compared to a literal.
-    - A notable use of a ComparedSubtree is when a comparison operator (eq/neq/gt/lt/gte/lte) is found to be comparing an encrypted field path to a constant. In this case, the ComparedSubtree keeps track of the field path. Later in a traversal if an encrypted field path is found, this value is checked. If the encrypted field path was expected it is permitted, in other contexts an encrypted field path is not allowed.
-    - A ComparedSubtree can have subtypes to track the encryption type: Unknown, NotEncrypted, or Encrypted
+   - This context indicates that the output of this context will be used in a comparison that will produce a boolean. For FLE1 this meant that all children in a compared subtree must have an encryption type that allowed comparison. In FLE2 comparison between encrypted fields is forbidden. The only allowed comparisons in a Compared Subtree are unencrypted fields to each other or literals, or a single encrypted field path compared to a literal.
+   - A notable use of a ComparedSubtree is when a comparison operator (eq/neq/gt/lt/gte/lte) is found to be comparing an encrypted field path to a constant. In this case, the ComparedSubtree keeps track of the field path. Later in a traversal if an encrypted field path is found, this value is checked. If the encrypted field path was expected it is permitted, in other contexts an encrypted field path is not allowed.
+   - A ComparedSubtree can have subtypes to track the encryption type: Unknown, NotEncrypted, or Encrypted
 3. Evaluated
-    - The result of this Subtree will be used for an operation that will produce a result other than a boolean. No encrypted fields support non-boolean comparisons, so encrypted field references are not allowed in an EvaluatedSubtree.
+   - The result of this Subtree will be used for an operation that will produce a result other than a boolean. No encrypted fields support non-boolean comparisons, so encrypted field references are not allowed in an EvaluatedSubtree.
 
 The Expression Visitor functions described above are responsible for [entering the correct Subtree type](https://github.com/10gen/mongo-enterprise-modules/blob/aaadc8eed7e072a30b4f0fa49a0b991bd7aed5ee/src/fle/query_analysis/agg_expression_encryption_intender_base.cpp#L57) (in `preVisit()` or `inVisit()` and [exiting the Subtree they entered](https://github.com/10gen/mongo-enterprise-modules/blob/aaadc8eed7e072a30b4f0fa49a0b991bd7aed5ee/src/fle/query_analysis/agg_expression_encryption_intender_base.h#L177) (if any, in `inVisit()` or `postVisit()`).
 
@@ -133,8 +133,8 @@ Encrypted equality predicates are the only predicates supported by FLE1, and FLE
 
 Relevant files/functions:
 
--   Match: [`replaceEncryptedEqualityElements()`](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/fle_match_expression.cpp#L160).
--   Agg: [`agg_expression_encryption_intender`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/agg_expression_encryption_intender.cpp)
+- Match: [`replaceEncryptedEqualityElements()`](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/fle_match_expression.cpp#L160).
+- Agg: [`agg_expression_encryption_intender`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/agg_expression_encryption_intender.cpp)
 
 #### Range Pass
 
@@ -148,8 +148,8 @@ While it is possible in theory to produce two-sided ranges for many complex quer
 
 Relevant files/functions:
 
--   Match: [`replaceEncryptedRangeElements()`](https://github.com/10gen/mongo-enterprise-modules/blob/4c30c843ea74947944d6288b467e93c951a4190f/src/fle/query_analysis/fle_match_expression.cpp#L512)
--   Agg: [`aggregate_expression_intender_range.cpp`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/aggregate_expression_intender_range.cpp)
+- Match: [`replaceEncryptedRangeElements()`](https://github.com/10gen/mongo-enterprise-modules/blob/4c30c843ea74947944d6288b467e93c951a4190f/src/fle/query_analysis/fle_match_expression.cpp#L512)
+- Agg: [`aggregate_expression_intender_range.cpp`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/aggregate_expression_intender_range.cpp)
 
 ## Server-side query rewriting
 
@@ -165,9 +165,9 @@ At a high level, there are two possible execution strategies for FLE2 predicates
 
 For those interested in learning more than will be presented in the brief overview below, here are some resources:
 
--   OST-1 Cryptographic specification (TODO: find up-to-date OST-1 link)
--   [Security team protocol guide](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/fle_protocol.md)
--   [Range index algorithm walkthrough](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/fle_range.md)
+- OST-1 Cryptographic specification (TODO: find up-to-date OST-1 link)
+- [Security team protocol guide](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/fle_protocol.md)
+- [Range index algorithm walkthrough](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/fle_range.md)
 
 #### Encrypted index access
 
@@ -213,8 +213,8 @@ While the rewriter class is responsible for traversing expressions, actual rewri
 
 There are currently two concrete implementations, one for each type of encrypted query currently supported by FLE2:
 
--   [EqualityPredicate](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/equality_predicate.h)
--   [RangePredicate](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/range_predicate.h)
+- [EqualityPredicate](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/equality_predicate.h)
+- [RangePredicate](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/range_predicate.h)
 
 Rewrites are registered into global maps using [macros](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/query/fle/encrypted_predicate.h#L184-L188) which are reminiscent of how agg expressions are registered for parsing. Every rewrite is registered as being associated with one or more leaf agg/match expressions.
 
@@ -243,18 +243,18 @@ Make sure that you've built `mongocryptd` with `ninja install-mongocryptd` befor
 
 ### JSTests
 
--   [`fle/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle): These tests run against a `mongocryptd` instance rather than mongod in order to test query analysis. While they were originally written for FLE1, they have been modified to generate FLE2-compatible `encryptedFields` configuration when run in the `fle2` suite. This is where most of the query analysis test coverage for FLE2 equality comes from.
--   [`fle2_query_analysis/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2_query_analysis): Query analysis tests run against `mongocryptd` for other query types besides equality.
--   [`fle2/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2): End-to-end tests for FLE2 that query encrypted collections in the database. Encrypted clients are set up using the utility class defined in [`encrypted_client_util.js`](https://github.com/10gen/mongo/blob/master/jstests/fle2/libs/encrypted_client_util.js). All tests in this directory make use of automatic encryption -- manual encryption is tested by the drivers that implement it.
+- [`fle/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle): These tests run against a `mongocryptd` instance rather than mongod in order to test query analysis. While they were originally written for FLE1, they have been modified to generate FLE2-compatible `encryptedFields` configuration when run in the `fle2` suite. This is where most of the query analysis test coverage for FLE2 equality comes from.
+- [`fle2_query_analysis/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2_query_analysis): Query analysis tests run against `mongocryptd` for other query types besides equality.
+- [`fle2/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2): End-to-end tests for FLE2 that query encrypted collections in the database. Encrypted clients are set up using the utility class defined in [`encrypted_client_util.js`](https://github.com/10gen/mongo/blob/master/jstests/fle2/libs/encrypted_client_util.js). All tests in this directory make use of automatic encryption -- manual encryption is tested by the drivers that implement it.
 
 ### Resmoke Suites
 
--   [`fle`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle.yml): FLE1 query analysis tests against `mongocryptd`. Only runs tests in the `jstests/fle/` directory.
--   [`fle2_query_analysis`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle2_query_analysis.yml): FLE2 query analysis tests against `mongocryptd`. Runs tests in `jstests/fle/` and `jstests/fle2_query_analysis/` directories.
--   [`fle2`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle2.yml): FLE2 end-to-end tests against a replicaset. This suite along with the ones below it run tests in the `jstests/fle2/` directory.
--   [`fle2_high_cardinality`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_high_cardinality.yml): Force encrypted collscan functionality to test it end-to-end.
--   [`fle2_sharding`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_sharding.yml): FLE2 e2e against a sharded cluster with mongos in front. It's notable that while these tests run against a sharded cluster, the actual data collection is **not** sharded. The purpose of this suite is to make sure all the FLE2 rewrites work correctly on mongos.
--   [`fle2_sharding_high_cardinality`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_sharding_high_cardinality.yml): Same as above, against a sharded cluster with mongos in front.
+- [`fle`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle.yml): FLE1 query analysis tests against `mongocryptd`. Only runs tests in the `jstests/fle/` directory.
+- [`fle2_query_analysis`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle2_query_analysis.yml): FLE2 query analysis tests against `mongocryptd`. Runs tests in `jstests/fle/` and `jstests/fle2_query_analysis/` directories.
+- [`fle2`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle2.yml): FLE2 end-to-end tests against a replicaset. This suite along with the ones below it run tests in the `jstests/fle2/` directory.
+- [`fle2_high_cardinality`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_high_cardinality.yml): Force encrypted collscan functionality to test it end-to-end.
+- [`fle2_sharding`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_sharding.yml): FLE2 e2e against a sharded cluster with mongos in front. It's notable that while these tests run against a sharded cluster, the actual data collection is **not** sharded. The purpose of this suite is to make sure all the FLE2 rewrites work correctly on mongos.
+- [`fle2_sharding_high_cardinality`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_sharding_high_cardinality.yml): Same as above, against a sharded cluster with mongos in front.
 
 ### Passthrough suites
 

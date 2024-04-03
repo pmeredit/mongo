@@ -38,12 +38,12 @@ against pre-release versions of MongoDB.
 
 #### Branch: no-download-master
 
--   Overrides and extends the time limit for cycle searches in elle
--   Updates the MongoDB driver
--   Supports the hello command, instead of the now-removed `isMaster` command
--   Does not download or install MongoDB. Jepsen expects the binaries to be
-    copied to a directory in the `PATH`. This allows running Jepsen with Evergreen
-    builds
+- Overrides and extends the time limit for cycle searches in elle
+- Updates the MongoDB driver
+- Supports the hello command, instead of the now-removed `isMaster` command
+- Does not download or install MongoDB. Jepsen expects the binaries to be
+  copied to a directory in the `PATH`. This allows running Jepsen with Evergreen
+  builds
 
 ### 10gen/jepsen
 
@@ -85,22 +85,22 @@ unmodified from upstream.
 These are the basic Jepsen tests targeting certain operations, including
 three types:
 
--   _set_: The test will do a lot of write, followed by a final read.
--   _register_: The test will do a lot of compare-and-set against a single
-    document.
--   _read-concern-majority_: The test is to test that majority committed
-    write will never rollback. It is achieved by continually inserting unique
-    documents using many writer threads, while a single thread periodically
-    reads from the collection.
+- _set_: The test will do a lot of write, followed by a final read.
+- _register_: The test will do a lot of compare-and-set against a single
+  document.
+- _read-concern-majority_: The test is to test that majority committed
+  write will never rollback. It is achieved by continually inserting unique
+  documents using many writer threads, while a single thread periodically
+  reads from the collection.
 
 At the moment, we have the following test cases making use of the above
 three types:
 
--   Read-concern-majority
--   Read-concern-majority w: 1
--   Register-findAndModify
--   Register-LinearizableRead
--   Set-LinearizableRead
+- Read-concern-majority
+- Read-concern-majority w: 1
+- Register-findAndModify
+- Register-LinearizableRead
+- Set-LinearizableRead
 
 You can take [this evergreen task](https://github.com/10gen/mongo/blob/v7.1/etc/evergreen_yml_components/definitions.yml#L3848-L3859)
 as a startpoint to look at the [setup scripts](https://github.com/10gen/mongo/tree/v7.1/evergreen/do_jepsen_setup)
@@ -164,4 +164,4 @@ to Replication.
 
 ## Typical Issues
 
--   In this [BF](https://jira.mongodb.org/browse/BF-29752), Jepsen failed due to use of unexpected consistency model and the analysis is helpful for identifying Jepsen issues.
+- In this [BF](https://jira.mongodb.org/browse/BF-29752), Jepsen failed due to use of unexpected consistency model and the analysis is helpful for identifying Jepsen issues.

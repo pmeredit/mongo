@@ -1,46 +1,46 @@
 # Definition for testing certificates used by enterprise tests.
 
 global:
-  output_path: 'src/mongo/db/modules/enterprise/jstests/libs/'
+  output_path: "src/mongo/db/modules/enterprise/jstests/libs/"
 
 certs:
-- name: 'trusted_client_password_protected.pem'
-  description: Encrypted storage engine KMIP client certificate.
-  passphrase: 'qwerty'
-  Subject:
-    C: 'US'
-    ST: 'New York'
-    L: 'New York City'
-    O: 'MongoDB'
-    OU: 'KernelUser'
-    CN: 'trusted_client_password_protected'
-  Issuer: 'jstests/libs/trusted-ca.pem'
-  extensions:
-    subjectAltName:
-      DNS: localhost
-      IP: 127.0.0.1
-  output_path: 'src/mongo/db/modules/enterprise/jstests/encryptdb/libs/'
+  - name: "trusted_client_password_protected.pem"
+    description: Encrypted storage engine KMIP client certificate.
+    passphrase: "qwerty"
+    Subject:
+      C: "US"
+      ST: "New York"
+      L: "New York City"
+      O: "MongoDB"
+      OU: "KernelUser"
+      CN: "trusted_client_password_protected"
+    Issuer: "jstests/libs/trusted-ca.pem"
+    extensions:
+      subjectAltName:
+        DNS: localhost
+        IP: 127.0.0.1
+    output_path: "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/"
 
-- name: 'ldapz_x509_1.pem'
-  description: X.509 LDAP Auth Test Cert.
-  Subject:
-    C: 'US'
-    ST: 'New York'
-    L: 'New York City'
-    O: 'MongoDB'
-    OU: 'KernelUser'
-    CN: 'ldapz_x509_1'
-  Issuer: 'jstests/libs/ca.pem'
-  output_path: 'src/mongo/db/modules/enterprise/jstests/external_auth/assets/'
+  - name: "ldapz_x509_1.pem"
+    description: X.509 LDAP Auth Test Cert.
+    Subject:
+      C: "US"
+      ST: "New York"
+      L: "New York City"
+      O: "MongoDB"
+      OU: "KernelUser"
+      CN: "ldapz_x509_1"
+    Issuer: "jstests/libs/ca.pem"
+    output_path: "src/mongo/db/modules/enterprise/jstests/external_auth/assets/"
 
-- name: 'ldapz_x509_2.pem'
-  description: X.509 LDAP Auth Test Cert.
-  Subject:
-    C: 'US'
-    ST: 'New York'
-    L: 'New York City'
-    O: 'MongoDB'
-    OU: 'KernelUser'
-    CN: 'ldapz_x509_2'
-  Issuer: 'jstests/libs/ca.pem'
-  output_path: 'src/mongo/db/modules/enterprise/jstests/external_auth/assets/'
+  - name: "ldapz_x509_2.pem"
+    description: X.509 LDAP Auth Test Cert.
+    Subject:
+      C: "US"
+      ST: "New York"
+      L: "New York City"
+      O: "MongoDB"
+      OU: "KernelUser"
+      CN: "ldapz_x509_2"
+    Issuer: "jstests/libs/ca.pem"
+    output_path: "src/mongo/db/modules/enterprise/jstests/external_auth/assets/"

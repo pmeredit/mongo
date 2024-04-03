@@ -1,236 +1,235 @@
 tokens:
   # Basic authentication as a user with read privileges.
   - &token_oidcauth_user1
-    name: 'Token_OIDCAuth_user1'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+    name: "Token_OIDCAuth_user1"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body: &token_oidcauth_user1_body
-        iss: "${issuerPrefix}/issuer1"
-        sub: 'user1@mongodb.com'
-        nbf: 1661374077
-        exp: 2147483647
-        aud: [ 'jwt@kernel.mongodb.com' ]
-        nonce: 'gdfhjj324ehj23k4'
-        "mongodb-roles":
-            - myReadRole
+      iss: "${issuerPrefix}/issuer1"
+      sub: "user1@mongodb.com"
+      nbf: 1661374077
+      exp: 2147483647
+      aud: ["jwt@kernel.mongodb.com"]
+      nonce: "gdfhjj324ehj23k4"
+      "mongodb-roles":
+        - myReadRole
 
   # Identical to 'Token_OIDCAuth_user1, but signed with RS384.
   - <<: *token_oidcauth_user1
-    name: 'Token_OIDCAuth_user1_RS384'
-    alg: 'RS384'
+    name: "Token_OIDCAuth_user1_RS384"
+    alg: "RS384"
 
   # Identical to 'Token_OIDCAuth_user1, but signed with RS512.
   - <<: *token_oidcauth_user1
-    name: 'Token_OIDCAuth_user1_RS512'
-    alg: 'RS512'
+    name: "Token_OIDCAuth_user1_RS512"
+    alg: "RS512"
 
   # Identical to 'Token_OIdCAuth_user1, but signed with custom-key-2.'
   - <<: *token_oidcauth_user1
-    name: 'Token_OIDCAuth_user1_custom_key_2'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
-    kid: 'custom-key-2'
+    name: "Token_OIDCAuth_user1_custom_key_2"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv"
+    kid: "custom-key-2"
 
   # Basic authentication as a user with readWrite privileges.
-  - name: 'Token_OIDCAuth_user2'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user2"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        sub: 'user2@mongodb.com'
-        "mongodb-roles":
-            - myReadWriteRole
+      <<: *token_oidcauth_user1_body
+      sub: "user2@mongodb.com"
+      "mongodb-roles":
+        - myReadWriteRole
 
   # Basic authentication as a user with read privileges.
   - &token_oidcauth_user1_10gen
-    name: 'Token_OIDCAuth_user1@10gen'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+    name: "Token_OIDCAuth_user1@10gen"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body: &token_oidcauth_user1_10gen_body
-        <<: *token_oidcauth_user1_body
-        iss: "${issuerPrefix}/issuer2"
-        sub: 'user1@10gen.com'
+      <<: *token_oidcauth_user1_body
+      iss: "${issuerPrefix}/issuer2"
+      sub: "user1@10gen.com"
 
   # Identical to 'Token_OIDCAuth_user1@10gen', except that it has been signed by custom-key-2.
   - <<: *token_oidcauth_user1_10gen
-    name: 'Token_OIDCAuth_user1@10gen_custom_key_2'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
-    kid: 'custom-key-2'
+    name: "Token_OIDCAuth_user1@10gen_custom_key_2"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv"
+    kid: "custom-key-2"
 
   # Identical to 'Token_OIDCAuth_user1', except that the exp time has elapsed.
-  - name: 'Token_OIDCAuth_user1_expired'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user1_expired"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        exp: 1671637210
+      <<: *token_oidcauth_user1_body
+      exp: 1671637210
 
   # Identical to 'Token_OIDCAuth_user1', except that the nbf time has yet to come.
-  - name: 'Token_OIDCAuth_user1_not_yet_valid'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user1_not_yet_valid"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        nbf: 2147000000
+      <<: *token_oidcauth_user1_body
+      nbf: 2147000000
 
   # Identical to 'Token_OIDCAuth_user1', except that nbf is not present.
-  - name: 'Token_OIDCAuth_user1_no_nbf_field'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user1_no_nbf_field"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        nbf: null
+      <<: *token_oidcauth_user1_body
+      nbf: null
 
   # Identical to 'Token_OIDCAuth_user1', except that it was issued for a different audience.
   - &token_oidcauth_user1_alt_audience
-    name: 'Token_OIDCAuth_user1_alt_audience'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+    name: "Token_OIDCAuth_user1_alt_audience"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        aud: [ 'jwt@kernel.10gen.com' ]
+      <<: *token_oidcauth_user1_body
+      aud: ["jwt@kernel.10gen.com"]
 
   # Identical to 'Token_OIDCAuth_user1_alt_audience', except signed with custom-key-2.
   - <<: *token_oidcauth_user1_alt_audience
-    name: 'Token_OIDCAuth_user1_alt_audience_custom_key_2'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
-    alg: 'RS256'
-    kid: 'custom-key-2'
+    name: "Token_OIDCAuth_user1_alt_audience_custom_key_2"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv"
+    alg: "RS256"
+    kid: "custom-key-2"
 
   # Identical to 'Token_OIDCAuth_user1@10gen', except that was issued for a different audience.
   - &token_oidcauth_user1_10gen_alt_audience
-    name: 'Token_OIDCAuth_user1@10gen_alt_audience'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+    name: "Token_OIDCAuth_user1@10gen_alt_audience"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_10gen_body
-        aud: [ 'jwt@kernel.10gen.com' ]
+      <<: *token_oidcauth_user1_10gen_body
+      aud: ["jwt@kernel.10gen.com"]
 
   # Identical to 'Token_OIDCAuth_user1@10gen_alt_audience', except signed with custom-key-2.
   - <<: *token_oidcauth_user1_10gen_alt_audience
-    name: 'Token_OIDCAuth_user1@10gen_alt_audience_custom_key_2'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
-    alg: 'RS256'
-    kid: 'custom-key-2'
+    name: "Token_OIDCAuth_user1@10gen_alt_audience_custom_key_2"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv"
+    alg: "RS256"
+    kid: "custom-key-2"
 
   # Identical to 'Token_OIDCAuth_user1', except that it contains multiple audiences.
-  - name: 'Token_OIDCAuth_user1_multiple_audiences'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user1_multiple_audiences"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        aud: [ 'jwt@kernel.10gen.com', 'jwt@kernel.mongodb.com' ]
+      <<: *token_oidcauth_user1_body
+      aud: ["jwt@kernel.10gen.com", "jwt@kernel.mongodb.com"]
 
   # Identical to 'Token_OIDCAuth_user1', except that it contains empty audiences array.
-  - name: 'Token_OIDCAuth_user1_empty_audiences'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user1_empty_audiences"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        aud: [ ]
+      <<: *token_oidcauth_user1_body
+      aud: []
 
   # Identical to 'Token_OIDCAuth_user1', except that was issued by another party/
-  - name: 'Token_OIDCAuth_user1_wrong_issuer'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user1_wrong_issuer"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        iss: 'https://test.kernel.10gen.com/oidc/issuerX'
+      <<: *token_oidcauth_user1_body
+      iss: "https://test.kernel.10gen.com/oidc/issuerX"
 
   # Basic authentication as a user with readWrite privileges.
-  - name: 'Token_OIDCAuth_user3'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-3.priv'
-    alg: 'RS256'
-    kid: 'custom-key-3'
+  - name: "Token_OIDCAuth_user3"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-3.priv"
+    alg: "RS256"
+    kid: "custom-key-3"
     body:
-        <<: *token_oidcauth_user1_body
-        sub: 'user3@mongodb.com'
-        "mongodb-roles":
-            - myReadWriteRole
+      <<: *token_oidcauth_user1_body
+      sub: "user3@mongodb.com"
+      "mongodb-roles":
+        - myReadWriteRole
 
   # Basic authentication as a user with readWrite privileges and multiple authorizationClaims.
-  - name: 'Token_OIDCAuth_user4'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
-    alg: 'RS256'
-    kid: 'custom-key-1'
+  - name: "Token_OIDCAuth_user4"
+    key: "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"
+    alg: "RS256"
+    kid: "custom-key-1"
     body:
-        <<: *token_oidcauth_user1_body
-        sub: 'user4@mongodb.com'
-        "mongodb-roles":
-            - myReadWriteRole
-        "mongodb-roles2":
-            - myUserAdminRole
+      <<: *token_oidcauth_user1_body
+      sub: "user4@mongodb.com"
+      "mongodb-roles":
+        - myReadWriteRole
+      "mongodb-roles2":
+        - myUserAdminRole
 
 payloads:
-  - name: 'emptyObject'
+  - name: "emptyObject"
     data: {}
 
-  - name: 'Advertize_OIDCAuth_user1'
+  - name: "Advertize_OIDCAuth_user1"
     data:
-        n: 'user1@mongodb.com'
-  - name: 'Advertize_OIDCAuth_user2'
+      n: "user1@mongodb.com"
+  - name: "Advertize_OIDCAuth_user2"
     data:
-        n: 'user2@mongodb.com'
-  - name: 'Advertize_OIDCAuth_user1@10gen'
+      n: "user2@mongodb.com"
+  - name: "Advertize_OIDCAuth_user1@10gen"
     data:
-        n: 'user1@10gen.com'
+      n: "user1@10gen.com"
 
-  - name: 'Authenticate_OIDCAuth_user1'
+  - name: "Authenticate_OIDCAuth_user1"
     data:
-        jwt: 'token:Token_OIDCAuth_user1'
-  - name: 'Authenticate_OIDCAuth_user1_RS384'
+      jwt: "token:Token_OIDCAuth_user1"
+  - name: "Authenticate_OIDCAuth_user1_RS384"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_RS384'
-  - name: 'Authenticate_OIDCAuth_user1_RS512'
+      jwt: "token:Token_OIDCAuth_user1_RS384"
+  - name: "Authenticate_OIDCAuth_user1_RS512"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_RS512'
-  - name: 'Authenticate_OIDCAuth_user1_custom_key_2'
+      jwt: "token:Token_OIDCAuth_user1_RS512"
+  - name: "Authenticate_OIDCAuth_user1_custom_key_2"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_custom_key_2'
+      jwt: "token:Token_OIDCAuth_user1_custom_key_2"
 
-  - name: 'Authenticate_OIDCAuth_user2'
+  - name: "Authenticate_OIDCAuth_user2"
     data:
-        jwt: 'token:Token_OIDCAuth_user2'
+      jwt: "token:Token_OIDCAuth_user2"
 
-  - name: 'Authenticate_OIDCAuth_user1@10gen'
+  - name: "Authenticate_OIDCAuth_user1@10gen"
     data:
-        jwt: 'token:Token_OIDCAuth_user1@10gen'
-  - name: 'Authenticate_OIDCAuth_user1@10gen_custom_key_2'
+      jwt: "token:Token_OIDCAuth_user1@10gen"
+  - name: "Authenticate_OIDCAuth_user1@10gen_custom_key_2"
     data:
-        jwt: 'token:Token_OIDCAuth_user1@10gen_custom_key_2'
+      jwt: "token:Token_OIDCAuth_user1@10gen_custom_key_2"
 
-  - name: 'Authenticate_OIDCAuth_user1_expired'
+  - name: "Authenticate_OIDCAuth_user1_expired"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_expired'
-  - name: 'Authenticate_OIDCAuth_user1_not_yet_valid'
+      jwt: "token:Token_OIDCAuth_user1_expired"
+  - name: "Authenticate_OIDCAuth_user1_not_yet_valid"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_not_yet_valid'
-  - name: 'Authenticate_OIDCAuth_user1_no_nbf_field'
+      jwt: "token:Token_OIDCAuth_user1_not_yet_valid"
+  - name: "Authenticate_OIDCAuth_user1_no_nbf_field"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_no_nbf_field'
-  - name: 'Authenticate_OIDCAuth_user1_alt_audience'
+      jwt: "token:Token_OIDCAuth_user1_no_nbf_field"
+  - name: "Authenticate_OIDCAuth_user1_alt_audience"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_alt_audience'
-  - name: 'Authenticate_OIDCAuth_user1_multiple_audiences'
+      jwt: "token:Token_OIDCAuth_user1_alt_audience"
+  - name: "Authenticate_OIDCAuth_user1_multiple_audiences"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_multiple_audiences'
-  - name: 'Authenticate_OIDCAuth_user1_empty_audiences'
+      jwt: "token:Token_OIDCAuth_user1_multiple_audiences"
+  - name: "Authenticate_OIDCAuth_user1_empty_audiences"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_empty_audiences'
-  - name: 'Authenticate_OIDCAuth_user1_wrong_issuer'
+      jwt: "token:Token_OIDCAuth_user1_empty_audiences"
+  - name: "Authenticate_OIDCAuth_user1_wrong_issuer"
     data:
-        jwt: 'token:Token_OIDCAuth_user1_wrong_issuer'
-  - name: 'Authenticate_OIDCAuth_user3'
+      jwt: "token:Token_OIDCAuth_user1_wrong_issuer"
+  - name: "Authenticate_OIDCAuth_user3"
     data:
-        jwt: 'token:Token_OIDCAuth_user3'
-
+      jwt: "token:Token_OIDCAuth_user3"

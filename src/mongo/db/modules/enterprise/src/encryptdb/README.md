@@ -2,11 +2,11 @@
 
 ## Table of Contents
 
--   [High Level Overview](#high-level-overview)
-    -   [Symmetric Cryptography](#symmetric-cryptography)
-        -   [Cipher Modes](#cipher-modes)
--   [Page Format](#page-format)
--   [Key Management](#key-management)
+- [High Level Overview](#high-level-overview)
+  - [Symmetric Cryptography](#symmetric-cryptography)
+    - [Cipher Modes](#cipher-modes)
+- [Page Format](#page-format)
+- [Key Management](#key-management)
 
 ## High Level Overview
 
@@ -15,11 +15,11 @@ The engine operates on a series of callback functions stored in a struct called 
 lives in WiredTiger. These functions are called by WiredTiger when running a query. The functions
 are as follows:
 
--   `sizing`: returns the maximum padding an encryption operation might add to the plaintext data.
--   `customize`: customizes a WT_ENCRYPTOR struct for a specific keyid with the correct key.
--   `encrypt`: encrypts data.
--   `decrypt`: decrypts data.
--   `destroyEncryptor`: called when a WT_ENCRYPTOR is no longer used and its resources can be freed.
+- `sizing`: returns the maximum padding an encryption operation might add to the plaintext data.
+- `customize`: customizes a WT_ENCRYPTOR struct for a specific keyid with the correct key.
+- `encrypt`: encrypts data.
+- `decrypt`: decrypts data.
+- `destroyEncryptor`: called when a WT_ENCRYPTOR is no longer used and its resources can be freed.
 
 A struct called the ExtendedWTEncryptor wraps the WT_ENCRYPTOR. It contains extra metadata for
 performing key retrieval and management. The struct is defined
@@ -46,9 +46,9 @@ which involve generating new keys and performing transformations on the block of
 of these steps are defined by the [cipher mode.](#cipher-modes)
 There are three types of AES that all use different-length symmetric secret keys:
 
--   AES-128: 128-bit keys
--   AES-192: 192-bit keys
--   AES-256: 256-bit keys
+- AES-128: 128-bit keys
+- AES-192: 192-bit keys
+- AES-256: 256-bit keys
 
 The secret key is used for _both_ encryption and decryption. If one were to look at AES as a black box, it
 receives a symmetric secret key, a plain text buffer, and sometimes an Initialization Vector (IV) as input, and outputs
@@ -115,9 +115,9 @@ incremental counter. It is 96 bits long, divided into a 64-bit integer and a 32-
 incremented every time an encrypted write is performed, and the 32-bit integer is incremented every time the server is
 booted. We chose this model of counter for the following reasons:
 
--   The counter has to be deterministic and non-repeating (at least for an insurmountable amount of time)
--   In order to avoid repeated use of IVs in the event of sudden shutdown, the counter has to be "persisted" in some way
--   The counter has to exist in memory, as writing it to disk for every encrypted write would be very slow
+- The counter has to be deterministic and non-repeating (at least for an insurmountable amount of time)
+- In order to avoid repeated use of IVs in the event of sudden shutdown, the counter has to be "persisted" in some way
+- The counter has to exist in memory, as writing it to disk for every encrypted write would be very slow
 
 **_GCM is only available on Linux, since OpenSSL is the only crypto library we use that implements it._**
 
@@ -128,9 +128,9 @@ Each encrypted page has a format in which it is encrypted, which is composed of 
 ciphertext. There are currently two versions of the page schema for encryption (k1 is only available
 in GCM). Their differences are listed below.
 
--   Page Schema
-    -   `k0`: Only one key is used for the entire database
-    -   `k1`: Each page selects its own key for encryption
+- Page Schema
+  - `k0`: Only one key is used for the entire database
+  - `k1`: Each page selects its own key for encryption
 
 Note that while each page selects the key for encryption independently, some pages will likely share
 keys depending on the generation.
@@ -138,9 +138,9 @@ keys depending on the generation.
 The metadata depends on the format of each page. The structure for each page format is listed below,
 and the definitions of each format is listed [here](symmetric_crypto.h).
 
--   `HeaderCBCV0`: [ IV (16 bytes) | ciphertext ]
--   `HeaderGCMV0`: [ Tag (12 bytes) | IV (12 bytes) | ciphertext ]
--   `HeaderGCMV1`: [ Tag (12 bytes) | Extra Data (13 bytes) | IV (12 bytes) | ciphertext ]
+- `HeaderCBCV0`: [ IV (16 bytes) | ciphertext ]
+- `HeaderGCMV0`: [ Tag (12 bytes) | IV (12 bytes) | ciphertext ]
+- `HeaderGCMV1`: [ Tag (12 bytes) | Extra Data (13 bytes) | IV (12 bytes) | ciphertext ]
 
 Note that `GCMV0` should only be used in databases before `v4.0`. Any database `v4.2` and greater
 should use `GCMV1`.

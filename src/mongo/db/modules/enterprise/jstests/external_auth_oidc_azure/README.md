@@ -22,10 +22,10 @@ The setup for the non-interactive test is extensive and infrastructure-heavy, an
 
 Management and maintenance of the non-interactive test harness in oidc_e2e_azure_machine.js requires the following components to work in coordination:
 
--   An instance of a managed identity service running on [Azure Container App Service](https://azure.microsoft.com/en-us/products/container-apps)
--   A Docker image (docker/azure_ubuntu_2204_oidc) of a simple token-acquiring service deployed to Azure Container App service via [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry)
--   A python script (toggle_ingress.py) responsible for enabling (and then disabling) ingress to the aforementioned container instance from evergreen by getting the evergreen egress IP address of the host running the test
--   A python script (get_token.py) that is responsible for contacting the managed identity service and extracting the token for testing
+- An instance of a managed identity service running on [Azure Container App Service](https://azure.microsoft.com/en-us/products/container-apps)
+- A Docker image (docker/azure_ubuntu_2204_oidc) of a simple token-acquiring service deployed to Azure Container App service via [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry)
+- A python script (toggle_ingress.py) responsible for enabling (and then disabling) ingress to the aforementioned container instance from evergreen by getting the evergreen egress IP address of the host running the test
+- A python script (get_token.py) that is responsible for contacting the managed identity service and extracting the token for testing
 
 Container App Deployed --> ingress enabled --> get_token.py to local file --> jstest accesses local file --> submit to test mongod --> ingress disabled (regardless of test outcome)
 

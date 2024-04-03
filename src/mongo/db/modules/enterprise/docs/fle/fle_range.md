@@ -32,9 +32,9 @@ by color.
 For every field there is mapping, which uses field definition in schema to convert
 value to following components:
 
--   minimum possible value (always zero)
--   maximum possible value
--   mapped actual value
+- minimum possible value (always zero)
+- maximum possible value
+- mapped actual value
 
 This mapping algorithm is called "OSTType". OSTType produces an unsigned integer, value of which
 increases together with raw value. Result of this function is later used to generate
@@ -44,10 +44,10 @@ Conversion process is unique for every supported type, and could be found in
 [fle_crypto.h](https://github.com/10gen/mongo/blob/SERVER-63138/src/mongo/crypto/fle_crypto.h)
 in following functions:
 
--   getTypeInfo32
--   getTypeInfo64
--   getTypeInfoDouble
--   getTypeInfoDecimal128
+- getTypeInfo32
+- getTypeInfo64
+- getTypeInfoDouble
+- getTypeInfoDecimal128
 
 ## Edges
 
@@ -64,10 +64,10 @@ Edges are generated using functionality declared in
 [fle_crypto.h](https://github.com/10gen/mongo/blob/SERVER-63138/src/mongo/crypto/fle_crypto.h)
 in following functions:
 
--   getEdgesInt32
--   getEdgesInt64
--   getEdgesDouble
--   getEdgesDecimal128
+- getEdgesInt32
+- getEdgesInt64
+- getEdgesDouble
+- getEdgesDecimal128
 
 ### Sparsity
 
@@ -81,10 +81,10 @@ the top.
 
 Sparsity is represented as a number from 1 to 4, where:
 
--   sparsity = 1 - all levels stored
--   sparsity = 2 - every 2nd level skipped
--   sparsity = 3 - every 2nd and 3rd level skipped
--   sparsity = 4 - every 2nd, 3rd, and 4th levels skipped
+- sparsity = 1 - all levels stored
+- sparsity = 2 - every 2nd level skipped
+- sparsity = 3 - every 2nd and 3rd level skipped
+- sparsity = 4 - every 2nd, 3rd, and 4th levels skipped
 
 ### Trim factor
 
@@ -101,9 +101,9 @@ The trim factor makes it possible to trim a variable number of top-level edges w
 query correctly against such a trimmed hypergraph. Trim factor is represented as a number from 0 to
 the number of bits needed to represent the entire domain, where:
 
--   trim factor = 0 - all levels stored
--   trim factor = 1 - root skipped
--   trim factor = 2 - root and level below the root skipped ...
+- trim factor = 0 - all levels stored
+- trim factor = 1 - root skipped
+- trim factor = 2 - root and level below the root skipped ...
 
 When trim factor and sparsity are combined, trim factor is applied first, and then sparsity is
 applied. Note that even when trim factor is non-zero, sparsity still counts from the root level --
@@ -122,7 +122,7 @@ minCover is generated using functionality declared in
 [fle_crypto.h](https://github.com/10gen/mongo/blob/SERVER-63138/src/mongo/crypto/fle_crypto.h)
 in following functions:
 
--   minCoverInt32
--   minCoverInt64
--   minCoverDouble
--   minCoverDecimal128
+- minCoverInt32
+- minCoverInt64
+- minCoverDouble
+- minCoverDecimal128

@@ -2,11 +2,11 @@
 
 ## Table of Contents
 
--   [High Level Overview](#high-level-overview)
-    -   [FLE1](#fle1)
-    -   [FLE2](#fle2)
--   [Shell Hooks](#shell-hooks)
--   [MongoCryptD](#mongocryptd)
+- [High Level Overview](#high-level-overview)
+  - [FLE1](#fle1)
+  - [FLE2](#fle2)
+- [Shell Hooks](#shell-hooks)
+- [MongoCryptD](#mongocryptd)
 
 ## High Level Overview
 
@@ -51,8 +51,8 @@ also known as FLE2.
 
 FLE1 is using two variants of `AEAD_AES_256_CBC_HMAC_SHA_512` algorithms:
 
--   `AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic`
--   `AEAD_AES_256_CBC_HMAC_SHA_512-Random`
+- `AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic`
+- `AEAD_AES_256_CBC_HMAC_SHA_512-Random`
 
 Deterministic algorithm encrypts same plaintext value to the same ciphertext for all the values of field in a collection,
 which allows indexing. Random variant of the algorithm always produces different ciphertext value for the given plaintext,
@@ -65,10 +65,10 @@ FLE2 features both randomized data storage and data indexing simultaneously. Suc
 additional structures (making it sometimed go by the name "Structured Encryption"), which allows the server to locate
 required records without decrypting data being searched for. These structures are:
 
--   `EDC` - Encrypted Data Collection (i.e. the user collection)
--   `ECC` - Encrypted Cache Collection
--   `ECOC` - Encrypted Compaction Collection
--   `ESC` - Encrypted State Collection
+- `EDC` - Encrypted Data Collection (i.e. the user collection)
+- `ECC` - Encrypted Cache Collection
+- `ECOC` - Encrypted Compaction Collection
+- `ESC` - Encrypted State Collection
 
 In contrast to FLE1, the server is actively participating in reading, creating, and updating data structures
 during CRUD operations. Client will submit necessary query parts to the server inside a
@@ -77,9 +77,9 @@ and server will use the elements of that payload to perform an operation on encr
 
 FLE2 is using following algorithms to encrypt data:
 
--   `HMAC-SHA-256` as a MAC function
--   `AES-256-CTR` for Encrypt/Decrypt. It does not provide integrity, only confidentiality.
--   `AES-256-CTR-HMAC-SHA-256` for EncryptAEAD/DecryptAEAD for both confidentiality and integrity.
+- `HMAC-SHA-256` as a MAC function
+- `AES-256-CTR` for Encrypt/Decrypt. It does not provide integrity, only confidentiality.
+- `AES-256-CTR-HMAC-SHA-256` for EncryptAEAD/DecryptAEAD for both confidentiality and integrity.
 
 In addition to structutrally encrypted data, FLE2 also allows data to be encrypted as unindexed. This reduces the
 load on server and only records encrypted values in `EDC`. FLE2 uses `AES-256-CTR-HMAC-SHA-256` algorithm
@@ -89,14 +89,14 @@ to secure unindexed data, which produces security and performance levels compara
 For details on FLE2 encryption, see [Queryable Encryption (FLE2) Protocol](../../docs/fle/fle_protocol.md) guide. Also,
 following sources are helpful in understanding data and class structure:
 
--   [fle_field_schema.idl](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/fle_field_schema.idl)
--   [crypto primitives](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto)
--   [db/fle_crud.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/fle_crud.h)
--   [db/fle2_compact.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/commands/fle2_compact.h)
--   [db/expression_type.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/matcher/expression_type.h)
--   [db/server_rewrite.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/query/fle/server_rewrite.h)
--   [shell/encrypted_dbclient_base.h](https://github.com/mongodb/mongo/blob/master/src/mongo/shell/encrypted_dbclient_base.h)
--   [query_analysis](./query_analysis)
+- [fle_field_schema.idl](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/fle_field_schema.idl)
+- [crypto primitives](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto)
+- [db/fle_crud.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/fle_crud.h)
+- [db/fle2_compact.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/commands/fle2_compact.h)
+- [db/expression_type.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/matcher/expression_type.h)
+- [db/server_rewrite.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/query/fle/server_rewrite.h)
+- [shell/encrypted_dbclient_base.h](https://github.com/mongodb/mongo/blob/master/src/mongo/shell/encrypted_dbclient_base.h)
+- [query_analysis](./query_analysis)
 
 ## Shell Hooks
 
@@ -137,15 +137,15 @@ include all of the code that allows `mongocryptd` to function as its own process
 that `mongocryptd` can do without using a separate process as a passthrough for encryption. `mongocryptd` is responsible
 for the following:
 
--   Parses the
-    [automatic encryption rules](https://docs.mongodb.com/manual/reference/security-client-side-automatic-json-schema/#field-level-encryption-json-schema)
-    specified to the database connection. Automatic encryption rules use a strict subset of JSON schema syntax. If the
-    automatic encryption rules contains invalid automatic encryption syntax or any document validation syntax,
-    `mongocryptd` returns an error.
--   Uses the specified automatic encryption rules to mark fields in read and write operations for encryption.
--   Reject read/write operations that may return unexpected or incorrect results when applied to an encrypted field.
-    See [Read/Write Support with Automatic Field Level Encryption](https://docs.mongodb.com/manual/reference/security-client-side-query-aggregation-support/)
-    for more information.
+- Parses the
+  [automatic encryption rules](https://docs.mongodb.com/manual/reference/security-client-side-automatic-json-schema/#field-level-encryption-json-schema)
+  specified to the database connection. Automatic encryption rules use a strict subset of JSON schema syntax. If the
+  automatic encryption rules contains invalid automatic encryption syntax or any document validation syntax,
+  `mongocryptd` returns an error.
+- Uses the specified automatic encryption rules to mark fields in read and write operations for encryption.
+- Reject read/write operations that may return unexpected or incorrect results when applied to an encrypted field.
+  See [Read/Write Support with Automatic Field Level Encryption](https://docs.mongodb.com/manual/reference/security-client-side-query-aggregation-support/)
+  for more information.
 
 Notice that `mongocryptd` is _not responsible for performing encryption/decryption_. For more information on `mongocryptd`,
 see our [documentation](https://docs.mongodb.com/manual/reference/security-client-side-encryption-appendix/#mongocryptd).

@@ -43,17 +43,17 @@ FCBIS selects a sync source in [`_selectAndValidateSyncSource`](https://github.c
 Selection](https://github.com/mongodb/mongo/blob/master/src/mongo/db/repl/README.md#sync-source-selection) that logical initial sync and `BackgroundSync` use, so `initialSyncReadPreference` and
 chaining are respected. Then it adds additional criteria:
 
--   The sync source must be a primary or secondary.
+- The sync source must be a primary or secondary.
 
--   The sync source's wire version must be less than or equal to the syncing node's wire version,
-    and greater than or equal to the first version to support FCBIS.
+- The sync source's wire version must be less than or equal to the syncing node's wire version,
+  and greater than or equal to the first version to support FCBIS.
 
--   The sync source must be running WiredTiger, with the same values for `directoryForIndexes` and
-    `directoryPerDB` as the syncing node. That is, the arrangement of files on the sync source and
-    the syncing node must be the same.
+- The sync source must be running WiredTiger, with the same values for `directoryForIndexes` and
+  `directoryPerDB` as the syncing node. That is, the arrangement of files on the sync source and
+  the syncing node must be the same.
 
--   The sync source must have the same `encryptionAtRest.encryptionEnabled` setting as the syncing
-    node.
+- The sync source must have the same `encryptionAtRest.encryptionEnabled` setting as the syncing
+  node.
 
 If these checks fail, the sync source is denylisted with the `SyncSourceResolver`, and another
 attempt is made, up to `numInitialSyncConnectAttempts` attempts. If no sync source is found, FCBIS
@@ -124,23 +124,23 @@ before we can use them in normal operation; we call `_cleanUpLocalCollectionsAft
 
 In [`_cleanUpLocalCollectionsAfterSync`](https://github.com/10gen/mongo-enterprise-modules/blob/r6.2.1/src/fcbis/file_copy_based_initial_syncer.cpp#L610), we do the following:
 
--   Set the oplogTruncateAfterPoint to the last opTime we retrieved from the sync source, or if we did
-    not extend the backup cursor, to the oplogEnd from the backup metadata. In either case it is
-    possible the backup has oplog entries after this point, but they may be after oplog holes and thus
-    invalid.
+- Set the oplogTruncateAfterPoint to the last opTime we retrieved from the sync source, or if we did
+  not extend the backup cursor, to the oplogEnd from the backup metadata. In either case it is
+  possible the backup has oplog entries after this point, but they may be after oplog holes and thus
+  invalid.
 
--   Clear and reset the initialSyncId, which is an unique identifier for this node. Together with
-    the rollbackId it allows **logical** initial sync to determine if a node it was syncing from
-    is safe to continue syncing from.
+- Clear and reset the initialSyncId, which is an unique identifier for this node. Together with
+  the rollbackId it allows **logical** initial sync to determine if a node it was syncing from
+  is safe to continue syncing from.
 
--   If the node has not participated in any elections yet, as in the usual case, we clear the last vote
-    document. If the node participated in an election, we carry over the last vote from that election
-    (the last vote document we read earlier).
+- If the node has not participated in any elections yet, as in the usual case, we clear the last vote
+  document. If the node participated in an election, we carry over the last vote from that election
+  (the last vote document we read earlier).
 
--   Replace the config with the one we read earlier. Because both the read and write were done
-    within the same global X critical section, we can be assured that no config change was written
-    between the read and write, so the `ReplicationCoordinator`s idea of the on-disk config is
-    still correct.
+- Replace the config with the one we read earlier. Because both the read and write were done
+  within the same global X critical section, we can be assured that no config change was written
+  between the read and write, so the `ReplicationCoordinator`s idea of the on-disk config is
+  still correct.
 
 After `_cleanUpLocalCollectionsAfterSync`, we release the global lock and call
 [`_replicationStartupRecovery`](https://github.com/10gen/mongo-enterprise-modules/blob/r6.2.1/src/fcbis/file_copy_based_initial_syncer.cpp#L1360). This replays the oplog and sets the stable timestamp to the
@@ -204,15 +204,15 @@ similarly to the end of logical initial sync.
 
 From, `_finishCallback`, we call `_updateStorageTimestampsAfterInitialSync,` where:
 
--   We set the oplog visibility timestamp to the lastAppliedOpTime timestamp.
--   We set the initialDataTimestamp to the lastAppliedOpTime timestamp.
--   We reconstruct prepared transactions so the node can participate in 2-phase commit.
--   We recover any Tenant Migration Access Blockers.
+- We set the oplog visibility timestamp to the lastAppliedOpTime timestamp.
+- We set the initialDataTimestamp to the lastAppliedOpTime timestamp.
+- We reconstruct prepared transactions so the node can participate in 2-phase commit.
+- We recover any Tenant Migration Access Blockers.
 
 Finally,
 
--   We call the callback `ReplicationCoordinator` passed us.
--   We record our final statistics in `_markInitialSyncCompleted`.
+- We call the callback `ReplicationCoordinator` passed us.
+- We record our final statistics in `_markInitialSyncCompleted`.
 
 ## Resumability of File Copy Based Initial Sync
 

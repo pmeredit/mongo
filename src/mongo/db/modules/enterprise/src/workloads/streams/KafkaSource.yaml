@@ -16,17 +16,27 @@ GlobalDefaults:
     key: *MatchKey
 
   Batch5x: &Batch5x [*Document, *Document, *Document, *Document, *Document]
-  Batch25x: &Batch25x {^FlattenOnce: [*Batch5x, *Batch5x, *Batch5x, *Batch5x, *Batch5x]}
-  Batch100x: &Batch100x {^FlattenOnce: [*Batch25x, *Batch25x, *Batch25x, *Batch25x]}
-  Batch500x: &Batch500x {^FlattenOnce: [*Batch100x, *Batch100x, *Batch100x, *Batch100x, *Batch100x]}
-  Batch2500x: &Batch2500x {^FlattenOnce: [*Batch500x, *Batch500x, *Batch500x, *Batch500x, *Batch500x]}
+  Batch25x:
+    &Batch25x {^FlattenOnce: [*Batch5x, *Batch5x, *Batch5x, *Batch5x, *Batch5x]}
+  Batch100x:
+    &Batch100x {^FlattenOnce: [*Batch25x, *Batch25x, *Batch25x, *Batch25x]}
+  Batch500x:
+    &Batch500x {
+      ^FlattenOnce:
+        [*Batch100x, *Batch100x, *Batch100x, *Batch100x, *Batch100x],
+    }
+  Batch2500x:
+    &Batch2500x {
+      ^FlattenOnce:
+        [*Batch500x, *Batch500x, *Batch500x, *Batch500x, *Batch500x],
+    }
 
 Actors:
-- Name: PopulateKafka
-  Type: ExternalScriptRunner
-  Threads: 1
-  Phases:
-  - Phase: 0 
-    Repeat: 1
-    Command: "sh"
-    Script: kafkacat -b 0:9092 -t potato1 -P *Batch5x
+  - Name: PopulateKafka
+    Type: ExternalScriptRunner
+    Threads: 1
+    Phases:
+      - Phase: 0
+        Repeat: 1
+        Command: "sh"
+        Script: kafkacat -b 0:9092 -t potato1 -P *Batch5x
