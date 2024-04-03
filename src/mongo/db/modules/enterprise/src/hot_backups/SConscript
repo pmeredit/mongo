@@ -52,6 +52,21 @@ env.Library(
     ],
 )
 
+env.Library(
+    target='backup_docs_needed_bounds',
+    source=[
+        'document_source_visitor_docs_needed_bounds.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/pipeline/docs_needed_bounds',
+        '$BUILD_DIR/mongo/db/service_context',
+        'hot_backups',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+    ],
+)
+
 env.CppUnitTest(
     target='enterprise_hot_backups_test',
     source=[
