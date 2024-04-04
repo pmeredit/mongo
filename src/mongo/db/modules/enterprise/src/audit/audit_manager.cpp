@@ -353,34 +353,41 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
                                       "CryptographyInitialized"))
 (InitializerContext* context) {
     globalAuditManager.initialize(moe::startupOptionsParsed);
-
-    setAuditInterface = [](ServiceContext* service) {
-        auto options = moe::startupOptionsParsed;
-        // Leave Noop interface if there is no audit destination
-        if (!options.count("auditLog.destination")) {
-            return;
-        }
-
-        if (gFeatureFlagOCSF.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-            options.count("auditLog.schema")) {
-            auto schema = uassertStatusOK(
-                parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));
-            if (schema == AuditSchema::kMongo) {
-                audit::AuditInterface::set(service, std::make_unique<audit::AuditMongo>());
-            } else {
-                invariant(schema == AuditSchema::kOCSF);
-                audit::AuditInterface::set(service, std::make_unique<audit::AuditOCSF>());
-            }
-        } else {
-            // Default to AuditMongo interface if no schema was provided in options
-            // We cannot default to mongo in audit_options.idl because, if default is provided
-            // there, an auditDestination will always be asked from the user (since schema depends
-            // on destination)
-            audit::AuditInterface::set(service, std::make_unique<audit::AuditMongo>());
-        }
-    };
 }
+
+void initializeAuditInterface(ServiceContext* svcCtx) {
+    // This initializer expects an audit interface to already be in place.
+    invariant(AuditInterface::get(svcCtx) != nullptr);
+
+    auto options = moe::startupOptionsParsed;
+    if (!options.count("auditLog.destination")) {
+        // Leave existing interface if there is no audit destination
+        return;
+    }
+
+    if (gFeatureFlagOCSF.isEnabled(serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
+        options.count("auditLog.schema")) {
+        auto schema = uassertStatusOK(
+            parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));
+        if (schema == AuditSchema::kMongo) {
+            audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditMongo>());
+        } else {
+            invariant(schema == AuditSchema::kOCSF);
+            audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditOCSF>());
+        }
+    } else {
+        // Default to AuditMongo interface if no schema was provided in options
+        // We cannot default to mongo in audit_options.idl because, if default is provided
+        // there, an auditDestination will always be asked from the user (since schema depends
+        // on destination)
+        audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditMongo>());
+    }
+}
+
+// Run after the community's initialization so that we always take precedence.
+const ServiceContext::ConstructorActionRegisterer serviceExecutorSynchronousRegisterer{
+    "initializeAuditInterface", {"initializeNoopAuditInterface"}, initializeAuditInterface};
+
 }  // namespace
 
 }  // namespace audit

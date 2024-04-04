@@ -768,10 +768,6 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
 
     const auto service = getGlobalServiceContext();
 
-    if (audit::setAuditInterface) {
-        audit::setAuditInterface(service);
-    }
-
     audit::rotateAuditLog();
     registerShutdownTask(cleanupTask);
 
