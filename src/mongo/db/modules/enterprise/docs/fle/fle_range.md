@@ -86,6 +86,30 @@ Sparsity is represented as a number from 1 to 4, where:
 -   sparsity = 3 - every 2nd and 3rd level skipped
 -   sparsity = 4 - every 2nd, 3rd, and 4th levels skipped
 
+### Trim factor
+
+The number of edges generated for each record can be further reduced by trimming off top-level edges.
+When we don't trim at all, every value will generate the `root` edge, and including this edge in
+every insert causes write conflicts when we are performing multiple inserts simultaneously, which can
+cause drastic slowdowns. However, the `root` edge is only queried when we are running a range query
+that would hit every record in the collection, which is not a use case for range. Edges which are
+close to the root level run into this problem as well, but not in as drastic a way, and they are much
+more likely to be queried than the `root` edge. Depending on how large queries are expected to be, it
+may be worthwhile to trim these high-level edges as well.
+
+The trim factor makes it possible to trim a variable number of top-level edges when inserting, and to
+query correctly against such a trimmed hypergraph. Trim factor is represented as a number from 0 to
+the number of bits needed to represent the entire domain, where:
+
+-   trim factor = 0 - all levels stored
+-   trim factor = 1 - root skipped
+-   trim factor = 2 - root and level below the root skipped ...
+
+When trim factor and sparsity are combined, trim factor is applied first, and then sparsity is
+applied. Note that even when trim factor is non-zero, sparsity still counts from the root level --
+for example, if trim factor = 1, sparsity = 2, the root level is skipped due to trim factor, and the
+level just under the root is skipped due to sparsity.
+
 ## minCover
 
 Through the use of the hypergraph, range query can effectively be reduced to a set of equality queries.
