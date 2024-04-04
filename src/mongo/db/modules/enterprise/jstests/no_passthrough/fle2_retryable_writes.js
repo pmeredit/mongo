@@ -11,6 +11,8 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
 
 function countOplogEntries(primaryConn) {
     var oplog = primaryConn.getDB('local').oplog.rs;
@@ -27,6 +29,24 @@ function assertRetriedStmtIds(retryResult, expectedStmtIds) {
         assert(r.includes(id),
                `stmtId ${id} expected but not found in retriedStmtIds: ${tojson(r)}`);
     }
+}
+
+async function bgRetryInsertFunc(doc) {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
+    const client = new EncryptedClient(db.getMongo(), "retryInsertWithRetriedInternalTxn");
+    const lsid = UUID();
+    const retryableCmd =
+        {insert: "basic", documents: [doc], lsid: {id: lsid}, txnNumber: NumberLong(1)};
+    let result = assert.commandWorked(client.getDB().runCommand(retryableCmd));
+    let retryResult = assert.commandWorked(client.getDB().runCommand(retryableCmd));
+
+    assert.eq(result.ok, retryResult.ok);
+    assert.eq(result.n, retryResult.n);
+    assert.eq(result.writeErrors, retryResult.writeErrors);
+    assert.eq(result.writeConcernErrors, retryResult.writeConcernErrors);
+    assert(retryResult.hasOwnProperty("retriedStmtIds"));
+    assert.eq(retryResult.retriedStmtIds.length, 1);
+    assert(retryResult.retriedStmtIds.includes(2));
 }
 
 // primaryConn = connection to primary of shard in mongos otherwise primaryConn = conn
@@ -342,6 +362,54 @@ function runFindAndModifyRetryWithPreimageRemovedTest(conn, primaryConn) {
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 }
 
+// Tests retryable insert works despite transient internal transaction retries.
+// This test uses two parallel retryable inserts to force a write conflict, waits
+// on both to succeed, then retries them both, expecting no extra inserts to occur.
+function runRetryableInsertWithRetriedInternalTransaction(conn, primaryConn) {
+    jsTestLog("Running Test: runRetryableInsertWithRetriedInternalTransaction");
+    let dbName = 'retryInsertWithRetriedInternalTxn';
+    let db = conn.getDB(dbName);
+
+    let client = new EncryptedClient(db.getMongo(), dbName);
+
+    assert.commandWorked(client.createEncryptionCollection("basic", {
+        encryptedFields: {
+            "fields": [{
+                "path": "first",
+                "bsonType": "string",
+                "queries": {"queryType": "equality", "contention": 0}
+            }]
+        }
+    }));
+
+    // Setup a failpoint that hangs in insert
+    let fp = configureFailPoint(conn, "fleCrudHangInsert");
+
+    // Start two inserts. One will wait for the other
+    let insertOne =
+        startParallelShell(funWithArgs(bgRetryInsertFunc, {_id: 1, "first": "mark"}), conn.port);
+    let insertTwo =
+        startParallelShell(funWithArgs(bgRetryInsertFunc, {_id: 2, "first": "mark"}), conn.port);
+
+    checkLog.contains(conn, "WriteConflict");
+    fp.off();
+
+    // Wait for the two parallel shells
+    insertOne();
+    insertTwo();
+
+    // Verify the data on disk
+    client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
+
+    client.assertOneEncryptedDocumentFields("basic", {"_id": 1}, {"first": "mark"});
+    client.assertOneEncryptedDocumentFields("basic", {"_id": 2}, {"first": "mark"});
+
+    client.assertEncryptedCollectionDocuments("basic", [
+        {"_id": 1, "first": "mark"},
+        {"_id": 2, "first": "mark"},
+    ]);
+}
+
 jsTestLog("ReplicaSet: Testing fle2 contention on update");
 {
     const rst = new ReplSetTest({nodes: 1});
@@ -352,6 +420,7 @@ jsTestLog("ReplicaSet: Testing fle2 contention on update");
     runTest(rst.getPrimary(), rst.getPrimary());
     runUpdateRetryWithPreimageRemovedTest(rst.getPrimary(), rst.getPrimary());
     runFindAndModifyRetryWithPreimageRemovedTest(rst.getPrimary(), rst.getPrimary());
+    runRetryableInsertWithRetriedInternalTransaction(rst.getPrimary(), rst.getPrimary());
     rst.stopSet();
 }
 
@@ -362,6 +431,7 @@ jsTestLog("Sharding: Testing fle2 contention on update");
     runTest(st.s, st.shard0);
     runUpdateRetryWithPreimageRemovedTest(st.s, st.shard0);
     runFindAndModifyRetryWithPreimageRemovedTest(st.s, st.shard0);
+    runRetryableInsertWithRetriedInternalTransaction(st.s, st.shard0);
 
     st.stop();
 }
