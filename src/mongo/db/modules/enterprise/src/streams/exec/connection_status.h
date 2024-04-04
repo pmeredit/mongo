@@ -1,7 +1,5 @@
 #pragma once
 
-#include "mongo/base/error_codes.h"
-#include "mongo/base/status.h"
 #include "streams/util/exception.h"
 
 namespace streams {
@@ -33,5 +31,9 @@ struct ConnectionStatus {
     bool isError() {
         return status == kError;
     }
+
+    // Throws an exception if the state is not kConnected.
+    // Used by the Executor and SinkOperator classes to ensure the operator is healthy.
+    void throwIfNotConnected();
 };
 };  // namespace streams

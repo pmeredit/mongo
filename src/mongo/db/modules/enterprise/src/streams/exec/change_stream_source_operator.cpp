@@ -46,6 +46,10 @@ using bsoncxx::builder::basic::make_document;
 
 namespace {
 
+// If enabled failpoint the changestream background thread will sleep for a second before
+// connecting.
+MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepBeforeConnect);
+
 // Name of the error code field name in the raw server error object.
 static constexpr char kErrorCodeFieldName[] = "code";
 
@@ -245,6 +249,13 @@ void ChangeStreamSourceOperator::fetchLoop() {
         collName);
 
     auto fetchFunc = [this]() {
+        if (MONGO_unlikely(changestreamSourceSleepBeforeConnect.shouldFail())) {
+            // Sleep for a bit to simulate a slightly longer connection time.
+            // This helped us repro a timing issue during a concurrent start+stop
+            // we saw in the actual service.
+            sleepFor(Seconds{1});
+        }
+
         // Establish the connection and start the changestream.
         connectToSource();
         {

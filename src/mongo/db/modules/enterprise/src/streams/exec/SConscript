@@ -103,6 +103,7 @@ env.Library(
         'checkpoint_coordinator.cpp',
         'collect_operator.cpp',
         'context.cpp',
+        'connection_status.cpp',
         'dead_letter_queue.cpp',
         'delayed_watermark_generator.cpp',
         'document_source_feeder.cpp',

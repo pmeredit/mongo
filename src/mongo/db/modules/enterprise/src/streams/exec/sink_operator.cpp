@@ -50,8 +50,8 @@ void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
 void SinkOperator::doOnDataMsg(int32_t inputIdx,
                                StreamDataMsg dataMsg,
                                boost::optional<StreamControlMsg> controlMsg) {
-    auto sinkErr = getConnectionStatus();
-    spassert(sinkErr.error, sinkErr.isConnected());
+    auto sinkStatus = getConnectionStatus();
+    sinkStatus.throwIfNotConnected();
 
     if (_context->shouldAddStreamMetaInSinkStage()) {
         for (auto& doc : dataMsg.docs) {

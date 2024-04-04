@@ -4,6 +4,9 @@
  * ]
  */
 
+import {Thread} from "jstests/libs/parallelTester.js";
+import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
+
 (function() {
 "use strict";
 
@@ -221,5 +224,41 @@ function stopStreamProcessor() {
         },
         false /* validateSuccess */);
     assert.commandFailed(result);
+}());
+
+// This is a regression test for an issue we found in prod.
+// The test issues a stop request shortly after a start request.
+// Prior to the fix this could sometimes cause an invariant.
+(function stopDuringStart() {
+    // Turn on a failpoint that will make changestream $source sleep for a bit in its background
+    // connection routine. This makes the problem easier to hit.
+    assert.commandWorked(db.adminCommand(
+        {'configureFailPoint': 'changestreamSourceSleepBeforeConnect', 'mode': 'alwaysOn'}));
+
+    const sp = getDefaultSp();
+    const spName = "stopDuringStart";
+    sp.createStreamProcessor(spName, [
+        {
+            $source:
+                {connectionName: test.atlasConnection, db: test.dbName, coll: test.inputCollName}
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: test.atlasConnection,
+                    db: test.dbName,
+                    coll: test.outputCollName
+                }
+            }
+        },
+    ]);
+
+    let stopThread = new Thread((spName) => {
+        sleep(300);
+        db.runCommand({streams_stopStreamProcessor: "", name: spName});
+    }, spName);
+    stopThread.start();
+    sp[spName].start(undefined, undefined, undefined, /* assertWorked */ false);
+    stopThread.join();
 }());
 }());

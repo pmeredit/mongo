@@ -117,6 +117,12 @@ Future<void> Executor::start() {
 
             Date_t deadline = Date_t::now() + _options.connectTimeout;
             ensureConnected(deadline);
+            if (isShutdown()) {
+                LOGV2_INFO(8884500,
+                           "Stream processor has been shutdown, returning early.",
+                           "context"_attr = _context);
+                return;
+            }
 
             if (_context->checkpointStorage && _context->restoreCheckpointId) {
                 tassert(8444407,
@@ -270,13 +276,13 @@ Executor::RunStatus Executor::runOnce() {
 
     // Ensure the source is still connected. If not, throw an error.
     auto connectionStatus = source->getConnectionStatus();
-    spassert(std::move(connectionStatus.error), connectionStatus.isConnected());
+    connectionStatus.throwIfNotConnected();
 
     auto sinkStatus = sink->getConnectionStatus();
-    spassert(std::move(sinkStatus.error), sinkStatus.isConnected());
+    sinkStatus.throwIfNotConnected();
 
     auto dlqStatus = _context->dlq->getStatus();
-    spassert(std::move(dlqStatus), dlqStatus.isOK());
+    spassert(dlqStatus, dlqStatus.isOK());
 
     // Check if this stream processor needs to potentially be killed if this process
     // is running out of memory.
@@ -457,7 +463,7 @@ bool Executor::isShutdown() {
 }
 
 void Executor::ensureConnected(Date_t deadline) {
-    // TODO(SERVER-80742): Establish connection with sinks and DLQs.
+    // TODO(SERVER-80742): Establish connection with DLQ.
     // Connect to the source.
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());

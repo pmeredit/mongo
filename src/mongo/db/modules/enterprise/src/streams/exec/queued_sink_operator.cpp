@@ -97,7 +97,7 @@ void QueuedSinkOperator::doFlush() {
 
     // Make sure that an error wasn't encountered in the background consumer thread while
     // waiting for the flushed condvar to be notified.
-    spassert(_consumerStatus.error, _consumerStatus.isConnected());
+    _consumerStatus.throwIfNotConnected();
     uassert(75386, str::stream() << "Unable to flush queued sink operator", !_pendingFlush);
 }
 
