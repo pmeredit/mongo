@@ -109,6 +109,7 @@ function makeMongoToKafkaStartCmd(collName, topicName, connName, key = null, hea
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
             {$match: {operationType: "insert"}},
             {$replaceRoot: {newRoot: "$fullDocument"}},
+            {$project: {_stream_meta: 0}},
             {$emit: emitOptions}
         ],
         connections: connectionRegistry,
@@ -119,7 +120,7 @@ function makeMongoToKafkaStartCmd(collName, topicName, connName, key = null, hea
 }
 
 // Makes kafkaToMongoStartCmd for a specific topic name & collection name pair.
-function makeKafkaToMongoStartCmd(topicName, collName) {
+function makeKafkaToMongoStartCmd(topicName, collName, pipeline = []) {
     const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
     let options = {
         checkpointOptions: {
@@ -135,7 +136,7 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
     return {
         streams_startStreamProcessor: '',
         name: `${kafkaToMongoNamePrefix}-${topicName}`,
-        pipeline: [
+        pipeline: pipeline.length ? pipeline : [
             {
                 $source: {
                     connectionName: kafkaPlaintextName,
@@ -276,6 +277,74 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null) {
     db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName});
 }
 
+// Test that the stream metadata are preserved when non-group window operator exists even if the
+// pipeline doesn't have explicit dependency on the metadata.
+function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    // Now the Kafka topic exists, and it has at least 1 event in it.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const nonGroupWindowPipeline = [
+        {
+            $source: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {enableKeysAndHeaders: true},
+                timeField: {$toDate: "$a"},
+            }
+        },
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                pipeline: [nonGroupWindowStage]
+            }
+        },
+        {$merge: {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}},
+    ];
+    const kafkaToMongoStartCmd =
+        makeKafkaToMongoStartCmd(topicName1, sinkColl1.getName(), nonGroupWindowPipeline);
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, tenantId, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => { return checkpointUtils.checkpointIds.length > 0; });
+
+    // Start the mongoToKafka streamProcessor.
+    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
+    // processor.
+    assert.commandWorked(db.runCommand(
+        makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
+
+    // Write input to the 'sourceColl'.
+    // mongoToKafka reads the source collection and writes to Kafka.
+    // kafkaToMongo reads Kafka and writes to the sink collection.
+    insertData(sourceColl1);
+    // Verify at least one document shows up in the sink collection as expected.
+    waitForCount(sinkColl1, 1, 5 * 60 /* timeout */);
+    const results = sinkColl1.find({}).toArray();
+    for (let doc of results) {
+        assert(doc._stream_meta.hasOwnProperty("sourceType"), doc);
+        assert(doc._stream_meta.hasOwnProperty("sourcePartition"), doc);
+        assert(doc._stream_meta.hasOwnProperty("sourceOffset"), doc);
+        assert(doc._stream_meta.hasOwnProperty("windowStart"), doc);
+        assert(doc._stream_meta.hasOwnProperty("windowEnd"), doc);
+    }
+
+    // Stop the streamProcessors.
+    db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName});
+    db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName});
+}
+
 // This test uses the same logic as the mongoToKafka test, but uses the connection
 // registry entry for the SASL_SSL authenticated listener + SSL validation.
 function mongoToKafkaSASLSSL() {
@@ -287,8 +356,7 @@ function mongoToKafkaSASLSSL() {
     // kafkaToMongo uses the default kafka startAt behavior, which starts reading
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
-    const kafkaToMongoStartCmd =
-        makeKafkaToMongoStartCmd(topicName1, sinkColl1.getName(), kafkaSASLSSLName);
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd(topicName1, sinkColl1.getName());
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
@@ -653,18 +721,23 @@ let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(
     kafka,
-    () => mongoToKafkaToMongo(false /* expectDlq */, "$key" /* key */, "$headers" /* headers */));
+    () => mongoToKafkaToMongo(false /* expectDlq */, "$key" /* key */, "$headers" /* headers
+    */));
 runKafkaTest(kafka,
              () => mongoToKafkaToMongo(
                  false /* expectDlq */, "$key" /* key */, "$headersObj" /* headers */));
-runKafkaTest(kafka, () => mongoToKafkaToMongo(false /* expectDlq */, {$getField: "key"} /* key */, {
-                        $getField: "headers"
-                    } /* headers */));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(false /* expectDlq */,
+                                       {$getField: "key"} /* key
+                                                           */
+                                       ,
+                                       {$getField: "headers"} /* headers */));
 runKafkaTest(
     kafka,
     () => mongoToKafkaToMongo(true /* expectDlq */, "$a" /* key */, "$headers" /* headers */));
 runKafkaTest(kafka,
-             () => mongoToKafkaToMongo(true /* expectDlq */, "$key" /* key */, "$a" /* headers */));
+             () => mongoToKafkaToMongo(true /* expectDlq */, "$key" /* key */, "$a" /* headers
+             */));
 runKafkaTest(kafka,
              () => mongoToKafkaToMongo(
                  true /* expectDlq */, {$divide: ["$a", 0]} /* key */, "$headers" /* headers */
@@ -674,6 +747,10 @@ runKafkaTest(kafka,
                  true /* expectDlq */, "$key" /* key */, {$divide: ["$a", 0]} /* headers */
                  ));
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongoMaintainStreamMeta({$limit: 1} /* nonGroupWindowStage */));
+runKafkaTest(
+    kafka, () => mongoToKafkaToMongoMaintainStreamMeta({$sort: {a: 1}} /* nonGroupWindowStage */));
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));

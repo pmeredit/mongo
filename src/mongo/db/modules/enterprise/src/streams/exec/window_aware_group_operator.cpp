@@ -102,7 +102,7 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
         curDataMsgByteSize += result->getApproximateSize();
 
         auto doc = std::move(*result);
-        if (_context->shouldAddStreamMetaPriorToSinkStage()) {
+        if (_context->shouldProjectStreamMetaPriorToSinkStage()) {
             auto newStreamMeta = updateStreamMeta(doc.getField(*_context->streamMetaFieldName),
                                                   window->streamMetaTemplate);
             MutableDocument mutableDoc(std::move(doc));

@@ -847,10 +847,21 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     _windowPlanningInfo->windowingOptions = std::move(windowingOptions);
 
     std::vector<mongo::BSONObj> ownedPipeline;
+    bool needMaintainStreamMeta = true;
     for (auto& stageObj : options.getPipeline()) {
         std::string stageName(stageObj.firstElementFieldNameStringData());
         enforceStageConstraints(stageName, /*isMainPipeline*/ false);
         ownedPipeline.push_back(std::move(stageObj).getOwned());
+        if (stageName == DocumentSourceGroup::kStageName) {
+            needMaintainStreamMeta = false;
+        }
+    }
+    // Window stages will destroy all the stream metadata if the metadata has not been projected
+    // into the documents, so we need to project stream metadata prior to sink stage. The only
+    // exception is $group because in that case the documents are reshaped and we are not
+    // responsible for keeping the original metadata contents.
+    if (needMaintainStreamMeta) {
+        _context->projectStreamMetaPriorToSinkStage = true;
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
@@ -859,7 +870,7 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     // not window aware, we add a dummy limit operator at the beginning of the pipeline so that the
     // window related metadata can be projected.
     if (_windowPlanningInfo->numWindowAwareStages == 0 ||
-        (_context->streamMetaFieldName && _context->streamMetaDependency &&
+        (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
          !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
         _windowPlanningInfo->numWindowAwareStages++;
         planLimit(/*source*/ nullptr);
@@ -913,10 +924,21 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     _windowPlanningInfo->windowingOptions = std::move(windowingOptions);
 
     std::vector<mongo::BSONObj> ownedPipeline;
+    bool needMaintainStreamMeta = true;
     for (auto& stageObj : options.getPipeline()) {
         std::string stageName(stageObj.firstElementFieldNameStringData());
         enforceStageConstraints(stageName, /*isMainPipeline*/ false);
         ownedPipeline.push_back(std::move(stageObj).getOwned());
+        if (stageName == DocumentSourceGroup::kStageName) {
+            needMaintainStreamMeta = false;
+        }
+    }
+    // Window stages will destroy all the stream metadata if the metadata has not been projected
+    // into the documents, so we need to project stream metadata prior to sink stage. The only
+    // exception is $group because in that case the documents are reshaped and we are not
+    // responsible for keeping the original metadata contents.
+    if (needMaintainStreamMeta) {
+        _context->projectStreamMetaPriorToSinkStage = true;
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
@@ -925,7 +947,7 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     // not window aware, we add a dummy limit operator at the beginning of the pipeline so that the
     // window related metadata can be projected.
     if (_windowPlanningInfo->numWindowAwareStages == 0 ||
-        (_context->streamMetaFieldName && _context->streamMetaDependency &&
+        (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
          !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
         _windowPlanningInfo->numWindowAwareStages++;
         planLimit(/*source*/ nullptr);
@@ -1079,7 +1101,8 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
         }
     }
 
-    // Analyze dependencies of stream metadata.
+    // Analyze dependencies of stream metadata. We need to project stream meta prior to the sink
+    // stage if there is explict dependency..
     if (_context->streamMetaFieldName) {
         for (const auto& stage : pipeline->getSources()) {
             DepsTracker deps;
@@ -1087,16 +1110,16 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
             if (depsState == DepsTracker::State::NOT_SUPPORTED) {
                 // If the dependency checking is not supported, we assume there is stream metadata
                 // dependency to be safe.
-                _context->streamMetaDependency = true;
+                _context->projectStreamMetaPriorToSinkStage = true;
             } else {
                 if (deps.needWholeDocument) {
                     // If the stage references $$ROOT then this flag will be set and we should see
                     // it as depending on stream metadata.
-                    _context->streamMetaDependency = true;
+                    _context->projectStreamMetaPriorToSinkStage = true;
                 }
                 for (const auto& field : deps.fields) {
                     if (FieldPath(field).front() == *_context->streamMetaFieldName) {
-                        _context->streamMetaDependency = true;
+                        _context->projectStreamMetaPriorToSinkStage = true;
                         break;
                     }
                 }
@@ -1105,10 +1128,10 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
             if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kNotSupported) {
                 // If the modified path checking is not supported, we assume there is stream
                 // metadata dependency to be safe.
-                _context->streamMetaDependency = true;
+                _context->projectStreamMetaPriorToSinkStage = true;
             } else if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet) {
                 if (modPaths.canModify(FieldPath(*_context->streamMetaFieldName))) {
-                    _context->streamMetaDependency = true;
+                    _context->projectStreamMetaPriorToSinkStage = true;
                 }
             }
         }

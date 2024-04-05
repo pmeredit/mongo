@@ -53,7 +53,7 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
     auto sinkStatus = getConnectionStatus();
     sinkStatus.throwIfNotConnected();
 
-    if (_context->shouldAddStreamMetaInSinkStage()) {
+    if (_context->shouldProjectStreamMetaInSinkStage()) {
         for (auto& doc : dataMsg.docs) {
             auto newStreamMeta =
                 updateStreamMeta(doc.doc.getField(*_context->streamMetaFieldName), doc.streamMeta);

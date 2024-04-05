@@ -159,7 +159,7 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
             windowStart,
             windowEnd,
             std::move(docsInThisWindow),
-            _context->shouldAddStreamMetaPriorToSinkStage() /* projectStreamMeta */);
+            _context->shouldProjectStreamMetaPriorToSinkStage() /* projectStreamMeta */);
     }
 }
 
