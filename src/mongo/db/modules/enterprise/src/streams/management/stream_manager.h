@@ -235,7 +235,7 @@ private:
     // Exports the number of stream processors per stream status.
     std::array<std::shared_ptr<Gauge>, mongo::idlEnumCount<mongo::StreamStatusEnum>>
         _numStreamProcessorsByStatusGauges;
-    mongo::stdx::unordered_map<Command, std::shared_ptr<Gauge>> _streamProcessorActiveGauges;
+    mongo::stdx::unordered_map<Command, std::shared_ptr<IntGauge>> _streamProcessorActiveGauges;
     mongo::stdx::unordered_map<Command, std::shared_ptr<Counter>> _streamProcessorFailedCounters;
     std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlags;
 
