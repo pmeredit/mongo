@@ -20,9 +20,10 @@ SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
     : Operator(context, /*numInputs*/ 0, numOutputs) {}
 
 int64_t SourceOperator::runOnce() {
-    Timer operatorTimer;
+    _operatorTimer.unpause();
+    ScopeGuard guard([&] { _operatorTimer.pause(); });
+
     const auto numDocsConsumed = doRunOnce();
-    incOperatorStats({.totalExecutionTime = operatorTimer.elapsed()});
     return numDocsConsumed;
 }
 

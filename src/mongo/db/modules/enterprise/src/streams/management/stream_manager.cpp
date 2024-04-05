@@ -1061,7 +1061,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                            s.numDlqBytes,
                            s.memoryUsageBytes,
                            s.maxMemoryUsageBytes,
-                           mongo::duration_cast<Seconds>(s.totalExecutionTime)});
+                           mongo::duration_cast<Seconds>(s.executionTime)});
         }
         reply.setOperatorStats(std::move(out));
     }

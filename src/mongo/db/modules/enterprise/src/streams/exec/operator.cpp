@@ -22,6 +22,7 @@ Operator::Operator(Context* context, int32_t numInputs, int32_t numOutputs)
       _numOutputs(numOutputs),
       _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
     _outputs.reserve(_numOutputs);
+    _operatorTimer.pause();
 }
 
 void Operator::addOutput(Operator* oper, int32_t operInputIdx) {
@@ -53,7 +54,16 @@ void Operator::onDataMsg(int32_t inputIdx,
     dassert(inputIdx < _numInputs);
     tassert(8183600, "Empty input message", !dataMsg.docs.empty());
 
-    Timer operatorTimer;
+    // _operatorTimer might already be running e.g. when onDataMsg() is called by onControlMsg().
+    bool timerOriginallyRunning = _operatorTimer.isRunning();
+    if (!timerOriginallyRunning) {
+        _operatorTimer.unpause();
+    }
+    ScopeGuard guard([&] {
+        if (!timerOriginallyRunning) {
+            _operatorTimer.pause();
+        }
+    });
 
     OperatorStats stats;
     stats.numInputDocs += dataMsg.docs.size();
@@ -65,12 +75,20 @@ void Operator::onDataMsg(int32_t inputIdx,
     incOperatorStats(std::move(stats));
 
     doOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
-
-    // Update execution time.
-    incOperatorStats({.totalExecutionTime = operatorTimer.elapsed()});
 }
 
 void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+    // _operatorTimer might already be running e.g. when onControlMsg() is called by onDataMsg().
+    bool timerOriginallyRunning = _operatorTimer.isRunning();
+    if (!timerOriginallyRunning) {
+        _operatorTimer.unpause();
+    }
+    ScopeGuard guard([&] {
+        if (!timerOriginallyRunning) {
+            _operatorTimer.pause();
+        }
+    });
+
     if (isSource()) {
         // For a $source, inputIdx == 0 is used to for checkpoint messages.
         invariant(inputIdx == 0);
@@ -85,10 +103,27 @@ void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     doOnControlMsg(inputIdx, std::move(controlMsg));
 }
 
+OperatorStats Operator::getStats() {
+    auto stats = doGetStats();
+    stats.executionTime = _operatorTimer.elapsed();
+    return stats;
+}
+
 void Operator::sendDataMsg(int32_t outputIdx,
                            StreamDataMsg dataMsg,
                            boost::optional<StreamControlMsg> controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
+
+    // _operatorTimer might already be paused e.g. when sendDataMsg() is called by sendControlMsg().
+    bool timerOriginallyRunning = _operatorTimer.isRunning();
+    if (timerOriginallyRunning) {
+        _operatorTimer.pause();
+    }
+    ScopeGuard guard([&] {
+        if (timerOriginallyRunning) {
+            _operatorTimer.unpause();
+        }
+    });
 
     LOGV2_DEBUG(
         8241200, 1, "sendDataMsg", "operatorName"_attr = getName(), "dataMsg"_attr = dataMsg);
@@ -123,6 +158,17 @@ void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
                 "sendControlMsg",
                 "operatorName"_attr = getName(),
                 "controlMsg"_attr = controlMsg);
+
+    // _operatorTimer might already be paused e.g. when sendControlMsg() is called by sendDataMsg().
+    bool timerOriginallyRunning = _operatorTimer.isRunning();
+    if (timerOriginallyRunning) {
+        _operatorTimer.pause();
+    }
+    ScopeGuard guard([&] {
+        if (timerOriginallyRunning) {
+            _operatorTimer.unpause();
+        }
+    });
 
     dassert(size_t(outputIdx) < _outputs.size());
     if (controlMsg.checkpointMsg) {

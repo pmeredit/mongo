@@ -65,7 +65,6 @@ function largeGroupTest() {
     jsTestLog("Stopping now");
 
     assert.eq(test.stats()["operatorStats"][0]["name"], "ChangeStreamConsumerOperator");
-    assert.gt(test.stats()["operatorStats"][0]["executionTime"], 0);
 
     test.stop();
 

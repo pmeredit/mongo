@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "mongo/util/chunked_memory_aggregator.h"
+#include "mongo/util/timer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/util/metric_manager.h"
@@ -62,9 +63,7 @@ public:
      */
     std::string getName() const;
 
-    OperatorStats getStats() {
-        return doGetStats();
-    }
+    OperatorStats getStats();
 
     /**
      * Set this operator's OperatorId. This method
@@ -161,8 +160,8 @@ protected:
     int32_t _numInputs{0};
     int32_t _numOutputs{0};
     OperatorId _operatorId{0};
+    mongo::Timer _operatorTimer;
     OperatorStats _stats;
-
     // Each operator tracks its own memory usage with this handle, which propagates memory changes
     // up to the stream processor's memory aggregator and the process-wide memory aggregator.
     mongo::MemoryUsageHandle _memoryUsageHandle;

@@ -6,7 +6,9 @@
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
-(function testStream_GetStats() {
+(function() {
+
+(function testGetStats_Basic() {
     const sp = new Streams([
         {name: 'db', type: 'atlas', options: {uri: `mongodb://${db.getMongo().host}`}},
         {
@@ -130,3 +132,76 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
     stream.stop();
 })();
+
+(function testGetStats_ExecutionTime() {
+    const inputColl = db.input_coll;
+    const outColl = db.output_coll;
+    const dlqColl = db.dlq_coll;
+
+    outColl.drop();
+    dlqColl.drop();
+    inputColl.drop();
+
+    const uri = 'mongodb://' + db.getMongo().host;
+    const sp = new Streams([
+        {name: 'db', type: 'atlas', options: {uri: uri}},
+    ]);
+    const pipeline = [
+        {
+            '$source': {
+                'connectionName': 'db',
+                'db': 'test',
+                'coll': 'input_coll',
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {$project: {i: {$range: [0, 10]}}},
+        {$unwind: "$i"},
+        {
+            $project: {
+                value: {
+                    $range:
+                        [{$multiply: ["$i", 1000000]}, {$multiply: [{$add: ["$i", 1]}, 1000000]}]
+                }
+            }
+        },
+        {$unwind: "$value"},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(2), unit: 'second'},
+                allowedLateness: {size: NumberInt(0), unit: 'second'},
+                idleTimeout: {size: NumberInt(1), unit: "second"},
+                pipeline: [
+                    {$group: {_id: null, count: {$sum: 1}}},
+                ]
+            }
+        },
+        {$emit: {connectionName: '__testMemory'}}
+    ];
+
+    const stream = sp.createStreamProcessor('sp0', pipeline);
+    stream.start({});
+
+    inputColl.insert({a: 1, b: 1});
+
+    // Wait for executionTime of GroupOperator to be at least 1s.
+    assert.soon(() => {
+        const stats = stream.stats();
+        jsTestLog(stats);
+        const groupOperatorStats = stats['operatorStats'].filter(
+            (operatorStats) => operatorStats.name === "GroupOperator");
+        const otherOperatorStats =
+            stats['operatorStats'].filter((operatorStats) => operatorStats.name != "GroupOperator");
+        if (groupOperatorStats.length === 1 && groupOperatorStats[0].executionTime >= 1) {
+            assert(otherOperatorStats.length > 0);
+            for (let operatorStats of otherOperatorStats) {
+                assert.lt(operatorStats.executionTime, groupOperatorStats[0].executionTime);
+            }
+            return true;
+        }
+        return false;
+    });
+
+    stream.stop();
+})();
+}());

@@ -27,7 +27,7 @@ struct OperatorStats {
     // Max amount of memory (in bytes) used thus far.
     int64_t maxMemoryUsageBytes{0};
     // Total execution time (in microseconds) for the operator.
-    mongo::Microseconds totalExecutionTime{0};
+    mongo::Microseconds executionTime{0};
     // waternark timestamp for the operator
     // right now supported only for source
     int64_t watermark{-1};
@@ -42,9 +42,8 @@ struct OperatorStats {
         memoryUsageBytes += other.memoryUsageBytes;
         maxMemoryUsageBytes =
             std::max(maxMemoryUsageBytes, std::max(memoryUsageBytes, other.maxMemoryUsageBytes));
-        totalExecutionTime += other.totalExecutionTime;
+        executionTime += other.executionTime;
         // watermark is not updated here intentionally.
-
         return *this;
     }
 

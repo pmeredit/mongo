@@ -42,6 +42,7 @@ protected:
 
 TEST_F(CollectOperatorTest, AddAndGet) {
     auto collectOperator = makeOperator();
+    collectOperator->start();
     ASSERT_EQUALS(0, collectOperator->getStats().memoryUsageBytes);
 
     collectOperator->onDataMsg(0 /* inputIdx */,
