@@ -98,8 +98,7 @@ void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
                          << "rolloverId" << static_cast<int32_t>(keyMgr->getRolloverId()));
 }
 
-Status KeystoreSchemaVersionServerParameter::setFromString(OperationContext* opCtx,
-                                                           StringData value,
+Status KeystoreSchemaVersionServerParameter::setFromString(StringData value,
                                                            const boost::optional<TenantId>&) {
     std::int32_t version;
     auto status = NumberParser{}(value, &version);
