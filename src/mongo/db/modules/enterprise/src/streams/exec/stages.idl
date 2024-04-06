@@ -83,6 +83,13 @@ enums:
             SaslPlaintext: "SASL_PLAINTEXT"
             SaslSSL: "SASL_SSL"
 
+    KafkaEmitJsonStringFormat:
+        type: string
+        description: "Json String format."
+        values:
+            RelaxedJson: "relaxedJson"
+            CanonicalJson: "canonicalJson"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -250,6 +257,17 @@ structs:
                 description: "Whether to enable the deserialization of Kafka key and headers into the metadata of the stream documents."
                 type: bool
                 default: false
+
+    KafkaSinkConfigOptions:
+        description: "Optional configuration options for a Kafka Sink."
+        strict: true
+        fields:
+            outputFormat:
+                description: "Output format type relaxedJson | canonicalJson, default relaxedJson"
+                optional: true
+                cpp_name: outputFormat
+                type: KafkaEmitJsonStringFormat
+                default: RelaxedJson
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
@@ -506,6 +524,10 @@ structs:
                 type:
                     variant: [object, string]
                 description: "The expression that evaluates to the headers of the Kafka message."
+                optional: true
+            config:
+                description: "Kafka sink configuration."
+                type: KafkaSinkConfigOptions
                 optional: true
     
     TimeseriesSinkOptions:

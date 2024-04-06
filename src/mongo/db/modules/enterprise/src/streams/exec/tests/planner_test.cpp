@@ -14,6 +14,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
+#include "mongo/bson/oid.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
@@ -1014,6 +1015,7 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
     auto options = kafkaEmitOperator->getOptions();
     ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
     ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
+    ASSERT_EQ(mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, options.jsonStringFormat);
 
     // Validate the expected auth related fields.
     ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),
@@ -1031,6 +1033,115 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
     }
 
     dag->stop();
+}
+
+
+/**
+ * Verifies we can parse the Kafka emit spec with config set to canonicalJson.
+ * See stages.idl
+        { $emit: {
+            connectionName: string,
+            topic: string,
+            config: {outputFormat: "canonicalJson"}
+        }},
+ */
+TEST_F(PlannerTest, KafkaEmitConfigParsingJsonCanonical) {
+    Connection kafka1;
+    const auto connName = "myConnection";
+    kafka1.setName(connName);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    options1.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
+        "saslUsername": "user123",
+        "saslPassword": "foo12345",
+        "saslMechanism": "PLAIN",
+        "securityProtocol": "SASL_PLAINTEXT"
+    })")));
+    kafka1.setOptions(options1.toBSON());
+    kafka1.setType(ConnectionTypeEnum::Kafka);
+    _context->connections =
+        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
+    auto inMemoryConnection = testInMemoryConnectionRegistry();
+    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+
+    struct ExpectedResults {
+        std::string bootstrapServers;
+        std::string topicName;
+        BSONObj auth;
+    };
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+                $emit: {connectionName: 'myConnection', topic: 'myOutputTopic', config: {outputFormat: 'canonicalJson'} }
+            }
+        )")};
+
+    ExpectedResults expected{
+        options1.getBootstrapServers().toString(), "myOutputTopic", options1.getAuth()->toBSON()};
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
+    const auto& ops = dag->operators();
+
+    ASSERT_EQ(ops.size(), 2);
+    auto kafkaEmitOperator = dynamic_cast<KafkaEmitOperator*>(dag->operators().back().get());
+    ASSERT(kafkaEmitOperator);
+    auto options = kafkaEmitOperator->getOptions();
+    ASSERT_EQ(mongo::JsonStringFormat::ExtendedCanonicalV2_0_0, options.jsonStringFormat);
+}
+
+/**
+ * Verifies we can parse the Kafka emit spec with relaxedJson specified.
+ * See stages.idl
+        { $emit: {
+            connectionName: string,
+            topic: string,
+            config: {outputFormat: "relaxedJson"}
+        }},
+ */
+TEST_F(PlannerTest, KafkaEmitConfigParsingJsonRelaxed) {
+    Connection kafka1;
+    const auto connName = "myConnection";
+    kafka1.setName(connName);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    options1.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
+        "saslUsername": "user123",
+        "saslPassword": "foo12345",
+        "saslMechanism": "PLAIN",
+        "securityProtocol": "SASL_PLAINTEXT"
+    })")));
+    kafka1.setOptions(options1.toBSON());
+    kafka1.setType(ConnectionTypeEnum::Kafka);
+    _context->connections =
+        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
+    auto inMemoryConnection = testInMemoryConnectionRegistry();
+    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+
+    struct ExpectedResults {
+        std::string bootstrapServers;
+        std::string topicName;
+        BSONObj auth;
+    };
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+                $emit: {connectionName: 'myConnection', topic: 'myOutputTopic', config: {outputFormat: 'relaxedJson'} }
+            }
+        )")};
+
+    ExpectedResults expected{
+        options1.getBootstrapServers().toString(), "myOutputTopic", options1.getAuth()->toBSON()};
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
+    const auto& ops = dag->operators();
+
+    ASSERT_EQ(ops.size(), 2);
+    auto kafkaEmitOperator = dynamic_cast<KafkaEmitOperator*>(dag->operators().back().get());
+    ASSERT(kafkaEmitOperator);
+    auto options = kafkaEmitOperator->getOptions();
+    ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
+    ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
+    ASSERT_EQ(mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, options.jsonStringFormat);
 }
 
 TEST_F(PlannerTest, OperatorId) {

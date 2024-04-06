@@ -12,6 +12,7 @@
 #include <mongocxx/options/change_stream.hpp>
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/oid.h"
 #include "mongo/db/change_stream_options_gen.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
@@ -296,6 +297,20 @@ boost::intrusive_ptr<mongo::Expression> parseStringOrObjectExpression(
                           }},
         exprToParse);
     return expression;
+}
+
+mongo::JsonStringFormat parseJsonStringFormat(
+    boost::optional<KafkaEmitJsonStringFormatEnum> exprToParse) {
+    mongo::JsonStringFormat returnValue;
+    if (!exprToParse) {
+        return mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+    }
+    if (*exprToParse == KafkaEmitJsonStringFormatEnum::CanonicalJson) {
+        returnValue = mongo::JsonStringFormat::ExtendedCanonicalV2_0_0;
+    } else {
+        returnValue = mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+    }
+    return returnValue;
 }
 
 std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
@@ -784,7 +799,9 @@ void Planner::planEmitSink(const BSONObj& spec) {
             kafkaEmitOptions.headers = options.getHeaders()
                 ? parseStringOrObjectExpression(_context->expCtx, *options.getHeaders())
                 : nullptr;
-
+            kafkaEmitOptions.jsonStringFormat = options.getConfig()
+                ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
+                : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
             sinkOperator =
                 std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
             sinkOperator->setOperatorId(_nextOperatorId++);

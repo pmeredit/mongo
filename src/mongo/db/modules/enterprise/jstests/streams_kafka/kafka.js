@@ -79,17 +79,22 @@ function getRestoreDirectory(tenantId, processorId) {
 }
 
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
-function makeMongoToKafkaStartCmd(collName, topicName, connName, key = null, headers = null) {
+function makeMongoToKafkaStartCmd(
+    collName, topicName, connName, key = null, headers = null, jsonType = null) {
     const processorId = `processor-coll_${collName}-to-topic`;
     const emitOptions = {
         connectionName: connName,
         topic: topicName,
+        config: {outputFormat: 'relaxedJson'}
     };
     if (key !== null) {
         emitOptions.key = key;
     }
     if (headers !== null) {
         emitOptions.headers = headers;
+    }
+    if (jsonType != null) {
+        emitOptions.config.outputFormat = jsonType;
     }
     let options = {
         checkpointOptions: {
@@ -218,7 +223,7 @@ function insertData(coll) {
 // Then use another streamProcessor to write data from the Kafka topic to a sink collection.
 // Verify the data in the sink collection equals to data originally inserted into the source
 // collection.
-function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null) {
+function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, jsonType = null) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
@@ -243,7 +248,7 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null) {
     // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
     // processor.
     assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
-        sourceColl1.getName(), topicName1, kafkaPlaintextName, key, headers)));
+        sourceColl1.getName(), topicName1, kafkaPlaintextName, key, headers, jsonType)));
 
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
@@ -758,5 +763,16 @@ runKafkaTest(kafka, kafkaStartAtEarliestTest);
 
 numDocumentsToInsert = 100000;
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
-
 testBadKafkaEmitAsyncError();
+numDocumentsToInsert = 1000;
+runKafkaTest(
+    kafka,
+    () => mongoToKafkaToMongo(
+        false /* expectDlq */, null /* key */, null /* headers */, "relaxedJson" /* jsonType */
+        ));
+
+runKafkaTest(
+    kafka,
+    () => mongoToKafkaToMongo(
+        false /* expectDlq */, null /* key */, null /* headers */, "canonicalJson" /* jsonType */
+        ));

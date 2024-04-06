@@ -2,6 +2,7 @@
 
 #include <boost/intrusive_ptr.hpp>
 
+#include "mongo/bson/oid.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/string_map.h"
@@ -38,6 +39,8 @@ public:
         boost::intrusive_ptr<mongo::Expression> key{nullptr};
         // The expression that evaluates to the headers of the Kafka message.
         boost::intrusive_ptr<mongo::Expression> headers{nullptr};
+        // Json String Format either relaxedJson or canonicalJson.
+        mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
     };
 
     KafkaEmitOperator(Context* context, Options options);

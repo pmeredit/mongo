@@ -273,7 +273,7 @@ RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& st
 }
 
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
-    auto docAsStr = tojson(streamDoc.doc.toBson());
+    auto docAsStr = tojson(streamDoc.doc.toBson(), _options.jsonStringFormat);
     auto docSize = docAsStr.size();
 
     constexpr int flags = RdKafka::Producer::RK_MSG_BLOCK /* block if queue is full */ |
