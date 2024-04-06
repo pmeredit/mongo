@@ -63,7 +63,8 @@ void LDAPUserCacheInvalidationIntervalParameter::append(OperationContext*,
     *b << name << ldapUserCacheInvalidationInterval.load();
 }
 
-Status LDAPUserCacheInvalidationIntervalParameter::setFromString(StringData str,
+Status LDAPUserCacheInvalidationIntervalParameter::setFromString(OperationContext* opCtx,
+                                                                 StringData str,
                                                                  const boost::optional<TenantId>&) {
     StatusWith<int> parsedSeconds = parseSecondsParameter(name(), str);
     if (!parsedSeconds.isOK()) {
@@ -84,7 +85,8 @@ void LDAPUserCacheRefreshIntervalParameter::append(OperationContext*,
     *b << name << ldapUserCacheRefreshInterval.load();
 }
 
-Status LDAPUserCacheRefreshIntervalParameter::setFromString(StringData str,
+Status LDAPUserCacheRefreshIntervalParameter::setFromString(OperationContext* opCtx,
+                                                            StringData str,
                                                             const boost::optional<TenantId>&) {
     StatusWith<int> parsedSeconds = parseSecondsParameter(name(), str);
     if (!parsedSeconds.isOK()) {
@@ -105,7 +107,8 @@ void LDAPUserCacheStalenessIntervalParameter::append(OperationContext*,
     *b << name << ldapUserCacheStalenessInterval.load();
 }
 
-Status LDAPUserCacheStalenessIntervalParameter::setFromString(StringData str,
+Status LDAPUserCacheStalenessIntervalParameter::setFromString(OperationContext* opCtx,
+                                                              StringData str,
                                                               const boost::optional<TenantId>&) {
     StatusWith<int> parsedSeconds = parseSecondsParameter(name(), str);
     if (!parsedSeconds.isOK()) {

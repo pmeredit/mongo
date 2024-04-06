@@ -26,7 +26,8 @@ void RedactClientLogDataSetting::append(OperationContext* opCtx,
     *b << name << logv2::shouldRedactLogs();
 }
 
-Status RedactClientLogDataSetting::set(const BSONElement& newValueElement,
+Status RedactClientLogDataSetting::set(OperationContext* opCtx,
+                                       const BSONElement& newValueElement,
                                        const boost::optional<TenantId>&) {
     bool newValue;
     if (!newValueElement.coerce(&newValue)) {
@@ -38,7 +39,9 @@ Status RedactClientLogDataSetting::set(const BSONElement& newValueElement,
     return Status::OK();
 }
 
-Status RedactClientLogDataSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status RedactClientLogDataSetting::setFromString(OperationContext* opCtx,
+                                                 StringData str,
+                                                 const boost::optional<TenantId>&) {
     if (str == "true" || str == "1") {
         logv2::setShouldRedactLogs(true);
     } else if (str == "false" || str == "0") {

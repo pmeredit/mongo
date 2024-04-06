@@ -4,18 +4,14 @@
  *    Copyright (C) 2016 MongoDB Inc.
  *
  */
-
-#include "mongo/platform/basic.h"
+#include "ldap/ldap_runtime_parameters_gen.h"
 
 #include "mongo/base/parse_number.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/str.h"
-#include "mongo/util/text.h"
 
-#include "ldap/ldap_runtime_parameters_gen.h"
 #include "ldap_connection_options.h"
 #include "ldap_manager.h"
-#include "ldap_options.h"
 #include "ldap_query_config.h"
 #include "name_mapping/internal_to_ldap_user_name_mapper.h"
 
@@ -27,7 +23,9 @@ void LDAPServersSetting::append(OperationContext* opCtx,
     *b << name << joinLdapHost(LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
 }
 
-Status LDAPServersSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPServersSetting::setFromString(OperationContext* opCtx,
+                                         StringData str,
+                                         const boost::optional<TenantId>&) {
     auto swURIs = LDAPConnectionOptions::parseHostURIs(str.toString());
     if (!swURIs.isOK()) {
         return swURIs.getStatus();
@@ -43,7 +41,8 @@ void LDAPTimeoutSetting::append(OperationContext* opCtx,
     *b << name << LDAPManager::get(getGlobalServiceContext())->getTimeout().count();
 }
 
-Status LDAPTimeoutSetting::set(const BSONElement& newValueElement,
+Status LDAPTimeoutSetting::set(OperationContext* opCtx,
+                               const BSONElement& newValueElement,
                                const boost::optional<TenantId>&) {
     int newValue;
     Status coerceStatus = newValueElement.tryCoerce(&newValue);
@@ -56,7 +55,9 @@ Status LDAPTimeoutSetting::set(const BSONElement& newValueElement,
     return Status::OK();
 }
 
-Status LDAPTimeoutSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPTimeoutSetting::setFromString(OperationContext* opCtx,
+                                         StringData str,
+                                         const boost::optional<TenantId>&) {
     int newValue;
     Status status = NumberParser{}(str, &newValue);
     if (!status.isOK()) {
@@ -79,7 +80,9 @@ void LDAPRetrySetting::append(OperationContext* opCtx,
     *b << name << LDAPManager::get(getGlobalServiceContext())->getRetryCount();
 }
 
-Status LDAPRetrySetting::set(const BSONElement& newValueElement, const boost::optional<TenantId>&) {
+Status LDAPRetrySetting::set(OperationContext* opCtx,
+                             const BSONElement& newValueElement,
+                             const boost::optional<TenantId>&) {
     int newValue;
     Status coerceStatus = newValueElement.tryCoerce(&newValue);
     if (!coerceStatus.isOK() || newValue < 0) {
@@ -91,7 +94,9 @@ Status LDAPRetrySetting::set(const BSONElement& newValueElement, const boost::op
     return Status::OK();
 }
 
-Status LDAPRetrySetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPRetrySetting::setFromString(OperationContext* opCtx,
+                                       StringData str,
+                                       const boost::optional<TenantId>&) {
     int newValue;
     Status status = NumberParser{}(str, &newValue);
     if (!status.isOK()) {
@@ -114,17 +119,20 @@ void LDAPBindDNSetting::append(OperationContext* opCtx,
     *b << name << LDAPManager::get(getGlobalServiceContext())->getBindDN();
 }
 
-Status LDAPBindDNSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPBindDNSetting::setFromString(OperationContext* opCtx,
+                                        StringData str,
+                                        const boost::optional<TenantId>&) {
     LDAPManager::get(getGlobalServiceContext())->setBindDN(str.toString());
     return Status::OK();
 }
 
-Status LDAPBindPasswordSetting::set(const BSONElement& newValueElement,
+Status LDAPBindPasswordSetting::set(OperationContext* opCtx,
+                                    const BSONElement& newValueElement,
                                     const boost::optional<TenantId>& tenantId) {
     static const Status badTypeStatus(ErrorCodes::BadValue,
                                       "LDAP bind password must be a string or array of strings"_sd);
     if (newValueElement.type() == String) {
-        return setFromString(newValueElement.String(), tenantId);
+        return setFromString(opCtx, newValueElement.String(), tenantId);
     } else if (newValueElement.type() == Array) {
         std::vector<SecureString> passwords;
         for (const auto& elem : newValueElement.Obj()) {
@@ -142,7 +150,9 @@ Status LDAPBindPasswordSetting::set(const BSONElement& newValueElement,
     return badTypeStatus;
 }
 
-Status LDAPBindPasswordSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPBindPasswordSetting::setFromString(OperationContext* opCtx,
+                                              StringData str,
+                                              const boost::optional<TenantId>&) {
     LDAPManager::get(getGlobalServiceContext())
         ->setBindPasswords({SecureString(str.toString().c_str())});
     return Status::OK();
@@ -155,7 +165,9 @@ void LDAPUserToDNMappingSetting::append(OperationContext* opCtx,
     *b << name << LDAPManager::get(getGlobalServiceContext())->getUserToDNMapping();
 }
 
-Status LDAPUserToDNMappingSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPUserToDNMappingSetting::setFromString(OperationContext* opCtx,
+                                                 StringData str,
+                                                 const boost::optional<TenantId>&) {
     auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(str.toString());
     if (swMapper.getStatus() != Status::OK()) {
         return swMapper.getStatus();
@@ -172,7 +184,9 @@ void LDAPQueryTemplateSetting::append(OperationContext* opCtx,
     *b << name << LDAPManager::get(getGlobalServiceContext())->getQueryTemplate();
 }
 
-Status LDAPQueryTemplateSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+Status LDAPQueryTemplateSetting::setFromString(OperationContext* opCtx,
+                                               StringData str,
+                                               const boost::optional<TenantId>&) {
     auto swQueryParameters =
         LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(str.toString());
     if (swQueryParameters.getStatus() != Status::OK()) {

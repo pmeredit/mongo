@@ -47,7 +47,8 @@ void AuditAuthorizationSuccessSetParameter::append(OperationContext*,
     b->append(name, getGlobalAuditManager()->getAuditAuthorizationSuccess());
 }
 
-Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value,
+Status AuditAuthorizationSuccessSetParameter::set(OperationContext* opCtx,
+                                                  const BSONElement& value,
                                                   const boost::optional<TenantId>&) try {
     if ((value.type() == Bool) || value.isNumber()) {
         getGlobalAuditManager()->setAuditAuthorizationSuccess(value.trueValue());
@@ -61,7 +62,8 @@ Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value,
     return ex.toStatus();
 }
 
-Status AuditAuthorizationSuccessSetParameter::setFromString(StringData value,
+Status AuditAuthorizationSuccessSetParameter::setFromString(OperationContext* opCtx,
+                                                            StringData value,
                                                             const boost::optional<TenantId>&) try {
     auto* am = getGlobalAuditManager();
     if ((value == "1") || (value == "true")) {
@@ -85,7 +87,8 @@ void AuditConfigParameter::append(OperationContext*,
     b->append(name, getGlobalAuditManager()->getAuditConfig().toBSON());
 }
 
-Status AuditConfigParameter::set(const BSONElement& newValueElement,
+Status AuditConfigParameter::set(OperationContext* opCtx,
+                                 const BSONElement& newValueElement,
                                  const boost::optional<TenantId>& tenantId) try {
     AuditConfigDocument newDoc =
         AuditConfigDocument::parse(IDLParserContext("auditConfigDocument"), newValueElement.Obj());
@@ -96,7 +99,8 @@ Status AuditConfigParameter::set(const BSONElement& newValueElement,
     return ex.toStatus();
 }
 
-Status AuditConfigParameter::validate(const BSONElement& newValueElement,
+Status AuditConfigParameter::validate(OperationContext* opCtx,
+                                      const BSONElement& newValueElement,
                                       const boost::optional<TenantId>&) const try {
     AuditConfigDocument newDoc =
         AuditConfigDocument::parse(IDLParserContext("auditConfigDocument"), newValueElement.Obj());
@@ -113,7 +117,7 @@ Status AuditConfigParameter::validate(const BSONElement& newValueElement,
     return ex.toStatus();
 }
 
-Status AuditConfigParameter::reset(const boost::optional<TenantId>&) try {
+Status AuditConfigParameter::reset(OperationContext* opCtx, const boost::optional<TenantId>&) try {
     getGlobalAuditManager()->resetConfiguration(Client::getCurrent());
     return Status::OK();
 } catch (const DBException& ex) {

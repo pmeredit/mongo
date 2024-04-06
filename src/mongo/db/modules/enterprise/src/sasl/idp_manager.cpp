@@ -544,7 +544,8 @@ void OIDCIdentityProvidersParameter::append(OperationContext* opCtx,
     IDPManager::get()->serializeConfig(&listBuilder);
 }
 
-Status OIDCIdentityProvidersParameter::set(const BSONElement& elem,
+Status OIDCIdentityProvidersParameter::set(OperationContext* opCtx,
+                                           const BSONElement& elem,
                                            const boost::optional<TenantId>& tenantId) {
     if (auto status = validateSetParameterAction(tenantId); !status.isOK()) {
         return status;
@@ -557,7 +558,8 @@ Status OIDCIdentityProvidersParameter::set(const BSONElement& elem,
     return setConfigFromBSONObj(BSONArray(elem.Obj()));
 }
 
-Status OIDCIdentityProvidersParameter::setFromString(StringData str,
+Status OIDCIdentityProvidersParameter::setFromString(OperationContext* opCtx,
+                                                     StringData str,
                                                      const boost::optional<TenantId>& tenantId) {
     if (auto status = validateSetParameterAction(tenantId); !status.isOK()) {
         return status;
@@ -577,7 +579,8 @@ Status OIDCIdentityProvidersParameter::setFromString(StringData str,
     return setConfigFromBSONObj(BSONArray(obj));
 }
 
-Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,
+Status OIDCIdentityProvidersParameter::validate(OperationContext* opCtx,
+                                                const BSONElement& elem,
                                                 const boost::optional<TenantId>& tenantId) const
     try {
     if (auto status = validateSetParameterAction(tenantId); !status.isOK()) {
