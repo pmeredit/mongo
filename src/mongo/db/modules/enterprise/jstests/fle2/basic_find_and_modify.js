@@ -3,6 +3,7 @@
  *
  * @tags: [
  * assumes_unsharded_collection,
+ * assumes_read_preference_unchanged,
  * requires_fcv_70
  * ]
  */

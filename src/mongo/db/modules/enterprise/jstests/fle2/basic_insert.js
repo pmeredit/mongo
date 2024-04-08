@@ -2,6 +2,7 @@
  * Test encrypted insert works
  *
  * @tags: [
+ * assumes_read_preference_unchanged,
  * requires_fcv_70
  * ]
  */
