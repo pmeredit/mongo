@@ -3,6 +3,8 @@
  * @tags: [requires_wiredtiger,
  *         requires_persistence]
  */
+
+import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
 
 const backupIdNotExist = UUID();
@@ -12,7 +14,7 @@ const nullTimestamp = Timestamp();
 
 (function assertBackupCursorExtendOnlyWorksInReplSetMode() {
     const conn = MongoRunner.runMongod();
-    const db = conn.getDB("test");
+    const db = getBackupCursorDB(conn);
     const aggBackupCursor = openBackupCursor(db);
     const backupId = aggBackupCursor.next().metadata.backupId;
     assert.commandFailedWithCode(db.runCommand({
@@ -31,7 +33,7 @@ let rst = new ReplSetTest({
 });
 rst.startSet();
 rst.initiate();
-let db = rst.getPrimary().getDB("test");
+const db = getBackupCursorDB(rst.getPrimary());
 
 function assertFailedToParse(parameters) {
     assert.commandFailedWithCode(

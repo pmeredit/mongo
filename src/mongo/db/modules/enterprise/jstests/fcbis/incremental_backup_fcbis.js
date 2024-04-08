@@ -7,6 +7,9 @@
  *   requires_wiredtiger,
  * ]
  */
+
+import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
+
 const db1Name = "incremental_backup1";
 const db2Name = "incremental_backup2";
 const coll1Name = "coll1";
@@ -28,6 +31,7 @@ rst.startSet();
 rst.initiateWithHighElectionTimeout();
 
 const primary = rst.getPrimary();
+const backupCursorDB = getBackupCursorDB(primary);
 
 // Verify storage engine cache size in effect during recovery.
 const actualCacheSizeGB = assert.commandWorked(primary.adminCommand({getCmdLineOpts: 1}))
@@ -62,7 +66,7 @@ jsTest.log("Taking a full backup for incremental purposes.");
 let backupCursor = null;
 while (!backupCursor) {
     try {
-        backupCursor = primary.getDB("admin").aggregate(
+        backupCursor = backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: true, thisBackupName: "A"}}]);
     } catch (e) {
         if (e.code != ErrorCodes.BackupCursorOpenConflictWithCheckpoint)
@@ -70,7 +74,7 @@ while (!backupCursor) {
         jsTestLog({"Failed to open a backup cursor, retrying.": e});
         // Release the incremental backup started with an inconsistent checkpoint.
         backupCursor =
-            primary.getDB("admin").aggregate([{$backupCursor: {disableIncrementalBackup: true}}]);
+            backupCursorDB.aggregate([{$backupCursor: {disableIncrementalBackup: true}}]);
         backupCursor.close();
         backupCursor = null;
     }
@@ -109,7 +113,7 @@ backupCursor = null;
 while (!backupCursor) {
     try {
         let backupName = "B" + backupInc++;
-        backupCursor = primary.getDB("admin").aggregate([{
+        backupCursor = backupCursorDB.aggregate([{
             $backupCursor: {incrementalBackup: true, thisBackupName: backupName, srcBackupName: "A"}
         }]);
     } catch (e) {

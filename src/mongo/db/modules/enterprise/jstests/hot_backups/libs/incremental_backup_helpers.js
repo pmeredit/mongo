@@ -1,4 +1,5 @@
 // Helper library for incremental backups.
+import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
 import {getPython3Binary} from "jstests/libs/python.js";
 
 export const kSeparator = _isWindows() ? "\\" : "/";
@@ -12,12 +13,13 @@ export const beginBackup = function(conn, options) {
         thisBackupName: options.thisBackupName,
     };
 
+    const backupCursorDB = getBackupCursorDB(conn);
     // Opening a backup cursor can race with taking a checkpoint, resulting in a transient error.
     // Retry until it succeeds.
     let backupCursor;
     while (true) {
         try {
-            backupCursor = conn.getDB("admin").aggregate([{$backupCursor: options}]);
+            backupCursor = backupCursorDB.aggregate([{$backupCursor: options}]);
             break;
         } catch (ex) {
             jsTestLog({"Failed to open the backup cursor, retrying.": ex});

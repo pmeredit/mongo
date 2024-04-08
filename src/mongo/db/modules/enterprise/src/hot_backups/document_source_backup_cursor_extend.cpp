@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "mongo/bson/bsonmisc.h"
+#include "mongo/db/s/replica_set_endpoint_feature_flag.h"
 
 namespace mongo {
 
@@ -50,9 +51,11 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
                           << " value must be an object. Found: " << typeName(spec.type()),
             spec.type() == BSONType::Object);
 
-    uassert(ErrorCodes::CannotBackup,
-            str::stream() << kStageName << " cannot be executed against a MongoS.",
-            !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
+    if (replica_set_endpoint::isFeatureFlagEnabled()) {
+        uassert(ErrorCodes::InvalidNamespace,
+                str::stream() << kStageName << " must be run against the 'local' database",
+                pExpCtx->ns.isLocalDB());
+    }
 
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << kStageName
@@ -65,6 +68,10 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
         str::stream() << kStageName
                       << " cannot be part of a query that references any collection or database.",
         pExpCtx->noForeignNamespaces());
+
+    uassert(ErrorCodes::CannotBackup,
+            str::stream() << kStageName << " cannot be executed against a MongoS.",
+            !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
 
     boost::optional<UUID> backupId = boost::none;
     boost::optional<Timestamp> extendTo = boost::none;

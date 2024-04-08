@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "mongo/bson/bsonmisc.h"
+#include "mongo/db/s/replica_set_endpoint_feature_flag.h"
 #include "mongo/logv2/log.h"
 
 #include "hot_backups/backup_cursor_parameters_gen.h"
@@ -128,9 +129,11 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
                           << " value must be an object. Found: " << typeName(spec.type()),
             spec.type() == BSONType::Object);
 
-    uassert(ErrorCodes::CannotBackup,
-            str::stream() << kStageName << " cannot be executed against a MongoS.",
-            !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
+    if (replica_set_endpoint::isFeatureFlagEnabled()) {
+        uassert(ErrorCodes::InvalidNamespace,
+                str::stream() << kStageName << " must be run against the 'local' database",
+                pExpCtx->ns.isLocalDB());
+    }
 
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << kStageName
@@ -143,6 +146,10 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
         str::stream() << kStageName
                       << " cannot be part of a query that references any collection or database.",
         pExpCtx->noForeignNamespaces());
+
+    uassert(ErrorCodes::CannotBackup,
+            str::stream() << kStageName << " cannot be executed against a MongoS.",
+            !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
 
     // Parse $backupCursor arguments for incremental backups.
     BackupCursorParameters params = BackupCursorParameters::parse(IDLParserContext(""), spec.Obj());

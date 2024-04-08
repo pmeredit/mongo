@@ -3,13 +3,13 @@
  *
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {
     validateReplicaSetBackupCursor
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js";
 
 let conn = MongoRunner.runMongod();
-let db = conn.getDB("test");
+const db = getBackupCursorDB(conn);
 
 // Cursor timeout only occurs outside of sessions. Disabling implicit session use to allow for
 // cursor timeout testing.
@@ -36,7 +36,7 @@ assert(!db.serverStatus()["storageEngine"]["backupCursorOpen"]);
 // Open a backup cursor. Use a small batch size to ensure a getMore retrieves additional
 // results.
 let response = openBackupCursor(db, null, {cursor: {batchSize: 2}});
-assert.eq("test.$cmd.aggregate", response._ns);
+assert.eq(`${db.getName()}.$cmd.aggregate`, response._ns);
 assert.eq(2, response._batchSize);
 let cursorId = response._cursorid;
 

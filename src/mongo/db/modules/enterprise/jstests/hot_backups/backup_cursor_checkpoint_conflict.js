@@ -7,6 +7,7 @@
  * ]
  */
 
+import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
 
@@ -22,13 +23,14 @@ assert.commandWorked(coll.insert({_id: 0}));
 
 const fp = configureFailPoint(primary, "backupCursorHangAfterOpen");
 
+const backupCursorDB = getBackupCursorDB(primary);
 const awaitOpenBackupCursor =
     startParallelShell(funWithArgs(function(dbName) {
                            assert.commandFailedWithCode(
                                db.getSiblingDB(dbName).runCommand(
                                    {aggregate: 1, pipeline: [{$backupCursor: {}}], cursor: {}}),
                                ErrorCodes.BackupCursorOpenConflictWithCheckpoint);
-                       }, db.getName()), primary.port);
+                       }, backupCursorDB.getName()), primary.port);
 
 fp.wait();
 assert.commandWorked(db.adminCommand({fsync: 1}));

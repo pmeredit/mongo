@@ -13,6 +13,7 @@ import {
     copyBackupCursorExtendFiles,
     copyBackupCursorFiles,
     extendBackupCursor,
+    getBackupCursorDB,
     openBackupCursor,
 } from "jstests/libs/backup_utils.js";
 import {restartServerReplication, stopServerReplication} from "jstests/libs/write_concern_util.js";
@@ -97,7 +98,7 @@ function assertLaggedSecondaryGetBlocked() {
     jsTestLog("Finish " + numDocs + " insertions on primary");
 
     // Time out waiting for the clusterTime to be persistent on the secondary.
-    assert.commandFailedWithCode(secondaryDB.runCommand({
+    assert.commandFailedWithCode(getBackupCursorDB(rst.getSecondary()).runCommand({
         aggregate: 1,
         pipeline: [{$backupCursorExtend: {backupId: backupId, timestamp: clusterTime}}],
         cursor: {},

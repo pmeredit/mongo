@@ -25,7 +25,7 @@
  *   requires_replication,
  * ]
  */
-import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
 
 const rst = new ReplSetTest({
     nodes: [
@@ -43,6 +43,7 @@ rst.startSet();
 rst.initiate();
 
 var primary = rst.getPrimary();
+const backupCursorDB = getBackupCursorDB(primary);
 let backupCursor;
 
 // Opening backup cursors can race with taking a checkpoint, so disable them.
@@ -53,62 +54,60 @@ try {
     // Ensure $backupCursor is backwards compatible with incremental backup.
     assert.throws(() => {
         // 'incrementalBackup' must be a boolean.
-        primary.getDB("admin").aggregate([{$backupCursor: {incrementalBackup: {}}}]);
+        backupCursorDB.aggregate([{$backupCursor: {incrementalBackup: {}}}]);
     });
     assert.doesNotThrow(() => {
-        backupCursor = openBackupCursor(primary.getDB("admin"), {incrementalBackup: false});
+        backupCursor = openBackupCursor(backupCursorDB, {incrementalBackup: false});
         backupCursor.close();
     });
 
     // Test input validation for incremental backups using $backupCursor.
     assert.throws(() => {
         // 'incrementalBackup' is false and has 'thisBackupName'.
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: false, thisBackupName: 'foo'}}]);
     });
     assert.throws(() => {
         // 'incrementalBackup' is false and has 'srcBackupName'.
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: false, srcBackupName: 'foo'}}]);
     });
     assert.throws(() => {
         // Missing 'thisBackupName'.
-        primary.getDB("admin").aggregate([{$backupCursor: {incrementalBackup: true}}]);
+        backupCursorDB.aggregate([{$backupCursor: {incrementalBackup: true}}]);
     });
     assert.throws(() => {
         // 'thisBackupName' is empty.
-        primary.getDB("admin").aggregate(
-            [{$backupCursor: {incrementalBackup: true, thisBackupName: ''}}]);
+        backupCursorDB.aggregate([{$backupCursor: {incrementalBackup: true, thisBackupName: ''}}]);
     });
     assert.throws(() => {
         // 'thisBackupName' is not a string.
-        primary.getDB("admin").aggregate(
-            [{$backupCursor: {incrementalBackup: true, thisBackupName: 1.0}}]);
+        backupCursorDB.aggregate([{$backupCursor: {incrementalBackup: true, thisBackupName: 1.0}}]);
     });
     assert.throws(() => {
         // 'srcBackupName' is not a string.
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: true, thisBackupName: 'foo', srcBackupName: {}}}]);
     });
     assert.throws(() => {
         // Cannot specify both 'incrementalBackup' and 'disableIncrementalBackup' as true.
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: true, disableIncrementalBackup: true}}]);
     });
     assert.throws(() => {
         // Cannot specify 'thisBackupName' when 'disableIncrementalBackup' is true.
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {disableIncrementalBackup: true, thisBackupName: 'foo'}}]);
     });
     assert.throws(() => {
         // Cannot specify 'srcBackupName' when 'disableIncrementalBackup' is true.
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {disableIncrementalBackup: true, srcBackupName: 'foo'}}]);
     });
 
     // Test that users can forcefully disable incremental backups.
     assert.doesNotThrow(() => {
-        backupCursor = openBackupCursor(primary.getDB("admin"), {disableIncrementalBackup: true});
+        backupCursor = openBackupCursor(backupCursorDB, {disableIncrementalBackup: true});
 
         assert.eq(true, backupCursor.hasNext());
         assert.eq("Close the cursor to release all incremental information and resources.",
@@ -119,77 +118,73 @@ try {
 
     // Test that incremental backup information is not removed when taking a normal full backup.
     assert.doesNotThrow(() => {
-        backupCursor = openBackupCursor(primary.getDB("admin"),
-                                        {incrementalBackup: true, thisBackupName: 'foo'});
+        backupCursor =
+            openBackupCursor(backupCursorDB, {incrementalBackup: true, thisBackupName: 'foo'});
         backupCursor.close();
         backupCursor = openBackupCursor(
-            primary.getDB("admin"),
-            {incrementalBackup: true, thisBackupName: 'bar', srcBackupName: 'foo'});
+            backupCursorDB, {incrementalBackup: true, thisBackupName: 'bar', srcBackupName: 'foo'});
         backupCursor.close();
 
-        backupCursor = openBackupCursor(primary.getDB("admin"), {incrementalBackup: false});
+        backupCursor = openBackupCursor(backupCursorDB, {incrementalBackup: false});
         backupCursor.close();
 
         backupCursor = openBackupCursor(
-            primary.getDB("admin"),
-            {incrementalBackup: true, thisBackupName: 'baz', srcBackupName: 'bar'});
+            backupCursorDB, {incrementalBackup: true, thisBackupName: 'baz', srcBackupName: 'bar'});
         backupCursor.close();
     });
 
     // Test that incremental backup information is removed when taking a full backup that is the
     // basis for future incremental backups.
     assert.doesNotThrow(() => {
-        backupCursor = openBackupCursor(primary.getDB("admin"),
-                                        {incrementalBackup: true, thisBackupName: 'new'});
+        backupCursor =
+            openBackupCursor(backupCursorDB, {incrementalBackup: true, thisBackupName: 'new'});
         backupCursor.close();
     });
 
     // Test that incremental backup options can only be provided when incremental backup is enabled.
     assert.throws(() => {
-        primary.getDB("admin").aggregate([
+        backupCursorDB.aggregate([
             {$backupCursor: {incrementalBackup: false, thisBackupName: 'bad', srcBackupName: 'bar'}}
         ]);
     });
 
     // Test that incremental backup options can only be provided when incremental backup is enabled.
     assert.throws(() => {
-        primary.getDB("admin").aggregate([
+        backupCursorDB.aggregate([
             {$backupCursor: {incrementalBackup: false, thisBackupName: 'bad', srcBackupName: 'baz'}}
         ]);
     });
 
     // The first full backup meant for incremental must pass {incrementalBackup: true}.
     assert.throws(() => {
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: false, thisBackupName: 'foo'}}]);
     });
     assert.throws(() => {
-        primary.getDB("admin").aggregate([
+        backupCursorDB.aggregate([
             {$backupCursor: {incrementalBackup: true, thisBackupName: 'bar', srcBackupName: 'foo'}}
         ]);
     });
 
     // Perform an incremental backup for A and for B from A.
     assert.doesNotThrow(() => {
-        backupCursor = openBackupCursor(primary.getDB("admin"),
-                                        {incrementalBackup: true, thisBackupName: 'A'});
-        backupCursor.close();
         backupCursor =
-            openBackupCursor(primary.getDB("admin"),
-                             {incrementalBackup: true, thisBackupName: 'B', srcBackupName: 'A'});
+            openBackupCursor(backupCursorDB, {incrementalBackup: true, thisBackupName: 'A'});
+        backupCursor.close();
+        backupCursor = openBackupCursor(
+            backupCursorDB, {incrementalBackup: true, thisBackupName: 'B', srcBackupName: 'A'});
         backupCursor.close();
     });
 
     // Now, if we create another incremental backup on 'B', then we can no longer make incremental
     // backups on 'A'.
     assert.doesNotThrow(() => {
-        backupCursor =
-            openBackupCursor(primary.getDB("admin"),
-                             {incrementalBackup: true, thisBackupName: 'C', srcBackupName: 'B'});
+        backupCursor = openBackupCursor(
+            backupCursorDB, {incrementalBackup: true, thisBackupName: 'C', srcBackupName: 'B'});
         backupCursor.close();
     });
     assert.throws(() => {
-        primary.getDB("admin").aggregate([
+        backupCursorDB.aggregate([
             {$backupCursor: {incrementalBackup: true, thisBackupName: 'bad', srcBackupName: 'A'}}
         ]);
     });
@@ -197,31 +192,30 @@ try {
     // It's also possible to make an incremental backup on 'B' instead of 'C', which will
     // prevent further incremental backups on 'C'.
     assert.doesNotThrow(() => {
-        backupCursor =
-            openBackupCursor(primary.getDB("admin"),
-                             {incrementalBackup: true, thisBackupName: 'D', srcBackupName: 'B'});
+        backupCursor = openBackupCursor(
+            backupCursorDB, {incrementalBackup: true, thisBackupName: 'D', srcBackupName: 'B'});
         backupCursor.close();
     });
     assert.throws(() => {
-        primary.getDB("admin").aggregate([
+        backupCursorDB.aggregate([
             {$backupCursor: {incrementalBackup: true, thisBackupName: 'bad', srcBackupName: 'E'}}
         ]);
     });
 
     // Cannot create an incremental backup on a non-recent srcBackupName.
     assert.throws(() => {
-        primary.getDB("admin").aggregate([
+        backupCursorDB.aggregate([
             {$backupCursor: {incrementalBackup: true, thisBackupName: 'bad', srcBackupName: 'aaa'}}
         ]);
     });
 
     // Cannot create an incremental backup with a non-unique name for recent incremental backups.
     assert.throws(() => {
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: true, thisBackupName: 'B', srcBackupName: 'B'}}]);
     });
     assert.throws(() => {
-        primary.getDB("admin").aggregate(
+        backupCursorDB.aggregate(
             [{$backupCursor: {incrementalBackup: true, thisBackupName: 'D', srcBackupName: 'D'}}]);
     });
 } finally {
