@@ -783,6 +783,45 @@ function testBoth(useNewCheckpointing) {
         assert.gte(new Set(resumeTokens).size, 2);
     }
 
+    // Validate that trying to restore from a checkpoint with operators that don't match the
+    // supplied pipeline will fail.
+    function mismatchedCheckpointOperators() {
+        // Run the processor, write a few checkpoints.
+        let test = new TestHelper([] /* empty input */,
+                                  [{$match: {a: 1}}] /* pipeline */,
+                                  0,
+                                  'changestream',
+                                  useNewCheckpointing);
+        let source = test.pipeline[0];
+        let sink = test.pipeline[2];
+        test.run();
+        let waitForNumCheckpoints = 2;
+        let i = 0;
+        while (test.getCheckpointIds().length < waitForNumCheckpoints) {
+            test.inputColl.insert({a: i++});
+            sleep(100);
+        }
+        test.stop();
+        let ids = test.getCheckpointIds();
+        assert.gte(ids.length, waitForNumCheckpoints);
+
+        // Modify the pipeline.
+        test.pipeline = [source, {$match: {a: 1}}, {$project: {a: 1}}, sink];
+        // Start the processor restoring from the checkpoint, with the modified pipeline supplied in
+        // start.
+        let result = test.startFromLatestCheckpoint(false /* assertWorked */);
+        assert.commandFailedWithCode(result, ErrorCodes.InternalError);
+        assert.eq("Invalid checkpoint. Checkpoint has 3 operators, OperatorDag has 4",
+                  result.errmsg);
+
+        test.pipeline = [source, {$project: {a: 1}}, sink];
+        result = test.startFromLatestCheckpoint(false /* assertWorked */);
+        assert.commandFailedWithCode(result, ErrorCodes.InternalError);
+        assert.eq(
+            "Invalid checkpoint. Checkpoint operator 1 name is MatchOperator, OperatorDag name is ProjectOperator",
+            result.errmsg);
+    }
+
     smokeTestCorrectness();
     smokeTestCorrectnessTumblingWindow();
     smokeTestStopStartWindow();
@@ -794,6 +833,7 @@ function testBoth(useNewCheckpointing) {
     smokeTestStatsInCheckpoint();
     smokeTestEmptyChangestream();
     emptyChangestreamResumeTokenAdvances();
+    mismatchedCheckpointOperators();
 }
 
 testBoth(true /* useNewCheckpointing */);

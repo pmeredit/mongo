@@ -95,6 +95,29 @@ bool isCheckpointingAllowedForSource(OperatorDag* dag) {
     }
 }
 
+void validateOperatorsInCheckpoint(const std::vector<CheckpointOperatorInfo>& checkpointOperators,
+                                   const OperatorDag::OperatorContainer& dagOperators) {
+    auto numCheckpointOps = checkpointOperators.size();
+    auto numOperatorDagOps = dagOperators.size();
+    uassert(mongo::ErrorCodes::InternalError,
+            fmt::format("Invalid checkpoint. Checkpoint has {} operators, OperatorDag has {}",
+                        numCheckpointOps,
+                        numOperatorDagOps),
+            numCheckpointOps == numOperatorDagOps);
+
+    for (size_t i = 0; i < checkpointOperators.size(); ++i) {
+        const auto& checkpointOpName = checkpointOperators[i].getStats().getName();
+        const auto& dagOpName = dagOperators[i]->getName();
+        uassert(mongo::ErrorCodes::InternalError,
+                fmt::format(
+                    "Invalid checkpoint. Checkpoint operator {} name is {}, OperatorDag name is {}",
+                    i,
+                    checkpointOpName,
+                    dagOpName),
+                checkpointOpName == dagOpName);
+    }
+}
+
 using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
 
 auto toMetricManagerLabels(const std::vector<MetricLabel>& labels) {
@@ -714,6 +737,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                     *processorInfo->context->restoreCheckpointId);
             processorInfo->restoreCheckpointOperatorInfo =
                 processorInfo->context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+
+            // TODO(SERVER-78464): Remove this.
+            // Validate the operators in the checkpoint match the OperatorDag we've created.
+            validateOperatorsInCheckpoint(*processorInfo->restoreCheckpointOperatorInfo,
+                                          processorInfo->operatorDag->operators());
         }
 
         if (checkpointOptions->getDebugOnlyIntervalMs()) {

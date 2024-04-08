@@ -163,18 +163,7 @@ export class TestHelper {
 
     // Helper functions.
     run(firstStart = true) {
-        // Set the restore directory to the latest committed checkpoint on disk.
-        let idsOnDisk = this.getCheckpointIds();
-        if (idsOnDisk.length > 0) {
-            this.startOptions.checkpointOptions.localDisk.restoreDirectory =
-                `${this.restoreDir}/${this.tenantId}/${this.processorId}/${idsOnDisk[0]}`;
-        } else {
-            this.startOptions.checkpointOptions.localDisk.restoreDirectory = null;
-        }
-
-        this.sp.createStreamProcessor(this.spName, this.pipeline);
-        jsTestLog(`Starting ${this.spName} with options ${tojson(this.startOptions)}`);
-        this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
+        this.startFromLatestCheckpoint();
         if (this.sourceType === 'kafka' || this.sourceType === 'memory') {
             // Insert the input.
             assert.commandWorked(this.db.runCommand({
@@ -187,6 +176,23 @@ export class TestHelper {
             // on the first start. Subsequent attempts replay from the changestream/oplog.
             assert.commandWorked(this.inputColl.insertMany(this.input));
         }
+    }
+
+    startFromLatestCheckpoint(assertWorked = true) {
+        // Set the restore directory to the latest committed checkpoint on disk.
+        let idsOnDisk = this.getCheckpointIds();
+        if (idsOnDisk.length > 0) {
+            this.startOptions.checkpointOptions.localDisk.restoreDirectory =
+                `${this.restoreDir}/${this.tenantId}/${this.processorId}/${idsOnDisk[0]}`;
+        } else {
+            this.startOptions.checkpointOptions.localDisk.restoreDirectory = null;
+        }
+
+        this.sp.createStreamProcessor(this.spName, this.pipeline);
+        jsTestLog(`Starting ${this.spName} with pipeline ${this.pipeline}, options ${
+            tojson(this.startOptions)}`);
+        return this.sp[this.spName].start(
+            this.startOptions, this.processorId, this.tenantId, assertWorked);
     }
 
     stop(assertWorked = true) {
