@@ -10,7 +10,7 @@
  * requires_fcv_71,
  * ]
  */
-import {EncryptedClient, isFLE2CleanupEnabled} from "jstests/fle2/libs/encrypted_client_util.js";
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'collection_top_stats';
 const dbTest = db.getSiblingDB(dbName);
@@ -95,8 +95,6 @@ res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test cleanupStructuredEncryptionData command does not generate stats
-if (isFLE2CleanupEnabled(db)) {
-    assert.commandWorked(edb.basic.cleanup());
-    res = assert.commandWorked(edb.adminCommand("top"));
-    assertNoEntries(res);
-}
+assert.commandWorked(edb.basic.cleanup());
+res = assert.commandWorked(edb.adminCommand("top"));
+assertNoEntries(res);

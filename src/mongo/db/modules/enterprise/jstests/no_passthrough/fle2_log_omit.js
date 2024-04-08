@@ -8,7 +8,7 @@
  * @tags: [
  * ]
  */
-import {EncryptedClient, isFLE2CleanupEnabled} from "jstests/fle2/libs/encrypted_client_util.js";
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const testDBName = "test";
 let logCountCheck = 1;
@@ -155,13 +155,11 @@ function runTest(conn, alt_conn) {
 
     // Cleanup
     //
-    if (isFLE2CleanupEnabled(db)) {
-        assert.commandWorked(edb.badlog.cleanup());
-        // Do a find to add log line for the assertions to work correctly
-        assert.eq(db.goodlog.find({first: "luke"}).itcount(), 1);
+    assert.commandWorked(edb.badlog.cleanup());
+    // Do a find to add log line for the assertions to work correctly
+    assert.eq(db.goodlog.find({first: "luke"}).itcount(), 1);
 
-        checkLogCounts(db);
-    }
+    checkLogCounts(db);
 
     // Find
     //

@@ -5,7 +5,7 @@
  * @tags: [
  * ]
  */
-import {EncryptedClient, isFLE2CleanupEnabled} from "jstests/fle2/libs/encrypted_client_util.js";
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const testDBName = "test";
 
@@ -135,10 +135,8 @@ function runTest(conn) {
     assertOnlyCommandsChanged(db);
 
     // Cleanup
-    if (isFLE2CleanupEnabled(db)) {
-        assert.commandWorked(edb.badlog.cleanup());
-        assertOnlyCommandsChanged(db);
-    }
+    assert.commandWorked(edb.badlog.cleanup());
+    assertOnlyCommandsChanged(db);
 
     // Find
     //
