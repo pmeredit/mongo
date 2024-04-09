@@ -54,7 +54,7 @@ Client-side query analysis allows users to write queries against encrypted data 
 
 Contrary to its name, query analysis also rewrites constants in [insert](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/query_analysis.cpp#L632) and [update commands](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/query_analysis.cpp#L293) so that fields are properly marked for encryption before those operations.
 
-While `mongocryptd` is no longer used in production deployments, it is still used to test query analysis on its own in the enterprise repository without needing to build a driver. Examples are mostly in the [`jstests/fle`](https://github.com/10gen/mongo-enterprise-modules/blob/master/jstests/fle/fle_find.js) and [`jstests/fle2_query_analysis`](https://github.com/10gen/mongo-enterprise-modules/blob/master/jstests/fle2_query_analysis/range.js) directories.
+While `mongocryptd` is no longer used in production deployments, it is still used to test query analysis on its own in the enterprise repository without needing to build a driver. Examples are mostly in the [`jstests/fle`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/jstests/fle/fle_find.js) and [`jstests/fle2_query_analysis`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/jstests/fle2_query_analysis/range.js) directories.
 
 ### The client-side encryption protocol
 
@@ -68,7 +68,7 @@ Query analysis is just one step in the process of properly encrypting queries:
 
 ### Collection schema
 
-In order to properly encrypt constants in queries and warn users when they write queries that are not supported by FLE, query analysis needs information about the schema of the collection. To keep track of what fields are encrypted and what type each field holds we maintain an [EncryptionSchemaTree](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/encryption_schema_tree.h) data structure. The SchemaTree keeps track of what fields are encrypted or not encrypted. Encrypted nodes in the schema tree also have a [ResolvedEncryptionInfo](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/resolved_encryption_info.h) object, which holds metadata about the type of encryption involved. This metadata includes:
+In order to properly encrypt constants in queries and warn users when they write queries that are not supported by FLE, query analysis needs information about the schema of the collection. To keep track of what fields are encrypted and what type each field holds we maintain an [EncryptionSchemaTree](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/encryption_schema_tree.h) data structure. The SchemaTree keeps track of what fields are encrypted or not encrypted. Encrypted nodes in the schema tree also have a [ResolvedEncryptionInfo](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/resolved_encryption_info.h) object, which holds metadata about the type of encryption involved. This metadata includes:
 
 - Algorithm (Deterministic or Random for FLE1. Unindexed, Equality or Range for FLE2)
 - BSONType
@@ -80,7 +80,7 @@ There are [functions to parse both of these structures](https://github.com/10gen
 
 ### Find command and `MatchExpressions`
 
-Query analysis for MatchExpressions is located in [`fle_match_expression.cpp`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/fle_match_expression.cpp). The `FLEMatchExpression` class takes in a unique_ptr for a `MatchExpression`, and makes all rewrites necessary in [its constructor](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/fle_match_expression.cpp#L27).
+Query analysis for MatchExpressions is located in [`fle_match_expression.cpp`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/fle_match_expression.cpp). The `FLEMatchExpression` class takes in a unique_ptr for a `MatchExpression`, and makes all rewrites necessary in [its constructor](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/fle_match_expression.cpp#L27).
 
 Rewrite passes, named `replaceEncrypted*Elements()`, make use of the [`numChildren()`](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/matcher/expression.h#L354) and [`getChild()`](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/matcher/expression.h#L360) `MatchExpression` member functions in order to traverse a `MatchExpression` tree recursively, and switch on the result of [`matchType()`](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/matcher/expression.h#L346) in order to dispatch different behavior based on the type of MatchExpressions.
 
@@ -98,7 +98,7 @@ Walkers will traverse the entire `Expression` tree, calling their `preVisit()`, 
 
 Be wary of some overloaded terms in use with the intenders. Classes that represent Expression walkers directly have `pre`-, `in`-, and `postVisit()` functions. Those functions on the walker class delegate to sub-classes of [`ExpressionMutableVisitor`](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/pipeline/expression_visitor.h#L374), which is another class. This can get confusing, but in short, the walker is responsible for traversing the tree of `Expression`s and maintaining intermediate state, while the visitor is responsible for dispatching different behavior based on the dynamic type of each Expression.
 
-Most traversal behavior is shared between all encrypted predicate analysis. This logic is encapsulated in the base intender found in [agg_expression_encryption_intender_base.h](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/agg_expression_encryption_intender_base.h).
+Most traversal behavior is shared between all encrypted predicate analysis. This logic is encapsulated in the base intender found in [agg_expression_encryption_intender_base.h](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/agg_expression_encryption_intender_base.h).
 
 ##### Subtree Stacks
 
@@ -117,7 +117,7 @@ The Expression Visitor functions described above are responsible for [entering t
 
 #### Aggregation stages
 
-Aggregation stages like $lookup, $project and $group have the potential to completely change the schema of documents flowing through the pipeline. We keep track of these schema transformations for many stages inside of [`fle_pipeline.cpp`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/fle_pipeline.cpp) . Supported document sources are [registered](https://github.com/10gen/mongo-enterprise-modules/blob/4c30c843ea74947944d6288b467e93c951a4190f/src/fle/query_analysis/fle_pipeline.cpp#L789-L791) along with functions which transform one schemaTree into another.
+Aggregation stages like $lookup, $project and $group have the potential to completely change the schema of documents flowing through the pipeline. We keep track of these schema transformations for many stages inside of [`fle_pipeline.cpp`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/fle_pipeline.cpp) . Supported document sources are [registered](https://github.com/10gen/mongo-enterprise-modules/blob/4c30c843ea74947944d6288b467e93c951a4190f/src/fle/query_analysis/fle_pipeline.cpp#L789-L791) along with functions which transform one schemaTree into another.
 
 Stages can use the [`getOutputSchema()`](https://github.com/10gen/mongo-enterprise-modules/blob/aaadc8eed7e072a30b4f0fa49a0b991bd7aed5ee/src/fle/query_analysis/aggregate_expression_intender.h#L54), which [implements another expresion walker](https://github.com/10gen/mongo-enterprise-modules/blob/aaadc8eed7e072a30b4f0fa49a0b991bd7aed5ee/src/fle/query_analysis/expression_schema_walker.cpp#L1253-L1259) to schema-check agg expressions.
 
@@ -134,7 +134,7 @@ Encrypted equality predicates are the only predicates supported by FLE1, and FLE
 Relevant files/functions:
 
 - Match: [`replaceEncryptedEqualityElements()`](https://github.com/10gen/mongo-enterprise-modules/blob/41e0f887c978c9ecc320e96e7ebf6cf20eac17a7/src/fle/query_analysis/fle_match_expression.cpp#L160).
-- Agg: [`agg_expression_encryption_intender`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/agg_expression_encryption_intender.cpp)
+- Agg: [`agg_expression_encryption_intender`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/agg_expression_encryption_intender.cpp)
 
 #### Range Pass
 
@@ -149,7 +149,7 @@ While it is possible in theory to produce two-sided ranges for many complex quer
 Relevant files/functions:
 
 - Match: [`replaceEncryptedRangeElements()`](https://github.com/10gen/mongo-enterprise-modules/blob/4c30c843ea74947944d6288b467e93c951a4190f/src/fle/query_analysis/fle_match_expression.cpp#L512)
-- Agg: [`aggregate_expression_intender_range.cpp`](https://github.com/10gen/mongo-enterprise-modules/blob/master/src/fle/query_analysis/aggregate_expression_intender_range.cpp)
+- Agg: [`aggregate_expression_intender_range.cpp`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/fle/query_analysis/aggregate_expression_intender_range.cpp)
 
 ## Server-side query rewriting
 
@@ -166,8 +166,8 @@ At a high level, there are two possible execution strategies for FLE2 predicates
 For those interested in learning more than will be presented in the brief overview below, here are some resources:
 
 - OST-1 Cryptographic specification (TODO: find up-to-date OST-1 link)
-- [Security team protocol guide](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/fle_protocol.md)
-- [Range index algorithm walkthrough](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/fle_range.md)
+- [Security team protocol guide](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/docs/fle/fle_protocol.md)
+- [Range index algorithm walkthrough](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/docs/fle/fle_range.md)
 
 #### Encrypted index access
 
@@ -243,9 +243,9 @@ Make sure that you've built `mongocryptd` with `ninja install-mongocryptd` befor
 
 ### JSTests
 
-- [`fle/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle): These tests run against a `mongocryptd` instance rather than mongod in order to test query analysis. While they were originally written for FLE1, they have been modified to generate FLE2-compatible `encryptedFields` configuration when run in the `fle2` suite. This is where most of the query analysis test coverage for FLE2 equality comes from.
-- [`fle2_query_analysis/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2_query_analysis): Query analysis tests run against `mongocryptd` for other query types besides equality.
-- [`fle2/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2): End-to-end tests for FLE2 that query encrypted collections in the database. Encrypted clients are set up using the utility class defined in [`encrypted_client_util.js`](https://github.com/10gen/mongo/blob/master/jstests/fle2/libs/encrypted_client_util.js). All tests in this directory make use of automatic encryption -- manual encryption is tested by the drivers that implement it.
+- [`fle/`](https://github.com/10gen/mongo/tree/master/src/mongo/db/modules/enterprise/jstests/fle): These tests run against a `mongocryptd` instance rather than mongod in order to test query analysis. While they were originally written for FLE1, they have been modified to generate FLE2-compatible `encryptedFields` configuration when run in the `fle2` suite. This is where most of the query analysis test coverage for FLE2 equality comes from.
+- [`fle2_query_analysis/`](https://github.com/10gen/mongo/tree/master/src/mongo/db/modules/enterprise/jstests/fle2_query_analysis): Query analysis tests run against `mongocryptd` for other query types besides equality.
+- [`fle2/`](https://github.com/10gen/mongo/tree/master/src/mongo/db/modules/enterprise/jstests/fle2): End-to-end tests for FLE2 that query encrypted collections in the database. Encrypted clients are set up using the utility class defined in [`encrypted_client_util.js`](https://github.com/10gen/mongo/blob/master/jstests/fle2/libs/encrypted_client_util.js). All tests in this directory make use of automatic encryption -- manual encryption is tested by the drivers that implement it.
 
 ### Resmoke Suites
 

@@ -961,7 +961,7 @@ Finally, the driver replaces the encrypted BinData with the decrypted value so t
 
 Server-side is responsible for querying ESC for each encrypted field, and generate a set of tags to search for.
 
-When the server receives a find command with an `encryptionInformation` field, it processes the command as a queryable encryption find. If the query filter contains a queryable encryption find payload (e.g. `FindEqualityPayloadV2`), the server performs a rewrite of the query filter to be a `$in` lookup over cryptographic tags in `__safeContent__` fields. (See also: the [FLE query architecture guide](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/query_architecture.md#server-side-query-rewriting))
+When the server receives a find command with an `encryptionInformation` field, it processes the command as a queryable encryption find. If the query filter contains a queryable encryption find payload (e.g. `FindEqualityPayloadV2`), the server performs a rewrite of the query filter to be a `$in` lookup over cryptographic tags in `__safeContent__` fields. (See also: the [FLE query architecture guide](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/docs/fle/query_architecture.md#server-side-query-rewriting))
 
 In a nutshell, the query rewrite (for equality) works as follows:
 
