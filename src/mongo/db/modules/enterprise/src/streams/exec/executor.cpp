@@ -73,6 +73,8 @@ Executor::Executor(Context* context, Options options)
         "num_output_documents", "Number of documents emitted from the stream processor", labels);
     _numOutputBytesCounter = _metricManager->registerCounter(
         "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
+    _runOnceCounter = _metricManager->registerCounter(
+        "runonce_count", "Number of runOnce iterations in the stream processor", labels);
     _tenantFeatureFlags = std::move(_options.tenantFeatureFlags);
 }
 
@@ -503,6 +505,7 @@ void Executor::runLoop() {
 
     while (true) {
         RunStatus status = runOnce();
+        _runOnceCounter->increment(1);
         switch (status) {
             case RunStatus::kActive:
                 if (_options.sourceNotIdleSleepDurationMs) {

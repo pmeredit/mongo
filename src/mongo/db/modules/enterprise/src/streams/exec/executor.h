@@ -208,6 +208,7 @@ private:
     std::shared_ptr<Counter> _numInputBytesCounter;
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
+    std::shared_ptr<Counter> _runOnceCounter;
     std::unique_ptr<MetricManager> _metricManager;
 
     // Have some new outputdocs been emitted by _any_ operator since we last checked.
