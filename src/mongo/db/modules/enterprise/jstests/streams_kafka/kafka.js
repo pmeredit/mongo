@@ -299,7 +299,7 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
                 connectionName: kafkaPlaintextName,
                 topic: topicName1,
                 config: {enableKeysAndHeaders: true},
-                timeField: {$toDate: "$a"},
+                timeField: {$toDate: {$toLong: "$a"}},
             }
         },
         {
