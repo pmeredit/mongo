@@ -13,6 +13,7 @@
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/repl/storage_interface_impl.h"
 #include "mongo/db/service_context_d_test_fixture.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
@@ -443,6 +444,7 @@ public:
 
 protected:
     void setUp() override {
+        storageGlobalParams.magicRestore = true;
         // Set up mongod.
         ServiceContextMongoDTest::setUp();
 
@@ -464,6 +466,7 @@ protected:
 
         // Tear down mongod.
         ServiceContextMongoDTest::tearDown();
+        storageGlobalParams.magicRestore = false;
     }
 
 private:
@@ -528,20 +531,35 @@ static std::vector<BSONObj> getDocuments(OperationContext* opCtx,
     return docs;
 }
 
+// Test of updateShardingMetadata for magic_restore::NodeTypeEnum::kConfigShard.
 TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
     auto storage = storageInterface();
     auto opCtx = operationContext();
 
+    NamespaceString chunkTest = NamespaceString::createNamespaceString_forTest(
+        DatabaseName::kConfig, "cache.chunks.test"_sd);
+
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kServerConfigurationNamespace, CollectionOptions{}));
+    ASSERT_OK(storage->createCollection(opCtx, chunkTest, CollectionOptions{}));
+
+    BSONObj expectedShardIdentity =
+        BSON("_id"
+             << "shardIdentity"
+             << "shardName"
+             << "config"
+             << "clusterId" << OID("65dd1017a44e231a15af5fc0") << "configsvrConnectionString"
+             << "m103-csrs/localhost:26001,localhost:26002,localhost:26003");
+    BSONObj previousShardIdentity = expectedShardIdentity.addField(BSON("additionalField"
+                                                                        << "someValue")
+                                                                       .firstElement());
 
     ASSERT_OK(storage->insertDocuments(opCtx,
                                        NamespaceString::kServerConfigurationNamespace,
                                        {InsertStatement{BSON("_id"
                                                              << "authSchema"
                                                              << "currentVersion" << 5)},
-                                        InsertStatement{BSON("_id"
-                                                             << "shardIdentity")}}));
+                                        InsertStatement{previousShardIdentity}}));
 
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kConfigShard);
@@ -549,25 +567,111 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
     updateShardingMetadata(opCtx, restoreConfig, storage);
 
     auto docs = getDocuments(opCtx, storage, NamespaceString::kServerConfigurationNamespace);
-    ASSERT_EQ(1, docs.size());
+    ASSERT_EQ(2, docs.size());
     ASSERT_EQ(docs[0].getStringField("_id"), "authSchema");
+    ASSERT_BSONOBJ_EQ_UNORDERED(docs[1], expectedShardIdentity);
+
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, storage->getCollectionUUID(opCtx, chunkTest));
 }
 
-TEST_F(MagicRestoreFixture, UpdateShardNameMetadataConfigShard) {
+// Test of updateShardingMetadata for magic_restore::NodeTypeEnum::kShard.
+TEST_F(MagicRestoreFixture, UpdateShardingMetadataShard) {
+    std::string backupShard = "backupShard0";
+    std::string restoreShard = "restoreShard0";
+    std::string restoreConnStr = "DestinationConnectionString";
+
+    magic_restore::RestoreConfiguration restoreConfig;
+    restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kShard);
+    std::vector<magic_restore::ShardRenameMapping> mapping{
+        {backupShard, restoreShard, restoreConnStr}};
+    restoreConfig.setShardingRename(mapping);
+
+    std::string shardIdentityName = "test";
+    mongo::OID clusterId("11dd1017a44e231a15af5fc0");
+    mongo::ConnectionString configsvrConnectionString(
+        mongo::ConnectionString::ConnectionType::kReplicaSet, "ConfigsvrConnectionString", "repl");
+    mongo::ShardIdentity shardIdentity(shardIdentityName, clusterId, configsvrConnectionString);
+    restoreConfig.setShardIdentityDocument(shardIdentity);
+
     auto storage = storageInterface();
     auto opCtx = operationContext();
 
-    std::string srcShard0 = "srcShard0";
-    std::string dstShard0 = "dstShard0";
-    std::string srcConnStr0 = "SourceConnectionString0";
-    std::string dstConnStr0 = "DestinationConnectionString0";
+    NamespaceString chunkTest = NamespaceString::createNamespaceString_forTest(
+        DatabaseName::kConfig, "cache.chunks.test"_sd);
 
-    std::string srcShard1 = "srcShard1";
-    std::string dstShard1 = "dstShard1";
+    // This test is setting setShardingRename and getShardIdentityDocument so a lot of those
+    // collections need to exist even if we don't check them (as updateShardingMetadata calls
+    // updateShardNameMetadata).
+    for (const auto& nss : {NamespaceString::kShardConfigCollectionsNamespace,
+                            NamespaceString::kShardConfigDatabasesNamespace,
+                            NamespaceString::kClusterParametersNamespace,
+                            NamespaceString::kServerConfigurationNamespace,
+                            NamespaceString::kTransactionCoordinatorsNamespace,
+                            NamespaceString::kMigrationCoordinatorsNamespace,
+                            NamespaceString::kRangeDeletionNamespace,
+                            NamespaceString::kDonorReshardingOperationsNamespace,
+                            NamespaceString::kRecipientReshardingOperationsNamespace,
+                            NamespaceString::kShardingDDLCoordinatorsNamespace,
+                            chunkTest}) {
+        ASSERT_OK(storage->createCollection(opCtx, nss, CollectionOptions{}));
+    }
+
+    BSONObj previousShardIdentity =
+        BSON("_id"
+             << "shardIdentity"
+             << "shardName" << backupShard << "clusterId" << OID("65dd1017a44e231a15af5fc0")
+             << "configsvrConnectionString"
+             << "m103-csrs/localhost:26001,localhost:26002,localhost:26003");
+    BSONObj expectedShardIdentity = BSON("_id"
+                                         << "shardIdentity"
+                                         << "shardName" << shardIdentityName << "clusterId"
+                                         << clusterId << "configsvrConnectionString"
+                                         << configsvrConnectionString.toString());
+
+    ASSERT_OK(storage->insertDocuments(opCtx,
+                                       NamespaceString::kServerConfigurationNamespace,
+                                       {InsertStatement{BSON("_id"
+                                                             << "authSchema"
+                                                             << "currentVersion" << 5)},
+                                        InsertStatement{previousShardIdentity}}));
+
+    updateShardingMetadata(opCtx, restoreConfig, storage);
+
+    ASSERT_EQUALS(
+        ErrorCodes::NamespaceNotFound,
+        storage->getCollectionUUID(opCtx, NamespaceString::kShardConfigCollectionsNamespace));
+
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, storage->getCollectionUUID(opCtx, chunkTest));
+
+    ASSERT_EQUALS(
+        ErrorCodes::NamespaceNotFound,
+        storage->getCollectionUUID(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
+
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage->getCollectionUUID(opCtx, NamespaceString::kClusterParametersNamespace));
+
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kServerConfigurationNamespace);
+    ASSERT_EQ(2, docs.size());
+    ASSERT_EQ(docs[0].getStringField("_id"), "authSchema");
+    ASSERT_BSONOBJ_EQ_UNORDERED(docs[1], expectedShardIdentity);
+}
+
+// Test of updateShardNameMetadata for magic_restore::NodeTypeEnum::kDedicatedConfigServer.
+TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    std::string backupShard0 = "backupShard0";
+    std::string restoreShard0 = "restoreShard0";
+    std::string backupConnStr0 = "SourceConnectionString0";
+    std::string restoreConnStr0 = "DestinationConnectionString0";
+
+    std::string backupShard1 = "backupShard1";
+    std::string restoreShard1 = "restoreShard1";
     std::string srcConnStr1 = "SourceConnectionString1";
-    std::string dstConnStr1 = "DestinationConnectionString1";
+    std::string restoreConnStr1 = "DestinationConnectionString1";
 
-    std::string srcShard2 = "srcShard2";
+    std::string backupShard2 = "backupShard2";
 
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kConfigDatabasesNamespace, CollectionOptions{}));
@@ -575,71 +679,86 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataConfigShard) {
         opCtx, NamespaceString::kConfigsvrShardsNamespace, CollectionOptions{}));
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kConfigsvrChunksNamespace, CollectionOptions{}));
+    ASSERT_OK(storage->createCollection(
+        opCtx, NamespaceString::kTransactionCoordinatorsNamespace, CollectionOptions{}));
 
-    // Multiple documents with primary srcShard0 and srcShard1, see mapping below.
+    // Multiple documents with primary backupShard0 and backupShard1, see mapping below.
     ASSERT_OK(storage->insertDocuments(opCtx,
                                        NamespaceString::kConfigDatabasesNamespace,
                                        {
                                            InsertStatement{BSON("_id"
                                                                 << "0"
-                                                                << "primary" << srcShard0)},
+                                                                << "primary" << backupShard0)},
                                            InsertStatement{BSON("_id"
                                                                 << "1"
-                                                                << "primary" << srcShard1)},
+                                                                << "primary" << backupShard1)},
                                            InsertStatement{BSON("_id"
                                                                 << "2"
-                                                                << "primary" << srcShard1)},
+                                                                << "primary" << backupShard1)},
                                            InsertStatement{BSON("_id"
                                                                 << "3"
-                                                                << "primary" << srcShard2)},
+                                                                << "primary" << backupShard2)},
                                            InsertStatement{BSON("_id"
                                                                 << "4"
-                                                                << "primary" << srcShard0)},
+                                                                << "primary" << backupShard0)},
                                        }));
 
     ASSERT_OK(storage->insertDocuments(
         opCtx,
         NamespaceString::kConfigsvrShardsNamespace,
         {
-            InsertStatement{BSON("_id" << srcShard0 << "hosts" << srcConnStr0)},
-            InsertStatement{BSON("_id" << srcShard1 << "hosts" << srcConnStr1)},
-            InsertStatement{BSON("_id" << srcShard2 << "hosts" << srcConnStr0)},
+            InsertStatement{BSON("_id" << backupShard0 << "hosts" << backupConnStr0)},
+            InsertStatement{BSON("_id" << backupShard1 << "hosts" << srcConnStr1)},
+            InsertStatement{BSON("_id" << backupShard2 << "hosts" << backupConnStr0)},
         }));
 
-    BSONArray history0 = BSON_ARRAY(BSON("validAfter" << Timestamp(2) << "shard" << srcShard2)
-                                    << BSON("validAfter" << Timestamp(3) << "shard" << srcShard0));
-    BSONArray history1 = BSON_ARRAY(BSON("validAfter" << Timestamp(3) << "shard" << srcShard1));
-    BSONArray history2 = BSON_ARRAY(BSON("validAfter" << Timestamp(2) << "shard" << srcShard0)
-                                    << BSON("validAfter" << Timestamp(3) << "shard" << srcShard2));
-    BSONArray history3 = BSON_ARRAY(BSON("validAfter" << Timestamp(2) << "shard" << srcShard2)
-                                    << BSON("validAfter" << Timestamp(3) << "shard" << srcShard0));
+    BSONArray history0 =
+        BSON_ARRAY(BSON("validAfter" << Timestamp(2) << "shard" << backupShard2)
+                   << BSON("validAfter" << Timestamp(3) << "shard" << backupShard0));
+    BSONArray history1 = BSON_ARRAY(BSON("validAfter" << Timestamp(3) << "shard" << backupShard1));
+    BSONArray history2 =
+        BSON_ARRAY(BSON("validAfter" << Timestamp(2) << "shard" << backupShard0)
+                   << BSON("validAfter" << Timestamp(3) << "shard" << backupShard2));
+    BSONArray history3 =
+        BSON_ARRAY(BSON("validAfter" << Timestamp(2) << "shard" << backupShard2)
+                   << BSON("validAfter" << Timestamp(3) << "shard" << backupShard0));
     ASSERT_OK(storage->insertDocuments(
         opCtx,
         NamespaceString::kConfigsvrChunksNamespace,
         {
             InsertStatement{BSON("_id"
                                  << "0"
-                                 << "shard" << srcShard0 << "history" << history0
+                                 << "shard" << backupShard0 << "history" << history0
                                  << "onCurrentShardSince" << Timestamp(3))},
             InsertStatement{BSON("_id"
                                  << "1"
-                                 << "shard" << srcShard1 << "history" << history1
+                                 << "shard" << backupShard1 << "history" << history1
                                  << "onCurrentShardSince" << Timestamp(3))},
             InsertStatement{BSON("_id"
                                  << "2"
-                                 << "shard" << srcShard2 << "history" << history2
+                                 << "shard" << backupShard2 << "history" << history2
                                  << "onCurrentShardSince" << Timestamp(3))},
             InsertStatement{BSON("_id"
                                  << "3"
-                                 << "shard" << srcShard0 << "history" << history3
+                                 << "shard" << backupShard0 << "history" << history3
                                  << "onCurrentShardSince" << Timestamp(3))},
         }));
 
-    magic_restore::RestoreConfiguration restoreConfig;
-    restoreConfig.setNodeType(magic_restore::NodeTypeEnum::kConfigShard);
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kTransactionCoordinatorsNamespace,
+        {InsertStatement{
+             BSON("_id" << 0 << "participants" << BSON_ARRAY(backupShard0 << backupShard2))},
+         InsertStatement{
+             BSON("_id" << 1 << "participants" << BSON_ARRAY(backupShard2 << backupShard1))}}));
 
-    std::vector<magic_restore::ShardRenameMapping> mapping{{srcShard0, dstShard0, dstConnStr0},
-                                                           {srcShard1, dstShard1, dstConnStr1}};
+    magic_restore::RestoreConfiguration restoreConfig;
+    restoreConfig.setNodeType(magic_restore::NodeTypeEnum::kDedicatedConfigServer);
+
+    // Only changing the mapping of shard 0 and shard 1.
+    std::vector<magic_restore::ShardRenameMapping> mapping{
+        {backupShard0, restoreShard0, restoreConnStr0},
+        {backupShard1, restoreShard1, restoreConnStr1}};
     restoreConfig.setShardingRename(mapping);
 
     updateShardNameMetadata(opCtx, restoreConfig, storage);
@@ -647,46 +766,170 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataConfigShard) {
     auto docs = getDocuments(opCtx, storage, NamespaceString::kConfigDatabasesNamespace);
     ASSERT_EQ(5, docs.size());
 
-    ASSERT_EQ(docs[0].getStringField("primary"), dstShard0);
-    ASSERT_EQ(docs[1].getStringField("primary"), dstShard1);
-    ASSERT_EQ(docs[2].getStringField("primary"), dstShard1);
-    ASSERT_EQ(docs[3].getStringField("primary"), srcShard2);
-    ASSERT_EQ(docs[4].getStringField("primary"), dstShard0);
+    ASSERT_EQ(docs[0].getStringField("primary"), restoreShard0);
+    ASSERT_EQ(docs[1].getStringField("primary"), restoreShard1);
+    ASSERT_EQ(docs[2].getStringField("primary"), restoreShard1);
+    ASSERT_EQ(docs[3].getStringField("primary"), backupShard2);
+    ASSERT_EQ(docs[4].getStringField("primary"), restoreShard0);
 
     docs = getDocuments(opCtx, storage, NamespaceString::kConfigsvrShardsNamespace);
     ASSERT_EQ(3, docs.size());
 
-    ASSERT_EQ(docs[0].getStringField("_id"), dstShard0);
-    ASSERT_EQ(docs[1].getStringField("_id"), dstShard1);
-    ASSERT_EQ(docs[2].getStringField("_id"), srcShard2);
+    ASSERT_EQ(docs[0].getStringField("_id"), backupShard2);
+    ASSERT_EQ(docs[1].getStringField("_id"), restoreShard0);
+    ASSERT_EQ(docs[2].getStringField("_id"), restoreShard1);
 
-    ASSERT_EQ(docs[0].getStringField("hosts"), dstConnStr0);
-    ASSERT_EQ(docs[1].getStringField("hosts"), dstConnStr1);
-    ASSERT_EQ(docs[2].getStringField("hosts"), srcConnStr0);
+    ASSERT_EQ(docs[0].getStringField("hosts"), backupConnStr0);
+    ASSERT_EQ(docs[1].getStringField("hosts"), restoreConnStr0);
+    ASSERT_EQ(docs[2].getStringField("hosts"), restoreConnStr1);
 
     docs = getDocuments(opCtx, storage, NamespaceString::kConfigsvrChunksNamespace);
     ASSERT_EQ(4, docs.size());
 
     BSONArray dstHistory0 =
-        BSON_ARRAY(BSON("validAfter" << Timestamp(0, 1) << "shard" << dstShard0));
+        BSON_ARRAY(BSON("validAfter" << Timestamp(0, 1) << "shard" << restoreShard0));
     BSONArray dstHistory1 =
-        BSON_ARRAY(BSON("validAfter" << Timestamp(0, 1) << "shard" << dstShard1));
+        BSON_ARRAY(BSON("validAfter" << Timestamp(0, 1) << "shard" << restoreShard1));
 
-    ASSERT_EQ(docs[0].getStringField("shard"), dstShard0);
+    ASSERT_EQ(docs[0].getStringField("shard"), restoreShard0);
     ASSERT_BSONOBJ_EQ(docs[0].getObjectField("history"), dstHistory0);
     ASSERT_EQ(docs[0].getField("onCurrentShardSince").timestamp(), Timestamp(0, 1));
 
-    ASSERT_EQ(docs[1].getStringField("shard"), dstShard1);
+    ASSERT_EQ(docs[1].getStringField("shard"), restoreShard1);
     ASSERT_BSONOBJ_EQ(docs[1].getObjectField("history"), dstHistory1);
     ASSERT_EQ(docs[1].getField("onCurrentShardSince").timestamp(), Timestamp(0, 1));
 
-    ASSERT_EQ(docs[2].getStringField("shard"), srcShard2);
+    ASSERT_EQ(docs[2].getStringField("shard"), backupShard2);
     ASSERT_BSONOBJ_EQ(docs[2].getObjectField("history"), history2);
     ASSERT_EQ(docs[2].getField("onCurrentShardSince").timestamp(), Timestamp(0, 3));
 
-    ASSERT_EQ(docs[3].getStringField("shard"), dstShard0);
+    ASSERT_EQ(docs[3].getStringField("shard"), restoreShard0);
     ASSERT_BSONOBJ_EQ(docs[3].getObjectField("history"), dstHistory0);
     ASSERT_EQ(docs[3].getField("onCurrentShardSince").timestamp(), Timestamp(0, 1));
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kTransactionCoordinatorsNamespace);
+    ASSERT_EQ(2, docs.size());
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("participants"),
+                      BSON_ARRAY(restoreShard0 << backupShard2));
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("participants"),
+                      BSON_ARRAY(backupShard2 << restoreShard1));
+}
+
+// Test of updateShardNameMetadata for magic_restore::NodeTypeEnum::kShard.
+TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    std::string backupShard0 = "backupShard0";
+    std::string restoreShard0 = "restoreShard0";
+    std::string backupConnStr0 = "SourceConnectionString0";
+    std::string restoreConnStr0 = "DestinationConnectionString0";
+
+    std::string backupShard1 = "backupShard1";
+    std::string restoreShard1 = "restoreShard1";
+    std::string srcConnStr1 = "SourceConnectionString1";
+    std::string restoreConnStr1 = "DestinationConnectionString1";
+
+    std::string backupShard2 = "backupShard2";
+
+    for (const auto& nss : {NamespaceString::kTransactionCoordinatorsNamespace,
+                            NamespaceString::kMigrationCoordinatorsNamespace,
+                            NamespaceString::kRangeDeletionNamespace,
+                            NamespaceString::kDonorReshardingOperationsNamespace,
+                            NamespaceString::kRecipientReshardingOperationsNamespace,
+                            NamespaceString::kShardingDDLCoordinatorsNamespace}) {
+        ASSERT_OK(storage->createCollection(opCtx, nss, CollectionOptions{}));
+    }
+
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kTransactionCoordinatorsNamespace,
+        {InsertStatement{
+             BSON("_id" << 0 << "participants" << BSON_ARRAY(backupShard0 << backupShard2))},
+         InsertStatement{
+             BSON("_id" << 1 << "participants" << BSON_ARRAY(backupShard2 << backupShard1))}}));
+
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kMigrationCoordinatorsNamespace,
+        {InsertStatement{BSON("_id" << 0 << "donorShardId" << backupShard0 << "recipientShardId"
+                                    << backupShard1)},
+         InsertStatement{BSON("_id" << 1 << "donorShardId" << backupShard1 << "recipientShardId"
+                                    << backupShard2)},
+         InsertStatement{BSON("_id" << 2 << "donorShardId" << backupShard2 << "recipientShardId"
+                                    << backupShard0)}}));
+
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kRangeDeletionNamespace,
+        {InsertStatement{BSON("_id" << 0 << "donorShardId" << backupShard0)},
+         InsertStatement{BSON("_id" << 1 << "donorShardId" << backupShard1)},
+         InsertStatement{BSON("_id" << 2 << "donorShardId" << backupShard2)}}));
+
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kDonorReshardingOperationsNamespace,
+        {InsertStatement{
+             BSON("_id" << 0 << "recipientShards" << BSON_ARRAY(backupShard0 << backupShard2))},
+         InsertStatement{
+             BSON("_id" << 1 << "recipientShards" << BSON_ARRAY(backupShard2 << backupShard1))}}));
+
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kRecipientReshardingOperationsNamespace,
+        {InsertStatement{
+             BSON("_id" << 0 << "donorShards" << BSON_ARRAY(backupShard0 << backupShard2))},
+         InsertStatement{
+             BSON("_id" << 1 << "donorShards" << BSON_ARRAY(backupShard2 << backupShard1))}}));
+
+    // TODO SERVER-82568: insert document for kShardingDDLCoordinatorsNamespace
+
+    magic_restore::RestoreConfiguration restoreConfig;
+    restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kShard);
+    std::vector<magic_restore::ShardRenameMapping> mapping{
+        {backupShard0, restoreShard0, restoreConnStr0},
+        {backupShard1, restoreShard1, restoreConnStr1}};
+    restoreConfig.setShardingRename(mapping);
+
+    updateShardNameMetadata(opCtx, restoreConfig, storage);
+
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kTransactionCoordinatorsNamespace);
+    ASSERT_EQ(2, docs.size());
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("participants"),
+                      BSON_ARRAY(restoreShard0 << backupShard2));
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("participants"),
+                      BSON_ARRAY(backupShard2 << restoreShard1));
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kMigrationCoordinatorsNamespace);
+    ASSERT_EQ(3, docs.size());
+    ASSERT_EQ(docs[0].getStringField("donorShardId"), restoreShard0);
+    ASSERT_EQ(docs[1].getStringField("donorShardId"), restoreShard1);
+    ASSERT_EQ(docs[2].getStringField("donorShardId"), backupShard2);
+    ASSERT_EQ(docs[0].getStringField("recipientShardId"), restoreShard1);
+    ASSERT_EQ(docs[1].getStringField("recipientShardId"), backupShard2);
+    ASSERT_EQ(docs[2].getStringField("recipientShardId"), restoreShard0);
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kRangeDeletionNamespace);
+    ASSERT_EQ(3, docs.size());
+    ASSERT_EQ(docs[0].getStringField("donorShardId"), restoreShard0);
+    ASSERT_EQ(docs[1].getStringField("donorShardId"), restoreShard1);
+    ASSERT_EQ(docs[2].getStringField("donorShardId"), backupShard2);
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kDonorReshardingOperationsNamespace);
+    ASSERT_EQ(2, docs.size());
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("recipientShards"),
+                      BSON_ARRAY(restoreShard0 << backupShard2));
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("recipientShards"),
+                      BSON_ARRAY(backupShard2 << restoreShard1));
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kRecipientReshardingOperationsNamespace);
+    ASSERT_EQ(2, docs.size());
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("donorShards"),
+                      BSON_ARRAY(restoreShard0 << backupShard2));
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("donorShards"),
+                      BSON_ARRAY(backupShard2 << restoreShard1));
+
+    // TODO SERVER-82568: check documents in kShardingDDLCoordinatorsNamespace.
 }
 
 void checkNoOpOplogEntry(std::vector<BSONObj>& docs,

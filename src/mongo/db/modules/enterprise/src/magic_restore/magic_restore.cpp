@@ -262,7 +262,14 @@ void updateShardNameMetadata(OperationContext* opCtx,
                                                      repl::OpTime::kUninitializedTerm));
         }
 
-        // TODO SERVER-82914: Update config.transaction_coordinators
+        // Update config.transaction_coordinators.
+        fassert(8291401,
+                storageInterface->updateDocuments(
+                    opCtx,
+                    NamespaceString::kTransactionCoordinatorsNamespace,
+                    {} /* query */,
+                    {BSON("$set" << BSON("participants.$[src]" << dstShardName)), Timestamp(0)},
+                    std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
 
         if (isConfig(restoreConfig)) {
             /*
@@ -275,14 +282,75 @@ void updateShardNameMetadata(OperationContext* opCtx,
         }
 
         if (isShard(restoreConfig)) {
-            /* TODO SERVER-82914:
-                (Shard) Update config.migrationCoordinators
-                (Shard) Update config.rangeDeletions
-                (Shard) Update config.localReshardingOperations
-                (Shard) Update system.sharding_ddl_coordinators
-            */
+            // Update "donorShardId" in documents of the config.migrationCoordinators collection.
+            fassert(8291402,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kMigrationCoordinatorsNamespace,
+                        BSON("donorShardId" << srcShardName),
+                        {BSON("$set" << BSON("donorShardId" << dstShardName)), Timestamp(0)}));
+
+            // Update "recipientShardId" in documents of the config.migrationCoordinators
+            // collection.
+            fassert(8291403,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kMigrationCoordinatorsNamespace,
+                        BSON("recipientShardId" << srcShardName),
+                        {BSON("$set" << BSON("recipientShardId" << dstShardName)), Timestamp(0)}));
+
+            // Update "donorShardId" in documents of the config.rangeDeletions
+            // collection.
+            fassert(8291404,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kRangeDeletionNamespace,
+                        BSON("donorShardId" << srcShardName),
+                        {BSON("$set" << BSON("donorShardId" << dstShardName)), Timestamp(0)}));
+
+            // Update the recipientShards array in config.localReshardingOperations.donor.
+            fassert(
+                8291405,
+                storageInterface->updateDocuments(
+                    opCtx,
+                    NamespaceString::kDonorReshardingOperationsNamespace,
+                    {} /* query */,
+                    {BSON("$set" << BSON("recipientShards.$[src]" << dstShardName)), Timestamp(0)},
+                    std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+
+            // Update the donorShards array in config.localReshardingOperations.recipient.
+            fassert(8291406,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kRecipientReshardingOperationsNamespace,
+                        {} /* query */,
+                        {BSON("$set" << BSON("donorShards.$[src]" << dstShardName)), Timestamp(0)},
+                        std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+
+            // TODO SERVER-82568: (Shard) Update system.sharding_ddl_coordinators
+            // (kShardingDDLCoordinatorsNamespace)
         }
     }
+}
+
+mongo::ShardIdentity getShardIdentity(OperationContext* opCtx,
+                                      repl::StorageInterface* storageInterface) {
+    // Find the shard identity document in admin.system.version.
+    BSONObj shardIdentity =
+        fassert(8291407,
+                storageInterface->findById(opCtx,
+                                           NamespaceString::kServerConfigurationNamespace,
+                                           BSON("_id"
+                                                << "shardIdentity")
+                                               .firstElement()));
+
+    // mongo::ShardIdentity::parse expects only the 3 fields below, removing others.
+    auto fieldsToRemove = shardIdentity.getFieldNames<std::set<std::string>>();
+    fieldsToRemove.erase("shardName");
+    fieldsToRemove.erase("clusterId");
+    fieldsToRemove.erase("configsvrConnectionString");
+    shardIdentity = shardIdentity.removeFields(fieldsToRemove);
+    return mongo::ShardIdentity::parse(IDLParserContext("RestoreConfiguration"), shardIdentity);
 }
 
 void updateShardingMetadata(OperationContext* opCtx,
@@ -300,8 +368,10 @@ void updateShardingMetadata(OperationContext* opCtx,
 
     updateShardNameMetadata(opCtx, restoreConfig, storageInterface);
 
+    mongo::ShardIdentity previousShardIdentity = getShardIdentity(opCtx, storageInterface);
+
     if (isConfig(restoreConfig)) {
-        // Clear the shard identity document.
+        // Clear the shard identity document in admin.system.version.
         fassert(8291307,
                 storageInterface->deleteById(opCtx,
                                              NamespaceString::kServerConfigurationNamespace,
@@ -310,12 +380,45 @@ void updateShardingMetadata(OperationContext* opCtx,
                                                  .firstElement()));
     }
 
-    /*
-    TODO SERVER-82914:
-        Update shard identity document
-        Drop config.cache.collections, config.cache.chunks.*, and config.cache.databases collections
-        Drop the config.clusterParameters collection
-    */
+    const auto& newShardIdentity = restoreConfig.getShardIdentityDocument();
+
+    // validateRestoreConfiguration enforces this on the input.
+    invariant(newShardIdentity || !restoreConfig.getShardingRename());
+
+    const ShardIdentity& shardIdentity =
+        newShardIdentity ? *newShardIdentity : previousShardIdentity;
+
+    // Update the shard identity document in admin.system.version.
+    fassert(8291408,
+            storageInterface->putSingleton(
+                opCtx,
+                NamespaceString::kServerConfigurationNamespace,
+                BSON("_id"
+                     << "shardIdentity"),
+                {BSON("$set" << BSON("clusterId"
+                                     << shardIdentity.getClusterId() << "shardName"
+                                     << shardIdentity.getShardName() << "configsvrConnectionString"
+                                     << shardIdentity.getConfigsvrConnectionString().toString())),
+                 Timestamp(0)}));
+
+    // Drop config.cache.collections.
+    fassert(
+        8291409,
+        storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigCollectionsNamespace));
+
+    // Drop "config.cache.chunks.*".
+    fassert(
+        8291410,
+        storageInterface->dropCollectionsWithPrefix(opCtx, DatabaseName::kConfig, "cache.chunks."));
+
+    // Drop config.cache.databases.
+    fassert(
+        8291411,
+        storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
+
+    // Drop config.clusterParameters.
+    fassert(8291412,
+            storageInterface->dropCollection(opCtx, NamespaceString::kClusterParametersNamespace));
 }
 
 Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
