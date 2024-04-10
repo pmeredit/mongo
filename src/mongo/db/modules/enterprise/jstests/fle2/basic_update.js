@@ -3,6 +3,7 @@
  *
  * @tags: [
  * requires_non_retryable_writes,
+ * assumes_read_preference_unchanged,
  * requires_fcv_70
  * ]
  */
