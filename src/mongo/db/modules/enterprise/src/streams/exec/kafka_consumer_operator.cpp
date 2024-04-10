@@ -629,12 +629,14 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         sourceDoc.doc = boost::none;
         BSONObjBuilder objBuilder(std::move(bsonDoc));
         objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
+        StreamMetaSource streamMetaSource;
+        streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+        streamMetaSource.setPartition(sourceDoc.partition);
+        streamMetaSource.setOffset(sourceDoc.offset);
+        streamMetaSource.setKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
+        streamMetaSource.setHeaders(std::move(sourceDoc.headers));
         StreamMeta streamMeta;
-        streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-        streamMeta.setSourcePartition(sourceDoc.partition);
-        streamMeta.setSourceOffset(sourceDoc.offset);
-        streamMeta.setSourceKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
-        streamMeta.setSourceHeaders(std::move(sourceDoc.headers));
+        streamMeta.setSource(std::move(streamMetaSource));
         if (_context->shouldProjectStreamMetaPriorToSinkStage()) {
             auto newStreamMeta = updateStreamMeta(currStreamMeta, streamMeta);
             objBuilder.append(*_context->streamMetaFieldName, newStreamMeta.toBson());
@@ -670,10 +672,14 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 }
 
 BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc) {
+    StreamMetaSource streamMetaSource;
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+    streamMetaSource.setPartition(sourceDoc.partition);
+    streamMetaSource.setOffset(sourceDoc.offset);
+    streamMetaSource.setKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
+    streamMetaSource.setHeaders(std::move(sourceDoc.headers));
     StreamMeta streamMeta;
-    streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-    streamMeta.setSourcePartition(sourceDoc.partition);
-    streamMeta.setSourceOffset(sourceDoc.offset);
+    streamMeta.setSource(std::move(streamMetaSource));
     BSONObjBuilder objBuilder = streams::toDeadLetterQueueMsg(
         _context->streamMetaFieldName, std::move(streamMeta), std::move(sourceDoc.error));
     if (sourceDoc.doc) {

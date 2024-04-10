@@ -606,8 +606,10 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     // Add 'ts' to 'mutableChangeEvent', overwriting 'timestampOutputFieldName' if it already
     // exists.
     mutableChangeEvent[_options.timestampOutputFieldName] = Value(ts);
+    StreamMetaSource streamMetaSource;
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Atlas);
     StreamMeta streamMeta;
-    streamMeta.setSourceType(StreamMetaSourceTypeEnum::Atlas);
+    streamMeta.setSource(std::move(streamMetaSource));
     if (_context->shouldProjectStreamMetaPriorToSinkStage()) {
         auto newStreamMeta = updateStreamMeta(
             mutableChangeEvent.peek().getField(*_context->streamMetaFieldName), streamMeta);

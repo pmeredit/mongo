@@ -145,7 +145,8 @@ public:
 
     std::pair<Date_t, Date_t> getBoundaries(StreamDocument windowOutputDocument) {
         auto& streamMeta = windowOutputDocument.streamMeta;
-        return std::make_pair(*streamMeta.getWindowStart(), *streamMeta.getWindowEnd());
+        return std::make_pair(*streamMeta.getWindow()->getStart(),
+                              *streamMeta.getWindow()->getEnd());
     }
 
     void verifyBoundaries(const boost::optional<StreamDataMsg>& msg,
@@ -2195,8 +2196,8 @@ TEST_F(WindowOperatorTest, WindowMeta) {
             ASSERT_EQUALS(1, msg.dataMsg->docs.size());
 
             auto& streamMeta = msg.dataMsg->docs[0].streamMeta;
-            ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStart());
-            ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEnd());
+            ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindow()->getStart());
+            ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindow()->getEnd());
         }
     });
 }
@@ -2324,10 +2325,11 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
             "Failed to process input document in ProjectOperator with error: "
             "can't $divide by zero",
             dlqDoc["errInfo"]["reason"].String());
-        ASSERT_BSONOBJ_EQ(BSON("sourceType"
-                               << "generated"
-                               << "windowStart" << Date_t::fromMillisSinceEpoch(0) << "windowEnd"
-                               << Date_t::fromMillisSinceEpoch(1000)),
+        ASSERT_BSONOBJ_EQ(BSON("source" << BSON("type"
+                                                << "generated")
+                                        << "window"
+                                        << BSON("start" << Date_t::fromMillisSinceEpoch(0) << "end"
+                                                        << Date_t::fromMillisSinceEpoch(1000))),
                           dlqDoc["_stream_meta"].Obj());
     });
 }
@@ -2951,9 +2953,10 @@ TEST_F(WindowOperatorTest, PartitionByWindowStart) {
                     ASSERT_EQUALS(expectedValues[j], dataMsg.docs[j].doc["value"].getLong());
                     ASSERT_EQUALS(
                         windowStart,
-                        dataMsg.docs[j].streamMeta.getWindowStart()->toMillisSinceEpoch());
-                    ASSERT_EQUALS(windowStart + tc.sizeMs,
-                                  dataMsg.docs[j].streamMeta.getWindowEnd()->toMillisSinceEpoch());
+                        dataMsg.docs[j].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
+                    ASSERT_EQUALS(
+                        windowStart + tc.sizeMs,
+                        dataMsg.docs[j].streamMeta.getWindow()->getEnd()->toMillisSinceEpoch());
                 }
             }
         }
@@ -3039,8 +3042,8 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     ASSERT_EQ(WatermarkStatus::kActive, results[0].controlMsg->watermarkMsg->watermarkStatus);
     ASSERT(results[1].dataMsg);
     ASSERT_EQ(1, results[1].dataMsg->docs.size());
-    ASSERT_EQ(windowStartTime, *results[1].dataMsg->docs[0].streamMeta.getWindowStart());
-    ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindowEnd());
+    ASSERT_EQ(windowStartTime, *results[1].dataMsg->docs[0].streamMeta.getWindow()->getStart());
+    ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindow()->getEnd());
     // results[2] is the watermark output of the window operator. The window output watermark is
     // the minimum window start time minus 1. The expected minimum window start time
     // is one hop after the max window we have just output.
@@ -3091,8 +3094,8 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     ASSERT_EQ(2, results.size());
     ASSERT(results[0].dataMsg);
     ASSERT_EQ(1, results[0].dataMsg->docs.size());
-    ASSERT_EQ(windowStartTime, *results[0].dataMsg->docs[0].streamMeta.getWindowStart());
-    ASSERT_EQ(windowEndTime, *results[0].dataMsg->docs[0].streamMeta.getWindowEnd());
+    ASSERT_EQ(windowStartTime, *results[0].dataMsg->docs[0].streamMeta.getWindow()->getStart());
+    ASSERT_EQ(windowEndTime, *results[0].dataMsg->docs[0].streamMeta.getWindow()->getEnd());
     ASSERT(results[1].controlMsg);
 
     dag->stop();

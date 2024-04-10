@@ -458,19 +458,23 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     StreamDataMsg dataMsg;
     // Create 3 documents, 2 with customerId field in them and 1 without.
     StreamDocument streamDoc(Document(fromjson("{_id: 0, a: 0, customerId: 100}")));
-    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-    streamDoc.streamMeta.setSourcePartition(1);
-    streamDoc.streamMeta.setSourceOffset(10);
+    StreamMetaSource streamMetaSource;
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+    streamMetaSource.setPartition(1);
+    streamMetaSource.setOffset(10);
+    streamDoc.streamMeta.setSource(streamMetaSource);
     dataMsg.docs.emplace_back(std::move(streamDoc));
     streamDoc = StreamDocument(Document(fromjson("{_id: 1, a: 1}")));
-    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-    streamDoc.streamMeta.setSourcePartition(1);
-    streamDoc.streamMeta.setSourceOffset(20);
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+    streamMetaSource.setPartition(1);
+    streamMetaSource.setOffset(20);
+    streamDoc.streamMeta.setSource(streamMetaSource);
     dataMsg.docs.emplace_back(std::move(streamDoc));
     streamDoc = StreamDocument(Document(fromjson("{_id: 2, a: 2, customerId: 200}")));
-    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-    streamDoc.streamMeta.setSourcePartition(1);
-    streamDoc.streamMeta.setSourceOffset(30);
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+    streamMetaSource.setPartition(1);
+    streamMetaSource.setOffset(30);
+    streamDoc.streamMeta.setSource(streamMetaSource);
     dataMsg.docs.emplace_back(std::move(streamDoc));
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);

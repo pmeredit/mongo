@@ -63,18 +63,26 @@ function smokeTest() {
             {
                 _id: 15,
                 _stream_meta: {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-03-03T20:42:30Z"),
-                    "windowEnd": ISODate("2023-03-03T20:42:31Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-03-03T20:42:30Z"),
+                        "end": ISODate("2023-03-03T20:42:31Z"),
+                    }
                 },
                 count: 1
             },
             {
                 _id: 25,
                 _stream_meta: {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-03-03T20:42:30Z"),
-                    "windowEnd": ISODate("2023-03-03T20:42:31Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-03-03T20:42:30Z"),
+                        "end": ISODate("2023-03-03T20:42:31Z"),
+                    }
                 },
                 count: 2
             },

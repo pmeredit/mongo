@@ -190,9 +190,11 @@ TEST_F(DocumentTransformationOperatorTest, AddFields) {
 TEST_F(DocumentTransformationOperatorTest, AddFieldsDlq) {
 
     StreamDocument streamDoc(Document(fromjson("{a: 1, b: 0}")));
-    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-    streamDoc.streamMeta.setSourcePartition(1);
-    streamDoc.streamMeta.setSourceOffset(10);
+    StreamMetaSource streamMetaSource;
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+    streamMetaSource.setPartition(1);
+    streamMetaSource.setOffset(10);
+    streamDoc.streamMeta.setSource(streamMetaSource);
     std::vector<StreamDocument> streamDocs = {
         streamDoc, streamDoc, streamDoc, streamDoc, streamDoc, streamDoc};
     std::string bsonPipeline = R"(
@@ -285,9 +287,11 @@ TEST_F(DocumentTransformationOperatorTest, InvalidOutputs) {
 
 TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
     StreamDocument streamDoc(Document(fromjson("{a: 1, b: 0}")));
-    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Generated);
-    streamDoc.streamMeta.setSourcePartition(1);
-    streamDoc.streamMeta.setSourceOffset(10);
+    StreamMetaSource streamMetaSource;
+    streamMetaSource.setType(StreamMetaSourceTypeEnum::Generated);
+    streamMetaSource.setPartition(1);
+    streamMetaSource.setOffset(10);
+    streamDoc.streamMeta.setSource(streamMetaSource);
     std::vector<StreamDocument> streamDocs = {streamDoc, streamDoc, streamDoc, streamDoc};
     std::string bsonPipeline = R"(
 [

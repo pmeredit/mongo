@@ -111,41 +111,61 @@ function testBoth(useNewCheckpointing) {
             {
                 "_id": {"min": 0, "max": 999, "sum": 1000},
                 "_stream_meta": {
-                    "sourceType": "kafka",
-                    "windowStart": ISODate("2023-01-01T00:00:00Z"),
-                    "windowEnd": ISODate("2023-01-01T00:00:01Z")
+                    "source": {
+                        "type": "kafka",
+                    },
+                    "window": {
+                        "start": ISODate("2023-01-01T00:00:00Z"),
+                        "end": ISODate("2023-01-01T00:00:01Z"),
+                    }
                 }
             },
             {
                 "_id": {"min": 1000, "max": 1999, "sum": 1000},
                 "_stream_meta": {
-                    "sourceType": "kafka",
-                    "windowStart": ISODate("2023-01-01T00:00:01Z"),
-                    "windowEnd": ISODate("2023-01-01T00:00:02Z")
+                    "source": {
+                        "type": "kafka",
+                    },
+                    "window": {
+                        "start": ISODate("2023-01-01T00:00:01Z"),
+                        "end": ISODate("2023-01-01T00:00:02Z"),
+                    }
                 }
             },
             {
                 "_id": {"min": 2000, "max": 2999, "sum": 1000},
                 "_stream_meta": {
-                    "sourceType": "kafka",
-                    "windowStart": ISODate("2023-01-01T00:00:02Z"),
-                    "windowEnd": ISODate("2023-01-01T00:00:03Z")
+                    "source": {
+                        "type": "kafka",
+                    },
+                    "window": {
+                        "start": ISODate("2023-01-01T00:00:02Z"),
+                        "end": ISODate("2023-01-01T00:00:03Z"),
+                    }
                 }
             },
             {
                 "_id": {"min": 3000, "max": 3999, "sum": 1000},
                 "_stream_meta": {
-                    "sourceType": "kafka",
-                    "windowStart": ISODate("2023-01-01T00:00:03Z"),
-                    "windowEnd": ISODate("2023-01-01T00:00:04Z")
+                    "source": {
+                        "type": "kafka",
+                    },
+                    "window": {
+                        "start": ISODate("2023-01-01T00:00:03Z"),
+                        "end": ISODate("2023-01-01T00:00:04Z"),
+                    }
                 }
             },
             {
                 "_id": {"min": 4000, "max": 4999, "sum": 1000},
                 "_stream_meta": {
-                    "sourceType": "kafka",
-                    "windowStart": ISODate("2023-01-01T00:00:04Z"),
-                    "windowEnd": ISODate("2023-01-01T00:00:05Z")
+                    "source": {
+                        "type": "kafka",
+                    },
+                    "window": {
+                        "start": ISODate("2023-01-01T00:00:04Z"),
+                        "end": ISODate("2023-01-01T00:00:05Z"),
+                    }
                 }
             },
         ];
@@ -260,9 +280,13 @@ function testBoth(useNewCheckpointing) {
             {
                 "_id": 0,
                 "_stream_meta": {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-12-01T00:00:00Z"),
-                    "windowEnd": ISODate("2023-12-01T01:00:00Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-12-01T00:00:00Z"),
+                        "end": ISODate("2023-12-01T01:00:00Z"),
+                    }
                 },
                 "max": 1,
                 "min": 1,
@@ -271,9 +295,13 @@ function testBoth(useNewCheckpointing) {
             {
                 "_id": 1,
                 "_stream_meta": {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-12-01T00:00:00Z"),
-                    "windowEnd": ISODate("2023-12-01T01:00:00Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-12-01T00:00:00Z"),
+                        "end": ISODate("2023-12-01T01:00:00Z"),
+                    }
                 },
                 "max": 2,
                 "min": 2,
@@ -390,25 +418,37 @@ function testBoth(useNewCheckpointing) {
         let expectedOutputDocs = [
             {
                 "_stream_meta": {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-12-01T00:20:00Z"),
-                    "windowEnd": ISODate("2023-12-01T01:20:00Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-12-01T00:20:00Z"),
+                        "end": ISODate("2023-12-01T01:20:00Z"),
+                    }
                 },
                 results: expectedResultsArray
             },
             {
                 "_stream_meta": {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-12-01T00:40:00Z"),
-                    "windowEnd": ISODate("2023-12-01T01:40:00Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-12-01T00:40:00Z"),
+                        "end": ISODate("2023-12-01T01:40:00Z"),
+                    }
                 },
                 results: expectedResultsArray
             },
             {
                 "_stream_meta": {
-                    "sourceType": "atlas",
-                    "windowStart": ISODate("2023-12-01T01:00:00Z"),
-                    "windowEnd": ISODate("2023-12-01T02:00:00Z")
+                    "source": {
+                        "type": "atlas",
+                    },
+                    "window": {
+                        "start": ISODate("2023-12-01T01:00:00Z"),
+                        "end": ISODate("2023-12-01T02:00:00Z"),
+                    }
                 },
                 results: expectedResultsArray
             },
@@ -419,7 +459,7 @@ function testBoth(useNewCheckpointing) {
             inputAfterStop: [{ts: ISODate("2023-12-01T02:00:00.001Z")}],
             expectedOutput: expectedOutputDocs,
             resultsSortDoc: {
-                "_stream_meta.windowStart": 1,
+                "_stream_meta.window.start": 1,
             }
         });
     }
@@ -454,9 +494,13 @@ function testBoth(useNewCheckpointing) {
             expectedOutput: [
                 {
                     "_stream_meta": {
-                        "sourceType": "atlas",
-                        "windowStart": ISODate("2023-12-01T00:20:00Z"),
-                        "windowEnd": ISODate("2023-12-01T01:20:00Z")
+                        "source": {
+                            "type": "atlas",
+                        },
+                        "window": {
+                            "start": ISODate("2023-12-01T00:20:00Z"),
+                            "end": ISODate("2023-12-01T01:20:00Z"),
+                        }
                     },
                     "customerId": 0,
                     "max": 10,
@@ -465,9 +509,13 @@ function testBoth(useNewCheckpointing) {
                 },
                 {
                     "_stream_meta": {
-                        "sourceType": "atlas",
-                        "windowStart": ISODate("2023-12-01T00:20:00Z"),
-                        "windowEnd": ISODate("2023-12-01T01:20:00Z")
+                        "source": {
+                            "type": "atlas",
+                        },
+                        "window": {
+                            "start": ISODate("2023-12-01T00:20:00Z"),
+                            "end": ISODate("2023-12-01T01:20:00Z"),
+                        }
                     },
                     "customerId": 1,
                     "max": 4,
@@ -476,9 +524,13 @@ function testBoth(useNewCheckpointing) {
                 },
                 {
                     "_stream_meta": {
-                        "sourceType": "atlas",
-                        "windowStart": ISODate("2023-12-01T00:40:00Z"),
-                        "windowEnd": ISODate("2023-12-01T01:40:00Z")
+                        "source": {
+                            "type": "atlas",
+                        },
+                        "window": {
+                            "start": ISODate("2023-12-01T00:40:00Z"),
+                            "end": ISODate("2023-12-01T01:40:00Z"),
+                        }
                     },
                     "customerId": 0,
                     "max": 10,
@@ -487,9 +539,13 @@ function testBoth(useNewCheckpointing) {
                 },
                 {
                     "_stream_meta": {
-                        "sourceType": "atlas",
-                        "windowStart": ISODate("2023-12-01T00:40:00Z"),
-                        "windowEnd": ISODate("2023-12-01T01:40:00Z")
+                        "source": {
+                            "type": "atlas",
+                        },
+                        "window": {
+                            "start": ISODate("2023-12-01T00:40:00Z"),
+                            "end": ISODate("2023-12-01T01:40:00Z"),
+                        }
                     },
                     "customerId": 1,
                     "max": 4,
@@ -498,9 +554,13 @@ function testBoth(useNewCheckpointing) {
                 },
                 {
                     "_stream_meta": {
-                        "sourceType": "atlas",
-                        "windowStart": ISODate("2023-12-01T01:00:00Z"),
-                        "windowEnd": ISODate("2023-12-01T02:00:00Z")
+                        "source": {
+                            "type": "atlas",
+                        },
+                        "window": {
+                            "start": ISODate("2023-12-01T01:00:00Z"),
+                            "end": ISODate("2023-12-01T02:00:00Z"),
+                        }
                     },
                     "customerId": 0,
                     "max": 10,
@@ -509,9 +569,13 @@ function testBoth(useNewCheckpointing) {
                 },
                 {
                     "_stream_meta": {
-                        "sourceType": "atlas",
-                        "windowStart": ISODate("2023-12-01T01:00:00Z"),
-                        "windowEnd": ISODate("2023-12-01T02:00:00Z")
+                        "source": {
+                            "type": "atlas",
+                        },
+                        "window": {
+                            "start": ISODate("2023-12-01T01:00:00Z"),
+                            "end": ISODate("2023-12-01T02:00:00Z"),
+                        }
                     },
                     "customerId": 1,
                     "max": 4,
@@ -519,7 +583,7 @@ function testBoth(useNewCheckpointing) {
                     "sum": 6
                 },
             ],
-            resultsSortDoc: {"_stream_meta.windowStart": 1, "customerId": 1}
+            resultsSortDoc: {"_stream_meta.window.start": 1, "customerId": 1}
         });
     }
 

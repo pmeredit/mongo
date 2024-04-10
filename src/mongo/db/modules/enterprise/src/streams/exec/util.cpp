@@ -128,47 +128,70 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                                  const mongo::StreamMeta& internalStreamMeta) {
     MutableDocument newStreamMeta(streamMetaInDoc.isObject() ? streamMetaInDoc.getDocument()
                                                              : Document());
-    if (internalStreamMeta.getSourceType()) {
-        newStreamMeta.setField(
-            mongo::StreamMeta::kSourceTypeFieldName,
-            Value(StreamMetaSourceType_serializer(*internalStreamMeta.getSourceType())));
-    }
-    if (internalStreamMeta.getSourcePartition()) {
-        newStreamMeta.setField(mongo::StreamMeta::kSourcePartitionFieldName,
-                               Value(*internalStreamMeta.getSourcePartition()));
-    }
-    if (internalStreamMeta.getSourceOffset()) {
-        newStreamMeta.setField(
-            mongo::StreamMeta::kSourceOffsetFieldName,
-            Value(static_cast<long long>(*internalStreamMeta.getSourceOffset())));
-    }
-    if (internalStreamMeta.getSourceKey()) {
-        if (internalStreamMeta.getSourceKey()->length()) {
-            BSONBinData binData(internalStreamMeta.getSourceKey()->data(),
-                                internalStreamMeta.getSourceKey()->length(),
-                                mongo::BinDataGeneral);
-            newStreamMeta.setField(mongo::StreamMeta::kSourceKeyFieldName,
-                                   Value(std::move(binData)));
+    if (internalStreamMeta.getSource()) {
+        if (internalStreamMeta.getSource()->getType()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                         << StreamMetaSource::kTypeFieldName)
+                              .ss.str()),
+                Value(StreamMetaSourceType_serializer(*internalStreamMeta.getSource()->getType())));
         }
-    }
-    if (internalStreamMeta.getSourceHeaders()) {
-        if (!internalStreamMeta.getSourceHeaders()->empty()) {
-            std::vector<mongo::Value> headers;
-            headers.reserve(internalStreamMeta.getSourceHeaders()->size());
-            for (const auto& header : *internalStreamMeta.getSourceHeaders()) {
-                headers.emplace_back(Value(header.toBSON()));
+        if (internalStreamMeta.getSource()->getPartition()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                         << StreamMetaSource::kPartitionFieldName)
+                              .ss.str()),
+                Value(*internalStreamMeta.getSource()->getPartition()));
+        }
+        if (internalStreamMeta.getSource()->getOffset()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                         << StreamMetaSource::kOffsetFieldName)
+                              .ss.str()),
+                Value(static_cast<long long>(*internalStreamMeta.getSource()->getOffset())));
+        }
+        if (internalStreamMeta.getSource()->getKey()) {
+            if (internalStreamMeta.getSource()->getKey()->length()) {
+                BSONBinData binData(internalStreamMeta.getSource()->getKey()->data(),
+                                    internalStreamMeta.getSource()->getKey()->length(),
+                                    mongo::BinDataGeneral);
+                newStreamMeta.setNestedField(
+                    FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                             << StreamMetaSource::kKeyFieldName)
+                                  .ss.str()),
+                    Value(std::move(binData)));
             }
-            newStreamMeta.setField(mongo::StreamMeta::kSourceHeadersFieldName,
-                                   Value(std::move(headers)));
+        }
+        if (internalStreamMeta.getSource()->getHeaders()) {
+            if (!internalStreamMeta.getSource()->getHeaders()->empty()) {
+                std::vector<mongo::Value> headers;
+                headers.reserve(internalStreamMeta.getSource()->getHeaders()->size());
+                for (const auto& header : *internalStreamMeta.getSource()->getHeaders()) {
+                    headers.emplace_back(Value(header.toBSON()));
+                }
+                newStreamMeta.setNestedField(
+                    FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                             << StreamMetaSource::kKeyFieldName)
+                                  .ss.str()),
+                    Value(std::move(headers)));
+            }
         }
     }
-    if (internalStreamMeta.getWindowStart()) {
-        newStreamMeta.setField(mongo::StreamMeta::kWindowStartFieldName,
-                               Value(*internalStreamMeta.getWindowStart()));
-    }
-    if (internalStreamMeta.getWindowEnd()) {
-        newStreamMeta.setField(mongo::StreamMeta::kWindowEndFieldName,
-                               Value(*internalStreamMeta.getWindowEnd()));
+    if (internalStreamMeta.getWindow()) {
+        if (internalStreamMeta.getWindow()->getStart()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kWindowFieldName << "."
+                                         << StreamMetaWindow::kStartFieldName)
+                              .ss.str()),
+                Value(*internalStreamMeta.getWindow()->getStart()));
+        }
+        if (internalStreamMeta.getWindow()->getEnd()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kWindowFieldName << "."
+                                         << StreamMetaWindow::kEndFieldName)
+                              .ss.str()),
+                Value(*internalStreamMeta.getWindow()->getEnd()));
+        }
     }
     return newStreamMeta.freeze();
 }

@@ -465,8 +465,8 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
 
         // For each document, inspect the stream meta to verify it.
         for (auto& doc : results) {
-            int64_t offset = *doc.streamMeta.getSourceOffset();
-            int32_t partition = *doc.streamMeta.getSourcePartition();
+            int64_t offset = *doc.streamMeta.getSource()->getOffset();
+            int32_t partition = *doc.streamMeta.getSource()->getPartition();
             ASSERT_BSONOBJ_EQ(toOriginalBson(doc.doc), input[partition].docs[offset]);
         }
 
@@ -514,8 +514,8 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
         ASSERT_EQ(expectedNumOutput, results.size());
         for (size_t resultIdx = 0; resultIdx < results.size(); ++resultIdx) {
             auto& doc = results[resultIdx];
-            int64_t offset = *doc.streamMeta.getSourceOffset();
-            int32_t partition = *doc.streamMeta.getSourcePartition();
+            int64_t offset = *doc.streamMeta.getSource()->getOffset();
+            int32_t partition = *doc.streamMeta.getSource()->getPartition();
             ASSERT_BSONOBJ_EQ(toOriginalBson(doc.doc), input[partition].docs[offset]);
         }
     }

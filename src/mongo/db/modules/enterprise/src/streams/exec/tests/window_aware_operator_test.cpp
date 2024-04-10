@@ -97,9 +97,11 @@ public:
             // window.
             for (auto& time : times) {
                 StreamDataMsg& dataMsg = inputMessages[time];
-                inputDoc.streamMeta.setWindowStart(mongo::Date_t::fromMillisSinceEpoch(time));
-                inputDoc.streamMeta.setWindowEnd(
+                StreamMetaWindow streamMetaWindow;
+                streamMetaWindow.setStart(mongo::Date_t::fromMillisSinceEpoch(time));
+                streamMetaWindow.setEnd(
                     mongo::Date_t::fromMillisSinceEpoch(windowAssigner.getWindowEndTime(time)));
+                inputDoc.streamMeta.setWindow(streamMetaWindow);
                 dataMsg.docs.emplace_back(inputDoc);
             }
         }
@@ -132,11 +134,11 @@ public:
             auto& msg = messages.front();
             if (msg.dataMsg) {
                 for (auto& doc : msg.dataMsg->docs) {
-                    ASSERT(doc.streamMeta.getWindowStart());
+                    ASSERT(doc.streamMeta.getWindow()->getStart());
                     if (!currentStartTimestamp) {
-                        currentStartTimestamp = *doc.streamMeta.getWindowStart();
+                        currentStartTimestamp = *doc.streamMeta.getWindow()->getStart();
                     }
-                    ASSERT_EQ(currentStartTimestamp, *doc.streamMeta.getWindowStart());
+                    ASSERT_EQ(currentStartTimestamp, *doc.streamMeta.getWindow()->getStart());
                     outputDocs.push_back(doc);
                 }
             } else {
@@ -207,8 +209,8 @@ TEST_F(WindowAwareOperatorTest, SingleGroup_OneWindow) {
     ASSERT_EQUALS(45, outputDocs[0].doc["sum"].getInt());
     // Verify the output documents have the correct window assignments.
     for (auto& doc : outputDocs) {
-        ASSERT(doc.streamMeta.getWindowStart());
-        ASSERT_EQUALS(expectedWindowStartTime, *doc.streamMeta.getWindowStart());
+        ASSERT(doc.streamMeta.getWindow()->getStart());
+        ASSERT_EQUALS(expectedWindowStartTime, *doc.streamMeta.getWindow()->getStart());
     }
 }
 
@@ -265,7 +267,7 @@ TEST_F(WindowAwareOperatorTest, OneGroup_MultipleWindows) {
         // Verify the sum for each window is correct.
         ASSERT_EQUALS(documentsPerWindow, doc.doc["sum"].getInt());
         // Verify the output docs have the correct window assignments.
-        ASSERT_EQUALS(expectedWindowStartTimes[idx++], *doc.streamMeta.getWindowStart());
+        ASSERT_EQUALS(expectedWindowStartTimes[idx++], *doc.streamMeta.getWindow()->getStart());
     }
 }
 
@@ -419,9 +421,9 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
         ASSERT(msg.dataMsg);
         ASSERT_EQ(1, msg.dataMsg->docs.size());
         auto& doc = msg.dataMsg->docs[0];
-        ASSERT_EQ(windowStartTime, doc.streamMeta.getWindowStart()->toMillisSinceEpoch());
+        ASSERT_EQ(windowStartTime, doc.streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
         ASSERT_EQ(windowStartTime + toMillis(windowOptions.sizeUnit, windowOptions.size),
-                  doc.streamMeta.getWindowEnd()->toMillisSinceEpoch());
+                  doc.streamMeta.getWindow()->getEnd()->toMillisSinceEpoch());
 
         ASSERT(doc.doc["results"].isArray());
         auto arr = doc.doc["results"].getArray();
@@ -581,20 +583,20 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
     ASSERT(results[1].dataMsg);
     ASSERT_EQ(2, results[1].dataMsg->docs.size());
     ASSERT_EQ(window1,
-              results[1].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[1].dataMsg->docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(1, results[1].dataMsg->docs[0].doc["a"].getLong());
     ASSERT_EQ(3, results[1].dataMsg->docs[1].doc["c"].getLong());
     // Verify the window2 results.
     ASSERT(results[2].dataMsg);
     ASSERT_EQ(3, results[2].dataMsg->docs.size());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(2, results[2].dataMsg->docs[0].doc["b"].getInt());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[1].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(4, results[2].dataMsg->docs[1].doc["d"].getInt());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[1].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(5, results[2].dataMsg->docs[2].doc["e"].getInt());
     // Verify the watermark
     ASSERT(results[3].controlMsg);
@@ -745,20 +747,20 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     ASSERT(results[1].dataMsg);
     ASSERT_EQ(2, results[1].dataMsg->docs.size());
     ASSERT_EQ(window1,
-              results[1].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[1].dataMsg->docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(1, results[1].dataMsg->docs[0].doc["customerId"].getLong());
     ASSERT_EQ(3, results[1].dataMsg->docs[1].doc["customerId"].getLong());
     // Verify the window2 results.
     ASSERT(results[2].dataMsg);
     ASSERT_EQ(3, results[2].dataMsg->docs.size());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(2, results[2].dataMsg->docs[0].doc["customerId"].getInt());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[1].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(4, results[2].dataMsg->docs[1].doc["customerId"].getInt());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[1].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(5, results[2].dataMsg->docs[2].doc["customerId"].getInt());
 
     // Verify the watermark
@@ -936,9 +938,9 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     ASSERT(results[1].dataMsg);
     ASSERT_EQ(2, results[1].dataMsg->docs.size());
     ASSERT_EQ(window1,
-              results[1].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[1].dataMsg->docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(window1,
-              results[1].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[1].dataMsg->docs[1].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
 
     if (results[1].dataMsg->docs[0].doc["_id"].getInt() == 1) {
         ASSERT_EQ(3, results[1].dataMsg->docs[1].doc["_id"].getInt());
@@ -958,9 +960,9 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     ASSERT_EQ(2, results[2].dataMsg->docs.size());
 
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
     ASSERT_EQ(window2,
-              results[2].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+              results[2].dataMsg->docs[1].streamMeta.getWindow()->getStart()->toMillisSinceEpoch());
 
     if (results[2].dataMsg->docs[0].doc["_id"].getInt() == 2) {
         ASSERT_EQ(4, results[2].dataMsg->docs[1].doc["_id"].getInt());
@@ -1002,12 +1004,18 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     // Verify we get the same results as above, except for the first checkpoint commit message
     // result.
     ASSERT_EQ(results.size() - 1, resultsAfterRestore.size());
-    ASSERT_EQ(
-        window1,
-        resultsAfterRestore[0].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
-    ASSERT_EQ(
-        window1,
-        resultsAfterRestore[0].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+    ASSERT_EQ(window1,
+              resultsAfterRestore[0]
+                  .dataMsg->docs[0]
+                  .streamMeta.getWindow()
+                  ->getStart()
+                  ->toMillisSinceEpoch());
+    ASSERT_EQ(window1,
+              resultsAfterRestore[0]
+                  .dataMsg->docs[1]
+                  .streamMeta.getWindow()
+                  ->getStart()
+                  ->toMillisSinceEpoch());
     if (resultsAfterRestore[0].dataMsg->docs[0].doc["_id"].getInt() == 1) {
         ASSERT_EQ(3, resultsAfterRestore[0].dataMsg->docs[1].doc["_id"].getInt());
         ASSERT_EQ(4, resultsAfterRestore[0].dataMsg->docs[0].doc["avg"].getDouble());
@@ -1022,12 +1030,18 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
         ASSERT_EQ(9, resultsAfterRestore[0].dataMsg->docs[0].doc["sum"].getDouble());
     }
 
-    ASSERT_EQ(
-        window2,
-        resultsAfterRestore[1].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
-    ASSERT_EQ(
-        window2,
-        resultsAfterRestore[1].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+    ASSERT_EQ(window2,
+              resultsAfterRestore[1]
+                  .dataMsg->docs[0]
+                  .streamMeta.getWindow()
+                  ->getStart()
+                  ->toMillisSinceEpoch());
+    ASSERT_EQ(window2,
+              resultsAfterRestore[1]
+                  .dataMsg->docs[1]
+                  .streamMeta.getWindow()
+                  ->getStart()
+                  ->toMillisSinceEpoch());
     if (resultsAfterRestore[1].dataMsg->docs[0].doc["_id"].getInt() == 2) {
         ASSERT_EQ(4, resultsAfterRestore[1].dataMsg->docs[1].doc["_id"].getInt());
         ASSERT_EQ(3.5, resultsAfterRestore[1].dataMsg->docs[0].doc["avg"].getDouble());
@@ -1072,12 +1086,18 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     restoredGroup2->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
     auto resultsAfterRestore2 = queueToVector(restoredSink2.getMessages());
     ASSERT_EQ(results.size() - 1, resultsAfterRestore2.size());
-    ASSERT_EQ(
-        window1,
-        resultsAfterRestore2[0].dataMsg->docs[0].streamMeta.getWindowStart()->toMillisSinceEpoch());
-    ASSERT_EQ(
-        window1,
-        resultsAfterRestore2[0].dataMsg->docs[1].streamMeta.getWindowStart()->toMillisSinceEpoch());
+    ASSERT_EQ(window1,
+              resultsAfterRestore2[0]
+                  .dataMsg->docs[0]
+                  .streamMeta.getWindow()
+                  ->getStart()
+                  ->toMillisSinceEpoch());
+    ASSERT_EQ(window1,
+              resultsAfterRestore2[0]
+                  .dataMsg->docs[1]
+                  .streamMeta.getWindow()
+                  ->getStart()
+                  ->toMillisSinceEpoch());
     if (resultsAfterRestore2[0].dataMsg->docs[0].doc["_id"].getInt() == 1) {
         ASSERT_EQ(3, resultsAfterRestore2[0].dataMsg->docs[1].doc["_id"].getInt());
         ASSERT_EQ(5, resultsAfterRestore2[0].dataMsg->docs[0].doc["avg"].getDouble());

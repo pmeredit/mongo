@@ -57,8 +57,10 @@ public:
         auto windowStartTime = Date_t::fromMillisSinceEpoch(1);
         for (auto& inputDoc : inputDocs) {
             StreamDocument streamDoc{Document{inputDoc}};
-            streamDoc.streamMeta.setWindowStart(windowStartTime);
-            streamDoc.streamMeta.setWindowEnd(windowStartTime + Milliseconds{1});
+            StreamMetaWindow streamMetaWindow;
+            streamMetaWindow.setStart(windowStartTime);
+            streamMetaWindow.setEnd(windowStartTime + Milliseconds{1});
+            streamDoc.streamMeta.setWindow(streamMetaWindow);
             dataMsg.docs.emplace_back(std::move(streamDoc));
         }
 

@@ -84,37 +84,55 @@ structs:
                 description: Total state size of the operator.
                 type: safeInt64
 
+    StreamMetaSource:
+        description: "The definition of the source field of stream metadata"
+        strict: true
+        fields:
+            type:
+                description: "Type of source e.g. kafka, atlas"
+                type: StreamMetaSourceType
+                optional: true
+            partition:
+                description: "Source partition e.g. Kafka partition"
+                type: int
+                optional: true
+            offset:
+                description: "Offset of this document in the source partition"
+                type: safeInt64
+                optional: true
+            key:
+                description: "Key of this Kafka document"
+                type: bindata_generic
+                optional: true
+            headers:
+                description: "Headers of this Kafka document"
+                type: array<KafkaHeader>
+                optional: true
+
+    StreamMetaWindow:
+        description: "The definition of the window field of stream metadata"
+        strict: true
+        fields:
+            start:
+                description: "Window start timestamp"
+                type: date
+                optional: true
+            end:
+                description: "Window end timestamp"
+                type: date
+                optional: true
+
     StreamMeta:
         description: "_stream_meta object definition"
         strict: true
         fields:
-            sourceType:
-                description: "Type of source e.g. kafka, atlas"
-                type: StreamMetaSourceType
+            source:
+                description: "source field of _stream_meta object"
+                type: StreamMetaSource
                 optional: true
-            sourcePartition:
-                description: "Source partition e.g. Kafka partition"
-                type: int
-                optional: true
-            sourceOffset:
-                description: "Offset of this document in the source partition"
-                type: safeInt64
-                optional: true
-            sourceKey:
-                description: "Key of this Kafka document"
-                type: bindata_generic
-                optional: true
-            sourceHeaders:
-                description: "Headers of this Kafka document"
-                type: array<KafkaHeader>
-                optional: true
-            windowStart:
-                description: "Window start timestamp"
-                type: date
-                optional: true
-            windowEnd:
-                description: "Window end timestamp"
-                type: date
+            window:
+                description: "window field of _stream_meta object"
+                type: StreamMetaWindow
                 optional: true
 
     SampleDataSourceSolarSpecObs:

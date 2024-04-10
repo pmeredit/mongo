@@ -33,13 +33,15 @@ void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
         invariant(!dataMsg.docs.empty());
         // Validate all the docs in the dataMsg have the same windowStart and
         // windowEnd
-        auto start = dataMsg.docs.front().streamMeta.getWindowStart();
-        auto end = dataMsg.docs.front().streamMeta.getWindowEnd();
+        invariant(dataMsg.docs.front().streamMeta.getWindow());
+        auto start = dataMsg.docs.front().streamMeta.getWindow()->getStart();
+        auto end = dataMsg.docs.front().streamMeta.getWindow()->getEnd();
         invariant(start);
         invariant(end);
         for (auto& doc : dataMsg.docs) {
-            invariant(doc.streamMeta.getWindowStart() == start);
-            invariant(doc.streamMeta.getWindowEnd() == end);
+            invariant(doc.streamMeta.getWindow());
+            invariant(doc.streamMeta.getWindow()->getStart() == start);
+            invariant(doc.streamMeta.getWindow()->getEnd() == end);
         }
         // Process all the docs in the data message.
         processDocsInWindow(start->toMillisSinceEpoch(),
@@ -186,8 +188,11 @@ void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
                                               std::vector<StreamDocument> streamDocs,
                                               bool projectStreamMeta) {
     invariant(!streamDocs.empty());
+    const auto& firstStreamMeta = streamDocs.front().streamMeta;
     auto window = addOrGetWindow(
-        windowStartTime, windowEndTime, streamDocs.front().streamMeta.getSourceType());
+        windowStartTime,
+        windowEndTime,
+        firstStreamMeta.getSource() ? firstStreamMeta.getSource()->getType() : boost::none);
     if (!window->status.isOK()) {
         return;
     }
@@ -217,10 +222,14 @@ WindowAwareOperator::Window* WindowAwareOperator::addOrGetWindow(
     boost::optional<StreamMetaSourceTypeEnum> sourceType) {
     if (!_windows.contains(windowStartTime)) {
         // Add a new window.
+        StreamMetaSource streamMetaSource;
+        streamMetaSource.setType(sourceType);
+        StreamMetaWindow streamMetaWindow;
+        streamMetaWindow.setStart(Date_t::fromMillisSinceEpoch(windowStartTime));
+        streamMetaWindow.setEnd(Date_t::fromMillisSinceEpoch(windowEndTime));
         StreamMeta streamMetaTemplate;
-        streamMetaTemplate.setSourceType(sourceType);
-        streamMetaTemplate.setWindowStart(Date_t::fromMillisSinceEpoch(windowStartTime));
-        streamMetaTemplate.setWindowEnd(Date_t::fromMillisSinceEpoch(windowEndTime));
+        streamMetaTemplate.setSource(std::move(streamMetaSource));
+        streamMetaTemplate.setWindow(std::move(streamMetaWindow));
         auto window = makeWindow(std::move(streamMetaTemplate));
         auto result = _windows.emplace(windowStartTime, std::move(window));
         invariant(result.second);
@@ -266,9 +275,11 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
     for (auto& [windowStartTime, window] : _windows) {
         // Write the window start record.
         WindowOperatorStartRecord windowStart(
-            windowStartTime, window->streamMetaTemplate.getWindowEnd()->toMillisSinceEpoch());
-        if (window->streamMetaTemplate.getSourceType()) {
-            windowStart.setSourceType(window->streamMetaTemplate.getSourceType());
+            windowStartTime,
+            window->streamMetaTemplate.getWindow()->getEnd()->toMillisSinceEpoch());
+        if (window->streamMetaTemplate.getSource() &&
+            window->streamMetaTemplate.getSource()->getType()) {
+            windowStart.setSourceType(window->streamMetaTemplate.getSource()->getType());
         }
         WindowOperatorCheckpointRecord startRecord;
         startRecord.setWindowStart(std::move(windowStart));
