@@ -262,6 +262,16 @@ structs:
         description: "Optional configuration options for a Kafka Sink."
         strict: true
         fields:
+            key:
+                type:
+                    variant: [object, string]
+                description: "The expression that evaluates to the key of the Kafka message."
+                optional: true
+            headers:
+                type:
+                    variant: [object, string]
+                description: "The expression that evaluates to the headers of the Kafka message."
+                optional: true
             outputFormat:
                 description: "Output format type relaxedJson | canonicalJson, default relaxedJson"
                 optional: true
@@ -515,16 +525,6 @@ structs:
             topic:
                 description: "Topic name to use for the sink data."
                 type: nameExpression
-            key:
-                type:
-                    variant: [object, string]
-                description: "The expression that evaluates to the key of the Kafka message."
-                optional: true
-            headers:
-                type:
-                    variant: [object, string]
-                description: "The expression that evaluates to the headers of the Kafka message."
-                optional: true
             config:
                 description: "Kafka sink configuration."
                 type: KafkaSinkConfigOptions

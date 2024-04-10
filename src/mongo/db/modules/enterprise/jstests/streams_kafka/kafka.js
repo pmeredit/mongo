@@ -88,10 +88,10 @@ function makeMongoToKafkaStartCmd(
         config: {outputFormat: 'relaxedJson'}
     };
     if (key !== null) {
-        emitOptions.key = key;
+        emitOptions.config.key = key;
     }
     if (headers !== null) {
-        emitOptions.headers = headers;
+        emitOptions.config.headers = headers;
     }
     if (jsonType != null) {
         emitOptions.config.outputFormat = jsonType;

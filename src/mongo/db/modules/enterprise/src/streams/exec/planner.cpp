@@ -793,11 +793,12 @@ void Planner::planEmitSink(const BSONObj& spec) {
             if (auto auth = baseOptions.getAuth(); auth) {
                 kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
             }
-            kafkaEmitOptions.key = options.getKey()
-                ? parseStringOrObjectExpression(_context->expCtx, *options.getKey())
+            kafkaEmitOptions.key = options.getConfig() && options.getConfig()->getKey()
+                ? parseStringOrObjectExpression(_context->expCtx, *options.getConfig()->getKey())
                 : nullptr;
-            kafkaEmitOptions.headers = options.getHeaders()
-                ? parseStringOrObjectExpression(_context->expCtx, *options.getHeaders())
+            kafkaEmitOptions.headers = options.getConfig() && options.getConfig()->getHeaders()
+                ? parseStringOrObjectExpression(_context->expCtx,
+                                                *options.getConfig()->getHeaders())
                 : nullptr;
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
