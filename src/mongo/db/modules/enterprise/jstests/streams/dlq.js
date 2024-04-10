@@ -12,6 +12,7 @@ import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils
 const inputColl = db.input_coll;
 const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
+const processorName = "dlqTest";
 
 outColl.drop();
 dlqColl.drop();
@@ -23,7 +24,7 @@ function startStreamProcessor(pipeline) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: 'tenant1',
-        name: 'mergeTest',
+        name: processorName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
         connections: [{name: 'db1', type: 'atlas', options: {uri: uri}}],
@@ -38,7 +39,7 @@ function startStreamProcessor(pipeline) {
 }
 
 function getDlqOperatorStats() {
-    let getStatsCmd = {streams_getStats: '', name: 'mergeTest', verbose: true};
+    let getStatsCmd = {streams_getStats: '', name: processorName, verbose: true};
     let result = db.runCommand(getStatsCmd);
     // jsTestLog(result);
     if (result["ok"] != 1) {
@@ -62,7 +63,7 @@ function getDlqOperatorStats() {
 function getDlqStreamStats() {
     let getStatsCmd = {
         streams_getStats: '',
-        name: 'mergeTest',
+        name: processorName,
     };
 
     let result = db.runCommand(getStatsCmd);
@@ -81,7 +82,7 @@ function getDlqStreamStats() {
 function stopStreamProcessor() {
     let stopCmd = {
         streams_stopStreamProcessor: '',
-        name: 'mergeTest',
+        name: processorName,
     };
     let result = db.runCommand(stopCmd);
     assert.eq(result["ok"], 1);
@@ -142,7 +143,7 @@ let listCmd = {streams_listStreamProcessors: ''};
 assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
 
 // Start a sample session.
-const cursorId = startSample('mergeTest');
+const cursorId = startSample(processorName);
 
 inputColl.insert(
     Array.from({length: 100}, (_, i) => ({_id: i, ts: i, a: i, b: i % 10, c: Math.floor(i / 20)})));
@@ -152,11 +153,11 @@ assert.soon(() => { return dlqColl.count() == 26; });
 assert.soon(() => { return outColl.count() == 5; });
 
 // Verify the contents of a dlq doc.
-const dlqDoc = dlqColl.find({"fullDocument._id": 0})
-                   .toArray()
-                   .map((doc) => sanitizeDoc(doc, ['_id', '_stream_meta']));
+const dlqDoc =
+    dlqColl.find({"doc._id": 0}).toArray().map((doc) => sanitizeDoc(doc, ['_id', '_stream_meta']));
 const dlqDocErrInfo = dlqDoc.map(doc => sanitizeDoc(doc.errInfo));
-const dlqDocFullDoc = dlqDoc.map(doc => sanitizeDoc(doc.fullDocument));
+const dlqDocFullDoc = dlqDoc.map(doc => sanitizeDoc(doc.doc));
+assert.eq(processorName, dlqDoc[0].processorName);
 assert.eq(
     [{
         "reason":
@@ -165,7 +166,7 @@ assert.eq(
     dlqDocErrInfo);
 assert.eq([{"_id": 0, "ts": 0, "a": 0, "b": 0, "c": 0}], dlqDocFullDoc);
 
-let sampledDocs = sampleUntil(cursorId, 5, 'mergeTest', 2);
+let sampledDocs = sampleUntil(cursorId, 5, processorName, 2);
 let count = 0;
 for (let i = 0; i < sampledDocs.length; i++) {
     if (!sampledDocs[i].hasOwnProperty("_dlqMessage")) {
@@ -242,7 +243,7 @@ assert.soon(() => {
         streamStats.numDlqBytes > 0 && streamStats.numDlqBytes == opStats.numDlqBytes;
 });
 
-let getStatsCmd = {streams_getStats: '', name: 'mergeTest', verbose: true};
+let getStatsCmd = {streams_getStats: '', name: processorName, verbose: true};
 const result = db.runCommand(getStatsCmd);
 // verify numOutputDocs matches the actual emitted docs;
 jsTestLog(result);

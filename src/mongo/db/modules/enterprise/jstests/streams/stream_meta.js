@@ -55,6 +55,9 @@ function testStreamMeta({
 
     // Test DLQ results.
     const dlqResults = dlqColl.find({}, {_id: 0}).toArray();
+    for (let dlqResult of expectedDlqResults) {
+        dlqResult["processorName"] = processorName;
+    }
     assertArrayEq({actual: dlqResults, expected: expectedDlqResults});
 
     assert.commandWorked(processor.stop());
@@ -85,8 +88,7 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        fullDocument:
-            {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
     }],
 });
 
@@ -116,8 +118,7 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        fullDocument:
-            {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
     }],
 });
 
@@ -147,8 +148,7 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        fullDocument:
-            {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
     }],
 });
 
@@ -172,8 +172,7 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        fullDocument:
-            {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
     }],
 });
 

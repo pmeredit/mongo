@@ -335,7 +335,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     ASSERT_EQUALS(1, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());
     dlqMsgs.pop();
-    ASSERT_BSONOBJ_EQ(fromjson("{partition: 0}"), dlqDoc["fullDocument"].Obj());
+    ASSERT_BSONOBJ_EQ(fromjson("{partition: 0}"), dlqDoc["doc"].Obj());
     ASSERT_TRUE(dlqDoc["errInfo"]["reason"].String().starts_with(
         "Failed to process input document with error"));
 

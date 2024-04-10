@@ -98,9 +98,9 @@ BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMe
         streamMetaFieldName, std::move(streamDoc.streamMeta), std::move(error));
     const int64_t maxDlqFullDocumentSizeBytes = BSONObjMaxUserSize / 2;
     if (streamDoc.doc.getApproximateSize() <= maxDlqFullDocumentSizeBytes) {
-        objBuilder.append("fullDocument", streamDoc.doc.toBson());
+        objBuilder.append("doc", streamDoc.doc.toBson());
     } else {
-        objBuilder.append("fullDocument", "fullDocument too large to emit");
+        objBuilder.append("doc", "full document too large to emit");
     }
     return objBuilder;
 }

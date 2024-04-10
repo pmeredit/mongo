@@ -22,6 +22,7 @@ using namespace mongo;
 DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {}
 
 int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
+    objBuilder.append("processorName", _context->streamName);
     auto obj = objBuilder.obj();
     LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj);
     sendOutputToSamplers(obj);

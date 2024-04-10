@@ -138,11 +138,11 @@ assert.eq(validDocs, validResults, validResults);
 // collection.
 const dlqColl = db[dlqCollName];
 
-// The DLQ will store the change events in a 'fullDocument' field. We run an aggregate to transform
+// The DLQ will store the change events in a 'doc' field. We run an aggregate to transform
 // the DLQ documents such that we can use the original validation expression and projection.
 const invalidResults = dlqColl
                            .aggregate([
-                               {$replaceRoot: {newRoot: "$fullDocument"}},
+                               {$replaceRoot: {newRoot: "$doc"}},
                                {$match: {$expr: {$not: [validationExpr]}}},
                                {$project: projection},
                                {$sort: {_id: 1}}

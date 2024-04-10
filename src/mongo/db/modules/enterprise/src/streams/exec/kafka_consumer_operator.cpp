@@ -677,7 +677,7 @@ BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument s
     BSONObjBuilder objBuilder = streams::toDeadLetterQueueMsg(
         _context->streamMetaFieldName, std::move(streamMeta), std::move(sourceDoc.error));
     if (sourceDoc.doc) {
-        objBuilder.append("fullDocument", std::move(*sourceDoc.doc));
+        objBuilder.append("doc", std::move(*sourceDoc.doc));
     }
     return objBuilder;
 }

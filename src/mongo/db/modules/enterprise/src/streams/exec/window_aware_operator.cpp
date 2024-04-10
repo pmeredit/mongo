@@ -6,10 +6,17 @@
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
+#include "streams/exec/util.h"
 
 namespace streams {
 
 using namespace mongo;
+
+namespace {
+
+constexpr StringData kMissedWindowsFieldName = "missedWindowStartTimes"_sd;
+
+}
 
 void WindowAwareOperator::doStart() {
     if (_context->restoreCheckpointId) {
@@ -470,13 +477,12 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
     }
     if (missedWindows.size() > 0) {
         // create Dlq document
-        BSONObjBuilder bsonObjBuilder;
-        bsonObjBuilder.append("doc", doc.doc.toBson());
-        bsonObjBuilder.append("error", "Input document arrived late.");
-        bsonObjBuilder.append("missedWindowStartTimes", missedWindows);
+        auto bsonObjBuilder = toDeadLetterQueueMsg(
+            _context->streamMetaFieldName, doc, std::string{"Input document arrived late."});
+        bsonObjBuilder.append(kMissedWindowsFieldName, missedWindows);
 
         // write Dlq message
-        int64_t numDlqBytes = _context->dlq->addMessage(bsonObjBuilder.obj());
+        int64_t numDlqBytes = _context->dlq->addMessage(std::move(bsonObjBuilder));
         // update Dlq stats
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
     }
