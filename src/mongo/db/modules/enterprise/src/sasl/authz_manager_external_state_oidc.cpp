@@ -91,7 +91,7 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
         return userReq;
     }
 
-    auto swRoles = idp->getUserRoles(validatedToken, userName.getTenant());
+    auto swRoles = idp->getUserRoles(validatedToken, userName.tenantId());
     if (!swRoles.isOK()) {
         return reauthStatus(swRoles.getStatus());
     }
