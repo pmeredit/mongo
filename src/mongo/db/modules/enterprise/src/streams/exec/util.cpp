@@ -171,7 +171,7 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                 }
                 newStreamMeta.setNestedField(
                     FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
-                                             << StreamMetaSource::kKeyFieldName)
+                                             << StreamMetaSource::kHeadersFieldName)
                                   .ss.str()),
                     Value(std::move(headers)));
             }

@@ -267,8 +267,8 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, json
             // Verify the Kafka key and headers in metadata.
             const expectedKey = key === null ? undefined : input[i].key;
             const expectedHeaders = headers === null ? undefined : input[i].headers;
-            assert.eq(outputDoc._stream_meta.sourceKey, expectedKey, outputDoc);
-            assert.eq(outputDoc._stream_meta.sourceHeaders, expectedHeaders, outputDoc);
+            assert.eq(outputDoc._stream_meta.source.key, expectedKey, outputDoc);
+            assert.eq(outputDoc._stream_meta.source.headers, expectedHeaders, outputDoc);
 
             outputDoc = sanitizeDoc(outputDoc);
             delete outputDoc._id;
@@ -338,11 +338,11 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
     waitForCount(sinkColl1, 1, 5 * 60 /* timeout */);
     const results = sinkColl1.find({}).toArray();
     for (let doc of results) {
-        assert(doc._stream_meta.hasOwnProperty("sourceType"), doc);
-        assert(doc._stream_meta.hasOwnProperty("sourcePartition"), doc);
-        assert(doc._stream_meta.hasOwnProperty("sourceOffset"), doc);
-        assert(doc._stream_meta.hasOwnProperty("windowStart"), doc);
-        assert(doc._stream_meta.hasOwnProperty("windowEnd"), doc);
+        assert(doc._stream_meta.source.hasOwnProperty("type"), doc);
+        assert(doc._stream_meta.source.hasOwnProperty("partition"), doc);
+        assert(doc._stream_meta.source.hasOwnProperty("offset"), doc);
+        assert(doc._stream_meta.window.hasOwnProperty("start"), doc);
+        assert(doc._stream_meta.window.hasOwnProperty("end"), doc);
     }
 
     // Stop the streamProcessors.
