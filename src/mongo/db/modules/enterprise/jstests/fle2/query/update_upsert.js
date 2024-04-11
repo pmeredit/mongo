@@ -6,6 +6,8 @@
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   assumes_unsharded_collection,
+ *   # TODO SERVER-89286 re-enable this test
+ *   assumes_balancer_off,
  * ]
  */
 
