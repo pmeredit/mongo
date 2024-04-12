@@ -15,6 +15,7 @@
 #include "mongo/stdx/thread.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/event_deserializer.h"
@@ -23,6 +24,7 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -99,15 +101,28 @@ public:
 private:
     void consume_cb(RdKafka::Message& msg, void* opaque) override {
         dassert(opaque == nullptr);
+        bool hasError{true};
         try {
             _consumer->onMessage(msg);
+            hasError = false;
+        } catch (const SPException& e) {
+            _consumer->onError(e.toStatus());
+        } catch (const DBException& e) {
+            _consumer->onError(e.toStatus());
         } catch (const std::exception& e) {
             LOGV2_ERROR(74677,
                         "{partition}: encountered exception: {error}",
                         "partition"_attr = _consumer->partition(),
                         "error"_attr = e.what());
-            _consumer->onError(std::current_exception());
+            SPStatus status{
+                Status{ErrorCodes::InternalError,
+                       fmt::format("Kafka $source partition {} encountered unexpected error.",
+                                   _consumer->partition())},
+                e.what()};
+            _consumer->onError(std::move(status));
+        }
 
+        if (hasError) {
             // Cancel the current callback dispatcher and immediately return the control
             // back to the consumer thread.
             rd_kafka_yield(nullptr);
@@ -121,7 +136,7 @@ KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options
     : KafkaPartitionConsumerBase(std::move(options)),
       _context(context),
       _memoryUsageHandle(_context->memoryAggregator->createUsageHandle()) {
-    _eventCbImpl = std::make_unique<KafkaEventCallback>(
+    _eventCallback = std::make_unique<KafkaEventCallback>(
         _context, fmt::format("KafkaPartitionConsumer-{}", _options.partition));
 }
 
@@ -141,7 +156,37 @@ void KafkaPartitionConsumer::doInit() {
 
 void KafkaPartitionConsumer::doStart() {
     dassert(!_consumerThread.joinable());
-    _consumerThread = stdx::thread([this] { fetchLoop(); });
+    _consumerThread = stdx::thread([this] {
+        // Connect to Kafka.
+        try {
+            connectToSource();
+            tassert(ErrorCodes::InternalError,
+                    "Expected isConnected() to be true here.",
+                    getConnectionStatus().isConnected());
+        } catch (const SPException& e) {
+            onConnectionError(e.toStatus());
+        } catch (const DBException& e) {
+            onConnectionError(e.toStatus());
+        } catch (const std::exception& e) {
+            onConnectionError(
+                SPStatus{mongo::Status{ErrorCodes::InternalError,
+                                       "Unexpected exception connecting to kafka $source."},
+                         e.what()});
+        }
+
+        // Start fetching messages.
+        try {
+            fetchLoop();
+        } catch (const SPException& e) {
+            onError(e.toStatus());
+        } catch (const DBException& e) {
+            onError(e.toStatus());
+        } catch (const std::exception& e) {
+            onError(SPStatus{mongo::Status{ErrorCodes::InternalError,
+                                           "Unexpected exception reading from kafka $source."},
+                             e.what()});
+        }
+    });
 }
 
 KafkaPartitionConsumer::~KafkaPartitionConsumer() {
@@ -182,11 +227,6 @@ ConnectionStatus KafkaPartitionConsumer::doGetConnectionStatus() const {
     return _connectionStatus;
 }
 
-void KafkaPartitionConsumer::setConnectionStatus(ConnectionStatus status) {
-    stdx::lock_guard<Latch> lock(_mutex);
-    _connectionStatus = status;
-}
-
 boost::optional<int64_t> KafkaPartitionConsumer::doGetStartOffset() const {
     stdx::lock_guard<Latch> lock(_mutex);
     return _startOffset;
@@ -212,10 +252,8 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             }
         }
 
-        if (_finalizedDocBatch.exception) {
-            // Throw the exception to the caller.
-            std::rethrow_exception(_finalizedDocBatch.exception);
-        }
+        spassert(_finalizedDocBatch.status, _finalizedDocBatch.status.isOK());
+
         if (!_finalizedDocBatch.empty()) {
             dassert(!_finalizedDocBatch.docVecs.empty());
             auto docVec = _finalizedDocBatch.popDocVec();
@@ -252,7 +290,7 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
 
-    setConf("event_cb", _eventCbImpl.get());
+    setConf("event_cb", _eventCallback.get());
 
     // Set auth related configurations.
     for (const auto& config : _options.authConfig) {
@@ -263,7 +301,7 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     return conf;
 }
 
-boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
+int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
     int64_t startOffset = _options.startOffset;
     if (startOffset == RdKafka::Topic::OFFSET_BEGINNING ||
         startOffset == RdKafka::Topic::OFFSET_END) {
@@ -278,12 +316,11 @@ boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
                                                &highOffset,
                                                _options.kafkaRequestTimeoutMs.count());
         if (resp != RdKafka::ERR_NO_ERROR) {
-            LOGV2_ERROR(76434,
-                        "{partition}: query_watermark_offsets() failed: {error}",
-                        "context"_attr = _context,
-                        "partition"_attr = partition(),
-                        "error"_attr = RdKafka::err2str(resp));
-            return boost::none;
+            auto errStr =
+                fmt::format("query_watermark_offsets failed for partition {} with error {}",
+                            partition(),
+                            RdKafka::err2str(resp));
+            uasserted(76434, errStr);
         }
 
         if (startOffset == RdKafka::Topic::OFFSET_BEGINNING) {
@@ -306,106 +343,51 @@ boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
 }
 
 void KafkaPartitionConsumer::connectToSource() {
-    boost::optional<int64_t> startOffset;
     boost::optional<int64_t> numPartitions;
-    try {
-        while (true) {
-            {
-                stdx::unique_lock fLock(_finalizedDocBatch.mutex);
-                if (_finalizedDocBatch.shutdown) {
-                    LOGV2_INFO(74681,
-                               "{partition}: exiting fetchLoop()",
-                               "partition"_attr = partition(),
-                               "context"_attr = _context);
-                    return;
-                }
-            }
 
-            bool success{false};
-            RdKafka::Metadata* metadata{nullptr};
-            RdKafka::ErrorCode resp = _consumer->metadata(/*all_topics*/ false,
-                                                          _topic.get(),
-                                                          &metadata,
-                                                          _options.kafkaRequestTimeoutMs.count());
+    RdKafka::Metadata* metadata{nullptr};
+    RdKafka::ErrorCode resp = _consumer->metadata(
+        /*all_topics*/ false, _topic.get(), &metadata, _options.kafkaRequestTimeoutMs.count());
 
-            std::unique_ptr<RdKafka::Metadata> metadataOwner(metadata);
-            if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
-                LOGV2_ERROR(77179,
-                            "{partition}: could not load metadata for the topic: {error}",
-                            "context"_attr = _context,
-                            "topic"_attr = _options.topicName,
-                            "partition"_attr = partition(),
-                            "error"_attr = RdKafka::err2str(resp));
-                setConnectionStatus(
-                    ConnectionStatus{ConnectionStatus::Status::kError,
-                                     {{ErrorCodes::Error(77175),
-                                       fmt::format("Could not connect to the Kafka topic with "
-                                                   "kafka error code: {}, message: {}.",
-                                                   resp,
-                                                   RdKafka::err2str(resp))}}});
-            } else if (metadata->topics()->at(0)->partitions()->empty()) {
-                // TODO(SERVER-80865): Clarify the behavior when the topic does not (yet) exist.
-                // Can we error out in this case or do we need to indefinitely wait for it to exist?
-                LOGV2_ERROR(77178,
-                            "topic does not exist",
-                            "context"_attr = _context,
-                            "topic"_attr = _options.topicName,
-                            "partition"_attr = partition());
-                setConnectionStatus(
-                    ConnectionStatus{ConnectionStatus::Status::kError,
-                                     {{ErrorCodes::Error(77176),
-                                       "No partitions found in topic. Does the topic exist?"}}});
-            } else {
-                numPartitions = metadata->topics()->at(0)->partitions()->size();
-                success = true;
-            }
-
-            if (success) {
-                startOffset = queryWatermarkOffsets();
-                success = bool(startOffset);
-            }
-
-            if (success) {
-                break;
-            } else {
-                // Necessary metadata could not be fetched in this run, so sleep a little before
-                // retrying.
-                stdx::this_thread::sleep_for(
-                    stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
-            }
-        }
-
-        uassert(74688, "Expected startingOffset greater than or equal to zero", *startOffset >= 0);
-
-        RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, *startOffset);
-        uassert(8720709,
-                str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
-                resp == RdKafka::ERR_NO_ERROR);
-
-        setConnectionStatus(ConnectionStatus{ConnectionStatus::Status::kConnected});
-        stdx::lock_guard<Latch> lock(_mutex);
-        _startOffset = startOffset;
-        _numPartitions = numPartitions;
-    } catch (const std::exception& e) {
-        LOGV2_ERROR(76444,
-                    "{partition}: encountered exception: {error}",
+    std::unique_ptr<RdKafka::Metadata> metadataOwner(metadata);
+    if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
+        LOGV2_ERROR(77179,
+                    "{partition}: could not load metadata for the topic: {error}",
                     "context"_attr = _context,
+                    "topic"_attr = _options.topicName,
                     "partition"_attr = partition(),
-                    "error"_attr = e.what());
-        onError(std::current_exception());
+                    "error"_attr = RdKafka::err2str(resp));
+        uasserted(77175,
+                  fmt::format("Could not connect to the Kafka topic with "
+                              "kafka error code: {}, message: {}.",
+                              resp,
+                              RdKafka::err2str(resp)));
+    } else if (metadata->topics()->at(0)->partitions()->empty()) {
+        LOGV2_ERROR(77178,
+                    "topic does not exist",
+                    "context"_attr = _context,
+                    "topic"_attr = _options.topicName,
+                    "partition"_attr = partition());
+        uasserted(77176, "No partitions found in topic. Does the topic exist?");
+    } else {
+        numPartitions = metadata->topics()->at(0)->partitions()->size();
     }
+
+    auto startOffset = queryWatermarkOffsets();
+
+    resp = _consumer->start(_topic.get(), _options.partition, startOffset);
+    uassert(8720709,
+            str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
+            resp == RdKafka::ERR_NO_ERROR);
+
+    // Set the state to connected.
+    stdx::lock_guard<Latch> lock(_mutex);
+    _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};
+    _startOffset = startOffset;
+    _numPartitions = numPartitions;
 }
 
 void KafkaPartitionConsumer::fetchLoop() {
-    connectToSource();
-    if (!getConnectionStatus().isConnected()) {
-        LOGV2_INFO(76445,
-                   "{partition}: exiting fetchLoop()",
-                   "context"_attr = _context,
-                   "partition"_attr = partition());
-        return;
-    }
-
     ConsumeCbImpl consumeCbImpl(this);
     while (true) {
         {
@@ -454,17 +436,12 @@ void KafkaPartitionConsumer::fetchLoop() {
                                                          &consumeCbImpl,
                                                          /*opaque*/ nullptr);
         if (numDocsFetched < 0) {
-            LOGV2_ERROR(76438,
-                        "{partition}: consume_callback() failed",
-                        "partition"_attr = partition(),
-                        "context"_attr = _context);
-            setConnectionStatus(ConnectionStatus{
-                ConnectionStatus::Status::kError,
-                {{ErrorCodes::Error(76437),
-                  fmt::format("partition: {} consume_callback() failed", partition())}}});
-            // Sleep a little before retrying.
-            stdx::this_thread::sleep_for(
-                stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
+            onError(SPStatus{{ErrorCodes::Error{8214900},
+                              fmt::format("Kafka $source partition {} consume_callback() failed",
+                                          partition())}});
+            // At this point onError has been called, and the next call to doGetDocuments will error
+            // out the processor.
+            return;
         } else {
             LOGV2_DEBUG(74680,
                         1,
@@ -473,6 +450,14 @@ void KafkaPartitionConsumer::fetchLoop() {
                         "partition"_attr = partition(),
                         "numDocsFetched"_attr = numDocsFetched);
         }
+
+        // Here we ask the eventCallback if we should error out.
+        // Even if the broker is down, the above consume_callback will still work fine.
+        // But the eventCallback will receive an ALL_BROKERS_DOWN error, and this will return true.
+        uassert(8214906,
+                fmt::format("Kafka $source partition {} encountered error", partition()),
+                !_eventCallback->hasError());
+
         // TODO(sandeep): Test to see if we really need to call poll(). Also, move this to
         // another background thread that polls on behalf of all the consumers in the process.
         _consumer->poll(0);
@@ -545,14 +530,19 @@ void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
     }
 }
 
-void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
-    {
-        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
-        _finalizedDocBatch.shutdown = true;
-        if (!_finalizedDocBatch.exception) {
-            _finalizedDocBatch.exception = std::move(exception);
-        }
+void KafkaPartitionConsumer::onError(SPStatus status) {
+    status = _eventCallback->appendRecentErrorsToStatus(status);
+    stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+    _finalizedDocBatch.shutdown = true;
+    if (_finalizedDocBatch.status.isOK()) {
+        _finalizedDocBatch.status = std::move(status);
     }
+}
+
+void KafkaPartitionConsumer::onConnectionError(SPStatus status) {
+    status = _eventCallback->appendRecentErrorsToStatus(status);
+    stdx::lock_guard<Latch> lock(_mutex);
+    _connectionStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
 }
 
 KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Message& message) {

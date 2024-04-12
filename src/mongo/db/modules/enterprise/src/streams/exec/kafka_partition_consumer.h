@@ -12,6 +12,7 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/chunked_memory_aggregator.h"
+#include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/message.h"
 
@@ -100,8 +101,8 @@ private:
         int64_t byteSize{0};
         // Tracks the total number of documents returned to the caller via popDocVec().
         int64_t numDocsReturned{0};
-        // Tracks an exception that needs to be returned to the caller.
-        std::exception_ptr exception;
+        // Tracks an error status that needs to be returned to the caller.
+        SPStatus status;
         // Whether _consumerThread should shut down. This is triggered when stop() is called or
         // an error is encountered. Currently this is only set in _finalizedDocBatch.
         bool shutdown{false};
@@ -122,9 +123,6 @@ private:
     // Whether the consumer is connected to the source Kafka cluster.
     ConnectionStatus doGetConnectionStatus() const override;
 
-    // Updates _connectionStatus as specified.
-    void setConnectionStatus(ConnectionStatus status);
-
     // Returns _startOffset.
     boost::optional<int64_t> doGetStartOffset() const override;
 
@@ -141,7 +139,7 @@ private:
     // Calls query_watermark_offsets() to find the low and high offsets for the partition
     // and returns the appropriate start offset to use for this partition.
     // Returns boost::none if there was an error in reading the offsets.
-    boost::optional<int64_t> queryWatermarkOffsets();
+    int64_t queryWatermarkOffsets();
 
     // Tries connection to the source Kafka cluster and retrieve start offset.
     void connectToSource();
@@ -154,10 +152,10 @@ private:
     void onMessage(RdKafka::Message& msg);
 
     // Registers the given error and initiates the shutdown of _consumerThread.
-    void onError(std::exception_ptr exception);
+    void onError(SPStatus status);
 
-    // Called by RdKafka::EventCb implementation to forward the events received from librdkafka.
-    void onEvent(const RdKafka::Event& event);
+    // Called when there is an error connecting to Kafka.
+    void onConnectionError(SPStatus status);
 
     // Processes the given RdKafka::Message that contains a payload and returns the corresponding
     // KafkaSourceDocument.
@@ -168,7 +166,7 @@ private:
     // _finalizedDocBatch.
     void pushDocToActiveDocBatch(KafkaSourceDocument doc);
 
-    std::unique_ptr<RdKafka::EventCb> _eventCbImpl;
+    std::unique_ptr<KafkaEventCallback> _eventCallback;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Consumer> _consumer{nullptr};
     std::unique_ptr<RdKafka::Topic> _topic{nullptr};

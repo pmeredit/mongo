@@ -6,6 +6,7 @@
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/string_map.h"
+#include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/sink_operator.h"
 
 #include <rdkafka.h>
@@ -82,6 +83,8 @@ private:
             RdKafka::Producer* producer{nullptr};
             // Timeout for the metadata query.
             mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
+            // Event callback.
+            KafkaEventCallback* kafkaEventCallback{nullptr};
         };
 
         Connector(Options options);
@@ -101,7 +104,7 @@ private:
         void setConnectionStatus(ConnectionStatus status);
 
         // Runs the connection logic until a success or error is encountered.
-        void connectLoop();
+        void testConnection();
 
         Options _options;
         // Background thread used to establish connection with Kafka.
@@ -122,7 +125,7 @@ private:
 
     Options _options;
     // Used to print librdkafka logs.
-    std::unique_ptr<RdKafka::EventCb> _eventCbImpl;
+    std::unique_ptr<KafkaEventCallback> _eventCbImpl;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
     std::unique_ptr<Connector> _connector;

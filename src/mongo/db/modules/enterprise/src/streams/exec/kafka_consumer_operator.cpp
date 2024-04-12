@@ -375,9 +375,9 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
                           "err"_attr = msg->err());
         }
 
-        // Sleep for 10 minutes or shutdown.
+        // Sleep for 1 minute or shutdown.
         shutdown = _groupConsumerThreadCond.wait_for(
-            lock, std::chrono::minutes{10}, [this]() { return _groupConsumerThreadShutdown; });
+            lock, std::chrono::minutes(1), [this]() { return _groupConsumerThreadShutdown; });
     }
 }
 
@@ -426,29 +426,32 @@ void KafkaConsumerOperator::init() {
 ConnectionStatus KafkaConsumerOperator::doGetConnectionStatus() {
     if (!_numPartitions) {
         invariant(_consumers.empty());
-        if (_connector) {
+        tassert(ErrorCodes::InternalError, "Expected connector to be set.", _connector);
+        auto connectionStatus = _connector->getConnectionStatus();
+        if (connectionStatus.isConnected()) {
             // Initialize the state if the connection has been successfully established.
             _numPartitions = _connector->getNumPartitions();
-            auto connectionStatus = _connector->getConnectionStatus();
-            if (_numPartitions) {
-                invariant(connectionStatus.isConnected());
-                _connector->stop();
-                _connector.reset();
+            tassert(ErrorCodes::InternalError,
+                    "Expected _numPartitions to be set",
+                    _numPartitions && *_numPartitions > 0);
+            _connector->stop();
+            _connector.reset();
 
-                // We successfully fetched the topic partition count.
-                init();
-            }
-
-            if (!connectionStatus.isConnected()) {
-                return connectionStatus;
-            }
+            // We successfully fetched the topic partition count.
+            init();
         } else {
-            return ConnectionStatus{ConnectionStatus::Status::kConnecting};
+            return connectionStatus;
         }
     }
     invariant(!_consumers.empty());
 
     // Check if all the consumers are connected.
+    tassert(ErrorCodes::InternalError,
+            "Expected _numPartitions",
+            _numPartitions && *_numPartitions > 0);
+    tassert(ErrorCodes::InternalError,
+            "Expected consumers.size() equal to _numPartitions",
+            _consumers.size() == size_t(*_numPartitions));
     for (auto& consumerInfo : _consumers) {
         auto status = consumerInfo.consumer->getConnectionStatus();
         if (!status.isConnected()) {

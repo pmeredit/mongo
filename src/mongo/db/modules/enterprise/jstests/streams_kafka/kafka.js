@@ -677,49 +677,87 @@ function runKafkaTest(kafka, testFn, partitionCount = 1) {
     }
 }
 
-// Verify that a streamProcessor can be stopped when the Kafka $emit
-// target is in an unhealthy state.
-function testBadKafkaEmitAsyncError() {
-    // Bring up a Kafka. We will crash this Kafka after the streamProcessor starts.
-    let kafkaThatWillFail = new LocalKafkaCluster();
-    kafkaThatWillFail.start(1);
+// Verify that a streamProcessor goes into an error status when the Kafka broker goes down.
+function testKafkaAsyncError() {
+    dropCollections();
 
-    // Start the streamProcessor.
-    const spName = "emitToKafkaThatWillFail";
+    // Bring up a Kafka. We will crash this Kafka after the streamProcessor starts.
+    const partitionCount = 1;
+    let kafkaThatWillFail = new LocalKafkaCluster();
+    kafkaThatWillFail.start(partitionCount);
+
+    // Start a mongo->kafka processor and insert some data.
+    const startCmd =
+        makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName);
+    assert.commandWorked(db.runCommand(startCmd));
+    let inputCount = 10;
+    for (let i = 0; i < inputCount; i++) {
+        sourceColl1.insert({a: i - 1});
+    }
+    // Wait for output message stats.
+    assert.soon(() => {
+        let result = db.runCommand({streams_listStreamProcessors: ""});
+        let stats = db.runCommand({streams_getStats: '', name: startCmd.name});
+        assert.commandWorked(stats);
+        return stats["outputMessageCount"] == inputCount;
+    });
+    // Stop to flush the Kafka $emit output.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName}));
+    // Start the mongo->Kafka SP again.
+    assert.commandWorked(db.runCommand(startCmd));
+
+    // Start Kafka->mongo SP.
+    const kafkaToMongoName = "kafkaToMongo";
     assert.commandWorked(db.runCommand({
         streams_startStreamProcessor: '',
-        name: spName,
+        name: kafkaToMongoName,
         pipeline: [
             {
                 $source: {
-                    connectionName: dbConnName,
-                    db: dbName,
-                    coll: sourceCollName1,
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
                 }
             },
-            {$emit: {connectionName: kafkaPlaintextName, topic: "outputTopic"}}
+            {$merge: {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}}
         ],
         connections: connectionRegistry,
         options: startOptions,
-        processorId: spName,
+        processorId: kafkaToMongoName,
         tenantId: tenantId
     }));
 
-    // Insert some data to buffer it in the local producers queue.
-    for (let i = 0; i < 100; i += 1) {
+    // Insert some data that the mongo->Kafka SP will pickup.
+    inputCount = 100;
+    for (let i = 0; i < inputCount; i += 1) {
         sourceColl1.insert({a: 1});
     }
+    // Wait for the Kafka->mongo SP to have read some messages.
+    assert.soon(() => {
+        let stats = db.runCommand({streams_getStats: '', name: kafkaToMongoName});
+        assert.commandWorked(stats);
+        return stats["outputMessageCount"] > 0;
+    });
 
-    // Now, crash the Kafka target.
+    // Crash the Kafka broker.
     kafkaThatWillFail.stop();
+    // Eventually the SP should go into an error state.
+    assert.soon(() => {
+        let result = db.runCommand({streams_listStreamProcessors: ""});
+        let kafkaToMongo = result.streamProcessors.filter(s => s.name == kafkaToMongoName)[0];
+        let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
+        jsTestLog(result);
+        return kafkaToMongo.status == "error" && mongoToKafka.status == "error" &&
+            kafkaToMongo.error.reason.includes("Kafka $source partition 0 encountered error") &&
+            kafkaToMongo.error.reason.includes(
+                "Connect to ipv4#127.0.0.1:9092 failed: Connection refused") &&
+            mongoToKafka.error.reason.includes("Kafka $emit encountered error") &&
+            mongoToKafka.error.reason.includes(
+                "Connect to ipv4#127.0.0.1:9092 failed: Connection refused");
+    }, "expected both processors to end in error");
 
-    // Insert some more data to buffer even more in the local producers queue.
-    for (let i = 0; i < 1000; i += 1) {
-        sourceColl1.insert({a: 1});
-    }
-
-    // Now try to stop the streamProcessor.
-    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+    // Now stop both stream processors.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName}));
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: startCmd.name}));
 }
 
 let kafka = new LocalKafkaCluster();
@@ -763,7 +801,7 @@ runKafkaTest(kafka, kafkaStartAtEarliestTest);
 
 numDocumentsToInsert = 100000;
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
-testBadKafkaEmitAsyncError();
+
 numDocumentsToInsert = 1000;
 runKafkaTest(
     kafka,
@@ -776,3 +814,5 @@ runKafkaTest(
     () => mongoToKafkaToMongo(
         false /* expectDlq */, null /* key */, null /* headers */, "canonicalJson" /* jsonType */
         ));
+
+testKafkaAsyncError();
