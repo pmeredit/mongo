@@ -6,6 +6,7 @@
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "streams/exec/util.h"
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -19,12 +20,14 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/unflushed_state_container.h"
 
 namespace streams {
 /**
@@ -117,7 +120,7 @@ private:
     ConnectionStatus doGetConnectionStatus() override;
     boost::optional<mongo::BSONObj> doGetRestoredState() override;
     boost::optional<mongo::BSONObj> doGetLastCommittedState() override;
-    void doOnCheckpointCommit(CheckpointId checkpointId) override;
+    mongo::BSONObj doOnCheckpointFlush(CheckpointId checkpointId) override;
 
     // Initializes the internal state from a checkpoint.
     void initFromCheckpoint();
@@ -212,9 +215,8 @@ private:
     // Stores the starting point and watermark in the last committed checkpoint.
     boost::optional<mongo::ChangeStreamSourceCheckpointState> _lastCommittedStartingPoint;
 
-    // Stores uncommitted checkpoints.
-    std::queue<std::pair<CheckpointId, mongo::ChangeStreamSourceCheckpointState>>
-        _uncommittedCheckpoints;
+    // Stores state in checkpoints that have not yet been flushed to remote stoarge.
+    UnflushedStateContainer _unflushedStateContainer;
 
     // Note that in the future (SERVER-82562), if we change the meaning of a checkpoint commit
     // to mean that it has been uploaded to S3, we still need to ensure that the

@@ -94,14 +94,6 @@ Future<void> Executor::start() {
         try {
             if (_context->checkpointStorage) {
                 _context->checkpointStorage->registerMetrics(_metricManager.get());
-                // Register a post commit callback to commit kafka offsets after a checkpoint
-                // has been committed.
-                // Currently checkpoint commit happens in the main Executor thread, and so does the
-                // callback.
-                _context->checkpointStorage->registerPostCommitCallback(
-                    [this](mongo::CheckpointDescription checkpointDescription) {
-                        onCheckpointCommitted(std::move(checkpointDescription));
-                    });
             }
 
             _context->dlq->registerMetrics(_metricManager.get());
@@ -386,6 +378,10 @@ Executor::RunStatus Executor::runOnce() {
         }
     }
 
+    if (_context->checkpointStorage) {
+        processFlushedCheckpoints();
+    }
+
     _writeCheckpointCommand.store(WriteCheckpointCommand::kNone);
 
     int64_t docsConsumed{0};
@@ -436,32 +432,60 @@ void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
+    _uncheckpointedState = false;
 }
 
-void Executor::onCheckpointCommitted(mongo::CheckpointDescription checkpointDescription) {
-    // Note that currently this gets called when the checkpoint is written to the local disk. As
-    // part of SERVER-82562, we will have a way to know when the checkpoint is uploaded to the cloud
-    // storage and not just written to local disk. In that case, there might still be actions we
-    // need to take when the write to local disk finishes (i.e. the take-a-checkpoint control
-    // message propagates through the DAG to the end).
+void Executor::processFlushedCheckpoint(mongo::CheckpointDescription checkpointDescription) {
+    tassert(ErrorCodes::InternalError,
+            "Expected checkpointStorage to be set.",
+            _context->checkpointStorage);
+
+    LOGV2_INFO(8256200,
+               "Executor::onCheckpointFlush",
+               "checkpointDescription"_attr = checkpointDescription.toBSON());
 
     auto source = _options.operatorDag->source();
-    source->onCheckpointCommit(checkpointDescription.getId());
-    _uncheckpointedState = false;
+    auto state = source->onCheckpointFlush(checkpointDescription.getId());
 
-    if (_context->checkpointStorage) {
-        checkpointDescription.setSourceState(
-            _options.operatorDag->source()->getLastCommittedState());
-        {
-            stdx::lock_guard<Latch> lock(_mutex);
-            _lastCommittedCheckpointDescription = std::move(checkpointDescription);
-        }
+    checkpointDescription.setSourceState(std::move(state));
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        _lastCommittedCheckpointDescription = std::move(checkpointDescription);
     }
 }
 
 bool Executor::isShutdown() {
     stdx::lock_guard<Latch> lock(_mutex);
     return _shutdown;
+}
+
+void Executor::onCheckpointFlushed(CheckpointId checkpointId) {
+    tassert(ErrorCodes::InternalError,
+            "Expected checkpointStorage to be set in Executor::notifyCheckpointFlushed.",
+            _context->checkpointStorage);
+    stdx::lock_guard<Latch> lock(_mutex);
+    _checkpointFlushEvents.push_back(checkpointId);
+}
+
+void Executor::processFlushedCheckpoints() {
+    std::deque<CheckpointId> checkpointFlushEvents;
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        std::swap(_checkpointFlushEvents, checkpointFlushEvents);
+    }
+
+    // Tell checkpointStorage about these flushed checkpoint events.
+    for (CheckpointId flushEvent : checkpointFlushEvents) {
+        _context->checkpointStorage->onCheckpointFlushed(flushEvent);
+    }
+    // Get the descriptions of flushed checkpoints back from storage.
+    std::deque<CheckpointDescription> flushedCheckpoints =
+        _context->checkpointStorage->getFlushedCheckpoints();
+    while (!flushedCheckpoints.empty()) {
+        auto description = std::move(flushedCheckpoints.front());
+        flushedCheckpoints.pop_front();
+        processFlushedCheckpoint(std::move(description));
+    }
 }
 
 void Executor::ensureConnected(Date_t deadline) {

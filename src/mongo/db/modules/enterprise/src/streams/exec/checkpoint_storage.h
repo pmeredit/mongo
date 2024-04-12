@@ -1,14 +1,13 @@
 #pragma once
 
 #include <boost/optional.hpp>
-#include <chrono>
 
 #include "mongo/util/chunked_memory_aggregator.h"
-#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/exec/unflushed_state_container.h"
 #include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 
@@ -135,25 +134,21 @@ public:
         return doGetRestoreCheckpointOperatorInfo();
     }
 
-    // Registers a callback to be executed after a checkpoint is committed. The callback
-    // is executed synchronously within `commitCheckpoint()`.
-    void registerPostCommitCallback(std::function<void(mongo::CheckpointDescription)> callback) {
-        invariant(!_postCommitCallback);
-        _postCommitCallback = std::move(callback);
-    }
-
     // This should be called once, any time after CheckpointStorage was constructed
     // and before it starts doing any work. If this is not done, it will lead
     // to an invariant violation
     void registerMetrics(MetricManager* metricManager);
 
+    // Called by the Executor after the streams Agent has flushed a checkpoint to remote storage.
+    void onCheckpointFlushed(CheckpointId id);
+
+    // The executor calls this to get the checkpoints that have been flushed to remote storage.
+    std::deque<mongo::CheckpointDescription> getFlushedCheckpoints();
+
 protected:
     explicit CheckpointStorage(Context* ctxt);
 
     Context* _context{nullptr};
-    // Callback thats executed after a checkpoint is committed. Its the responsibility of the
-    // implementation to execute this in `doCommitCheckpoint()`.
-    boost::optional<std::function<void(mongo::CheckpointDescription)>> _postCommitCallback;
     // The MetricManager responsible for these metrics maintains a weak_ptr to them.
     // So, when not needed anymore, they can simply be destroyed.
     std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
@@ -177,11 +172,16 @@ protected:
     // the ChunkedMemoryAggregator of the Context
     mongo::MemoryUsageHandle _memoryUsageHandle;
 
+protected:
+    // The derived class should call this right before it commits a checkpoint.
+    void addUnflushedCheckpoint(CheckpointId checkpointId,
+                                mongo::CheckpointDescription description);
+
 private:
     friend class KafkaConsumerOperatorTest;
 
     virtual CheckpointId doStartCheckpoint() = 0;
-    virtual mongo::CheckpointDescription doCommitCheckpoint(CheckpointId chkId) = 0;
+    virtual void doCommitCheckpoint(CheckpointId chkId) = 0;
     virtual mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId chkId) = 0;
     virtual void doMarkCheckpointRestored(CheckpointId chkId) = 0;
     virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
@@ -202,6 +202,12 @@ private:
         doCloseStateWriter(writer);
     }
     mongo::Milliseconds durationSinceLastCommit() const;
+
+    // Tracks the checkpoints that have been committed to local disk but not yet flushed to remote
+    // storage.
+    UnflushedStateContainer _unflushedCheckpoints;
+    // Tracks the flushed checkpoints that the Executor has not yet processed.
+    std::deque<mongo::CheckpointDescription> _flushedCheckpoints;
 };
 
 }  // namespace streams

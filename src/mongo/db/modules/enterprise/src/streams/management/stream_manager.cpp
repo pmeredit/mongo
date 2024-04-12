@@ -1281,4 +1281,28 @@ void StreamManager::stopAllStreamProcessors() {
     }
 }
 
+void StreamManager::sendEvent(const mongo::SendEventCommand& request) {
+    uassert(mongo::ErrorCodes::InternalError,
+            "Expected checkpointFlushed command",
+            request.getCheckpointFlushedEvent());
+
+    stdx::lock_guard<Latch> lk(_mutex);
+    // It's easier for the streams Agent to only supply a processor ID here (not name), so we lookup
+    // the processor by ID.
+    auto it =
+        std::find_if(_processors.begin(), _processors.end(), [&request](const auto& processor) {
+            return request.getProcessorId() == processor.second->context->streamProcessorId;
+        });
+    uassert(ErrorCodes::StreamProcessorDoesNotExist,
+            fmt::format("streamProcessor with ID {} not found", request.getProcessorId()),
+            it != _processors.end());
+    uassert(mongo::ErrorCodes::InternalError,
+            fmt::format("streamProcessor with ID {} does not have checkpoint storage",
+                        request.getProcessorId()),
+            it->second->context->checkpointStorage);
+    // Hold the StreamManager mutex while calling this (to protect against a concurrent stop).
+    it->second->executor->onCheckpointFlushed(
+        request.getCheckpointFlushedEvent()->getCheckpointId());
+}
+
 }  // namespace streams

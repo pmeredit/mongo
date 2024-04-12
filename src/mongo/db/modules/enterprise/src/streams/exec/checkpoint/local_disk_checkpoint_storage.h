@@ -91,7 +91,7 @@ private:
 
     // The next group of methods implement the CheckpointStorage interface
     CheckpointId doStartCheckpoint() override;
-    mongo::CheckpointDescription doCommitCheckpoint(CheckpointId id) override;
+    void doCommitCheckpoint(CheckpointId id) override;
 
     // A stream processor SP expects that the files related to checkpoint chk1 are present in dir
     // writeRootDir/SP/chk1/... . In general rootDir need not (and likely will not) be the same as

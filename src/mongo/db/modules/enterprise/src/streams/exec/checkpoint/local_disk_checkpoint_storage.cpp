@@ -199,7 +199,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
     _memoryUsageHandle.set(0);
 }
 
-mongo::CheckpointDescription LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
+void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     invariant(isActiveCheckpoint(chkId));
     invariant(!hasActiveWriter(chkId));
 
@@ -226,8 +226,16 @@ mongo::CheckpointDescription LocalDiskCheckpointStorage::doCommitCheckpoint(Chec
     metadata.setOperatorStats(std::move(checkpointStats));
     int64_t writeDurationMs =
         Milliseconds{metadata.getCheckpointEndTime() - metadata.getCheckpointStartTime()}.count();
-    _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
     std::string directory = _activeCheckpointSave->directory.string();
+
+    addUnflushedCheckpoint(chkId,
+                           CheckpointDescription{chkId,
+                                                 directory,
+                                                 _lastCheckpointSizeBytes,
+                                                 mongo::Date_t::now(),
+                                                 Milliseconds{writeDurationMs}});
+
+    _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
     // bookkeeping for checkpoint sizes
     _checkpointSizeBytes->increment(_activeCheckpointSave->checkpointSizeBytes);
     _lastCheckpointSizeBytes = _activeCheckpointSave->checkpointSizeBytes;
@@ -246,12 +254,6 @@ mongo::CheckpointDescription LocalDiskCheckpointStorage::doCommitCheckpoint(Chec
                "context"_attr = _context,
                "checkpointId"_attr = chkId,
                "fullManifestPath"_attr = filepath);
-
-    return CheckpointDescription{chkId,
-                                 directory,
-                                 _lastCheckpointSizeBytes,
-                                 mongo::Date_t::now(),
-                                 Milliseconds{writeDurationMs}};
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> LocalDiskCheckpointStorage::doCreateStateWriter(

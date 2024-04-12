@@ -535,7 +535,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         };
         const {processorId, name} = startCmd;
         const checkpointUtil =
-            new LocalDiskCheckpointUtil(checkpointWriteDir, tenantId, processorId);
+            new LocalDiskCheckpointUtil(checkpointWriteDir, tenantId, processorId, name);
         checkpointUtil.clear();
 
         // Start the kafka to mongo stream processor.
@@ -544,6 +544,15 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         waitForCount(sinkColl1, 1, /* timeout */ 60);
         // Wait for a current offset of 1 in the consumer group.
         assert.soon(() => {
+            // Mark all checkpoints as flushed. The streams Agent does this after the upload to S3
+            // completes.
+            checkpointUtil.flushAll();
+
+            // TODO(SERVER-87997): Sometimes the consumerGroup.commitAsync fails if the stream
+            // processor was just started... but the next attempt works. So we write more
+            // checkpoints to work around that.
+            db.runCommand({streams_writeCheckpoint: '', name: name, force: true});
+
             const res = kafka.getConsumerGroupId(consumerGroupId);
             jsTestLog(res);
             if (res == null || Object.keys(res).length === 0) {
@@ -575,9 +584,14 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
 
         // Start a new stream processor. This SP will restore from the checkpoint and begin
         // at offset 1.
+        const checkpointsFromLastRun = checkpointUtil.getCheckpointIds();
         startCmd.options.checkpointOptions.localDisk.restoreDirectory =
             checkpointUtil.getRestoreDirectory(checkpointId);
         assert.commandWorked(db.runCommand(startCmd));
+        for (const id of checkpointsFromLastRun) {
+            // delete these checkpoints so we don't call flush on them below.
+            checkpointUtil.deleteCheckpointDirectory(id);
+        }
         // Verify output 1 throguh 1+input.length shows up in the sink collection as expected.
         assert.soon(() => { return sinkColl1.count() == input.length; });
         // Stop the mongoToKafka SP.
@@ -586,9 +600,14 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
 
         // Wait for the Kafka consumer group offsets to be updated.
         assert.soon(() => {
+            // Mark all checkpoints as flushed. The streams Agent does this after the upload to S3
+            // completes.
+            checkpointUtil.flushAll();
+
             // TODO(SERVER-87997): Sometimes consumerGroup.commitAsync fails, but the next attempt
             // works. So we write more checkpoints to work around that.
             db.runCommand({streams_writeCheckpoint: '', name: name, force: true});
+
             const res = kafka.getConsumerGroupId(consumerGroupId);
             if (Object.keys(res).length === 0) {
                 return false;

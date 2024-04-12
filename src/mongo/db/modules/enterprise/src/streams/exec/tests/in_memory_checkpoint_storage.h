@@ -44,7 +44,7 @@ private:
 
     CheckpointId doStartCheckpoint() override;
 
-    mongo::CheckpointDescription doCommitCheckpoint(CheckpointId id) override;
+    void doCommitCheckpoint(CheckpointId id) override;
 
     mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId id) override {
         _restoreCheckpoint = id;

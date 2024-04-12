@@ -9,8 +9,9 @@ import {
 } from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
+    LocalDiskCheckpointUtil,
     waitForCount,
-    waitWhenThereIsMoreData,
+    waitWhenThereIsMoreData
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 export function uuidStr() {
@@ -159,6 +160,8 @@ export class TestHelper {
             }
         });
         this.sp = new Streams(this.connectionRegistry, this.db);
+        this.checkpointUtil = new LocalDiskCheckpointUtil(
+            this.writeDir, this.tenantId, this.processorId, this.spName);
     }
 
     // Helper functions.

@@ -6,6 +6,7 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "mongo/idl/idl_parser.h"
 #include "streams/exec/message.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
@@ -667,24 +668,22 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
     // Close the writer.
     writer.reset();
 
+    auto bsonState = _state.toBSON();
     LOGV2_INFO(7788506,
                "Change stream $source: added state",
                "checkpointId"_attr = checkpointId,
                "context"_attr = _context,
-               "state"_attr = tojson(_state.toBSON()));
-    _uncommittedCheckpoints.push(std::make_pair(checkpointId, _state));
+               "state"_attr = bsonState);
+    _unflushedStateContainer.add(checkpointId, std::move(bsonState));
     sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
+    _resumeTokenAdvancedSinceLastCheckpoint = false;
 }
 
-void ChangeStreamSourceOperator::doOnCheckpointCommit(CheckpointId checkpointId) {
-    tassert(8444400, "Expected an uncommitted checkpoint", !_uncommittedCheckpoints.empty());
-    // Checkpoints should always be committed in the order that they were added to
-    // the `_uncommittedCheckpoints` queue.
-    auto [id, checkpointState] = std::move(_uncommittedCheckpoints.front());
-    _uncommittedCheckpoints.pop();
-    tassert(8444401, "Unexpected checkpointId", id == checkpointId);
-    _lastCommittedStartingPoint = checkpointState;
-    _resumeTokenAdvancedSinceLastCheckpoint = false;
+BSONObj ChangeStreamSourceOperator::doOnCheckpointFlush(CheckpointId checkpointId) {
+    auto bsonState = _unflushedStateContainer.pop(checkpointId);
+    _lastCommittedStartingPoint = ChangeStreamSourceCheckpointState::parseOwned(
+        IDLParserContext{"ChangeStreamSourceOperator::doOnCheckpointFlush"}, std::move(bsonState));
+    return _lastCommittedStartingPoint->toBSON();
 }
 
 boost::optional<mongo::BSONObj> ChangeStreamSourceOperator::doGetRestoredState() {

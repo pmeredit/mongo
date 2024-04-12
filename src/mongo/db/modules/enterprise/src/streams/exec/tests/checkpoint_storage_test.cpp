@@ -18,6 +18,7 @@
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/unflushed_state_container.h"
 #include "streams/util/metric_manager.h"
 
 using namespace mongo;
@@ -288,6 +289,30 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
     for (auto& t : threads) {
         t.join();
     }
+}
+
+TEST_F(CheckpointStorageTest, UnflushedStateContainerTest) {
+    UnflushedStateContainer container;
+    auto state1 = std::make_pair(1, BSON("a" << 1));
+    container.add(state1.first, state1.second);
+    // checkpoint1's state should be returned.
+    auto result = container.pop(state1.first);
+    ASSERT_BSONOBJ_EQ(state1.second, result);
+    // checkpoint1's state should no longer be in the container.
+    ASSERT_THROWS_CODE(container.pop(state1.first), DBException, ErrorCodes::InternalError);
+
+    auto state2 = std::make_pair(2, BSON("a" << 2));
+    container.add(state2.first, state2.second);
+    // checkpoint2's state should be returned.
+    result = container.pop(state2.first);
+    ASSERT_BSONOBJ_EQ(state2.second, result);
+    // checkpoint2's state should no longer be in the container.
+    ASSERT_THROWS_CODE(container.pop(state2.first), DBException, ErrorCodes::InternalError);
+
+    container.add(state1.first, state1.second);
+    container.add(state2.first, state2.second);
+    // This should error, state2.first is not the oldest unflushed checkpointId.
+    ASSERT_THROWS_CODE(container.pop(state2.first), DBException, ErrorCodes::InternalError);
 }
 
 }  // namespace

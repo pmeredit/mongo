@@ -9,12 +9,14 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
+#include "streams/exec/unflushed_state_container.h"
 #include "streams/exec/watermark_combiner.h"
 #include "streams/exec/watermark_generator.h"
 
@@ -186,7 +188,7 @@ private:
         MONGO_UNREACHABLE;
     }
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
-    void doOnCheckpointCommit(CheckpointId checkpointId) override;
+    mongo::BSONObj doOnCheckpointFlush(CheckpointId checkpointId) override;
     boost::optional<mongo::BSONObj> doGetRestoredState() override;
     boost::optional<mongo::BSONObj> doGetLastCommittedState() override;
 
@@ -247,11 +249,8 @@ private:
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
-    // Checkpoints that were triggered and saved but not yet committed yet. This occurs in
-    // window fast-mode checkpointing, which holds onto incoming checkpoint messages until
-    // the corresponding windows are closed. Checkpoints are always added to in chronological
-    // order and they are always committed/popped in FIFO order.
-    std::queue<std::pair<CheckpointId, mongo::KafkaSourceCheckpointState>> _uncommittedCheckpoints;
+    // Checkpoint state that has not yet been flushed to remote storage.
+    UnflushedStateContainer _unflushedStateContainer;
 
     // Kafka $source state in the last committed checkpoint.
     boost::optional<mongo::KafkaSourceCheckpointState> _lastCommittedCheckpointState;

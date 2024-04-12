@@ -120,6 +120,10 @@ public:
     // Called while processing a SIGTERM from Kubernetes in the Atlas Stream Processing service.
     void shutdown();
 
+    // Used in send_event_command to notify mongostream about important events (like flushing a
+    // checkpoint to remote storage.)
+    void sendEvent(const mongo::SendEventCommand& request);
+
     // Updates feature flags for the tenant level.
     mongo::UpdateFeatureFlagsReply updateFeatureFlags(
         const mongo::UpdateFeatureFlagsCommand& request);

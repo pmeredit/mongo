@@ -4,11 +4,12 @@
 
 #include "streams/exec/checkpoint_storage.h"
 
-#include "streams/exec/exec_internal_gen.h"
 #include <chrono>
 
+#include "mongo/idl/idl_parser.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/context.h"
+#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/log_util.h"
 #include "streams/util/metric_manager.h"
 
@@ -29,16 +30,31 @@ CheckpointId CheckpointStorage::startCheckpoint() {
 
 void CheckpointStorage::commitCheckpoint(CheckpointId id) {
     invariant(_numOngoingCheckpointsGauge);
-    auto description = doCommitCheckpoint(id);
-    if (_postCommitCallback) {
-        _postCommitCallback.get()(std::move(description));
-    }
+    doCommitCheckpoint(id);
     _numOngoingCheckpointsGauge->set(_numOngoingCheckpointsGauge->value() - 1);
     _numCheckpointsTaken->increment(1);
     _lastCheckpointCommitTs = mongo::Date_t::now();
     _checkpointProduceDurations->increment(
         (_lastCheckpointCommitTs - _lastCheckpointStartTs).count());
     _memoryUsageHandle.set(0);
+}
+
+std::deque<mongo::CheckpointDescription> CheckpointStorage::getFlushedCheckpoints() {
+    std::deque<mongo::CheckpointDescription> result;
+    std::swap(result, _flushedCheckpoints);
+    return result;
+}
+
+void CheckpointStorage::onCheckpointFlushed(CheckpointId checkpointId) {
+    auto bson = _unflushedCheckpoints.pop(checkpointId);
+    auto description = CheckpointDescription::parseOwned(
+        IDLParserContext{"CheckpointStorage::notifyCheckpointFlushed"}, std::move(bson));
+    _flushedCheckpoints.push_back(std::move(description));
+}
+
+void CheckpointStorage::addUnflushedCheckpoint(CheckpointId checkpointId,
+                                               mongo::CheckpointDescription description) {
+    _unflushedCheckpoints.add(checkpointId, description.toBSON());
 }
 
 mongo::CheckpointDescription CheckpointStorage::startCheckpointRestore(CheckpointId chkId) {

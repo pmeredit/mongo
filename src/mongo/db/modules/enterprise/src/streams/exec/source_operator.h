@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mongo/bson/bsonobj.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/message.h"
@@ -58,9 +59,9 @@ public:
         return doGetLastCommittedState();
     }
 
-    // Called by the Executor when a checkpoint is committed.
-    void onCheckpointCommit(CheckpointId checkpointId) {
-        doOnCheckpointCommit(checkpointId);
+    // Called by the Executor when a checkpoint is flushed to remote storage.
+    mongo::BSONObj onCheckpointFlush(CheckpointId checkpointId) {
+        return doOnCheckpointFlush(checkpointId);
     }
 
 protected:
@@ -84,8 +85,9 @@ protected:
         return ConnectionStatus{ConnectionStatus::Status::kConnected};
     }
 
-    virtual void doOnCheckpointCommit(CheckpointId checkpointId) {
+    virtual mongo::BSONObj doOnCheckpointFlush(CheckpointId checkpointId) {
         // No-op by default.
+        return mongo::BSONObj{};
     }
 
     void doIncOperatorStats(OperatorStats stats) final;

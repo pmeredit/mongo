@@ -13,6 +13,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -801,18 +802,14 @@ std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
     return {};
 }
 
-void KafkaConsumerOperator::doOnCheckpointCommit(CheckpointId checkpointId) {
-    // Checkpoints should always be committed in the order that they were added to
-    // the `_uncommittedCheckpoints` queue.
-    auto [id, checkpointState] = std::move(_uncommittedCheckpoints.front());
-    _uncommittedCheckpoints.pop();
-    tassert(7799700,
-            "KafkaConsumerOperator received request to commit offsets for unknown or out of order "
-            "checkpoint ID",
-            id == checkpointId);
+BSONObj KafkaConsumerOperator::doOnCheckpointFlush(CheckpointId checkpointId) {
     if (_options.isTest) {
-        return;
+        return BSONObj{};
     }
+
+    auto stateBson = _unflushedStateContainer.pop(checkpointId);
+    auto checkpointState = KafkaSourceCheckpointState::parseOwned(
+        IDLParserContext{"KafkaConsumerOperator::doOnCheckpointFlush"}, std::move(stateBson));
 
     const auto& partitions = checkpointState.getPartitions();
     std::vector<std::unique_ptr<RdKafka::TopicPartition>> topicPartitionsHolder;
@@ -847,6 +844,7 @@ void KafkaConsumerOperator::doOnCheckpointCommit(CheckpointId checkpointId) {
     }
 
     _lastCommittedCheckpointState = std::move(checkpointState);
+    return _lastCommittedCheckpointState->toBSON();
 }
 
 OperatorStats KafkaConsumerOperator::doGetStats() {
@@ -930,8 +928,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
     KafkaSourceCheckpointState state;
     state.setPartitions(std::move(partitions));
     state.setConsumerGroupId(StringData(_options.consumerGroupId));
-    _uncommittedCheckpoints.push({controlMsg.checkpointMsg->id, state});
-
+    _unflushedStateContainer.add(controlMsg.checkpointMsg->id, state.toBSON());
     LOGV2_INFO(77177,
                "KafkaConsumerOperator adding state to checkpoint",
                "state"_attr = state.toBSON(),

@@ -148,6 +148,7 @@ env.Library(
         'stream_processor_feature_flags.cpp',
         'stream_stats.cpp',
         'tenant_feature_flags.cpp',
+        'unflushed_state_container.cpp',
         'unwind_operator.cpp',
         'util.cpp',
         'validate_operator.cpp',

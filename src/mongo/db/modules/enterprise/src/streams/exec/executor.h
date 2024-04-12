@@ -118,6 +118,10 @@ public:
     // written as long as some state has changed since the last checkpoint
     void writeCheckpoint(bool force);
 
+    // Called by the StreamManager when the streams Agent has flushed a checkpoint to remote
+    // storage.
+    void onCheckpointFlushed(CheckpointId checkpointId);
+
 private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
@@ -164,9 +168,11 @@ private:
     // metrics for those stats.
     void updateStats(StreamStats stats);
 
-    // Callback passed to the checkpoint storage that gets triggered after a checkpoint ID is
-    // committed. This is executed on the same thread as the executor run loop.
-    void onCheckpointCommitted(mongo::CheckpointDescription checkpointDescription);
+    // This is called when a checkpoint has been flushed to remote storage.
+    void processFlushedCheckpoint(mongo::CheckpointDescription checkpointDescription);
+
+    // Process any checkpoints that have been flushed to remote storage.
+    void processFlushedCheckpoints();
 
     // Update stream processor feature flags for this context.
     void updateContextFeatureFlags();
@@ -222,6 +228,9 @@ private:
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
     bool _featureFlagsUpdated{false};
     std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlags;
+
+    // A queue of checkpointIDs that have been flushed to remote storage.
+    std::deque<CheckpointId> _checkpointFlushEvents;
 };
 
 }  // namespace streams

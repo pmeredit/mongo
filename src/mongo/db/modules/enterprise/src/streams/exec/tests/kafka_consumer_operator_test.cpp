@@ -66,10 +66,6 @@ public:
 
     int32_t getRunOnceMaxDocs(KafkaConsumerOperator* source);
 
-    void unregisterPostCommitCallback(CheckpointStorage* storage) const {
-        storage->_postCommitCallback = boost::none;
-    }
-
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
@@ -428,8 +424,6 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     auto svcCtx = getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
     auto context = std::get<0>(getTestContext(svcCtx));
-    context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(context.get());
-    context->checkpointStorage->registerMetrics(_executor->getMetricManager());
 
     bool isFakeKafka = true;
     std::string localKafkaBrokers{""};
@@ -524,6 +518,9 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     // We inspect the offset in the $source state, and verify it aligns with
     // the size of the input and whether startAt is end or beginning.
     auto innerTest = [&](Spec spec) {
+        context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(context.get());
+        context->checkpointStorage->registerMetrics(_executor->getMetricManager());
+
         const int32_t partitionCount = spec.input.size();
         if (spec.input.size() > 1 && !isFakeKafka) {
             // More than one partition needs to be setup in the local kafka cluster,
@@ -559,12 +556,6 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             source->start();
         }
 
-        unregisterPostCommitCallback(context->checkpointStorage.get());
-        context->checkpointStorage->registerPostCommitCallback(
-            [source = source.get()](CheckpointDescription description) {
-                source->onCheckpointCommit(description.getId());
-            });
-
         // Before sending any data, send the checkpoint to the operator.
         // Verify the checkpoint contains a well defined starting point.
         auto checkpointId1 = context->checkpointStorage->startCheckpoint();
@@ -574,6 +565,11 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         ASSERT_EQ(checkpointId1,
                   dynamic_cast<InMemoryCheckpointStorage*>(context->checkpointStorage.get())
                       ->getLatestCommittedCheckpointId());
+        context->checkpointStorage->onCheckpointFlushed(checkpointId1);
+        for (const auto& description : context->checkpointStorage->getFlushedCheckpoints()) {
+            source->onCheckpointFlush(description.getId());
+        }
+
         // Get the state from checkpoint1 and verify each partitions offset.
         auto state1 = getStateFromCheckpoint(checkpointId1, source->getOperatorId());
         ASSERT_TRUE(state1.getConsumerGroupId());

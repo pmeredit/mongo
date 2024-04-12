@@ -217,7 +217,7 @@ structs:
                 type: CheckpointDescription
                 optional: true
             lastCommittedCheckpoint:
-                description: "A description of the last checkpoint this stream processor committed, if one exists."
+                description: "A description of the last checkpoint this stream processor committed and flushed to remote storage, if one exists."
                 type: CheckpointDescription
                 optional: true
 
@@ -300,6 +300,10 @@ structs:
 
     UpdateFeatureFlagsReply:
         description: "Response message for UpdateFeatureFlagsCommand."
+        is_command_reply: true
+
+    SendEventReply:
+        description: "Response message for SendEventCommand."
         is_command_reply: true
 
     GetFeatureFlagsReply:
@@ -404,6 +408,14 @@ structs:
                 description: "Bson object containing all feature flags for this stream processor. These options are supplied by service components."
                 type: object
                 optional: true
+
+    CheckpointFlushedEvent:
+        description: "The streams Agent sends this after it uploads a checkpoint to remote storage."
+        strict: false
+        fields:
+            checkpointId:
+                description: The ID of the checkpoint that was flushed to remote storage.
+                type: safeInt64
 
 commands:
     streams_startStreamProcessor:
@@ -638,6 +650,25 @@ commands:
         reply_type: GetMetricsReply
         access_check:
             none: true
+
+    streams_sendEvent:
+        description: "Called by the streams Agent to notify mongostream of an important event."
+        strict: false
+        cpp_name: SendEventCommand
+        command_name: streams_sendEvent
+        api_version: ""
+        namespace: ignored
+        reply_type: SendEventReply
+        access_check:
+            none: true
+        fields:
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+            checkpointFlushedEvent:
+                description: "A checkpoint flushed event."
+                type: CheckpointFlushedEvent
+                optional: true
 
     streams_updateFeatureFlags:
         description: "Update feature flags for the stream processing instance."

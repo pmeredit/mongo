@@ -107,8 +107,11 @@ export function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
 
 // Utilities to interact with the new local disk checkpoint storage.
 export class LocalDiskCheckpointUtil {
-    constructor(checkpointDir, tenantId, streamProcessorId) {
+    constructor(checkpointDir, tenantId, streamProcessorId, processorName) {
         this._spCheckpointDir = `${checkpointDir}/${tenantId}/${streamProcessorId}`;
+        this.processorName = processorName;
+        this.processorId = streamProcessorId;
+        this.flushedIds = [];
     }
 
     get streamProcessorCheckpointDir() {
@@ -152,12 +155,31 @@ export class LocalDiskCheckpointUtil {
         return `${this._spCheckpointDir}/${checkpointId}`;
     }
 
+    deleteCheckpointDirectory(checkpointId) {
+        removeFile(this.getRestoreDirectory(checkpointId));
+    }
+
     clear() {
         if (!fileExists(this._spCheckpointDir)) {
             return;
         }
 
         listFiles(this._spCheckpointDir).forEach((file) => removeFile(file.name));
+    }
+
+    flushAll() {
+        for (const id of this.getCheckpointIds()) {
+            // only flush checkpoint IDs that we haven't flushed already.
+            if (!this.flushedIds.includes(id)) {
+                jsTestLog(`Flushing checkpoint ${id}`);
+                assert.commandWorked(db.runCommand({
+                    streams_sendEvent: '',
+                    processorId: this.processorId,
+                    checkpointFlushedEvent: {checkpointId: parseInt(id)}
+                }));
+                this.flushedIds.push(id);
+            }
+        }
     }
 }
 
