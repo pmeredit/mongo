@@ -45,6 +45,12 @@ export class TestHelper {
             this.targetSourceMergeDb = targetSourceMergeDb;
         }
         this.uri = 'mongodb://' + this.targetSourceMergeDb.getMongo().host;
+        if (dbForTest != null) {
+            this.db = dbForTest;
+        } else {
+            // Use the global default DB.
+            this.db = db;
+        }
         this.kafkaConnectionName = "kafka1";
         this.kafkaBootstrapServers = "localhost:9092";
         this.kafkaIsTest = true;
@@ -204,6 +210,11 @@ export class TestHelper {
 
     stats() {
         return this.sp[this.spName].stats();
+    }
+
+    list() {
+        return this.sp.listStreamProcessors().streamProcessors.filter((sp) =>
+                                                                          sp.name == this.spName);
     }
 
     checkpoint(force = false) {

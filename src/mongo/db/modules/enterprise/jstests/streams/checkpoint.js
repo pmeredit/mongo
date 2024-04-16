@@ -9,10 +9,11 @@ import {
     TestHelper,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
+    makeRandomString,
     sanitizeDoc,
     verifyDocsEqual,
     waitForCount,
-    waitForDoc
+    waitForDoc,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function generateInput(size, msPerDocument = 1) {
@@ -338,13 +339,32 @@ function testBoth(useNewCheckpointing) {
         test.stop();
     }
 
-    function innerStopStartHoppingWindowTest(
-        {pipeline, inputBeforeStop, inputAfterStop, expectedOutput, resultsSortDoc = null}) {
+    function innerStopStartHoppingWindowTest({
+        pipeline,
+        inputBeforeStop,
+        inputAfterStop,
+        expectedOutput,
+        resultsSortDoc = null,
+        minimiumExpectedStateSize = 0,
+        shouldHeapProfile = false,
+        extraLogKeys = null,
+        interval = null,
+        waitTime = 60 * 1000,
+        dbForTest = null
+    }) {
+        if (dbForTest == null) {
+            // Use the global default db.
+            dbForTest = db;
+        }
         let test = new TestHelper(inputBeforeStop,
                                   pipeline,
-                                  0 /* interval */,
+                                  interval,
                                   "changestream" /* sourceType */,
-                                  useNewCheckpointing);
+                                  useNewCheckpointing,
+                                  null /* spId */,
+                                  null /* writeDir */,
+                                  null /* restoreDir */,
+                                  dbForTest /* dbForTest */);
         const getResults = () => {
             let query = test.outputColl.find({});
             if (resultsSortDoc != null) {
@@ -355,15 +375,34 @@ function testBoth(useNewCheckpointing) {
 
         test.run();
         // Wait for all the messages to be read.
-        assert.soon(() => { return test.stats()["inputMessageCount"] == inputBeforeStop.length; });
+        assert.soon(() => { return test.stats()["inputMessageCount"] == inputBeforeStop.length; },
+                    "waiting for input",
+                    waitTime);
         assert.eq(0, getResults().length, "expected no output");
+        let stats = test.stats();
+        // Verify there is at least the state size expected.
+        assert.gt(stats["stateSize"], minimiumExpectedStateSize, "expected more state size");
+        let heapProfile = null;
+        if (shouldHeapProfile) {
+            heapProfile = dbForTest.runCommand({serverStatus: 1})["heapProfile"];
+        }
+        // Stop the stream processor and verify there is no output yet.
         test.stop();
         assert.eq(0, getResults().length, "expected no output");
 
+        // Verify some checkpoints were written.
         let ids = test.getCheckpointIds();
         assert.gt(ids.length, 0, `expected some checkpoints`);
         // Run the streamProcessor, expecting to resume from a checkpoint.
         test.run(false /* firstStart */);
+
+        let heapProfileAfterCheckpoint = null;
+        if (shouldHeapProfile) {
+            heapProfileAfterCheckpoint = dbForTest.runCommand({serverStatus: 1})["heapProfile"];
+        }
+        let statsAfterCheckpoint = test.stats();
+
+        // Insert the "after stop" input, and wait for the expected output.
         assert.commandWorked(test.inputColl.insertMany(inputAfterStop));
         assert.neq(expectedOutput, null);
         assert.soon(() => {
@@ -371,9 +410,8 @@ function testBoth(useNewCheckpointing) {
             if (results.length == expectedOutput.length) {
                 return true;
             }
-            jsTestLog(results);
             return false;
-        });
+        }, "waiting for output", waitTime);
 
         // Verify the window emits the expected results after restore.
         let results = getResults();
@@ -382,7 +420,21 @@ function testBoth(useNewCheckpointing) {
             delete results[i]._id;
             verifyDocsEqual(expectedOutput[i], results[i]);
         }
+        // Stop the stream processor.
         test.stop();
+
+        if (shouldHeapProfile) {
+            // The parse.py script parses this log line for heapProfile and stats information.
+            jsTestLog(JSON.stringify({
+                opName: "innerStopStartHoppingWindowTest",
+                extra: extraLogKeys,
+                pipeline: pipeline,
+                heapProfileBeforeCheckpoint: heapProfile,
+                statsBeforeCheckpoint: stats,
+                heapProfileAfterCheckpoint: heapProfileAfterCheckpoint,
+                statsAfterCheckpoint: statsAfterCheckpoint,
+            }));
+        }
     }
 
     function hoppingWindowSortTest() {
@@ -461,6 +513,97 @@ function testBoth(useNewCheckpointing) {
             resultsSortDoc: {
                 "_stream_meta.window.start": 1,
             }
+        });
+    }
+
+    // Tests a large $tumblingWindow with inputStateSizeMB.
+    // This test also enables heap profiling information.
+    function largeTumblingWindow(inputStateSizeMB, dbForTest) {
+        const state = inputStateSizeMB * 1000000;
+        // The pipeline includes an $unwind stage to duplicate every input doc this many times.
+        const multiplierPerInputDoc = 2000;
+        const strSize = 100;
+        const prefixSize = 16;
+        const statePerInputDoc = multiplierPerInputDoc * (prefixSize + strSize);
+        const numInputDocs = Math.ceil(state / statePerInputDoc);
+        const unwindArray = [...Array(multiplierPerInputDoc).keys()];
+        Random.setRandomSeed(42);
+        const str = makeRandomString(strSize);
+        const input = [...Array(numInputDocs).keys()].map(idx => {
+            return {
+                ts: ISODate("2023-12-01T01:00:00.000Z"),
+                customerId: idx,
+                unwindArray: unwindArray,
+                str: str
+            };
+        });
+        const closeWindowInput = [{ts: ISODate("2023-12-01T02:00:00.001Z")}];
+
+        let id =
+            `${(numInputDocs - 1).toString()}/${(multiplierPerInputDoc - 1).toString()}/${str}`;
+        innerStopStartHoppingWindowTest({
+            pipeline: [
+                // The unwind stage "multiplies" the input docs for faster testing.
+                {$unwind: "$fullDocument.unwindArray"},
+                // For each doc, set str = customerId + unwindArray + str.
+                // Now each doc will have a unique str.
+                {
+                    $project: {
+                        str: {
+                            $concat: [
+                                {$toString: "$fullDocument.customerId"},
+                                "/",
+                                {$toString: "$fullDocument.unwindArray"},
+                                "/",
+                                "$fullDocument.str"
+                            ]
+                        },
+                        customerId: "$fullDocument.customerId",
+                        unwindArray: "$fullDocument.unwindArray"
+                    }
+                },
+                {
+                    $tumblingWindow: {
+                        interval: {size: NumberInt(1), unit: "hour"},
+                        allowedLateness: {size: NumberInt(0), unit: "second"},
+                        pipeline: [
+                            {$group: {_id: "$str", count: {$sum: 1}}},
+                        ]
+                    }
+                },
+                {$match: {_id: id}},
+                {
+                    $project: {
+                        id: "$_id",
+                        count: 1,
+                    }
+                }
+            ],
+            inputBeforeStop: input,
+            inputAfterStop: closeWindowInput,
+            expectedOutput: [
+                {
+                    _stream_meta: {
+                        "sourceType": "atlas",
+                        "windowStartTimestamp": ISODate("2023-12-01T01:00:00Z"),
+                        "windowEndTimestamp": ISODate("2023-12-01T02:00:00Z")
+                    },
+                    count: 1,
+                    id: id
+                },
+            ],
+            minimiumExpectedStateSize: state,
+            shouldHeapProfile: true,
+            extraLogKeys: {
+                inputSize: state,
+                numInputDocs: numInputDocs,
+                inputDocMultiplier: multiplierPerInputDoc,
+                statePerInputDoc: statePerInputDoc
+            },
+            waitTime: 60 * 60 * 1000,
+            // Use a large interval so only a stop request will write a checkpoint.
+            interval: 3600000,
+            dbForTest: dbForTest
         });
     }
 
@@ -898,6 +1041,34 @@ function testBoth(useNewCheckpointing) {
     smokeTestEmptyChangestream();
     emptyChangestreamResumeTokenAdvances();
     mismatchedCheckpointOperators();
+
+    const buildInfo = getBuildInfo();
+    if (!buildInfo.debug) {
+        // Start a new replset that has heap profiling enabled.
+        const rst = new ReplSetTest({
+            name: "large_tumbling_window",
+            nodes: 1,
+            waitForKeys: false,
+            nodeOptions: {
+                setParameter: {
+                    featureFlagStreams: true,
+                    heapProfilingEnabled: true,
+                },
+            }
+        });
+        rst.startSet();
+        rst.initiateWithAnyNodeAsPrimary(
+            Object.extend(rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+        const conn = rst.getPrimary();
+        let heapProfilingDb = conn.getDB('admin');
+        heapProfilingDb.setProfilingLevel(2);
+
+        // Uncomment these to test 1GB and 4GB windows locally.
+        // largeTumblingWindow(1000);
+        // largeTumblingWindow(4000);
+        largeTumblingWindow(10, heapProfilingDb);
+        rst.stopSet();
+    }
 }
 
 testBoth(true /* useNewCheckpointing */);
