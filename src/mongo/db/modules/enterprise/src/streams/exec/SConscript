@@ -3,7 +3,7 @@
 Import('env')
 
 env = env.Clone()
-env.InjectThirdParty(libraries=['librdkafka', 'libbson', 'snappy'])
+env.InjectThirdParty(libraries=['librdkafka', 'bson', 'snappy'])
 
 # TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
 platform_name = "linux_" + env["TARGET_ARCH"]

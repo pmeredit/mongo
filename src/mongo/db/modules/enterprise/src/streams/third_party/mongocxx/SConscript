@@ -4,7 +4,7 @@ Import('env')
 
 env = env.Clone()
 
-env.InjectThirdParty(libraries=["libbson", 'zstd', 'snappy'])
+env.InjectThirdParty(libraries=["bson", 'zstd', 'snappy'])
 
 # Ignore these warnings in mongocxx and mongoc code.
 env.Append(CCFLAGS=['-Wno-implicit-fallthrough'])
