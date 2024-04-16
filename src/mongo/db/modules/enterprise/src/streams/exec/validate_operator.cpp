@@ -45,8 +45,8 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
             if (!error) {
                 error = "Input document found to be invalid in $validate stage";
             }
-            numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
-                _context->streamMetaFieldName, std::move(streamDoc), std::move(error)));
+            numDlqBytes = _context->dlq->addMessage(
+                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
             ++numDlqDocs;
         } else {
             // Else, discard the doc.

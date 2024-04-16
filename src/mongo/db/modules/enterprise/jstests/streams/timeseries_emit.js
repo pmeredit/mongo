@@ -450,6 +450,90 @@ function testNoTimeFieldNoTimeSeriesCollection() {
     assert.includes(result["errmsg"], "Expected a Time Series collection");
 }
 
+// For a Time Series collection, the max document size is limited to 4MB.
+function testLargeDocumentEmitToTimeSeries() {
+    jsTestLog("Running testLargeDocumentEmitToTimeSeries");
+
+    inputColl.drop();
+    timeseriesColl.drop();
+    dlqColl.drop();
+
+    const pipeline = [
+        // Read from input_coll collection.
+        {
+            $source: {
+                connectionName: 'db1',
+                db: 'test',
+                coll: 'input_coll',
+                timeField: '$ts',
+                config: {fullDocument: 'required', fullDocumentOnly: true}
+            }
+        },
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(10), unit: 'second'},
+                allowedLateness: {size: NumberInt(0), unit: 'second'},
+                pipeline: [
+                    { $project: { docSize: 1, seed: 1, ts: 1, value: { $range: [ 0, "$docCount" ] } } },
+                    { $unwind: "$value" },
+                    { $project: { seed: 1, ts: 1, bigValue: { $range: [0, "$docSize"] }}},
+                    { $project: { bigStr: { $reduce: { input: "$bigValue", initialValue: ".", in: {"$concat": [ "$$value", "$seed" ]}}}, ts: 1}},
+                    { $group: { _id: "$_id", bigArr: {$push: "$bigStr"}, ts: {$max: "$ts"}}}
+                ]
+            }
+        },
+        // emit to the timeseries_coll collection
+        {
+            $emit: {
+                connectionName: 'db1',
+                db: 'test',
+                coll: timeseriesColl.getName(),
+                timeseries: {timeField: 'ts'}
+            }
+        }
+    ];
+
+    let result = startStreamProcessor(pipeline);
+    assert.eq(result["ok"], 1);
+
+    let listCmd = {streams_listStreamProcessors: ''};
+    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+
+    // Seed of size 8KB.
+    const seed = Array(8 * 1024).toString();
+    // Accumulate size of ~1MB.
+    inputColl.insert(
+        {_id: 1, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 8, docSize: 16, seed: seed});
+    // Accumulate size of ~500KB.
+    inputColl.insert(
+        {_id: 2, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 8, docSize: 8, seed: seed});
+    // Accumulate size of >4MB, this should result in dlq.
+    inputColl.insert(
+        {_id: 3, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 8, docSize: 64, seed: seed});
+    // Accumulate size of ~3.75MB.
+    inputColl.insert(
+        {_id: 4, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 8, docSize: 60, seed: seed});
+    // Accumulate size of >4MB, this should result in dlq.
+    inputColl.insert(
+        {_id: 5, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 16, docSize: 60, seed: seed});
+    // Close the window.
+    inputColl.insert(
+        {_id: 6, ts: ISODate("2024-03-01T05:00:00.000Z"), docCount: 1, docSize: 1, seed: seed});
+
+    assert.soon(() => { return dlqColl.count() == 2; });
+    assert.soon(() => { return timeseriesColl.count() == 3; });
+
+    let opStats = getOperatorStats("TimeseriesEmitOperator");
+    assert.soon(() => {
+        opStats = getOperatorStats("TimeseriesEmitOperator");
+        return opStats["dlqMessageCount"] == 2;
+    });
+    assert.eq(opStats["inputMessageCount"], 5);
+    assert.eq(opStats["outputMessageCount"], 3);
+
+    stopStreamProcessor();
+}
+
 testEmitToTimeSeriesCollection();
 testEmitToTimeSeriesMissingTimeField();
 testMissingTimeseries();
@@ -460,6 +544,7 @@ testTimeFieldMismatch();
 testMissingTimeField();
 testNoTimeFieldNoCollection();
 testNoTimeFieldNoTimeSeriesCollection();
+testLargeDocumentEmitToTimeSeries();
 inputColl.drop();
 timeseriesColl.drop();
 dlqColl.drop();

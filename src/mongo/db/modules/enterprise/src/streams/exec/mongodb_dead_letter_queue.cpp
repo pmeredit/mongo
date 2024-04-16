@@ -141,17 +141,24 @@ void MongoDBDeadLetterQueue::consumeLoop() {
 
     while (!done) {
         try {
-            auto [batch, _] = _queue.popManyUpTo(kWriteBatchMaxSizeBytes);
-
             std::vector<bsoncxx::document::value> docBatch;
             bool flushSignal{false};
-            for (auto& msg : batch) {
-                if (msg.flushSignal) {
-                    dassert(!msg.data);
+            int accumulatedBytes{0};
+            boost::optional<Message> msg;
+            // Here the kWriteBatchMaxSizeBytes is a soft limit on the number of bytes accumulated
+            // in the docBatch. We exit the loop when either of the following conditions are met
+            //      - the number of bytes in the docBatch is more than the soft limit of
+            //        kWriteBatchMaxSizeBytes,
+            //      - no more messages in the queue
+            _queue.waitForNonEmpty(Interruptible::notInterruptible());
+            while (accumulatedBytes < kWriteBatchMaxSizeBytes && (msg = _queue.tryPop())) {
+                if (msg->flushSignal) {
+                    dassert(!msg->data);
                     flushSignal = true;
                 } else {
-                    dassert(msg.data);
-                    docBatch.push_back(std::move(*msg.data));
+                    dassert(msg->data);
+                    accumulatedBytes += msg->data->length();
+                    docBatch.push_back(std::move(*msg->data));
                 }
             }
 

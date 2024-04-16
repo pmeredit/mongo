@@ -247,7 +247,7 @@ void WindowAwareOperator::closeWindow(Window* window) {
         // of waiting for the window to close.
         auto numDlqBytes =
             _context->dlq->addMessage(toDeadLetterQueueMsg(_context->streamMetaFieldName,
-                                                           std::move(window->streamMetaTemplate),
+                                                           window->streamMetaTemplate,
                                                            std::move(window->status.reason())));
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return;

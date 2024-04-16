@@ -132,7 +132,9 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                                                         size_t startIdx,
                                                         size_t maxDocCount) {
     OperatorStats stats;
-    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize;
+    // The max document size limit for a time series collectio in 4MB
+    // https://www.mongodb.com/docs/v5.0/core/timeseries/timeseries-limitations/#constraints
+    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 4;
     bool samplersPresent = samplersExist();
     int32_t curBatchByteSize{0};
     size_t curIdx{startIdx};
@@ -141,26 +143,31 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
     while (curIdx < dataMsg.docs.size()) {
         const auto& streamDoc = dataMsg.docs[curIdx++];
         auto docSize = streamDoc.doc.memUsageForSorter();
-        uassert(ErrorCodes::BSONObjectTooLarge,
-                str::stream() << "Input document is too large " << docSize << " > "
-                              << maxBatchObjectSizeBytes,
-                docSize <= maxBatchObjectSizeBytes);
-
-        // The sink (Time Series collection) will reject the document with a missing timeField
-        // Check for the timeField to avoid write failures
-        const auto& timeField = _options.timeseriesSinkOptions.getTimeseries()->getTimeField();
-        const auto& timeValue = streamDoc.doc.getField(timeField);
-        if (timeValue.missing() || timeValue.getType() != BSONType::Date) {
-            // Send the document to dlq if timeField is missing or the format is not BSON UTC
+        // Send the document to dlq if it is larger than the size limit.
+        if (docSize > maxBatchObjectSizeBytes) {
             std::string error = str::stream()
-                << "timeField '" << timeField
-                << "' must be present and contain a valid BSON UTC datetime value";
+                << "Input document for a Time Series collection is too large, " << docSize << " > "
+                << maxBatchObjectSizeBytes;
             stats.numDlqBytes += _context->dlq->addMessage(
                 toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
             ++stats.numDlqDocs;
         } else {
-            docBatch.push_back(toBsoncxxValue(std::move(streamDoc).doc.toBson()));
-            curBatchByteSize += docSize;
+            // The sink (Time Series collection) will reject the document with a missing timeField
+            // Check for the timeField to avoid write failures
+            const auto& timeField = _options.timeseriesSinkOptions.getTimeseries()->getTimeField();
+            const auto& timeValue = streamDoc.doc.getField(timeField);
+            if (timeValue.missing() || timeValue.getType() != BSONType::Date) {
+                // Send the document to dlq if timeField is missing or the format is not BSON UTC
+                std::string error = str::stream()
+                    << "timeField '" << timeField
+                    << "' must be present and contain a valid BSON UTC datetime value";
+                stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
+                    _context->streamMetaFieldName, streamDoc, std::move(error)));
+                ++stats.numDlqDocs;
+            } else {
+                docBatch.push_back(toBsoncxxValue(std::move(streamDoc).doc.toBson()));
+                curBatchByteSize += docSize;
+            }
         }
 
         // insert the documents to the collection, if either

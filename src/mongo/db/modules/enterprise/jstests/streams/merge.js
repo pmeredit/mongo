@@ -11,6 +11,7 @@ import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils
 
 const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
+const inputColl = db.input_coll;
 const spName = "mergeTest";
 const goodUri = 'mongodb://' + db.getMongo().host;
 const badUri = "mongodb://badUri";
@@ -730,8 +731,67 @@ const kExecutorGenericSinkErrorCode = 8143705;
             {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["_id", "a"]},
     });
 })();
+(function testLargeDocumentMerge() {
+    jsTestLog("Running testLargeDocumentMerge");
 
+    outColl.drop();
+    dlqColl.drop();
+    inputColl.drop();
+
+    // Start a stream processor with dynamic 'db' name expression.
+    startStreamProcessor([
+        {
+            $source: {
+                connectionName: 'db1',
+                db: 'test',
+                coll: inputColl.getName(),
+                timeField: '$ts',       
+                config: {fullDocument: 'required', fullDocumentOnly: true}
+            }
+        },
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(10), unit: 'second'},
+                allowedLateness: {size: NumberInt(0), unit: 'second'},
+                pipeline: [
+                    { $project: { docSize: 1, seed: 1, ts: 1, value: { $range: [ 0, "$docCount" ] } } },
+                    { $unwind: "$value" },
+                    { $project: { seed: 1, ts: 1, bigValue: { $range: [0, "$docSize"] }}},
+                    { $project: { bigStr: { $reduce: { input: "$bigValue", initialValue: ".", in: {"$concat": [ "$$value", "$seed" ]}}}, ts: 1}},
+                    { $group: { _id: "$_id", bigArr: {$push: "$bigStr"}, ts: {$max: "$ts"}}}
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}
+            }
+        }
+    ]);
+
+    let listCmd = {streams_listStreamProcessors: ''};
+    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+
+    // Seed of size 16KB.
+    const seed = Array(16 * 1024).toString();
+    // Accumulate size of ~1MB.
+    inputColl.insert(
+        {_id: 1, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 8, docSize: 8, seed: seed});
+    // Accumulate size of >16MB, this should result in dlq.
+    inputColl.insert(
+        {_id: 2, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 16, docSize: 64, seed: seed});
+    // Close the window.
+    inputColl.insert(
+        {_id: 4, ts: ISODate("2024-03-01T05:00:00.000Z"), docCount: 1, docSize: 1, seed: seed});
+
+    assert.soon(() => { return dlqColl.count() == 1; });
+    assert.soon(() => { return outColl.count() == 1; });
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
 // Cleanup the output collection and DLQ.
 outColl.drop();
 dlqColl.drop();
+inputColl.drop();
 }());

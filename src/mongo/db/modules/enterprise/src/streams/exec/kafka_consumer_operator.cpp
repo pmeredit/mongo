@@ -608,7 +608,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     if (!sourceDoc.doc) {
         dassert(sourceDoc.error);
         // Input document could not be successfully parsed, send it to DLQ.
-        auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(sourceDoc));
         incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }
@@ -685,7 +685,7 @@ BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument s
     StreamMeta streamMeta;
     streamMeta.setSource(std::move(streamMetaSource));
     BSONObjBuilder objBuilder = streams::toDeadLetterQueueMsg(
-        _context->streamMetaFieldName, std::move(streamMeta), std::move(sourceDoc.error));
+        _context->streamMetaFieldName, streamMeta, std::move(sourceDoc.error));
     if (sourceDoc.doc) {
         objBuilder.append("doc", std::move(*sourceDoc.doc));
     }

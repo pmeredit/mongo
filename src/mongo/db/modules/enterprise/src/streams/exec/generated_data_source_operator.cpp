@@ -95,8 +95,8 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
         timestamp = getTimestamp(doc);
         timestampMs = timestamp.toMillisSinceEpoch();
     } catch (const DBException& ex) {
-        auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
-            _context->streamMetaFieldName, std::move(doc), std::string(ex.what())));
+        auto numDlqBytes = _context->dlq->addMessage(
+            toDeadLetterQueueMsg(_context->streamMetaFieldName, doc, std::string(ex.what())));
         incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }
