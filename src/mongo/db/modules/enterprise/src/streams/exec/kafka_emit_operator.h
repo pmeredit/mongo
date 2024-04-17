@@ -6,7 +6,9 @@
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/string_map.h"
+#include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_event_callback.h"
+#include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/sink_operator.h"
 
 #include <rdkafka.h>
@@ -40,6 +42,10 @@ public:
         boost::intrusive_ptr<mongo::Expression> key{nullptr};
         // The expression that evaluates to the headers of the Kafka message.
         boost::intrusive_ptr<mongo::Expression> headers{nullptr};
+        // GWProxy endpoint hostname or IP address.
+        boost::optional<std::string> gwproxyEndpoint;
+        // GWProxy symmetric key.
+        boost::optional<std::string> gwproxyKey;
         // Json String Format either relaxedJson or canonicalJson.
         mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
     };
@@ -139,5 +145,9 @@ private:
 
     // The ConnectionStatus of the $emit operator.
     ConnectionStatus _connectionStatus;
+
+    // Support for GWProxy authentication callbacks to enable VPC peering sessions.
+    std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
+    std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
 };
 }  // namespace streams

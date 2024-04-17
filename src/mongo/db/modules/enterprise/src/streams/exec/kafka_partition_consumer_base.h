@@ -46,6 +46,10 @@ public:
         // Whether to enable the deserialization of Kafka key and headers into the metadata of the
         // stream documents.
         bool enableKeysAndHeaders{false};
+        // GWProxy endpoint hostname or IP address.
+        boost::optional<std::string> gwproxyEndpoint;
+        // GWProxy symmetric encryption key.
+        boost::optional<std::string> gwproxyKey;
     };
 
     KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {}

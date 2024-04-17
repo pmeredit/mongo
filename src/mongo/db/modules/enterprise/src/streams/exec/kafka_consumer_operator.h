@@ -77,6 +77,10 @@ public:
         // Whether to enable the deserialization of Kafka key and headers into the metadata of the
         // stream documents.
         bool enableKeysAndHeaders{false};
+        // GWProxy endpoint hostname or IP address.
+        boost::optional<std::string> gwproxyEndpoint;
+        // GWProxy endpoint symmetric encryption key.
+        boost::optional<std::string> gwproxyKey;
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -231,7 +235,7 @@ private:
 
     // Creates a `KafkaConsumer` which is used as a proxy to commit offsets and fetch committed
     // offsets for the specified consumer group ID.
-    std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer() const;
+    std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer();
 
     // Gets the committed offsets for the consumer group ID set for this kafka consumer operator.
     // This must be called after the number of partitions has been fetched for the topic, so
@@ -271,6 +275,10 @@ private:
         MONGO_MAKE_LATCH("KafkaConsumerOperator::groupConsumerThread::mutex");
     mongo::stdx::condition_variable _groupConsumerThreadCond;
     bool _groupConsumerThreadShutdown{false};
+
+    // Support for GWProxy authentication callbacks to enable VPC peering sessions.
+    std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
+    std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
 };
 
 }  // namespace streams

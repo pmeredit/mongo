@@ -83,6 +83,13 @@ enums:
             SaslPlaintext: "SASL_PLAINTEXT"
             SaslSSL: "SASL_SSL"
 
+    KafkaTLSValidationAlgorithm:
+        type: string
+        description: "Kafka TLS certificate validation algorithm."
+        values:
+            HTTPS: "https"
+            None: "none"
+    
     KafkaEmitJsonStringFormat:
         type: string
         description: "Json String format."
@@ -138,6 +145,10 @@ structs:
                 description: "Path to Kafka TLS CA certificate for validation."
                 type: string
                 optional: true
+            validateTLSAlgorithm:
+                description: "If using TLS, specify algorithm to verify hostnames (https or none)."
+                type: KafkaTLSValidationAlgorithm
+                optional: true
 
     KafkaConnectionOptions:
         description: "Kafka connection options."
@@ -153,6 +164,14 @@ structs:
             auth:
                 description: "Kafka config values related to auth, like sasl.username."
                 type: KafkaAuthOptions
+                optional: true
+            gwproxyEndpoint:
+                description: "Hostname or IP address of GWProxy endpoint for VPC peering sessions."
+                type: string
+                optional: true
+            gwproxyKey:
+                description: "Pre-shared 32-byte (AES-256) key for GWProxy authentication for VPC peering sessions."
+                type: string
                 optional: true
 
     AtlasConnectionOptions:

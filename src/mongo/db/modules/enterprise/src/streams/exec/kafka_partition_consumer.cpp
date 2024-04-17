@@ -290,6 +290,25 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
 
+    // Set the resolve callback.
+    if (_options.gwproxyEndpoint) {
+        _resolveCbImpl =
+            std::make_unique<KafkaResolveCallback>(_context,
+                                                   "KafkaPartitionConsumer" /* operator name */,
+                                                   *_options.gwproxyEndpoint /* target proxy */);
+        setConf("resolve_cb", _resolveCbImpl.get());
+
+        // Set the connect callback if authentication is required.
+        if (_options.gwproxyKey) {
+            _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
+                _context,
+                "KafkaPartitionConsumer" /* operator name */,
+                *_options.gwproxyKey /* symmetric key */,
+                10 /* connection timeout unit:seconds */);
+            setConf("connect_cb", _connectCbImpl.get());
+        }
+    }
+
     setConf("event_cb", _eventCallback.get());
 
     // Set auth related configurations.

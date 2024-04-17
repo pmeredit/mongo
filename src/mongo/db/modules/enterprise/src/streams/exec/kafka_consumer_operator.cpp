@@ -716,7 +716,7 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
     }
 }
 
-std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsumer() const {
+std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsumer() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
@@ -733,6 +733,23 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
     setConf("enable.auto.offset.store", "false");
     setConf("group.id", _options.consumerGroupId);
     setConf("queued.max.messages.kbytes", "5000");
+
+    // Set the resolve callback.
+    if (_options.gwproxyEndpoint) {
+        _resolveCbImpl = std::make_unique<KafkaResolveCallback>(
+            _context, getName() /* operator name */, *_options.gwproxyEndpoint) /* target proxy */;
+        setConf("resolve_cb", _resolveCbImpl.get());
+
+        // Set the connect callback if authentication is required.
+        if (_options.gwproxyKey) {
+            _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
+                _context,
+                getName() /* operator name */,
+                *_options.gwproxyKey /* symmetricKey */,
+                10 /* connection timeout unit:seconds */);
+            setConf("connect_cb", _connectCbImpl.get());
+        }
+    }
 
     for (const auto& config : _options.authConfig) {
         setConf(config.first, config.second);
@@ -883,6 +900,8 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.queueSizeGauge = _queueSizeGauge;
     options.queueByteSizeGauge = _queueByteSizeGauge;
     options.enableKeysAndHeaders = _options.enableKeysAndHeaders;
+    options.gwproxyEndpoint = _options.gwproxyEndpoint;
+    options.gwproxyKey = _options.gwproxyKey;
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
     } else {

@@ -168,3 +168,14 @@ structs:
             event_details:
                 type: string
                 optional: true
+
+    KafkaConnectAuthSpec:
+        description: Specifies the authentication payload for VPC peering authentication headers.
+        strict: true
+        fields:
+            url:
+                type: string
+            timestamp:
+                type: string
+            randomSeed:
+                type: string

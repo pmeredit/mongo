@@ -131,6 +131,24 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     setConf("topic.metadata.refresh.interval.ms", "-1");
     // Set the event callback.
     setConf("event_cb", _eventCbImpl.get());
+
+    // Set the resolve callback.
+    if (_options.gwproxyEndpoint) {
+        _resolveCbImpl = std::make_unique<KafkaResolveCallback>(
+            _context, getName() /* operator name */, *_options.gwproxyEndpoint /* target proxy */);
+        setConf("resolve_cb", _resolveCbImpl.get());
+
+        // Set the connect callback if authentication is required.
+        if (_options.gwproxyKey) {
+            _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
+                _context,
+                getName() /* operator name */,
+                *_options.gwproxyKey /* symmetric key */,
+                10 /* connection timeout unit:seconds */);
+            setConf("connect_cb", _connectCbImpl.get());
+        }
+    }
+
     // Set auth related configurations.
     for (const auto& config : _options.authConfig) {
         setConf(config.first, config.second);

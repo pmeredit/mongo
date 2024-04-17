@@ -120,6 +120,8 @@ env.Library(
         'in_memory_source_operator.cpp',
         'kafka_consumer_operator.cpp',
         'kafka_emit_operator.cpp',
+        'kafka_resolve_callback.cpp',
+        'kafka_connect_auth_callback.cpp',
         'kafka_event_callback.cpp',
         'kafka_partition_consumer.cpp',
         'log_dead_letter_queue.cpp',
@@ -163,6 +165,7 @@ env.Library(
         'feature_flag.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
         '$BUILD_DIR/mongo/db/pipeline/process_interface/common_process_interface',
         '$BUILD_DIR/mongo/db/query_exec',
         '$BUILD_DIR/third_party/librdkafka/rdkafka',

@@ -264,6 +264,10 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
     if (auto caCertificatePath = authOptions.getCaCertificatePath(); caCertificatePath) {
         authConfig.emplace("ssl.ca.location", *caCertificatePath);
     }
+    if (auto tlsAlgorithm = authOptions.getValidateTLSAlgorithm(); tlsAlgorithm) {
+        authConfig.emplace("ssl.endpoint.identification.algorithm",
+                           KafkaTLSValidationAlgorithm_serializer(*tlsAlgorithm).toString());
+    }
     return authConfig;
 }
 
@@ -537,6 +541,14 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
         internalOptions.isTest = true;
     }
 
+    if (baseOptions.getGwproxyEndpoint()) {
+        internalOptions.gwproxyEndpoint = baseOptions.getGwproxyEndpoint()->toString();
+    }
+
+    if (baseOptions.getGwproxyKey()) {
+        internalOptions.gwproxyKey = baseOptions.getGwproxyKey()->toString();
+    }
+
     auto oper = std::make_unique<KafkaConsumerOperator>(_context, std::move(internalOptions));
     oper->setOperatorId(_nextOperatorId++);
     invariant(_operators.empty());
@@ -800,6 +812,15 @@ void Planner::planEmitSink(const BSONObj& spec) {
                 ? parseStringOrObjectExpression(_context->expCtx,
                                                 *options.getConfig()->getHeaders())
                 : nullptr;
+
+            if (baseOptions.getGwproxyEndpoint()) {
+                kafkaEmitOptions.gwproxyEndpoint = baseOptions.getGwproxyEndpoint()->toString();
+            }
+
+            if (baseOptions.getGwproxyKey()) {
+                kafkaEmitOptions.gwproxyKey = baseOptions.getGwproxyKey()->toString();
+            }
+
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
                 : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
