@@ -635,6 +635,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
         StreamMetaSource streamMetaSource;
         streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+        streamMetaSource.setTopic(StringData{_options.topicName});
         streamMetaSource.setPartition(sourceDoc.partition);
         streamMetaSource.setOffset(sourceDoc.offset);
         streamMetaSource.setKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
@@ -678,6 +679,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc) {
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
+    streamMetaSource.setTopic(StringData{_options.topicName});
     streamMetaSource.setPartition(sourceDoc.partition);
     streamMetaSource.setOffset(sourceDoc.offset);
     streamMetaSource.setKey(mongo::ConstDataRange(std::move(sourceDoc.key)));

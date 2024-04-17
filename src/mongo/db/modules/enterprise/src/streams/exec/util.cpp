@@ -136,6 +136,13 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                               .ss.str()),
                 Value(StreamMetaSourceType_serializer(*internalStreamMeta.getSource()->getType())));
         }
+        if (internalStreamMeta.getSource()->getTopic()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                         << StreamMetaSource::kTopicFieldName)
+                              .ss.str()),
+                Value(*internalStreamMeta.getSource()->getTopic()));
+        }
         if (internalStreamMeta.getSource()->getPartition()) {
             newStreamMeta.setNestedField(
                 FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."

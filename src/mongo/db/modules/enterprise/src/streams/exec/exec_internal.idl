@@ -92,6 +92,10 @@ structs:
                 description: "Type of source e.g. kafka, atlas"
                 type: StreamMetaSourceType
                 optional: true
+            topic:
+                description: "Topic of this Kafka document"
+                type: string
+                optional: true
             partition:
                 description: "Source partition e.g. Kafka partition"
                 type: int

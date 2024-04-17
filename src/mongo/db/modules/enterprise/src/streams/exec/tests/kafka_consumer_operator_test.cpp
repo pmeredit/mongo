@@ -155,6 +155,8 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
             outputDocBuilder << "_stream_meta"
                              << BSON("source" << BSON("type"
                                                       << "kafka"
+                                                      << "topic"
+                                                      << ""
                                                       << "partition" << sourceDoc.partition
                                                       << "offset" << sourceDoc.offset));
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());

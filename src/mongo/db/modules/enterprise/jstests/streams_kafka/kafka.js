@@ -264,9 +264,10 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, json
         let output = [];
         for (let i = 0; i < results.length; i++) {
             let outputDoc = results[i];
-            // Verify the Kafka key and headers in metadata.
+            // Verify the Kafka related metadata.
             const expectedKey = key === null ? undefined : input[i].key;
             const expectedHeaders = headers === null ? undefined : input[i].headers;
+            assert.eq(outputDoc._stream_meta.source.topic, topicName1, outputDoc);
             assert.eq(outputDoc._stream_meta.source.key, expectedKey, outputDoc);
             assert.eq(outputDoc._stream_meta.source.headers, expectedHeaders, outputDoc);
 
@@ -339,6 +340,7 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
     const results = sinkColl1.find({}).toArray();
     for (let doc of results) {
         assert(doc._stream_meta.source.hasOwnProperty("type"), doc);
+        assert(doc._stream_meta.source.hasOwnProperty("topic"), doc);
         assert(doc._stream_meta.source.hasOwnProperty("partition"), doc);
         assert(doc._stream_meta.source.hasOwnProperty("offset"), doc);
         assert(doc._stream_meta.window.hasOwnProperty("start"), doc);
