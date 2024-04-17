@@ -45,7 +45,7 @@ const schema = {
 };
 
 var edb = shell.getDB(jsTestName());
-edb.createCollection(dbName, {encryptedFields: schema});
+edb.createCollection(collName, {encryptedFields: schema});
 
 var ecoll = edb.getCollection(collName);
 ecoll.createIndex({__safeContent__: 1});
