@@ -316,6 +316,7 @@ structs:
             featureFlags:
                 description: "Feature flags bson object."
                 type: object
+                optional: true
 
     MongoDLQOptions:
         description: "Connection information for the dead letter queue."
