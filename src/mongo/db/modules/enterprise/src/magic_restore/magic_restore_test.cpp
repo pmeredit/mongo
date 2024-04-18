@@ -531,6 +531,43 @@ static std::vector<BSONObj> getDocuments(OperationContext* opCtx,
     return docs;
 }
 
+// Test createCollectionsToRestore.
+TEST_F(MagicRestoreFixture, CreateCollectionsToRestore) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    auto dbName = DatabaseName::createDatabaseName_forTest(boost::none /* tenantId*/, "testDB");
+    std::string collName0 = "testColl0";
+    std::string collName1 = "testColl1";
+    auto ns0 = NamespaceString::createNamespaceString_forTest(dbName, collName0);
+    auto ns1 = NamespaceString::createNamespaceString_forTest(dbName, collName1);
+    auto uuid0 = mongo::UUID::gen();
+    auto uuid1 = mongo::UUID::gen();
+
+    std::vector<mongo::magic_restore::CollectionToRestore> collectionsToRestore{
+        mongo::magic_restore::CollectionToRestore{ns0, uuid0},
+        mongo::magic_restore::CollectionToRestore{ns1, uuid1}};
+
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage->getCollectionUUID(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
+
+    magic_restore::createCollectionsToRestore(opCtx, collectionsToRestore, storage);
+
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kConfigsvrRestoreNamespace);
+    ASSERT_EQ(2, docs.size());
+
+    auto expectedNs0 = NamespaceStringUtil::serialize(ns0, SerializationContext::stateDefault());
+
+    ASSERT_EQ(docs[0].getStringField("ns"),
+              NamespaceStringUtil::serialize(ns0, SerializationContext::stateDefault()));
+    ASSERT_BSONELT_EQ(docs[0].getField("uuid"), uuid0.toBSON().firstElement());
+    ASSERT_EQ(docs[1].getStringField("ns"),
+              NamespaceStringUtil::serialize(ns1, SerializationContext::stateDefault()));
+    ASSERT_BSONELT_EQ(docs[1].getField("uuid"), uuid1.toBSON().firstElement());
+
+    ASSERT_OK(storage->dropCollection(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
+}
+
 // Test of updateShardingMetadata for magic_restore::NodeTypeEnum::kConfigShard.
 TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
     auto storage = storageInterface();
@@ -541,6 +578,8 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
 
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kServerConfigurationNamespace, CollectionOptions{}));
+    ASSERT_OK(storage->createCollection(
+        opCtx, NamespaceString::kConfigMongosNamespace, CollectionOptions{}));
     ASSERT_OK(storage->createCollection(opCtx, chunkTest, CollectionOptions{}));
 
     BSONObj expectedShardIdentity =
@@ -572,6 +611,9 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
     ASSERT_BSONOBJ_EQ_UNORDERED(docs[1], expectedShardIdentity);
 
     ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, storage->getCollectionUUID(opCtx, chunkTest));
+
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage->getCollectionUUID(opCtx, NamespaceString::kConfigMongosNamespace));
 }
 
 // Test of updateShardingMetadata for magic_restore::NodeTypeEnum::kShard.
@@ -681,6 +723,8 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
         opCtx, NamespaceString::kConfigsvrChunksNamespace, CollectionOptions{}));
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kTransactionCoordinatorsNamespace, CollectionOptions{}));
+    ASSERT_OK(storage->createCollection(
+        opCtx, NamespaceString::kConfigReshardingOperationsNamespace, CollectionOptions{}));
 
     // Multiple documents with primary backupShard0 and backupShard1, see mapping below.
     ASSERT_OK(storage->insertDocuments(opCtx,
@@ -752,6 +796,21 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
          InsertStatement{
              BSON("_id" << 1 << "participants" << BSON_ARRAY(backupShard2 << backupShard1))}}));
 
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kConfigReshardingOperationsNamespace,
+        {InsertStatement{
+             BSON("_id" << 0 << "state"
+                        << "cloning"
+                        << "donorShards"
+                        << BSON_ARRAY(BSON("id" << backupShard0) << BSON("id" << backupShard2))
+                        << "recipientShards" << BSON_ARRAY(BSON("id" << backupShard2)))},
+         InsertStatement{BSON(
+             "_id" << 1 << "state"
+                   << "committing"
+                   << "donorShards" << BSON_ARRAY(BSON("id" << backupShard2)) << "recipientShards"
+                   << BSON_ARRAY(BSON("id" << backupShard2) << BSON("id" << backupShard1)))}}));
+
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(magic_restore::NodeTypeEnum::kDedicatedConfigServer);
 
@@ -813,6 +872,24 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
                       BSON_ARRAY(restoreShard0 << backupShard2));
     ASSERT_BSONOBJ_EQ(docs[1].getObjectField("participants"),
                       BSON_ARRAY(backupShard2 << restoreShard1));
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kConfigReshardingOperationsNamespace);
+    ASSERT_EQ(2, docs.size());
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("donorShards"),
+                      BSON_ARRAY(BSON("id" << restoreShard0) << BSON("id" << backupShard2)));
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("recipientShards"),
+                      BSON_ARRAY(BSON("id" << backupShard2)));
+    ASSERT_EQ(docs[0].getStringField("state"), "aborting");
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("abortReason"),
+                      BSON("code" << ErrorCodes::ReshardCollectionAborted << "errmsg"
+                                  << "aborted by automated restore"));
+
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("abortReason"), {});
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("donorShards"),
+                      BSON_ARRAY(BSON("id" << backupShard2)));
+    ASSERT_BSONOBJ_EQ(docs[1].getObjectField("recipientShards"),
+                      BSON_ARRAY(BSON("id" << backupShard2) << BSON("id" << restoreShard1)));
+    ASSERT_EQ(docs[1].getStringField("state"), "committing");
 }
 
 // Test of updateShardNameMetadata for magic_restore::NodeTypeEnum::kShard.

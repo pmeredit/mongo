@@ -23,6 +23,7 @@
 #include "mongo/db/catalog/database_holder_impl.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/concurrency/exception_util.h"
+#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/mongod_options.h"
 #include "mongo/db/op_observer/op_observer.h"
@@ -31,6 +32,8 @@
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/logv2/log.h"
+#include "mongo/s/balancer_configuration.h"
+#include "mongo/s/grid.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
@@ -272,13 +275,30 @@ void updateShardNameMetadata(OperationContext* opCtx,
                     std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
 
         if (isConfig(restoreConfig)) {
-            /*
-            TODO SERVER-87568: Update config.reshardingOperations
-                For each object in the donorShards and recipientShard arrays:
-                            {id: sourceShardName} -> {id: destShardName}
-                If state != committing, set the state to "aborting" and set the abortReason to
-               {code: ReshardCollectionAborted, errmsg: "aborted by automated restore"}
-            */
+            // Update config.reshardingOperations.
+            fassert(8756801,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kConfigReshardingOperationsNamespace,
+                        {} /* query */,
+                        {BSON("$set" << BSON("donorShards.$[src].id" << dstShardName
+                                                                     << "recipientShards.$[src].id"
+                                                                     << dstShardName)),
+                         Timestamp(0)},
+                        std::vector<BSONObj>{BSON("src.id" << srcShardName)} /* arrayFilters */));
+            fassert(8756802,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kConfigReshardingOperationsNamespace,
+                        {BSON("state" << BSON("$ne"
+                                              << "committing"))} /* query */,
+                        {BSON("$set" << BSON("state"
+                                             << "aborting"
+                                             << "abortReason"
+                                             << BSON("code" << ErrorCodes::ReshardCollectionAborted
+                                                            << "errmsg"
+                                                            << "aborted by automated restore"))),
+                         Timestamp(0)}));
         }
 
         if (isShard(restoreConfig)) {
@@ -353,17 +373,74 @@ mongo::ShardIdentity getShardIdentity(OperationContext* opCtx,
     return mongo::ShardIdentity::parse(IDLParserContext("RestoreConfiguration"), shardIdentity);
 }
 
+void setBalancerMode(OperationContext* opCtx, BalancerConfiguration* balancerConfig, bool stopped) {
+    // TODO SERVER-89488: confirm this works as intended.
+    fassert(8756803,
+            balancerConfig->setBalancerMode(
+                opCtx, stopped ? BalancerSettingsType::kOff : BalancerSettingsType::kFull));
+}
+
+// Create local.system.collections_to_restore.
+void createCollectionsToRestore(
+    OperationContext* opCtx,
+    const std::vector<mongo::magic_restore::CollectionToRestore>& collectionsToRestore,
+    repl::StorageInterface* storageInterface) {
+    fassert(8756805,
+            storageInterface->createCollection(
+                opCtx, NamespaceString::kConfigsvrRestoreNamespace, CollectionOptions()));
+
+    // Insert all the names and UUIDs of the collections that were restored.
+    // TODO SERVER-87581: confirm that this does not create an oplog entry.
+    std::vector<InsertStatement> docs;
+    docs.reserve(collectionsToRestore.size());
+    for (const auto& collectionToRestore : collectionsToRestore) {
+        docs.push_back(InsertStatement(
+            BSON("_id" << OID::gen() << "ns"
+                       << NamespaceStringUtil::serialize(collectionToRestore.getNs(),
+                                                         SerializationContext::stateDefault())
+                       << "uuid" << collectionToRestore.getUuid()),
+            Timestamp(0),
+            repl::OpTime::kUninitializedTerm));
+    }
+    fassert(8756806,
+            storageInterface->insertDocuments(
+                opCtx, NamespaceString::kConfigsvrRestoreNamespace, docs));
+}
+
 void updateShardingMetadata(OperationContext* opCtx,
                             const RestoreConfiguration& restoreConfig,
                             repl::StorageInterface* storageInterface) {
     invariant(restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet);
 
     if (isConfig(restoreConfig)) {
-        /*
-        TODO SERVER-87568: Set the balancer state
-        TODO SERVER-87568: Drop the config.mongos collection
-        TODO SERVER-87568: Update config collections for unrestored collections
-        */
+        // Set the balancer state.
+        if (restoreConfig.getBalancerSettings()) {
+            auto balancerConfig = Grid::get(opCtx)->getBalancerConfiguration();
+            setBalancerMode(
+                opCtx, balancerConfig, restoreConfig.getBalancerSettings()->getStopped());
+        }
+
+        // Drop config.mongos.
+        fassert(8756804,
+                storageInterface->dropCollection(opCtx, NamespaceString::kConfigMongosNamespace));
+
+        if (restoreConfig.getCollectionsToRestore()) {
+            createCollectionsToRestore(
+                opCtx, restoreConfig.getCollectionsToRestore().get(), storageInterface);
+
+            // Run the _configsvrRunRestore command to clean up config metadata documents for
+            // unrestored collections.
+            DBDirectClient dbClient(opCtx);
+            OpMsgRequest request;
+            request.body = BSON("_configsvrRunRestore" << 1);
+            dbClient.runCommand(request);
+            const auto commandReply = dbClient.runCommand(request)->getCommandReply();
+            fassert(8756807, getStatusFromWriteCommandReply(commandReply));
+
+            fassert(8756808,
+                    storageInterface->dropCollection(opCtx,
+                                                     NamespaceString::kConfigsvrRestoreNamespace));
+        }
     }
 
     updateShardNameMetadata(opCtx, restoreConfig, storageInterface);

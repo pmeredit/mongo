@@ -84,6 +84,17 @@ void updateShardNameMetadata(OperationContext* opCtx,
                              repl::StorageInterface* storageInterface);
 
 /**
+ * Create local.system.collections_to_restore, which is a metadata collection used to support a
+ * selective restore that filters on namespaces. The restore procedure must remove config metadata
+ * for unrestored collections.
+ */
+class CollectionToRestore;
+void createCollectionsToRestore(
+    OperationContext* opCtx,
+    const std::vector<mongo::magic_restore::CollectionToRestore>& collectionsToRestore,
+    repl::StorageInterface* storageInterface);
+
+/**
  * Performs follow-up steps for sharded clusters.
  */
 void updateShardingMetadata(OperationContext* opCtx,
