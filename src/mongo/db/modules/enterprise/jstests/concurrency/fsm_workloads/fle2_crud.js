@@ -7,6 +7,9 @@
  *
  * @tags: [
  * requires_fcv_70,
+ * # TODO SERVER-89503 Re-enable this test in suites with balancer once
+ * # the relative issue is solved.
+ * assumes_balancer_off,
  * ]
  */
 
