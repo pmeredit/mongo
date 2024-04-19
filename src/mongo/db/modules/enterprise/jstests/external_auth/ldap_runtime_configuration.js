@@ -86,38 +86,56 @@ function runTest(fpConn, mainConn, badParam, goodParam) {
 function runChangeLDAPServerTest(useConnectionPooling) {
     const st = launchCluster(useConnectionPooling);
     const mongos = st.s0;
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
 
     runTest(mongos,
             mongos,
             {setParameter: 1, ldapServers: "localhost:20441"},
             {setParameter: 1, ldapServers: "ldaptest.10gen.cc"});
 
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 function runChangeLDAPQueryBindTest(useConnectionPooling) {
     const st = launchCluster(useConnectionPooling);
     const mongos = st.s0;
     const configPrimary = st.configRS.getPrimary();
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
 
     runTest(configPrimary,
             mongos,
             {setParameter: 1, ldapQueryUser: 'cn=ldapz_ldap2,' + defaultUserDNSuffix},
             {setParameter: 1, ldapQueryPassword: 'Secret123'});
 
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 function runChangeLDAPTimeoutTest(useConnectionPooling) {
     const st = launchCluster(useConnectionPooling);
     const mongos = st.s0;
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
 
     runTest(mongos,
             mongos,
             {setParameter: 1, ldapTimeoutMS: 1},
             {setParameter: 1, ldapTimeoutMS: 10000});
 
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 runChangeLDAPServerTest(true);

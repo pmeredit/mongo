@@ -77,11 +77,18 @@ function runShardedTest(shouldUseConnectionPool) {
     shardedConfig.other.writeConcernMajorityJournalDefault = false;
 
     const shardedCluster = new ShardingTest(shardedConfig);
+    const isReplicaSetEndpointActive = shardedCluster.isReplicaSetEndpointActive();
+
     setupTest(shardedCluster.s0);
     runTest(shardedCluster.s0);
 
     // Shut everything down.
-    shardedCluster.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    shardedCluster.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
     ldapServerInfo.referringServer.stop();
     ldapServerInfo.backgroundServer.stop();
 }

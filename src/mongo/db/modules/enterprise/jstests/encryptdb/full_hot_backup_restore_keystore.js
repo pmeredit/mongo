@@ -10,7 +10,7 @@
  * ahead of the 'checkpointTimestamp' returned from $backupCursor. During oplog recovery, the
  * database will be assigned a new key in the KeyStore when its creation is replayed.
  */
-import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {
     platformSupportsGCM
 } from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
@@ -80,7 +80,7 @@ const runTest = function(cipherMode) {
     jsTest.log("Calling $backupCursorExtend with insert operation timestamp: " +
                tojson(operationTime));
 
-    let cursorExtend = primaryDB.aggregate(
+    let cursorExtend = getBackupCursorDB(primary).aggregate(
         [{$backupCursorExtend: {backupId: backupId, timestamp: operationTime}}]);
     while (cursorExtend.hasNext()) {
         let doc = cursorExtend.next();

@@ -61,7 +61,13 @@ function runTest() {
     bindTimeoutFp.off();
     assertPostTimeoutLogExists(mongos);
 
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
     configGenerator.stopMockupServer();
 }
 

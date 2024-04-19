@@ -194,12 +194,19 @@ function runShardedTest() {
 
     const shardedCluster = new ShardingTest(shardedConfig);
     const mongos = shardedCluster.s0;
+    const isReplicaSetEndpointActive = shardedCluster.isReplicaSetEndpointActive();
+
     setupTest(mongos);
     runCommonTest(mongos, mockLDAPServer, kShardedRefreshSleepMS, kShardedStalenessSleepMS);
 
     // Shut the cluster down. The mock LDAP server should have already been shut down as part of
     // the staleness test.
-    shardedCluster.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    shardedCluster.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 function runShardedCacheOverflowTest() {
@@ -227,6 +234,8 @@ function runShardedCacheOverflowTest() {
 
     const shardedCluster = new ShardingTest(shardedConfig);
     const mongos = shardedCluster.s0;
+    const isReplicaSetEndpointActive = shardedCluster.isReplicaSetEndpointActive();
+
     setupTest(mongos);
     // Auth as ldapz_ldap1 and maintain an idle connection.
     const externalDB = mongos.getDB('$external');
@@ -255,7 +264,12 @@ function runShardedCacheOverflowTest() {
                       "Refresh did not occur, can still write after LDAP server role update");
 
     // Shut everything down.
-    shardedCluster.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    shardedCluster.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
     mockLDAPServer.stop();
 }
 
