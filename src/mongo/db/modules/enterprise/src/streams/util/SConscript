@@ -11,6 +11,7 @@ env.Library(
     source=[
         'metric_manager.cpp',
         'metrics.cpp',
+        'exception.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

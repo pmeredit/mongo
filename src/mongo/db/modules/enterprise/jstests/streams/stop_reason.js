@@ -8,6 +8,7 @@
 
 import {findMatchingLogLines} from "jstests/libs/log.js";
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 // Start a streamProcessor.
 const sp = getDefaultSp();
@@ -34,3 +35,4 @@ assert.soon(() => {
         return logLine.id == 8728300 && logLine.attr.stopReason == "ExternalStopRequest";
     }) != null;
 });
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

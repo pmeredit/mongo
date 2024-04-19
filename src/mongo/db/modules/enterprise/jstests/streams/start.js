@@ -6,6 +6,7 @@
 
 import {Thread} from "jstests/libs/parallelTester.js";
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
 "use strict";
@@ -25,7 +26,7 @@ const connectionRegistry = [{name: dbConnectionName, type: 'atlas', options: {ur
 function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: spName,
         processorId: 'spName1',
         pipeline: pipeline,
@@ -261,4 +262,6 @@ function stopStreamProcessor() {
     sp[spName].start(undefined, undefined, undefined, /* assertWorked */ false);
     stopThread.join();
 }());
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

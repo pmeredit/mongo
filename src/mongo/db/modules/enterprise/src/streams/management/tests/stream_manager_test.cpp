@@ -37,15 +37,26 @@ static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
 
 class StreamManagerTest : public AggregationContextFixture {
 public:
-    bool exists(StreamManager* streamManager, std::string name) {
+    bool streamProcessorExists(StreamManager* streamManager, std::string name) {
+        stdx::lock_guard<Latch> lk(streamManager->_mutex);
         return streamManager->_processors.contains(name);
+    }
+
+    bool isStreamProcessorConnected(StreamManager* streamManager, std::string name) {
+        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        auto it = streamManager->_processors.find(name);
+        if (it == streamManager->_processors.end()) {
+            return false;
+        }
+        return it->second->executor->isConnected();
     }
 
     void createStreamProcessor(
         StreamManager* streamManager,
         StartStreamProcessorCommand request,
         int64_t testOnlyDocsQueueMaxSizeBytes = std::numeric_limits<int64_t>::max()) {
-        auto info = streamManager->createStreamProcessorInfoLocked(request);
+        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        auto info = streamManager->createStreamProcessorInfo(lk, request);
         auto executorOptions = info->executor->_options;
         executorOptions.testOnlyDocsQueueMaxSizeBytes = testOnlyDocsQueueMaxSizeBytes;
         info->executor =
@@ -65,6 +76,13 @@ public:
         StopStreamProcessorCommand stopRequest;
         stopRequest.setName(name);
         streamManager->stopStreamProcessor(stopRequest);
+    }
+
+    void stopStreamProcessor(StreamManager* streamManager,
+                             std::string name,
+                             StopReason stopReason) {
+        Date_t deadline = Date_t::now() + Minutes{1};
+        streamManager->stopStreamProcessor(name, stopReason, deadline);
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
@@ -157,9 +175,146 @@ TEST_F(StreamManagerTest, Start) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
-    ASSERT(exists(streamManager.get(), "name1"));
-    streamManager->stopStreamProcessorByName("name1", StopReason::ExternalStopRequest);
-    ASSERT(!exists(streamManager.get(), "name1"));
+    ASSERT(streamProcessorExists(streamManager.get(), "name1"));
+    stopStreamProcessor(streamManager.get(), "name1", StopReason::ExternalStopRequest);
+    ASSERT(!streamProcessorExists(streamManager.get(), "name1"));
+}
+
+TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+
+    // Start 10 stream processors asynchronously on 10 threads.
+    std::vector<stdx::thread> startThreads;
+    for (int i = 0; i < 10; ++i) {
+        startThreads.push_back(stdx::thread([i, &streamManager, this]() {
+            StartStreamProcessorCommand request;
+            request.setTenantId(StringData("tenant1"));
+            auto processorName = fmt::format("name{}", i);
+            request.setName(processorName);
+            request.setProcessorId(StringData(processorName));
+            request.setCorrelationId(StringData("userRequest"));
+            request.setPipeline(
+                {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+            request.setConnections({mongo::Connection(
+                "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+            request.setOptions(mongo::StartOptions{});
+            streamManager->startStreamProcessor(request);
+        }));
+    }
+
+    // Stop the 10 stream processors asynchronously.
+    std::vector<stdx::thread> stopThreads;
+    for (size_t i = 0; i < 10; ++i) {
+        stopThreads.push_back(stdx::thread([i, &streamManager, this]() {
+            // Wait until the stream processor is connected before stopping it.
+            auto processorName = fmt::format("name{}", i);
+            while (!isStreamProcessorConnected(streamManager.get(), processorName)) {
+                sleepFor(Milliseconds(100));
+            }
+            stopStreamProcessor(
+                streamManager.get(), processorName, StopReason::ExternalStopRequest);
+        }));
+    }
+
+    for (size_t i = 0; i < startThreads.size(); ++i) {
+        startThreads[i].join();
+        stopThreads[i].join();
+    }
+
+    ListStreamProcessorsCommand listRequest;
+    listRequest.setCorrelationId(StringData("userRequest1"));
+    auto listReply = streamManager->listStreamProcessors(listRequest);
+    ASSERT_TRUE(listReply.getStreamProcessors().empty());
+}
+
+TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+
+    // Start a stream processor asynchronously and make it sleep for 10s while establishing
+    // connections.
+    setGlobalFailPoint("streamProcessorStartSleepSeconds",
+                       BSON("mode"
+                            << "alwaysOn"
+                            << "data" << BSON("sleepSeconds" << 10)));
+
+    stdx::thread startThread = stdx::thread([&]() {
+        StartStreamProcessorCommand request;
+        request.setTenantId(StringData("tenant1"));
+        auto processorName = "name";
+        request.setName(processorName);
+        request.setProcessorId(StringData(processorName));
+        request.setCorrelationId(StringData("userRequest"));
+        request.setPipeline(
+            {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+        request.setConnections({mongo::Connection(
+            "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+        request.setOptions(mongo::StartOptions{});
+        // Test that startStreamProcessor() fails due to stream processor being removed while it is
+        // still starting.
+        ASSERT_THROWS(streamManager->startStreamProcessor(request), DBException);
+    });
+
+    // Stop the stream processor asynchronously before it has established connections.
+    stdx::thread stopThread = stdx::thread([&]() {
+        // Wait until the stream processor is connected before stopping it.
+        auto processorName = "name";
+        while (!streamProcessorExists(streamManager.get(), processorName)) {
+            sleepFor(Milliseconds(100));
+        }
+        ASSERT_FALSE(isStreamProcessorConnected(streamManager.get(), processorName));
+        stopStreamProcessor(streamManager.get(), processorName, StopReason::ExternalStopRequest);
+    });
+
+    startThread.join();
+    stopThread.join();
+
+    ListStreamProcessorsCommand listRequest;
+    listRequest.setCorrelationId(StringData("userRequest1"));
+    auto listReply = streamManager->listStreamProcessors(listRequest);
+    ASSERT_TRUE(listReply.getStreamProcessors().empty());
+}
+
+TEST_F(StreamManagerTest, StartTimesOut) {
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+
+    // Start a stream processor asynchronously and make it sleep for 100s while establishing
+    // connections.
+    setGlobalFailPoint("streamProcessorStartSleepSeconds",
+                       BSON("mode"
+                            << "alwaysOn"
+                            << "data" << BSON("sleepSeconds" << 15)));
+
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData("tenant1"));
+    auto processorName = "name";
+    request.setName(processorName);
+    request.setProcessorId(StringData(processorName));
+    request.setCorrelationId(StringData("userRequest"));
+    request.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
+    request.setTimeout(mongo::Seconds{10});
+    // Test that startStreamProcessor() fails with timeout error.
+    ASSERT_THROWS_WHAT(
+        streamManager->startStreamProcessor(request), DBException, "Timeout while connecting"_sd);
+
+    stopStreamProcessor(streamManager.get(), processorName, StopReason::ExternalStopRequest);
+    ASSERT_FALSE(streamProcessorExists(streamManager.get(), processorName));
+
+    ListStreamProcessorsCommand listRequest;
+    listRequest.setCorrelationId(StringData("userRequest1"));
+    auto listReply = streamManager->listStreamProcessors(listRequest);
+    ASSERT_TRUE(listReply.getStreamProcessors().empty());
+
+    // Deactivate the fail point.
+    setGlobalFailPoint("streamProcessorStartSleepSeconds",
+                       BSON("mode"
+                            << "off"));
 }
 
 TEST_F(StreamManagerTest, GetStats) {
@@ -304,9 +459,6 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
 
         ASSERT_EQUALS(0, state.getCheckpointOffset());
     }
-
-    // Stop the stream processor.
-    stopStreamProcessor(streamManager.get(), streamName);
 }
 
 TEST_F(StreamManagerTest, GetMetrics) {
@@ -386,8 +538,8 @@ TEST_F(StreamManagerTest, List) {
     ASSERT_EQUALS(StringData("processor2"), sp1.getProcessorId());
     ASSERT_EQUALS(StringData("name2"), sp1.getName());
 
-    streamManager->stopStreamProcessorByName("name1", StopReason::ExternalStopRequest);
-    streamManager->stopStreamProcessorByName("name2", StopReason::ExternalStopRequest);
+    stopStreamProcessor(streamManager.get(), "name1", StopReason::ExternalStopRequest);
+    stopStreamProcessor(streamManager.get(), "name2", StopReason::ExternalStopRequest);
     listReply = streamManager->listStreamProcessors(listRequest);
     ASSERT_EQUALS(0, listReply.getStreamProcessors().size());
 }
@@ -405,7 +557,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
-    ASSERT(exists(streamManager.get(), "name1"));
+    ASSERT(streamProcessorExists(streamManager.get(), "name1"));
 
     // Inject an exception into the executor.
     auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
@@ -423,8 +575,9 @@ TEST_F(StreamManagerTest, ErrorHandling) {
         bool isError = it->getStatus() == StreamStatusEnum::Error;
         if (isError) {
             ASSERT(it->getError());
-            ASSERT_EQUALS(75385, it->getError()->getCode());
-            ASSERT_EQUALS("An internal error occured.", it->getError()->getReason());
+            ASSERT_EQUALS(ErrorCodes::InternalError, it->getError()->getCode());
+            ASSERT_EQUALS("Caught std::exception of type std::runtime_error: hello exception",
+                          it->getError()->getReason());
             ASSERT_EQUALS(true, it->getError()->getRetryable());
         }
         return isError;
@@ -432,9 +585,9 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     ASSERT(success);
 
     // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
-    ASSERT(exists(streamManager.get(), request.getName().toString()));
+    ASSERT(streamProcessorExists(streamManager.get(), request.getName().toString()));
     stopStreamProcessor(streamManager.get(), request.getName().toString());
-    ASSERT(!exists(streamManager.get(), request.getName().toString()));
+    ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
 }
 
 // Verifies that checkpointing is disabled for sources other than Kafka and Changestream.
@@ -451,12 +604,12 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
-    ASSERT(exists(streamManager.get(), "name1"));
+    ASSERT(streamProcessorExists(streamManager.get(), "name1"));
     auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo->context->checkpointStorage.get());
     stopStreamProcessor(streamManager.get(), request.getName().toString());
-    ASSERT(!exists(streamManager.get(), request.getName().toString()));
+    ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
 
     StartStreamProcessorCommand request2;
     request2.setTenantId(StringData("tenant1"));
@@ -469,13 +622,13 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
         "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});
     request2.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request2);
-    ASSERT(exists(streamManager.get(), "name2"));
+    ASSERT(streamProcessorExists(streamManager.get(), "name2"));
     auto processorInfo2 =
         getStreamProcessorInfo(streamManager.get(), request2.getName().toString());
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo2->context->checkpointStorage.get());
     stopStreamProcessor(streamManager.get(), request2.getName().toString());
-    ASSERT(!exists(streamManager.get(), request2.getName().toString()));
+    ASSERT(!streamProcessorExists(streamManager.get(), request2.getName().toString()));
 }
 
 TEST_F(StreamManagerTest, TestOnlyInsert) {
@@ -551,7 +704,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
         request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
         streamManager->startStreamProcessor(request);
-        ASSERT(exists(streamManager.get(), request.getName().toString()));
+        ASSERT(streamProcessorExists(streamManager.get(), request.getName().toString()));
 
         auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
         ASSERT(processorInfo->checkpointCoordinator);
@@ -573,7 +726,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
         stopStreamProcessor(streamManager.get(), request.getName().toString());
-        ASSERT(!exists(streamManager.get(), request.getName().toString()));
+        ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
         std::filesystem::remove_all(writeDir);
     };
 

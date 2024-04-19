@@ -5,7 +5,10 @@
  */
 
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
-import {verifyInputEqualsOutput} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    listStreamProcessors,
+    verifyInputEqualsOutput
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function smokeTest() {
     const sp = getDefaultSp();
@@ -99,3 +102,5 @@ function smokeTest() {
 }
 
 smokeTest();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

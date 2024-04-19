@@ -8,6 +8,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/change_stream_source_operator.h"
@@ -35,6 +36,9 @@ namespace streams {
 using namespace mongo;
 
 namespace {
+
+// If enabled, executor will sleep for specified duration before attempting source/sink connections.
+MONGO_FAIL_POINT_DEFINE(streamProcessorStartSleepSeconds);
 
 void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDocs) {
     dassert(source);
@@ -79,8 +83,10 @@ Executor::Executor(Context* context, Options options)
 }
 
 Executor::~Executor() {
-    // make sure that stop() has already been called if necessary.
-    dassert(!_executorThread.joinable());
+    if (_executorThread.joinable()) {
+        // Wait for the executor thread to exit.
+        _executorThread.join();
+    }
 }
 
 Future<void> Executor::start() {
@@ -90,7 +96,9 @@ Future<void> Executor::start() {
     // Start the executor thread.
     dassert(!_executorThread.joinable());
     _executorThread = stdx::thread([this] {
+        bool started{false};
         bool promiseFulfilled{false};
+        Date_t deadline = Date_t::now() + _options.connectTimeout;
         try {
             if (_context->checkpointStorage) {
                 _context->checkpointStorage->registerMetrics(_metricManager.get());
@@ -108,68 +116,43 @@ Future<void> Executor::start() {
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
-
-            Date_t deadline = Date_t::now() + _options.connectTimeout;
-            ensureConnected(deadline);
-            if (isShutdown()) {
-                LOGV2_INFO(8884500,
-                           "Stream processor has been shutdown, returning early.",
-                           "context"_attr = _context);
-                return;
-            }
-
-            if (_context->checkpointStorage && _context->restoreCheckpointId) {
-                tassert(8444407,
-                        "Expected a restoreCheckpointDescription",
-                        _context->restoredCheckpointDescription);
-                _context->restoredCheckpointDescription->setSourceState(
-                    _options.operatorDag->source()->getRestoredState());
-                auto duration =
-                    _context->checkpointStorage->checkpointRestored(*_context->restoreCheckpointId);
-                _context->restoredCheckpointDescription->setRestoreDurationMs(duration);
-
-                {
-                    stdx::lock_guard<Latch> lock(_mutex);
-                    _restoredCheckpointDescription = _context->restoredCheckpointDescription;
-                }
-            }
-
+            started = true;
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
-            {
-                stdx::lock_guard<Latch> lock(_mutex);
-                _started = true;
+
+            if (auto fp = streamProcessorStartSleepSeconds.scoped(); fp.isActive()) {
+                auto sleepSeconds = static_cast<int64_t>(fp.getData()["sleepSeconds"].numberLong());
+                sleepFor(Seconds{sleepSeconds});
             }
 
-            runLoop();
-        } catch (const SPException& e) {
-            LOGV2_WARNING(75900,
-                          "encountered stream processor exception, exiting runLoop(): {error}",
-                          "context"_attr = _context,
-                          "errorCode"_attr = e.code(),
-                          "reason"_attr = e.reason(),
-                          "unsafeErrorMessage"_attr = e.unsafeReason(),
-                          "error"_attr = e.what());
-            _promise.setError(e.toStatus());
-            promiseFulfilled = true;
-        } catch (const DBException& e) {
-            LOGV2_WARNING(75899,
-                          "encountered exception, exiting runLoop(): {error}",
-                          "context"_attr = _context,
-                          "errorCode"_attr = e.code(),
-                          "reason"_attr = e.reason(),
-                          "error"_attr = e.what());
-            // Propagate this error to StreamManager. This error will be returned to the user.
-            // We assume all DBExceptions have safe error messages to return to the user.
-            _promise.setError(e.toStatus());
-            promiseFulfilled = true;
-        } catch (const std::exception& e) {
-            LOGV2_ERROR(75897,
-                        "encountered exception, exiting runLoop(): {error}",
-                        "context"_attr = _context,
-                        "error"_attr = e.what());
-            // This error will go back to the user. std::exception error messages
-            // are not safe to return to users.
-            _promise.setError(Status(ErrorCodes::Error(75385), "An internal error occured."));
+            ensureConnected(deadline);
+
+            if (isConnected()) {
+                if (_context->checkpointStorage && _context->restoreCheckpointId) {
+                    tassert(8444407,
+                            "Expected a restoreCheckpointDescription",
+                            _context->restoredCheckpointDescription);
+                    _context->restoredCheckpointDescription->setSourceState(
+                        _options.operatorDag->source()->getRestoredState());
+                    auto duration = _context->checkpointStorage->checkpointRestored(
+                        *_context->restoreCheckpointId);
+                    _context->restoredCheckpointDescription->setRestoreDurationMs(duration);
+                    {
+                        stdx::lock_guard<Latch> lock(_mutex);
+                        _restoredCheckpointDescription = _context->restoredCheckpointDescription;
+                    }
+                }
+
+                runLoop();
+            }
+        } catch (...) {
+            auto status = exceptionToSPStatus();
+            LOGV2_INFO(75900,
+                       "Executor encountered exception",
+                       "context"_attr = _context,
+                       "errorCode"_attr = status.code(),
+                       "reason"_attr = status.reason(),
+                       "unsafeErrorMessage"_attr = status.unsafeReason());
+            _promise.setError(status);
             promiseFulfilled = true;
         }
 
@@ -177,29 +160,33 @@ Future<void> Executor::start() {
             // Fulfill the promise as the thread exits.
             _promise.emplaceValue();
         }
+
+        if (started) {
+            try {
+                LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
+                _options.operatorDag->stop();
+                _context->dlq->stop();
+                _testOnlyDocsQueue.closeConsumerEnd();
+                LOGV2_INFO(76433, "stopped operator dag", "context"_attr = _context);
+            } catch (...) {
+                auto status = exceptionToSPStatus();
+                LOGV2_WARNING(75901,
+                              "encountered exception while stopping OperatorDag",
+                              "context"_attr = _context,
+                              "errorCode"_attr = status.code(),
+                              "reason"_attr = status.reason(),
+                              "unsafeErrorMessage"_attr = status.unsafeReason());
+            }
+        }
     });
 
     return std::move(pf.future);
 }
 
 void Executor::stop(StopReason stopReason) {
-    // Stop the executor thread.
-    bool joinThread{false};
-    if (_executorThread.joinable()) {
-        stdx::lock_guard<Latch> lock(_mutex);
-        _shutdown = true;
-        _stopReason = stopReason;
-        joinThread = true;
-    }
-    if (joinThread) {
-        // Wait for the executor thread to exit.
-        _executorThread.join();
-    }
-
-    LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
-    _options.operatorDag->stop();
-    _context->dlq->stop();
-    _testOnlyDocsQueue.closeConsumerEnd();
+    stdx::lock_guard<Latch> lock(_mutex);
+    _shutdown = true;
+    _stopReason = stopReason;
 }
 
 std::vector<OperatorStats> Executor::getOperatorStats() {
@@ -240,9 +227,9 @@ void Executor::testOnlyInjectException(std::exception_ptr exception) {
     _testOnlyException = std::move(exception);
 }
 
-bool Executor::isStarted() {
+bool Executor::isConnected() {
     stdx::lock_guard<Latch> lock(_mutex);
-    return _started;
+    return _connected;
 }
 
 boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> Executor::getChangeStreamState()
@@ -489,13 +476,15 @@ void Executor::processFlushedCheckpoints() {
 }
 
 void Executor::ensureConnected(Date_t deadline) {
+    uassert(75382, "Timeout while connecting", Date_t::now() <= deadline);
+
     // TODO(SERVER-80742): Establish connection with DLQ.
     // Connect to the source.
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
     invariant(source);
-    // Even .process pipelines, which don't require a sink, get a NoOp sink appended.
     invariant(sink);
+
     constexpr Milliseconds sleepDuration{100};
     while (!isShutdown()) {
         ConnectionStatus sourceStatus = source->getConnectionStatus();
@@ -510,6 +499,8 @@ void Executor::ensureConnected(Date_t deadline) {
 
         if (sourceStatus.isConnected() && sinkStatus.isConnected()) {
             LOGV2_INFO(75381, "succesfully connected", "context"_attr = _context);
+            stdx::lock_guard<Latch> lock(_mutex);
+            _connected = true;
             break;
         } else if (sourceStatus.isError()) {
             throw SPException{std::move(sourceStatus.error)};
@@ -518,14 +509,14 @@ void Executor::ensureConnected(Date_t deadline) {
         }
 
         // The source or sink has not finished connecting yet, and has neither have errored.
-        uassert(75380, "Timeout while connecting.", Date_t::now() <= deadline);
+        uassert(75380, "Timeout while connecting", Date_t::now() <= deadline);
         // Sleep for a bit before calling connect again.
         sleepFor(sleepDuration);
     }
 }
 
 void Executor::runLoop() {
-    invariant(_started);
+    invariant(_connected);
 
     while (true) {
         RunStatus status = runOnce();

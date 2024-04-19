@@ -4,7 +4,10 @@
  * ]
  */
 
-import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    listStreamProcessors,
+    sanitizeDoc
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
 "use strict";
@@ -19,7 +22,7 @@ const badUri = "mongodb://badUri";
 function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: spName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -794,4 +797,5 @@ const kExecutorGenericSinkErrorCode = 8143705;
 outColl.drop();
 dlqColl.drop();
 inputColl.drop();
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

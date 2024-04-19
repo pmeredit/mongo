@@ -25,7 +25,7 @@ else:
     ])
 
 env.CppUnitTest(
-    target='streams_manager_test',
+    target='stream_manager_test',
     source=[
         'stream_manager_test.cpp',
     ],

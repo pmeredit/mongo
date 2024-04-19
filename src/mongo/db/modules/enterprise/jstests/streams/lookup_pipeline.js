@@ -9,6 +9,7 @@ import {
     dbName,
     dlqCollName,
     insertDocs,
+    listStreamProcessors,
     logState,
     makeLookupPipeline,
     outCollName,
@@ -334,4 +335,6 @@ const spName = "lookupPipelineTest";
         },
     });
 })();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

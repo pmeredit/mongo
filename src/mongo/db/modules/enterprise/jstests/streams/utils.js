@@ -217,7 +217,7 @@ export function startStreamProcessor(spName, pipeline) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: spName,
         processorId: spName,
         pipeline: pipeline,

@@ -4,6 +4,7 @@ import {
     dlqCollName,
     generate16MBDoc,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc
@@ -42,3 +43,5 @@ simpleMergeFunc([testDoc], [{a: 1, b: 1}]);
 const doc = generate16MBDoc();
 simpleMergeFunc([doc], [doc]);
 assert.eq(db.getSiblingDB(dbName)[dlqCollName].find().itcount(), 1);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

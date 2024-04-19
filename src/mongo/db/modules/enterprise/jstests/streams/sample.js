@@ -6,6 +6,7 @@
 
 import {getDefaultSp} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
 import {
+    listStreamProcessors,
     sanitizeDoc,
     verifyInputEqualsOutput
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
@@ -28,7 +29,7 @@ let initialStopSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',
-    tenantId: 'tenant1',
+    tenantId: 'testTenant',
     name: 'sampleTest',
     processorId: 'sampleTest1',
     pipeline:
@@ -201,3 +202,5 @@ function processImmediatelyStartsSample() {
 }
 
 processImmediatelyStartsSample();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

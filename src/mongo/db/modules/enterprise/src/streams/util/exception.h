@@ -79,4 +79,9 @@ private:
     std::string _unsafeErrorMessage;
 };  // class SPException
 
+
+// Same as mongo::exceptionToStatus(), but also catches SPException.
+// Also, it returns InternalError in place of UnknownError.
+SPStatus exceptionToSPStatus() noexcept;
+
 };  // namespace streams

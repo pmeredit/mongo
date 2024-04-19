@@ -5,6 +5,7 @@
  */
 
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function largeGroupTest() {
     function generateInput(cnt) {
@@ -82,3 +83,5 @@ function largeGroupTest() {
 }
 
 largeGroupTest();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

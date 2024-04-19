@@ -3,6 +3,7 @@ import {
 } from "src/mongo//db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     generateDocs,
+    listStreamProcessors,
     windowPipelines
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
@@ -41,3 +42,5 @@ function tumblingWindowCheckpointInTheMiddle(docs, pipeline, compareFunction) {
         }
     }
 }());
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

@@ -3,6 +3,7 @@ import {
     dbName,
     generateDocs,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorWindowTest,
     sanitizeDoc,
@@ -92,5 +93,7 @@ Random.setRandomSeed(20230328);
         }
     }
 }());
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 
 // TODO write a test for $lookup, $mergeObjects inside of $group.

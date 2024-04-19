@@ -6,7 +6,10 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {waitForCount} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    waitForCount
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const outputDB = "outputDB";
 const outputCollName = "outputColl";
@@ -695,6 +698,8 @@ function testAfterInvalidate() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         name: spName,
+        processorId: spName,
+        tenantId: "testTenant",
         pipeline: [
             {
                 $source: {
@@ -775,3 +780,5 @@ testInvalidPipeline();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

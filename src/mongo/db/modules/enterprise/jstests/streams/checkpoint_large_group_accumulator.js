@@ -5,6 +5,7 @@
  */
 
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function getOperatorStats(operatorName, statsOutput) {
     let opStats = statsOutput["operatorStats"];
@@ -146,3 +147,5 @@ function largeGroupAccumulatorTest() {
 }
 
 largeGroupAccumulatorTest();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

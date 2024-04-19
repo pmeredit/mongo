@@ -4,6 +4,10 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {
+    listStreamProcessors,
+    stopStreamProcessor
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 (function() {
 "use strict";
@@ -24,6 +28,7 @@ function badDBSourceStartError() {
     // Calls streams_startStreamProcessor with a bad $source.
     let result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -57,6 +62,7 @@ function badKafkaSourceStartError() {
     // Calls streams_startStreamProcessor with a bad $source.
     let result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {$source: {connectionName: connectionName, topic: inputTopicName}},
@@ -109,6 +115,7 @@ function badMergeStartError() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -161,6 +168,7 @@ function badMerge_WithOn_StartError() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -211,6 +219,7 @@ function badMongoDLQAsyncError() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {$source: {connectionName: '__testMemory'}},
@@ -238,7 +247,7 @@ function badMongoDLQAsyncError() {
             "Failed to connect to DLQ at test.dlq: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error";
     });
 
-    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+    stopStreamProcessor(spName);
 }
 
 function badKafkaEmit() {
@@ -267,6 +276,7 @@ function badKafkaEmit() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -290,12 +300,12 @@ function badKafkaEmit() {
             "foohost:9092/bootstrap: Failed to resolve 'foohost:9092': Temporary failure in name resolution") ||
             result.errmsg.includes("Failed to resolve 'foohost:9092': Name or service not known"),
         result.errmsg);
-
     assert.eq(8141701, result.code);
 
     // Try the same thing, with a dynamic topic name.
     result = db.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: "sp2",
         pipeline: [
             {
@@ -374,6 +384,7 @@ function changeSourceFailsAfterSuccesfulStart() {
     const spName = "sp1";
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -408,7 +419,7 @@ function changeSourceFailsAfterSuccesfulStart() {
     });
 
     // Stop the streamProcessor.
-    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+    stopStreamProcessor(spName);
 }
 
 // Validate that a stream processor in an error state can be restarted by calling start.
@@ -457,6 +468,7 @@ function startFailedStreamProcessor() {
     const spName = "sp1";
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -498,6 +510,7 @@ function startFailedStreamProcessor() {
     // Issue the start command again for the same SP.
     let result = assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
+        tenantId: 'testTenant',
         name: spName,
         pipeline: [
             {
@@ -518,7 +531,7 @@ function startFailedStreamProcessor() {
     assert.eq(sp.status, "running");
 
     // Stop the streamProcessor.
-    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+    stopStreamProcessor(spName);
 
     // Stop the $source replset.
     rstSource.stopSet();
@@ -526,9 +539,11 @@ function startFailedStreamProcessor() {
 
 function unparseableMongocxxUri() {
     const expectedErrorCode = 1;  // InternalError
+    const spName = "sp1";
     const result = db.runCommand({
         "streams_startStreamProcessor": "Test roll back random",
-        "name": "sp1",
+        "tenantId": "testTenant",
+        "name": spName,
         "pipeline": [
             {"$source": {"connectionName": "conn1", "db": "test", "coll": "testin"}},
             {"$merge": {"into": {"connectionName": "conn1", "db": "test", "coll": "testout"}}}
@@ -760,6 +775,8 @@ unparseableMongocxxUri();
 mergeListIndexesAuthFailure();
 mergeUpdateFailure();
 timeseriesEmitUpdateFailure();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());
 
 // TODO(SERVER-80742): Write tests for the below.

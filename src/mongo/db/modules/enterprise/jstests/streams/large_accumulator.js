@@ -3,6 +3,7 @@ import {
     dbName,
     dlqCollName,
     getOperatorStats,
+    listStreamProcessors,
     runStreamProcessorWindowTest
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
@@ -456,3 +457,5 @@ if (!buildInfo.debug) {
         }
     );
 }
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

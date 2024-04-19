@@ -1,6 +1,9 @@
 // Tests that the $merge stage enforces that the "on" fields argument can be used to uniquely
 // identify documents by checking that there is a supporting unique index.
-import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    listStreamProcessors,
+    sanitizeDoc
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const st = new ShardingTest({shards: 2, rs: {nodes: 1}});
 
@@ -20,7 +23,7 @@ function startStreamProcessor(pipeline, assertWorked = true) {
     const uri = 'mongodb://' + mongosDB.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: spName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -405,3 +408,4 @@ function resetOutputColl(shardKey, coll) {
 })();
 
 st.stop();
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

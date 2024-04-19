@@ -1,6 +1,7 @@
 import {
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc,
@@ -41,3 +42,5 @@ unsetFunc(
 
 // multiple unsets
 unsetFunc(docs, ["a.0", "a.b"], [{_id: 0, a: 10}, {_id: 1, a: {c: 30}}, {_id: 2, a: [{c: 60}]}]);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

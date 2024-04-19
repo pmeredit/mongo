@@ -1,6 +1,7 @@
 import {
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc,
@@ -147,3 +148,5 @@ redactFunc(docs, a2, a2result);
 redactFunc(docs, a3, a3result);
 redactFunc(docs, a4, a4result);
 redactFunc(docs, a5, a5result);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

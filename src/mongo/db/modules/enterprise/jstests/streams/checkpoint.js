@@ -9,12 +9,15 @@ import {
     TestHelper,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
+    listStreamProcessors,
     makeRandomString,
     sanitizeDoc,
     verifyDocsEqual,
     waitForCount,
     waitForDoc,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
+import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function generateInput(size, msPerDocument = 1) {
     let input = [];
@@ -1072,3 +1075,5 @@ function testBoth(useNewCheckpointing) {
 }
 
 testBoth(true /* useNewCheckpointing */);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

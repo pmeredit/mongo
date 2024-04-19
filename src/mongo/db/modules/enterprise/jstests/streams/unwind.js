@@ -1,6 +1,7 @@
 import {
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc,
@@ -111,3 +112,5 @@ for (let i = 0; i < maxFields; i++) {
 }
 doc['a'] = a;
 unwind2Func([doc], "$a", expectedDocs);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

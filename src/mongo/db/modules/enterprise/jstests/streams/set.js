@@ -1,6 +1,7 @@
 import {
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc,
@@ -77,3 +78,5 @@ setFunc(
             student: 'Ryan',
         }
     ]);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

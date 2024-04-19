@@ -4,6 +4,7 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const STREAM_NAME = 'sp0';
 const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert}) => {
@@ -128,3 +129,5 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
         insert: (documents) => db.source.insertMany(documents),
     });
 })();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

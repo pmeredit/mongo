@@ -86,9 +86,6 @@ public:
     // Stops the stream processor specified by request params.
     void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request);
 
-    // Stops a stream processor with the given name.
-    void stopStreamProcessorByName(std::string name, StopReason stopReason);
-
     // Causes stream processor to write a checkpoint
     void writeCheckpoint(const mongo::WriteStreamCheckpointCommand& request);
 
@@ -149,12 +146,16 @@ private:
         mongo::Date_t startedAt;
         std::unique_ptr<OperatorDag> operatorDag;
         std::unique_ptr<Executor> executor;
-        mongo::Status executorStatus{mongo::Status::OK()};
+        boost::optional<mongo::Status> executorStatus;
         // The list of active OutputSamplers created for the ongoing sample() requests.
         std::vector<OutputSamplerInfo> outputSamplers;
         // Last cursor id used for a sample request.
         int64_t lastCursorId{0};
-        mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::Starting};
+        // Allowed State transitions:
+        // Created -> Running
+        // Running -> Error|Stopping
+        // Error -> Stopping
+        mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::Created};
         // CheckpointCoordinator for this streamProcessor.
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
         // Operator info in the restore checkpoint.
@@ -166,20 +167,28 @@ private:
     // Recreates all Metric instances to use the given tenantId label.
     void registerTenantMetrics(mongo::WithLock, const std::string& tenantId);
 
+    // Transitions StreamProcessorInfo.streamStatus to the given state.
+    void transitionToState(mongo::WithLock,
+                           StreamProcessorInfo* processorInfo,
+                           mongo::StreamStatusEnum state);
+
     // Caller must hold the _mutex.
     // Helper method used during startStreamProcessor. This parses the OperatorDag and creates
     // the Context and other things for the streamProcessor. This does not actually start
     // the streamProcessor or insert it into the _processors map. It is important that
     // this method does not write any data to the sources, sinks, DLQs, or checkpoint storage
     // for the streamProcessor.
-    std::unique_ptr<StreamProcessorInfo> createStreamProcessorInfoLocked(
-        const mongo::StartStreamProcessorCommand& request);
+    std::unique_ptr<StreamProcessorInfo> createStreamProcessorInfo(
+        mongo::WithLock, const mongo::StartStreamProcessorCommand& request);
 
-    // Caller must hold the _mutex.
-    // Helper method used during startStreamProcessor. This method starts the
-    // streamProcessor in the background.
-    mongo::Future<void> startStreamProcessorLocked(
-        const std::string& name, std::unique_ptr<StreamProcessorInfo> processorInfo);
+    // Helper method of the public startStreamProcessor() method that starts the stream processor
+    // in an asynchronous manner.
+    StartResult startStreamProcessorAsync(const mongo::StartStreamProcessorCommand& request);
+
+    // Helper method of the public startSample() method.
+    int64_t startSample(mongo::WithLock,
+                        const mongo::StartStreamSampleCommand& request,
+                        StreamProcessorInfo* processorInfo);
 
     void backgroundLoop();
 
@@ -187,7 +196,7 @@ private:
     void pruneOutputSamplers();
 
     // Sets StreamProcessorInfo::executorStatus for the given executor.
-    void onExecutorError(std::string name, mongo::Status status);
+    void onExecutorShutdown(std::string name, mongo::Status status);
 
     // Waits for the Executor to fully start the streamProcessor, or error out.
     std::pair<mongo::Status, mongo::Future<void>> waitForStartOrError(const std::string& name);
@@ -196,6 +205,13 @@ private:
     mongo::GetStatsReply getStats(mongo::WithLock,
                                   const mongo::GetStatsCommand& request,
                                   StreamManager::StreamProcessorInfo* processorInfo);
+
+    // Stops a stream processor with the given name.
+    void stopStreamProcessor(std::string name, StopReason stopReason, mongo::Date_t deadline);
+
+    // Helper method of stopStreamProcessor() method that stops the stream processor in an
+    // asynchronous manner.
+    void stopStreamProcessorAsync(std::string name, StopReason stopReason);
 
     // Stop all the running streamProcessors.
     void stopAllStreamProcessors();

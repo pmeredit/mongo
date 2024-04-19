@@ -29,7 +29,7 @@ function startStreamProcessor(pipeline, spName, threadId) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: `${spName}${threadId}`,
         processorId: spName,
         pipeline: pipeline,

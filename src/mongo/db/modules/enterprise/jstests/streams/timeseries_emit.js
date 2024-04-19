@@ -4,6 +4,8 @@
  * ]
  */
 
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+
 "use strict";
 
 const inputColl = db.input_coll;
@@ -18,7 +20,7 @@ const goodUri = 'mongodb://' + db.getMongo().host;
 function startStreamProcessor(pipeline) {
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: 'timeseriesTest',
         processorId: 'timeseriesTest1',
         pipeline: pipeline,
@@ -548,3 +550,4 @@ testLargeDocumentEmitToTimeSeries();
 inputColl.drop();
 timeseriesColl.drop();
 dlqColl.drop();
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

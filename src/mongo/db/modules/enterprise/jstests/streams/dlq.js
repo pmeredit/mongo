@@ -7,7 +7,10 @@
 "use strict";
 
 import {startSample, sampleUntil} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
-import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    listStreamProcessors,
+    sanitizeDoc
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const inputColl = db.input_coll;
 const outColl = db.output_coll;
@@ -23,7 +26,7 @@ function startStreamProcessor(pipeline) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: processorName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -273,3 +276,5 @@ stopStreamProcessor();
 outColl.drop();
 dlqColl.drop();
 inputColl.drop();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

@@ -3,9 +3,14 @@
  *  featureFlagStreams,
  * ]
  */
+
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
 assert.commandFailedWithCode(db.runCommand({
     "streams_startStreamProcessor": "",
     name: "foo",
+    processorId: "foo",
+    tenantId: "testTenant",
     pipeline: [
         {$source: {connectionName: "__testMemory"}, config: {"fullDocumentOnly": true}},
         {$emit: {connectionName: "__testLog"}}
@@ -14,3 +19,5 @@ assert.commandFailedWithCode(db.runCommand({
     options: {}
 }),
                              8661200);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

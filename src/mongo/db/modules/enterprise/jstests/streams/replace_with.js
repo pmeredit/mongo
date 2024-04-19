@@ -2,6 +2,7 @@ import {
     dbName,
     generate16MBDoc,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc
@@ -119,3 +120,5 @@ const replaceWithFuncProject = function testReplaceWithProject(
 
 // large document replaceWith test
 replaceWithFuncProject([doc], "$a", []);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

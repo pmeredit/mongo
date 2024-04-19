@@ -4,6 +4,7 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function sampleDataSourceWindowMerge() {
     const uri = 'mongodb://' + db.getMongo().host;
@@ -56,3 +57,5 @@ function sampleDataSourceWindowMerge() {
 }
 
 sampleDataSourceWindowMerge();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

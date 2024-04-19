@@ -4,6 +4,7 @@ import {
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     group_sort_pipeline,
+    listStreamProcessors,
     sort_limit_pipeline,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
@@ -88,3 +89,5 @@ function testHoppingWindowSortLimit() {
 
 testHoppingWindowGroupSort();
 testHoppingWindowSortLimit();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

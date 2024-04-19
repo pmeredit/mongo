@@ -6,6 +6,7 @@ import {
 import {
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc,
@@ -86,3 +87,5 @@ simpleMergeFunc([
     {a: [{b: {c: [1, {d: 1}]}}, {b: {c: []}}]},
     {a: {b: [{c: [1, {d: 1}]}, {c: []}]}}
 ]);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

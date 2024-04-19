@@ -7,6 +7,7 @@
  * ]
  */
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function sendSigterm(rst) {
     const originalPrimaryConn = rst.getPrimary();
@@ -90,3 +91,5 @@ assert.eq(numProcessors * 2, checkpointIds.length);
 // Stop the replsets.
 rst.stopSet();
 rst2.stopSet();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

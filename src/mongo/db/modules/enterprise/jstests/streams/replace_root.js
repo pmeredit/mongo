@@ -1,6 +1,7 @@
 import {
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc,
@@ -96,3 +97,5 @@ const expectedResults4 = [
 
 replaceRootFuncNoUnwind(
     docs4, {$mergeObjects: [{dogs: 0, cats: 0, birds: 0, fish: 0}, "$pets"]}, expectedResults4);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

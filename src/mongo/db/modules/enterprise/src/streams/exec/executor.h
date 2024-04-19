@@ -72,8 +72,8 @@ public:
     // Stops the OperatorDag and _executorThread.
     void stop(StopReason stopReason);
 
-    // True if the Operators have succesfully connected and started.
-    bool isStarted();
+    // True if the Operators have succesfully connected.
+    bool isConnected();
 
     // Returns stats for each operator.
     std::vector<OperatorStats> getOperatorStats();
@@ -185,7 +185,7 @@ private:
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
     StopReason _stopReason;
-    bool _started{false};
+    bool _connected{false};
     StreamStats _streamStats;
 
     // Only applicable if the stream processor has a kafka source.

@@ -4,6 +4,7 @@ import {
     dbName,
     generateDocs,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorWindowTest,
     sanitizeDoc,
@@ -134,3 +135,5 @@ Random.setRandomSeed(20230328);
             pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
     }
 }());
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

@@ -2,7 +2,10 @@ import {Thread} from "jstests/libs/parallelTester.js";
 import {
     startStreamProcessorForThread
 } from 'src/mongo/db/modules/enterprise/jstests/streams/multithreading_utils.js';
-import {generateDocs} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    generateDocs,
+    listStreamProcessors
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const spName = "windowGroupTest";
 
@@ -98,3 +101,5 @@ function runMultiThreadedTest(pipeline, docs, batchSize) {
     runMultiThreadedTest([{$sort: {b: 1, d: 1, _id: 1}}, {$limit: 50}], docs, 50);
     runMultiThreadedTest([{$sort: {a: 1, b: 1, _id: 1}}], docs, docs.length);
 }());
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

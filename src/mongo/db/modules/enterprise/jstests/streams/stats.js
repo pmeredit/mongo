@@ -4,7 +4,7 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {listStreamProcessors, sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 (function() {
 
@@ -204,4 +204,6 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
     stream.stop();
 })();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

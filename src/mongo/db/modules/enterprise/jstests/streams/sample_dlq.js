@@ -5,6 +5,7 @@
  */
 
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 // Start a streamProcessor.
 const sp = getDefaultSp();
@@ -50,3 +51,5 @@ assert.soon(() => {
 
 // Stop the streamProcessor.
 sp[spName].stop();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

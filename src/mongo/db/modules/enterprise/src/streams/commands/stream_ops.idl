@@ -43,8 +43,8 @@ enums:
         description: "Stream status"
         type: string
         values:
-            # streamProcessor is starting.
-            Starting: "starting"
+            # streamProcessor is created.
+            Created: "created"
             # streamProcessor is running.
             Running: "running"
             # streamProcessor has encountered an error and is no longer running.
@@ -436,7 +436,6 @@ commands:
             tenantId:
                 description: "Tenant id."
                 type: string
-                optional: true
             name:
                 description: "Stream processor name."
                 type: string
@@ -457,6 +456,10 @@ commands:
             options:
                 description: "Additional options supplied to the streamProcessor, such as DLQ information."
                 type: StartOptions
+            timeout:
+                description: Maximum processing time permitted for this command.
+                type: seconds 
+                default: 180
 
     streams_stopStreamProcessor:
         description: "Command to stop a stream processor"
@@ -480,6 +483,10 @@ commands:
                 description: "Correlation ID for the request that ties it to a user initiated operation."
                 type: string
                 optional: true
+            timeout:
+                description: Maximum processing time permitted for this command.
+                type: seconds 
+                default: 180
 
     streams_listStreamProcessors:
         description: "Command to list stream processors"

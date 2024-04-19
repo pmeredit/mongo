@@ -8,6 +8,7 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const CA_CERT = 'jstests/libs/ca.pem';
 const SERVER_CERT = 'jstests/libs/server.pem';
@@ -202,9 +203,11 @@ const caFileDoesNotMatchSubjectDNProcessor = sp[clientCertDoesNotMatchSubjectDNP
 let result = db.runCommand(badPEMFileProcessor.makeStartCmd());
 assert.commandFailed(result);
 assert.eq(13053, result.code);
+
 result = db.runCommand(badCAFileProcessor.makeStartCmd());
 assert.commandFailed(result);
 assert.eq(13053, result.code);
+
 // Note: The bad SubjectDN will allow the initial connection to establish, but the streamProcessor
 // will later see an error like:
 //  not authorized on db to execute command { update: \"outputColl\", ordered: true, $db: \"db\",
@@ -235,4 +238,5 @@ assert.soon(() => {
     }
 });
 
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 rst.stopSet();

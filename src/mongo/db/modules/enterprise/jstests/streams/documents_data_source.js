@@ -4,6 +4,7 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function documentsDataSourceWindowMerge() {
     const uri = 'mongodb://' + db.getMongo().host;
@@ -126,3 +127,5 @@ function documentsDataSourceInvalidExpr() {
 
 documentsDataSourceWindowMerge();
 documentsDataSourceInvalidExpr();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

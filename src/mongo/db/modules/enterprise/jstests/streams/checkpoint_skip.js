@@ -5,6 +5,7 @@
  */
 
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 // Tests the logic in checkpoint coordinator around taking a new checkpoint only if something has
 // changed. The current definition of "has something changed" is: Since the last checkpoint
@@ -134,3 +135,5 @@ function checkpointCoordinatorTakeCheckpointTest() {
 }
 
 checkpointCoordinatorTakeCheckpointTest();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

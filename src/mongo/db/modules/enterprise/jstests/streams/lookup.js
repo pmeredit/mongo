@@ -4,7 +4,10 @@
  * ]
  */
 
-import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    listStreamProcessors,
+    sanitizeDoc
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
 "use strict";
@@ -39,7 +42,7 @@ function startStreamProcessor(pipeline) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'tenant1',
+        tenantId: 'testTenant',
         name: 'lookupTest',
         processorId: 'lookupTest1',
         pipeline: pipeline,
@@ -530,4 +533,6 @@ function stopStreamProcessor() {
     // Stop the streamProcessor.
     stopStreamProcessor();
 })();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

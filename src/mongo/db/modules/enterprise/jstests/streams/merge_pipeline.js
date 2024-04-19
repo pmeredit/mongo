@@ -8,6 +8,7 @@ import {
     connectionName,
     dbName,
     insertDocs,
+    listStreamProcessors,
     logState,
     outCollName,
     runTest,
@@ -232,4 +233,6 @@ function makeMergePipeline({vars, mergePipeline}) {
         ]
     });
 })();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

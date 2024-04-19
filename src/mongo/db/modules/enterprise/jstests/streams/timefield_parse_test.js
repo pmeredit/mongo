@@ -6,6 +6,7 @@
 
 import {uuidStr} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function testWithAtlasConn(testConfig, streams) {
     let dbName = "test";
@@ -142,3 +143,5 @@ function testTimeFieldsWithAtlasSource() {
 }
 
 testTimeFieldsWithAtlasSource();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

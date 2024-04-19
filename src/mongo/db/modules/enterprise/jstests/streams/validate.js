@@ -4,7 +4,10 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {waitForCount} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    waitForCount
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function smokeTestDLQ() {
     // Clean up collections.
@@ -60,3 +63,5 @@ function smokeTestDLQ() {
 }
 
 smokeTestDLQ();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

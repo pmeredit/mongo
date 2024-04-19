@@ -5,7 +5,11 @@
  */
 import {assertErrorCode} from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {sampleUntil, startSample} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    sampleUntil,
+    startSample
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function runAll() {
     const uri = 'mongodb://' + db.getMongo().host;
@@ -346,3 +350,5 @@ function runAll() {
 }
 
 runAll();
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

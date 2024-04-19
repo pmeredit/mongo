@@ -2,6 +2,7 @@ import {
     dbName,
     generate16MBDoc,
     insertDocs,
+    listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
     sanitizeDoc
@@ -422,3 +423,5 @@ const matchVBLargeDocFunc = function testMatchVLargeDoc(docs, matchString, expec
 };
 
 matchVBLargeDocFunc([generate16MBDoc()], {b: 0}, [{b: 0}]);
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

@@ -5,6 +5,7 @@
  */
 
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 // This tests creates a stream processor with a $source reading from the same DB the $merge is
 // writing to. This infinite loop creates a document that gets larger and larger. This will
@@ -43,3 +44,4 @@ assert.soon(() => {
         thisSp.error.retryable == false;
 }, "waiting for error to appear", 5 * 60 * 1000);
 sp[spName].stop();
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

@@ -1,7 +1,9 @@
 import {
+    listStreamProcessors,
     startStreamProcessor,
     stopStreamProcessor
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const spName = "featureFlagTest";
 const inputCollName = "testin";
@@ -97,7 +99,7 @@ const pipeline = [
 const uri = 'mongodb://' + db.getMongo().host;
 let startCmd = {
     streams_startStreamProcessor: '',
-    tenantId: 'tenant1',
+    tenantId: 'testTenant',
     name: spName,
     processorId: spName,
     pipeline: pipeline,
@@ -123,3 +125,4 @@ assert.soon(() => {
 });
 
 stopStreamProcessor(spName);
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

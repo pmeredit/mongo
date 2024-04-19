@@ -5,6 +5,7 @@
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function testStreamMeta({
     documents,
@@ -545,3 +546,5 @@ testStreamMeta({
     }],
     expectedDlqResults: [],
 });
+
+assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
