@@ -232,6 +232,7 @@ export class LDAPFSM {
         shardingConfig.other.writeConcernMajorityJournalDefault = false;
 
         this.st = new ShardingTest(Object.assign({}, shardingConfig, customShardingOptions));
+        this.isReplicaSetEndpointActive = this.st.isReplicaSetEndpointActive();
         setupTest(this.st.s0);
 
         // The sharded cluster will only perform liveness checks on the LDAP servers that were
@@ -260,7 +261,12 @@ export class LDAPFSM {
         }
 
         // Teardown the sharded cluster and all LDAP servers.
-        this.st.stop();
+        // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+        // on replica set that is fsync locked and has replica set endpoint enabled.
+        this.st.stop({
+            skipCheckDBHashes: this.isReplicaSetEndpointActive,
+            skipValidation: this.isReplicaSetEndpointActive
+        });
         this.ldapServers.forEach(ldapServer => {
             if (ldapServer.isRunning()) {
                 ldapServer.stop();

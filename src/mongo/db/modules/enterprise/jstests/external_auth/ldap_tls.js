@@ -82,24 +82,48 @@ function runTest(conn, useTLS, enableOpenLDAPLogging) {
 
 {
     const st = launchCluster('tls', true /*enableOpenLDAPLogging*/);
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
     runTest(st.s0, true /*useTLS*/, true /*enableOpenLDAPLogging*/);
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 {
     const st = launchCluster('none', true /*enableOpenLDAPLogging*/);
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
     runTest(st.s0, false /*useTLS*/, true /*enableOpenLDAPLogging*/);
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 {
     const st = launchCluster('tls', false /*enableOpenLDAPLogging*/);
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
     runTest(st.s0, true /*useTLS*/, false /*enableOpenLDAPLogging*/);
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
 
 {
     const st = launchCluster('none', false /*enableOpenLDAPLogging*/);
+    const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
     runTest(st.s0, false /*useTLS*/, false /*enableOpenLDAPLogging*/);
-    st.stop();
+    // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
+    // on replica set that is fsync locked and has replica set endpoint enabled.
+    st.stop({
+        skipCheckDBHashes: isReplicaSetEndpointActive,
+        skipValidation: isReplicaSetEndpointActive
+    });
 }
