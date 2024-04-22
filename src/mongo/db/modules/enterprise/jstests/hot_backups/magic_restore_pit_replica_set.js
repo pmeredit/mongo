@@ -30,7 +30,7 @@ if (_isWindows()) {
 // counted correctly.
 TestData.skipEnforceFastCountOnValidate = true;
 
-function runTest(insertHigherTermOplogEntry) {
+function runTest(insertHigherTermOplogEntry, testAuth) {
     jsTestLog("Running PIT magic restore with insertHigherTermOplogEntry: " +
               insertHigherTermOplogEntry);
     const sourceCluster = new ReplSetTest({nodes: 1});
@@ -46,6 +46,14 @@ function runTest(insertHigherTermOplogEntry) {
     ['a', 'b', 'c'].forEach(
         key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
 
+    // Create a user whose password will be changed after taking the backup.
+    if (testAuth) {
+        sourceDb.createUser({user: "user1", pwd: "pass1", roles: jsTest.basicUserRoles});
+        assert(!sourceDb.auth("user1", "pass"), "auth succeeded with wrong password");
+        assert(sourceDb.auth("user1", "pass1"), "auth failed with right password");
+        sourceDb.logout();
+    }
+
     // This timestamp will be used for a snapshot read.
     const snapshotTs = assert.commandWorked(sourcePrimary.adminCommand({replSetGetStatus: 1}))
                            .optimes.lastCommittedOpTime.ts;
@@ -56,19 +64,38 @@ function runTest(insertHigherTermOplogEntry) {
         isPit: true,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
+
     magicRestoreUtils.takeCheckpointAndOpenBackup(sourcePrimary);
+
+    if (testAuth) {
+        sourceDb.createUser({user: "user2", pwd: "pass2", roles: jsTest.basicUserRoles});
+        assert(!sourceDb.auth("user2", "pass1"), "auth succeeded with wrong password");
+        assert(sourceDb.auth("user2", "pass2"), "auth failed with right password");
+
+        sourceDb.logout();
+
+        // Change password of user1.
+        assert(sourceDb.auth("user1", "pass1"), "auth failed with right password");
+        sourceDb.changeUserPassword("user1", "pass");
+        sourceDb.logout();
+        assert(!sourceDb.auth("user1", "pass1"), "auth succeeded with wrong password");
+        assert(sourceDb.auth("user1", "pass"), "auth failed with right password");
+    }
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
     // restore, so they will be reinserted and reflected in the final state of the data.
-    ['e', 'f', 'g', 'h'].forEach(
-        key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
+    ['e',
+     'f',
+     'g',
+     'h']
+        .forEach(key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
     assert.eq(sourceDb.getCollection(coll).find().toArray().length, 7);
 
     const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
     let {lastOplogEntryTs, entriesAfterBackup} =
         magicRestoreUtils.getEntriesAfterBackup(sourcePrimary);
-    assert.eq(entriesAfterBackup.length, 4);
+    assert.eq(entriesAfterBackup.length, testAuth ? 6 : 4);
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
@@ -104,6 +131,18 @@ function runTest(insertHigherTermOplogEntry) {
 
     magicRestoreUtils.assertMinValidIsCorrect(destPrimary);
 
+    // Make sure auth settings we applied after the backup are still valid.
+    if (testAuth) {
+        const destDb = destPrimary.getDB(dbName);
+        assert(!destDb.auth("user2", "pass1"), "auth succeeded with wrong password");
+        assert(destDb.auth("user2", "pass2"), "auth failed with right password");
+
+        destDb.logout();
+
+        assert(!destDb.auth("user1", "pass1"), "auth succeeded with wrong password");
+        assert(destDb.auth("user1", "pass"), "auth failed with right password");
+    }
+
     // The original node still maintains the history store, so point-in-time reads will succeed.
     let res = sourcePrimary.getDB("db").runCommand(
         {find: "coll", readConcern: {level: "snapshot", atClusterTime: snapshotTs}});
@@ -123,7 +162,11 @@ function runTest(insertHigherTermOplogEntry) {
     destinationCluster.stopSet();
 }
 
-// Run non-PIT restore twice, with one run performing a no-op oplog entry insert with a higher term.
-// This affects the stable timestamp on magic restore node shutdown.
-runTest(false /* insertHigherTermOplogEntry */);
-runTest(true /* insertHigherTermOplogEntry */);
+// insertHigherTermOplogEntry causes a no-op oplog entry insert with a higher term. This affects the
+// stable timestamp on magic restore node shutdown. testAuth causes us to create users on the node
+// before restore.
+for (const insertHigherTermOplogEntry of [false, true]) {
+    for (const testAuth of [false, true]) {
+        runTest(insertHigherTermOplogEntry, testAuth);
+    }
+}

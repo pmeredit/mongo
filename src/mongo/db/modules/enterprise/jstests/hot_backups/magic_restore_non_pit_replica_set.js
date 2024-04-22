@@ -22,7 +22,7 @@ if (_isWindows()) {
     quit();
 }
 
-function runTest(insertHigherTermOplogEntry) {
+function runTest(insertHigherTermOplogEntry, testAuth) {
     jsTestLog("Running non-PIT magic restore with insertHigherTermOplogEntry: " +
               insertHigherTermOplogEntry);
     let rst = new ReplSetTest({nodes: 1});
@@ -32,6 +32,14 @@ function runTest(insertHigherTermOplogEntry) {
     let primary = rst.getPrimary();
     const dbName = "db";
     const coll = "coll";
+
+    if (testAuth) {
+        const admin = primary.getDB("admin");
+        admin.createUser({user: "root", pwd: "root", roles: ["root"]});
+
+        assert(!admin.auth("root", "root1"), "auth succeeded with wrong password");
+        assert(admin.auth("root", "root"), "auth failed with right password");
+    }
 
     const db = primary.getDB(dbName);
     // Insert some data to restore. This data will be reflected in the restored node.
@@ -82,6 +90,14 @@ function runTest(insertHigherTermOplogEntry) {
     primary = rst.getPrimary();
     const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
 
+    // See if auth we setup before restore is still valid.
+    if (testAuth) {
+        const admin = primary.getDB("admin");
+
+        assert(!admin.auth("root", "root1"), "auth succeeded with wrong password");
+        assert(admin.auth("root", "root"), "auth failed with right password");
+    }
+
     magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
 
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
@@ -97,7 +113,11 @@ function runTest(insertHigherTermOplogEntry) {
     rst.stopSet();
 }
 
-// Run non-PIT restore twice, with one run performing a no-op oplog entry insert with a higher term.
-// This affects the stable timestamp on magic restore node shutdown.
-runTest(false /* insertHigherTermOplogEntry */);
-runTest(true /* insertHigherTermOplogEntry */);
+// insertHigherTermOplogEntry causes a no-op oplog entry insert with a higher term. This affects the
+// stable timestamp on magic restore node shutdown. testAuth causes us to create users on the node
+// before restore.
+for (const insertHigherTermOplogEntry of [false, true]) {
+    for (const testAuth of [false, true]) {
+        runTest(insertHigherTermOplogEntry, testAuth);
+    }
+}
