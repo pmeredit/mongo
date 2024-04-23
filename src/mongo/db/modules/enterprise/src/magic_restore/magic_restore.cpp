@@ -104,7 +104,7 @@ int64_t BSONStreamReader::getTotalObjectsRead() {
 
 void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader) {
     auto restoreConfigBytes = reader.getTotalBytesRead();
-    AutoGetOplog oplog(opCtx, OplogAccessMode::kWrite);
+    AutoGetOplogFastPath oplog(opCtx, OplogAccessMode::kWrite);
     Timestamp latestOplogTs;
     while (reader.hasNext()) {
         BSONObj obj = reader.getNext();
@@ -527,7 +527,7 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
         NamespaceString::kRsOplogNamespace,
         [&opCtx, &msgObj, &opTime, &oplogEntry] {
             WriteUnitOfWork wuow(opCtx);
-            AutoGetOplog oplog(opCtx, OplogAccessMode::kWrite);
+            AutoGetOplogFastPath oplog(opCtx, OplogAccessMode::kWrite);
             uassertStatusOK(
                 collection_internal::insertDocument(opCtx,
                                                     oplog.getCollection(),

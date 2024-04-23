@@ -159,7 +159,7 @@ void FileCopyBasedInitialSyncer::_createOplogIfNeeded(OperationContext* opCtx) {
     // The oplog is not really used, but it must exist to run the local backup cursor to
     // enumerate files to delete.
     Lock::GlobalWrite glk(opCtx);
-    AutoGetOplog oplogRead(opCtx, OplogAccessMode::kRead);
+    AutoGetOplogFastPath oplogRead(opCtx, OplogAccessMode::kRead);
     const auto& oplog = oplogRead.getCollection();
     if (!oplog) {
         uassertStatusOK(_storage->createOplog(opCtx, NamespaceString::kRsOplogNamespace));
