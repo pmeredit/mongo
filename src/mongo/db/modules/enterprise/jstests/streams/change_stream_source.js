@@ -746,6 +746,80 @@ function testAfterInvalidate() {
 
 testAfterInvalidate();
 
+function testAfterInvalidateWithFullDocumentOnly() {
+    const uri = 'mongodb://' + db.getMongo().host;
+    const connectionName = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const outputCollName = "testout";
+    const dlqCollName = "dlqColl";
+    const inputColl = db.getSiblingDB(dbName)[inputCollName];
+    const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
+    const connectionRegistry = [
+        {
+            name: connectionName,
+            type: 'atlas',
+            options: {
+                uri: uri,
+            }
+        },
+    ];
+    const spName = "sp1";
+
+    // Create the collection and drop it. This will cause an invalidate
+    // event in the changestream.
+    inputColl.insert({a: 1});
+    let startAtOperationTime = db.hello().$clusterTime.clusterTime;
+    inputColl.drop();
+    // Start a streamProcessor.
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        processorId: spName,
+        tenantId: "testTenant",
+        pipeline: [
+            {
+                $source: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: inputCollName,
+                    config: {
+                        fullDocumentOnly: true,
+                        fullDocument: "required",
+                        startAtOperationTime: startAtOperationTime
+                    },
+                }
+            },
+            {
+                $merge: {
+                    into: {connectionName: connectionName, db: dbName, coll: outputCollName},
+                }
+            }
+        ],
+        connections: connectionRegistry,
+        options: {dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName}},
+    });
+    assert.commandWorked(result);
+
+    // Get verbose stats.
+    const verboseStats = db.runCommand({streams_getStats: '', name: spName, verbose: true});
+    jsTestLog(verboseStats);
+    assert.eq(verboseStats["ok"], 1);
+    // Validate that the drop and invalidate events were dlq'ed.
+    assert.soon(() => { return dlqColl.count() == 2; });
+
+    let res = dlqColl.find({}).toArray();
+    assert.includes(res.find(doc => doc.doc.operationType == "drop").errInfo.reason,
+                    "Missing fullDocument field");
+    assert.includes(res.find(doc => doc.doc.operationType == "invalidate").errInfo.reason,
+                    "Missing fullDocument field");
+    // Stop the streamProcessor.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+    dlqColl.drop();
+}
+
+testAfterInvalidateWithFullDocumentOnly();
+
 function testInvalidPipeline() {
     clearState();
 

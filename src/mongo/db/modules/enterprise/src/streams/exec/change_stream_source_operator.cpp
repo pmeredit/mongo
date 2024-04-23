@@ -5,6 +5,7 @@
 #include "streams/exec/change_stream_source_operator.h"
 
 #include "mongo/base/error_codes.h"
+#include "mongo/bson/bsontypes.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/message.h"
@@ -583,9 +584,12 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and return.
     try {
         if (_options.fullDocumentOnly) {
-            // If fullDocumentOnly is set and is true, change stream event will always have a
-            // fullDocument. We enforce this by failing the SP creation in case fullDocument mode is
-            // not set to 'required' or 'updateLookup'
+            // If fullDocumentOnly is set and is true, we only process change stream event with a
+            // fullDocument field. Any other event is sent to the dlq.
+            uassert(ErrorCodes::BadValue,
+                    str::stream() << "Missing fullDocument field in change stream event",
+                    changeEventDoc[DocumentSourceChangeStream::kFullDocumentField].getType() ==
+                        BSONType::Object);
             ts = getTimestamp(
                 changeEventDoc,
                 changeEventDoc[DocumentSourceChangeStream::kFullDocumentField].getDocument());
