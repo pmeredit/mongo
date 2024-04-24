@@ -45,8 +45,9 @@ boost::optional<int> getStateFileIdxFromName(const std::string& fname) {
     std::smatch pattern;
     if (fname.length() == 14 && std::regex_search(fname, pattern, re)) {
         int fidx = std::stoi(pattern[1]);
-        tassert(
-            7863408, fmt::format("Invalid fidx={}", fidx), fidx >= 0 && fidx < kMaxStateFileIdx);
+        tassert(ErrorCodes::InternalError,
+                fmt::format("Invalid fidx={}", fidx),
+                fidx >= 0 && fidx < kMaxStateFileIdx);
         return fidx;
     } else {
         return boost::none;
@@ -168,7 +169,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
     } catch (const DBException& msg) {
         LOGV2_WARNING(
             7863403, "File I/O error: ", "msg"_attr = msg.what(), "context"_attr = _context);
-        tasserted(7863404,
+        tasserted(ErrorCodes::InternalError,
                   fmt::format("Error writing to file={}, errno={}, context={}",
                               shadowPath.native(),
                               errno,
@@ -180,7 +181,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
     } catch (const DBException& msg) {
         LOGV2_WARNING(
             7863405, "File I/O error: ", "msg"_attr = msg.what(), "context"_attr = _context);
-        tasserted(7863410,
+        tasserted(ErrorCodes::InternalError,
                   fmt::format("Could not rename: {} -> {}, err:{}, context={}",
                               shadowPath.native(),
                               stateFilePath.native(),
@@ -280,7 +281,7 @@ void LocalDiskCheckpointStorage::doCloseStateWriter(WriterHandle* writer) {
 bool LocalDiskCheckpointStorage::validateManifest(const mongo::Manifest& manifest) const {
     int version = manifest.getVersion();
     tassert(
-        7863411,
+        ErrorCodes::InternalError,
         fmt::format("version mismatch!, expected/actual={}/{}", ManifestBuilder::kVersion, version),
         ManifestBuilder::kVersion == version);
 
@@ -300,13 +301,13 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
                       "file"_attr = manifestFile.native(),
                       "msg"_attr = msg.what(),
                       "context"_attr = _context);
-        tasserted(7863402, msg.what());
+        tasserted(ErrorCodes::InternalError, msg.what());
     }
 
     // Validate that the checksum stored as a 4 byte preamble matches the computed checksum
     uint32_t mcrc = *(uint32_t*)buf.data();
     uint32_t computedChecksum = getChecksum32(buf.data() + 4, buf.size() - 4);
-    tassert(7863412,
+    tassert(ErrorCodes::InternalError,
             fmt::format("manifest file checksum mismatch. {}/{}", mcrc, computedChecksum),
             mcrc == computedChecksum);
 
@@ -318,7 +319,7 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
 
     // Some validity checks at a logical level
     if (!validateManifest(manifest)) {
-        tasserted(7863413, "could not validate manifest");
+        tasserted(ErrorCodes::InternalError, "could not validate manifest");
         return {{}, {}};
     }
 
@@ -341,12 +342,12 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
                           "Could not extract file idx from file name: ",
                           "fname"_attr = fName,
                           "context"_attr = _context);
-            tasserted(7863414,
+            tasserted(ErrorCodes::InternalError,
                       fmt::format("Could not get file idx from state file: {}, context: {}",
                                   fName,
                                   tojson(_context->toBSON())));
         }
-        tassert(7863415,
+        tassert(ErrorCodes::InternalError,
                 fmt::format("Duplicate file idx - {}", *fidx),
                 result.fileChecksums.find(*fidx) == result.fileChecksums.end());
 
@@ -363,7 +364,7 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
                               "Could not extract file idx from file name: ",
                               "fname"_attr = fName,
                               "context"_attr = _context);
-                tasserted(7863416,
+                tasserted(ErrorCodes::InternalError,
                           fmt::format("Could not get file idx from state file: {}, context: {}",
                                       fName,
                                       tojson(_context->toBSON())));
@@ -372,7 +373,7 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
             off_t end = loc.getEnd();
             ranges.push_back(ManifestBuilder::OpStateRange{*fidx, beg, end});
         }
-        tassert(7863417,
+        tassert(ErrorCodes::InternalError,
                 "Multiple entries found for operator!",
                 result.opsRangeMap.find(e.getOpid()) == result.opsRangeMap.end());
         result.opsRangeMap[e.getOpid()] = std::move(ranges);
@@ -484,7 +485,7 @@ boost::optional<mongo::Document> LocalDiskCheckpointStorage::doGetNextRecord(Rea
 void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,
                                             OperatorId operatorId,
                                             const OperatorStats& stats) {
-    tassert(825100, "Unexpected checkpointId", isActiveCheckpoint(checkpointId));
+    tassert(ErrorCodes::InternalError, "Unexpected checkpointId", isActiveCheckpoint(checkpointId));
 
     if (!_activeCheckpointSave->stats.contains(operatorId)) {
         _activeCheckpointSave->stats[operatorId] =
@@ -495,7 +496,7 @@ void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,
 
 std::vector<mongo::CheckpointOperatorInfo>
 LocalDiskCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
-    tassert(825101, "Expected an active restorer", _activeRestorer);
+    tassert(ErrorCodes::InternalError, "Expected an active restorer", _activeRestorer);
     return _activeRestorer->getStats();
 }
 
