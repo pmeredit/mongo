@@ -31,7 +31,7 @@ constexpr static int kMaxErrorBufferSize{5};
 
 void KafkaEventCallback::processErrorEvent(RdKafka::Event& event) {
     stdx::unique_lock<Latch> lock(_mutex);
-    if (event.fatal() || event.err() == RdKafka::ERR__ALL_BROKERS_DOWN) {
+    if (event.fatal()) {
         _hasError = true;
     }
     if (_errorBuffer.size() == kMaxErrorBufferSize) {
