@@ -1,3 +1,7 @@
+// Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
+// is not installed on that variant.
+// @tags: [incompatible_with_atlas_environment]
+
 import {findMatchingLogLines} from "jstests/libs/log.js";
 import {
     LDAPTestConfigGenerator,
@@ -81,21 +85,25 @@ runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
 runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
     assert(ldapAPIInfo);
     assert.eq(null, w7818800);
-    if (osRelease.id == "ubuntu") {
+    if (osRelease.id === "ubuntu") {
         assert.eq("GnuTLS", ldapAPIInfo.attr.options.tlsPackage);
         // On Ubuntu libldap.so is thread safe
         assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
         assert.eq(null, w24052);
         assert.eq(null, w5661701);
         assert.eq(null, w5661703);
-    } else if (osRelease.id == "rhel" && osRelease.ver >= 9) {
+    } else if ((osRelease.id === "rhel" && osRelease.ver >= 9) ||
+               (osRelease.id === "amzn" && (osRelease.ver === 2022 || osRelease.ver === 2023))) {
         assert.eq("OpenSSL", ldapAPIInfo.attr.options.tlsPackage);
-        // On RHEL9 libldap.so is thread safe
+        // On RHEL9 and Amazon 2023 libldap.so is thread safe
         assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
         assert.eq(null, w24052);
         assert.eq(null, w5661701);
         assert.eq(null, w5661703);
     } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
+        // On RHEL7-8, Amazon Linux, and Amazon Linux 2, libldap.so is not thread safe.
+        // Additionally, they may either use OpenSSL with or without TLS_MOZNSS_COMPATIBILITY or
+        // MozNSS as the TLS provider.
         assert(ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" ||
                ldapAPIInfo.attr.options.tlsPackage == "MozNSS");
         assert.eq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));

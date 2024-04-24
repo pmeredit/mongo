@@ -3,6 +3,7 @@
  * responses from the MongoDB cluster depending on the state of the LDAP servers. In particular,
  * it ensures that auth continues to succeed during LDAP server failover and/or timeouts. It also
  * ensures that auth fails when all LDAP servers are down or issuing extremely slow responses.
+ * @tags: [requires_ldap_pool]
  */
 
 import {Thread} from "jstests/libs/parallelTester.js";

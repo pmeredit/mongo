@@ -1,6 +1,7 @@
 /**
  * Tests that binds that occur on timed out pooled LDAP connections occur without incident but
  * while resulting in failed authentication.
+ * @tags: [requires_ldap_pool]
  */
 
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";

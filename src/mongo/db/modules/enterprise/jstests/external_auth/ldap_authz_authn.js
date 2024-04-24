@@ -2,6 +2,9 @@
 // Each test contains two functions xxxxTest and xxxxTestCallback.
 // the former is a wrapper test function that sets up the server and the
 // callback does the actual testing invoked by runTests
+// Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
+// is not installed on that variant.
+// @tags: [incompatible_with_atlas_environment]
 
 import {
     assetsPath,

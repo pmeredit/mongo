@@ -1,6 +1,9 @@
-// Tests the bind methods and SASL bind mechanims with and without TLS
+// Tests the bind methods and SASL bind mechanisms with and without TLS
+// Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
+// is not installed on that variant.
+// @tags: [incompatible_with_atlas_environment]
 
-import {isUbuntu} from "jstests/libs/os_helpers.js";
+import {isAmazon2023, isDebian, isUbuntu} from "jstests/libs/os_helpers.js";
 import {
     adminUser,
     adminUserDN,
@@ -17,9 +20,11 @@ import {
 // TLS and port
 var ldapSchemes = [{ldapTransportSecurity: "none"}, {ldapTransportSecurity: "tls"}];
 
-// Ubuntu 18.04 and later compiles openldap against gnutls which does not
+// Ubuntu 18.04+ and Debian compiles openldap against gnutls which does not
 // support SHA1 signed certificates. ldaptest.10gen.cc uses a SHA1 cert.
-if (isUbuntu()) {
+// Amazon Linux 2023 compiles openldap against OpenSSL 3 which also does not
+// support SHA1 signed certificates.
+if (isUbuntu() || isDebian() || isAmazon2023()) {
     ldapSchemes = [{ldapTransportSecurity: "none"}];
 }
 

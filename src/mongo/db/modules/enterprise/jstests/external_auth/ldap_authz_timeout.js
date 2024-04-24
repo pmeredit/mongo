@@ -1,5 +1,8 @@
 // Tests that connections to multiple servers are correctly parsed and that if the client cannot
 // connect to the first LDAP server, it will fallback to the next one.
+// Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
+// is not installed on that variant.
+// @tags: [incompatible_with_atlas_environment]
 
 import {
     adminUser,

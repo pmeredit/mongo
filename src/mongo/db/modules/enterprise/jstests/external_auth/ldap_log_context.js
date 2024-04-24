@@ -56,12 +56,27 @@ function countContexts(opts) {
     jsTest.log(tojson(contextCounts));
 
     // We expect only the above known context types,
-    // and for all three to have a count >= 1.
+    // and for userToDNMapping and queryTemplate to have a count >= 1 always.
+    //
+    // livenessCheck will have a count == 0 if connection pooling is disabled
+    // and we are running on a sharded cluster (the config server does not perform
+    // the initial liveness check).
+    const log22576 = log.map((l) => JSON.parse(l)).filter((l) => {
+        return l.id === 22576 && l.attr && l.attr.hostAndPort === "ldaptest.10gen.cc:389";
+    });
     const contextCountKeys = Object.keys(contextCounts);
     assert.eq(contextCountKeys.length, 3, "Unexpected query context");
     contextCountKeys.forEach(function(key) {
         const count = contextCounts[key];
-        assert.gte(count, 1, `Expected LDAP query type ${key}`);
+        if (key !== 'livenessCheck') {
+            assert.gte(count, 1, `Expected LDAP query type ${key}`);
+        } else {
+            if (opts.shardingTest && log22576.length === 0) {
+                assert.eq(count, 0, 'Did not expect liveness check');
+            } else {
+                assert.gte(count, 1, `Expected LDAP query type ${key}`);
+            }
+        }
     });
 
     admin.logout();

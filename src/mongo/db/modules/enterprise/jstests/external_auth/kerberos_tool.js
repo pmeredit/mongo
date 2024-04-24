@@ -1,4 +1,7 @@
 // Tests the Kerberos validation tool against several example configurations
+// Excluded from AL2 Atlas Enterprise build variant since it depends on krb5/kinit, which
+// is not installed on that variant.
+// @tags: [incompatible_with_atlas_environment]
 
 import {
     assetsPath,

@@ -1,3 +1,7 @@
+// Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
+// is not installed on that variant.
+// @tags: [incompatible_with_atlas_environment]
+
 import {
     defaultPwd
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
