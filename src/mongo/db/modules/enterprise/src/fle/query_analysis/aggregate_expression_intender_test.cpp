@@ -97,7 +97,7 @@ protected:
                                                EncryptionSchemaType::kLocal);
     }
 
-    auto stateIntention(StringData expression) {
+    auto stateIntentionBson(StringData expression) {
         BSONObjBuilder bob;
         auto expressionPtr =
             Expression::parseOperand(getExpCtxRaw(),
@@ -108,7 +108,11 @@ protected:
         ASSERT(intention == aggregate_expression_intender::Intention::Marked ||
                intention == aggregate_expression_intender::Intention::NotMarked);
         expressionPtr->serialize().addToBsonObj(&bob, "");
-        return removeObjectWrapper(tojson(bob.obj(), JsonStringFormat::LegacyStrict));
+        return bob.obj();
+    }
+    auto stateIntention(StringData expression) {
+        return removeObjectWrapper(
+            tojson(stateIntentionBson(expression), JsonStringFormat::LegacyStrict));
     }
 };
 
@@ -297,12 +301,27 @@ TEST_F(AggregateExpressionIntenderTest, LetAndReducePreserveParentSubtree) {
               "\"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA\", \"$type\" "
               ": \"06\" } } } }, \"$safeString\" ] }");
     // Test Subtree preservation by marking through a $reduce 'in'
-    ASSERT_EQ(stateIntention("{ \"$eq\" : [ { \"$reduce\" : { \"input\" : [], \"initialValue\" : "
-                             "{}, \"in\" : { \"$const\" : \"hello\" } } }, \"$safeString\" ] }"),
-              "{ \"$eq\" : [ { \"$reduce\" : { \"input\" : [], \"initialValue\" : {}, \"in\" : { "
-              "\"$const\" : { \"$binary\" : "
-              "\"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA\", \"$type\" "
-              ": \"06\" } } } }, \"$safeString\" ] }");
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            "": {
+                "$eq": [
+                    {
+                        "$reduce": {
+                            "input": [],
+                            "initialValue": {
+                                "$const": {}
+                            },
+                            "in": {
+                                "$const": {"$binary":{"base64":"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA","subType":"6"}}
+                            }
+                        }
+                    },
+                    "$safeString"
+                ]
+            }
+        })",
+        stateIntentionBson(
+            R"({$eq: [{$reduce: {input: [], initialValue: {}, in: {$const: "hello"}}}, "$safeString"]})"));
 }
 
 TEST_F(AggregateExpressionIntenderTest, LetForbidsBindingToEncryptedValue) {
