@@ -29,18 +29,18 @@ assert.commandWorked(client.createEncryptionCollection("basic_double", {
 }));
 
 let res = assert.commandWorked(
-    edb.runCommand({"insert": "basic_double", documents: [{"_id": 1, "count": 3.14159}]}));
+    edb.erunCommand({"insert": "basic_double", documents: [{"_id": 1, "count": 3.14159}]}));
 
 // Test precision trims the number correctly for $eq
-assert.eq(edb.basic_double.find({"count": 3.14159}).itcount(), 1);
-assert.eq(edb.basic_double.find({"count": 3.14}).itcount(), 1);
-assert.eq(edb.basic_double.find({"count": 3.1}).itcount(), 0);
+assert.eq(edb.basic_double.ecount({"count": 3.14159}), 1);
+assert.eq(edb.basic_double.ecount({"count": 3.14}), 1);
+assert.eq(edb.basic_double.ecount({"count": 3.1}), 0);
 
 // Test ranges with trimming
-assert.eq(edb.basic_double.find({"count": {$gte: 1.0, $lte: 4.0}}).itcount(), 1);
-assert.eq(edb.basic_double.find({"count": {$gte: 1.0, $lte: 3.1}}).itcount(), 0);
-assert.eq(edb.basic_double.find({"count": {$gte: 1.0, $lte: 3.14}}).itcount(), 1);
-assert.eq(edb.basic_double.find({"count": {$gte: 1.0, $lte: 3.14159}}).itcount(), 1);
+assert.eq(edb.basic_double.ecount({"count": {$gte: 1.0, $lte: 4.0}}), 1);
+assert.eq(edb.basic_double.ecount({"count": {$gte: 1.0, $lte: 3.1}}), 0);
+assert.eq(edb.basic_double.ecount({"count": {$gte: 1.0, $lte: 3.14}}), 1);
+assert.eq(edb.basic_double.ecount({"count": {$gte: 1.0, $lte: 3.14159}}), 1);
 
 assert.commandWorked(client.createEncryptionCollection("basic_decimal", {
     encryptedFields: {
@@ -61,25 +61,21 @@ assert.commandWorked(client.createEncryptionCollection("basic_decimal", {
 }));
 
 // Insert a document with a field that gets encrypted
-res = assert.commandWorked(edb.runCommand(
+res = assert.commandWorked(edb.erunCommand(
     {"insert": "basic_decimal", documents: [{"_id": 1, "count": NumberDecimal(3.14159)}]}));
 
 // Test precision trims the number correctly for $eq
-assert.eq(edb.basic_decimal.find({"count": NumberDecimal(3.14159)}).itcount(), 1);
-assert.eq(edb.basic_decimal.find({"count": NumberDecimal(3.14)}).itcount(), 1);
-assert.eq(edb.basic_decimal.find({"count": NumberDecimal(3.1)}).itcount(), 0);
+assert.eq(edb.basic_decimal.ecount({"count": NumberDecimal(3.14159)}), 1);
+assert.eq(edb.basic_decimal.ecount({"count": NumberDecimal(3.14)}), 1);
+assert.eq(edb.basic_decimal.ecount({"count": NumberDecimal(3.1)}), 0);
 
 // Test ranges with trimming
-assert.eq(edb.basic_decimal.find({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(4.0)}})
-              .itcount(),
+assert.eq(edb.basic_decimal.ecount({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(4.0)}}),
           1);
-assert.eq(edb.basic_decimal.find({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.1)}})
-              .itcount(),
+assert.eq(edb.basic_decimal.ecount({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.1)}}),
           0);
-assert.eq(edb.basic_decimal.find({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.14)}})
-              .itcount(),
-          1);
 assert.eq(
-    edb.basic_decimal.find({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.14159)}})
-        .itcount(),
+    edb.basic_decimal.ecount({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.14)}}), 1);
+assert.eq(
+    edb.basic_decimal.ecount({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.14159)}}),
     1);

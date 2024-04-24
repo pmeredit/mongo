@@ -53,28 +53,28 @@ assert.eq(Object.keys(res.totals["collection_top_stats.enxcol_.basic.esc"]).leng
 
 // Test insert command does not generate stats
 assert.commandWorked(
-    edb.basic.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
+    edb.basic.einsert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test udpate command does not generate stats
-assert.commandWorked(edb.basic.update({"last": "marco"}, {$set: {"first": "matthew"}}));
+assert.commandWorked(edb.basic.eupdateOne({"last": "marco"}, {$set: {"first": "matthew"}}));
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test findAndModify command does not generate stats
-assert.commandWorked(edb.basic.runCommand(
+assert.commandWorked(edb.basic.erunCommand(
     {findAndModify: edb.basic.getName(), query: {"last": "marco"}, remove: true}));
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test find command does not generate stats
-assert.commandWorked(edb.basic.runCommand({find: "mark"}));
+assert.commandWorked(edb.basic.erunCommand({find: "mark"}));
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test count command does not generate stats
-assert.commandWorked(edb.runCommand({count: "basic"}));
+assert.commandWorked(edb.erunCommand({count: "basic"}));
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
@@ -90,11 +90,11 @@ assertNoEntries(res);
 
 // Test compactStructuredEncryptionData command does not generate stats
 assert.commandFailedWithCode(
-    edb.runCommand({"compactStructuredEncryptionData": "basic", compactionTokens: {}}), 7294900);
+    edb.erunCommand({"compactStructuredEncryptionData": "basic", compactionTokens: {}}), 7294900);
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test cleanupStructuredEncryptionData command does not generate stats
-assert.commandWorked(edb.basic.cleanup());
+client.runEncryptionOperation(() => { assert.commandWorked(edb.basic.cleanup()); });
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);

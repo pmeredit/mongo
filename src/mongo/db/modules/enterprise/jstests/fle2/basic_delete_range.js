@@ -33,7 +33,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     }
 }));
 
-assert.commandWorked(edb.basic.insert({"name": "Bob", "age": NumberInt(12), "last": "Belcher"}));
+assert.commandWorked(edb.basic.einsert({"name": "Bob", "age": NumberInt(12), "last": "Belcher"}));
 
 const kHypergraphHeight = 5;
 

@@ -5,6 +5,7 @@
  * requires_fcv_71
  * ]
  */
+
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 
@@ -19,13 +20,14 @@ const sampleEncryptedFields = {
 const bgCleanupFunc = async function() {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "fle2_cleanup_concurrency");
-    assert.commandWorked(client.getDB().basic.cleanup());
+
+    client.runEncryptionOperation(() => { assert.commandWorked(client.getDB().basic.cleanup()); });
 };
 
 const bgCompactFunc = async function() {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "fle2_cleanup_concurrency");
-    assert.commandWorked(client.getDB().basic.compact());
+    client.runEncryptionOperation(() => { assert.commandWorked(client.getDB().basic.compact()); });
 };
 
 function setupTest(client) {

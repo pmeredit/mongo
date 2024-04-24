@@ -108,15 +108,17 @@ const docs = [
 
 // Bulk inserts aren't supported in FLE2, so insert each one-by-one.
 function insert(doc) {
-    const res = assert.commandWorked(edb.runCommand({insert: collName, documents: [doc]}));
+    const res = assert.commandWorked(edb.erunCommand({insert: collName, documents: [doc]}));
     assert.eq(res.n, 1);
 }
 docs.forEach(insert);
 
 function assertQueryResults(q, expected) {
-    const res = coll.aggregate([{$match: {$expr: q}}]).toArray();
-    assert.eq(res.length, expected.length, tojson(q));
-    assertArrayEq({actual: res.map(d => d._id), expected, extraErrorMsg: tojson({q, res})});
+    client.runEncryptionOperation(() => {
+        const res = coll.aggregate([{$match: {$expr: q}}]).toArray();
+        assert.eq(res.length, expected.length, tojson(q));
+        assertArrayEq({actual: res.map(d => d._id), expected, extraErrorMsg: tojson({q, res})});
+    });
 }
 
 let res = coll.find({}).toArray();

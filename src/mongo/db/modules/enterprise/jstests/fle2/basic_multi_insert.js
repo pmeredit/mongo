@@ -33,7 +33,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 let edb = client.getDB();
 
 // Insert a document with a field that gets encrypted
-let res = assert.commandWorked(edb.runCommand({
+let res = assert.commandWorked(edb.erunCommand({
     "insert": "basic",
     documents: [
         {
@@ -81,21 +81,21 @@ print("Testing that all documents are encrypted");
 // Verify we decrypt it clean with an encrypted client.
 print("Testing that all documents can be decrypted by an encrypted client");
 {
-    let doc = edb.basic.find({"_id": 1}).toArray()[0];
+    let doc = edb.basic.efindOne({"_id": 1});
     print(tojson(doc));
     assert.eq(doc["first"], "dwayne");
     assert.eq(doc["middle"], "elizondo mountain dew herbert");
     assert.eq(doc["aka"], "president camacho");
     assert(doc[kSafeContentField] !== undefined);
 
-    doc = edb.basic.find({"_id": 2}).toArray()[0];
+    doc = edb.basic.efindOne({"_id": 2});
     print(tojson(doc));
     assert.eq(doc["first"], "bob");
     assert.eq(doc["middle"], "belcher");
     assert.eq(doc["aka"], "bobs burgers");
     assert(doc[kSafeContentField] !== undefined);
 
-    doc = edb.basic.find({"_id": 3}).toArray()[0];
+    doc = edb.basic.efindOne({"_id": 3});
     print(tojson(doc));
     assert.eq(doc["first"], "linda");
     assert.eq(doc["middle"], "belcher");
@@ -105,7 +105,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
 
 // Insert documents with ordered = true
 {
-    let commandResult = edb.runCommand({
+    let commandResult = edb.erunCommand({
         "insert": "basic",
         documents: [
             {"_id": 4, "first": "tina", "aka": "belcher"},
@@ -136,7 +136,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
     assertIsIndexedEncryptedField(rawDoc["aka"]);
     assert(rawDoc[kSafeContentField] !== undefined);
 
-    let decryptedDoc = edb.basic.find({"_id": 4}).toArray()[0];
+    let decryptedDoc = edb.basic.efindOne({"_id": 4});
     print(tojson(decryptedDoc));
     assert.eq(decryptedDoc["first"], "tina");
     assert.eq(decryptedDoc["aka"], "belcher");
@@ -151,7 +151,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
 
 // Insert docs with ordered = false to skip over errors
 {
-    let commandResult = edb.runCommand({
+    let commandResult = edb.erunCommand({
         "insert": "basic",
         documents: [
             {"_id": 7, "first": "teddy", "aka": "handyman"},
@@ -188,7 +188,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
     assertIsIndexedEncryptedField(rawDoc["aka"]);
     assert(rawDoc[kSafeContentField] !== undefined);
 
-    let decryptedDoc = edb.basic.find({"_id": 7}).toArray()[0];
+    let decryptedDoc = edb.basic.efindOne({"_id": 7});
     print(tojson(decryptedDoc));
     assert.eq(decryptedDoc["first"], "teddy");
     assert.eq(decryptedDoc["aka"], "handyman");
@@ -200,7 +200,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
     assertIsIndexedEncryptedField(rawDoc["aka"]);
     assert(rawDoc[kSafeContentField] !== undefined);
 
-    decryptedDoc = edb.basic.find({"_id": 10}).toArray()[0];
+    decryptedDoc = edb.basic.efindOne({"_id": 10});
     print(tojson(decryptedDoc));
     assert.eq(decryptedDoc["first"], "mort");
     assert.eq(decryptedDoc["aka"], "mortician");

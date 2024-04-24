@@ -28,11 +28,11 @@ function runTest(conn) {
     };
     assert.commandWorked(edb.adminCommand(shardCollCmd));
 
-    assert.commandWorked(ecoll.insert({"_id": 1, "first": "mark", "last": "marco"}));
-    assert.commandWorked(ecoll.insert({"_id": 2, "first": "Mark", "last": "Marcus"}));
+    assert.commandWorked(ecoll.einsert({"_id": 1, "first": "mark", "last": "marco"}));
+    assert.commandWorked(ecoll.einsert({"_id": 2, "first": "Mark", "last": "Marcus"}));
 
     jsTestLog("Testing sharded upsert with shard key in query");
-    let res = assert.commandWorked(ecoll.runCommand({
+    let res = assert.commandWorked(ecoll.erunCommand({
         update: ecoll.getName(),
         updates: [{q: {"_id": 3}, u: {"last": "Marco", "first": "Luke"}, upsert: true}]
     }));
@@ -43,7 +43,7 @@ function runTest(conn) {
     client.assertOneEncryptedDocumentFields(ecoll.getName(), {_id: 3}, {first: "Luke"});
 
     jsTestLog("Testing sharded upsert with non-shard key in query");
-    res = assert.commandWorked(edb.basic.runCommand({
+    res = assert.commandWorked(edb.basic.erunCommand({
         update: edb.basic.getName(),
         updates: [{q: {"last": "Mario"}, u: {"last": "Mario", "first": "Lukas"}, upsert: true}]
     }));

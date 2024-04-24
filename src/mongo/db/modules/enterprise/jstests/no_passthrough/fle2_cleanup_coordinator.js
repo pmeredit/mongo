@@ -27,10 +27,13 @@ function expectedESCCount() {
 const bgCleanupFunc = async function(assertWorked = true) {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "fle2_cleanup_coordinator");
-    const result = client.getDB().basic.cleanup();
-    if (assertWorked) {
-        assert.commandWorked(result);
-    }
+    client.runEncryptionOperation(() => {
+        const result = client.getDB().basic.cleanup();
+
+        if (assertWorked) {
+            assert.commandWorked(result);
+        }
+    });
 };
 
 function setupTest(client) {
@@ -46,14 +49,14 @@ function setupTest(client) {
     for (let cycle = 0; cycle < 10; cycle++) {
         // Insert data to compact
         for (let i = 1; i <= 10; i++) {
-            assert.commandWorked(coll.insert({"first": "jack"}));
+            assert.commandWorked(coll.einsert({"first": "jack"}));
         }
         for (let i = 1; i <= 10; i++) {
-            assert.commandWorked(coll.insert({"first": "diane"}));
+            assert.commandWorked(coll.einsert({"first": "diane"}));
         }
         // compact insertions, except for last iteration
         if ((cycle + 1) < 10) {
-            assert.commandWorked(coll.compact());
+            client.runEncryptionOperation(() => { assert.commandWorked(coll.compact()); });
         }
     }
 
@@ -115,7 +118,8 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
 
         // running cleanup again should get it to the desired state
         print("Restarting cleanup manually");
-        assert.commandWorked(client.getDB()[collName].cleanup());
+        client.runEncryptionOperation(
+            () => { assert.commandWorked(client.getDB()[collName].cleanup()); });
     }
 
     client.assertStateCollectionsAfterCompact(collName, true, false);

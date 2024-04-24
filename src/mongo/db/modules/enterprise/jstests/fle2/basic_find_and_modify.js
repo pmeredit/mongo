@@ -22,9 +22,9 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 
 const edb = client.getDB();
 assert.commandWorked(
-    edb.basic.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
+    edb.basic.einsert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
 assert.commandWorked(
-    edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"}));
+    edb.basic.einsert({"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
@@ -33,7 +33,7 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "m
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Update an encrypted field in a document
-let res = assert.commandWorked(edb.basic.runCommand({
+let res = assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
     update: {$set: {"first": "matthew"}},
@@ -51,7 +51,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Remove an encrypted field
-assert.commandWorked(edb.basic.runCommand({
+assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
     update: {$unset: {"first": ""}}
@@ -69,7 +69,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Add the encrypted field
-assert.commandWorked(edb.basic.runCommand({
+assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
     update: {$set: {"first": "luke"}}
@@ -86,7 +86,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Update a document by case-insensitive collation
-res = assert.commandWorked(edb.basic.runCommand({
+res = assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marcus"},
     update: {$set: {"first": "john"}},
@@ -105,7 +105,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Update an unencrypted field in a document, expect no esc/ecoc changes
 client.assertDocumentChanges("basic", [1], [0], () => {
-    return assert.commandWorked(edb.basic.runCommand({
+    return assert.commandWorked(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marco"},
         update: {$set: {"middle": "matthew"}}
@@ -122,7 +122,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Remove an unencrypted field in a document, expect no esc/ecoc changes
 client.assertDocumentChanges("basic", [1], [0], () => {
-    return assert.commandWorked(edb.basic.runCommand({
+    return assert.commandWorked(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marco"},
         update: {$unset: {"middle": ""}}
@@ -138,7 +138,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 // Upsert to create a new document with an encrypted field.
 client.assertDocumentChanges("basic", [0, 1], [2], () => {
-    return assert.commandWorked(edb.basic.runCommand({
+    return assert.commandWorked(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {"_id": 3},
         update: {$set: {"first": "Mark", "middle": "Markus"}},
@@ -156,7 +156,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 if (!client.useImplicitSharding) {
     assert.commandWorked(dbTest.basic.createIndex({"middle": 1}, {unique: true}));
 
-    res = assert.commandFailed(edb.basic.runCommand({
+    res = assert.commandFailed(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marco"},
         update: {$set: {"middle": "markus"}}
@@ -167,7 +167,7 @@ if (!client.useImplicitSharding) {
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     // Null Update
-    res = assert.commandWorked(edb.basic.runCommand({
+    res = assert.commandWorked(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marky"},
         update: {$set: {"first": "matthew"}}

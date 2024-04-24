@@ -52,7 +52,7 @@ var expected_pre_image = {
 
 // Insert 1 document with a field that gets encrypted, so following bulkWrite can update it.
 let res =
-    assert.commandWorked(edb.runCommand({"insert": "basic", documents: [expected_pre_image]}));
+    assert.commandWorked(edb.erunCommand({"insert": "basic", documents: [expected_pre_image]}));
 assert.eq(res.n, 1);
 
 assert.commandWorked(client.createEncryptionCollection("unencrypted_middle", {
@@ -65,7 +65,7 @@ assert.commandWorked(client.createEncryptionCollection("unencrypted_middle", {
     }
 }));
 
-assert.commandWorked(edb.adminCommand({
+assert.commandWorked(edb.eadminCommand({
     bulkWrite: 1,
     ops: [{insert: 0, document: {"_id": 2, "middle": "BBB"}}],
     nsInfo: [{ns: "basic_update.unencrypted_middle"}]
@@ -73,7 +73,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update a document with fields that get encrypted");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{update: 0, filter: {_id: 1}, updateMods: {$set: {middle: "E"}}}],
         nsInfo: [{ns: "basic_update.basic"}]
@@ -99,7 +99,7 @@ assert.commandWorked(edb.adminCommand({
     // Verify we decrypt it clean with an encrypted client.
     print("Testing that all documents can be decrypted by an encrypted client");
     {
-        let doc = edb.basic.find({"_id": 1}).toArray()[0];
+        let doc = edb.basic.efindOne({"_id": 1});
         print(tojson(doc));
         assert.eq(doc["first"], "dwayne");
         assert.eq(doc["middle"], "E");
@@ -110,7 +110,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update a document with fields that get encrypted (2 namespaces)");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [{update: 0, filter: {_id: 1}, updateMods: {$set: {middle: "E"}}}],
         nsInfo: [{ns: "basic_update.basic"}, {ns: "basic_update.other"}]
@@ -122,7 +122,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update 2 documents with fields that get encrypted");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {update: 0, filter: {_id: 1}, updateMods: {$set: {middle: "E"}}},
@@ -139,7 +139,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Insert + Update with fields that get encrypted");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {
@@ -161,9 +161,9 @@ assert.commandWorked(edb.adminCommand({
     print("Update with upsert and fields that get encrypted");
 
     // We want to insert _id: 2, ensure it does not exist yet.
-    assert.eq(edb.basic.find().toArray().length, 1);
+    assert.eq(edb.basic.ecount(), 1);
 
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -201,14 +201,14 @@ assert.commandWorked(edb.adminCommand({
     // Verify we decrypt it clean with an encrypted client.
     print("Testing that all documents can be decrypted by an encrypted client");
     {
-        let doc = edb.basic.find({"_id": 1}).toArray()[0];
+        let doc = edb.basic.efindOne({"_id": 1});
         print(tojson(doc));
         assert.eq(doc["first"], "dwayne");
         assert.eq(doc["middle"], "E");
         assert.eq(doc["aka"], "president camacho");
         assert(doc[kSafeContentField] !== undefined);
 
-        doc = edb.basic.find({"_id": 2}).toArray()[0];
+        doc = edb.basic.efindOne({"_id": 2});
         print(tojson(doc));
         assert.eq(doc["first"], "bob");
         assert.eq(doc["middle"], "belcher");
@@ -219,7 +219,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update a document with fields that get encrypted (missing required field)");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -241,7 +241,7 @@ assert.commandWorked(edb.adminCommand({
 {
     print("Update a document with fields that get encrypted (with Let)");
 
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {
@@ -264,7 +264,7 @@ assert.commandWorked(edb.adminCommand({
     // SERVER-15292 and the way we handle replies in bulk_write_exec.cpp (see comment there after
     // LOGV2_WARNING(7749700)).
     print("Update with multi and fields that get encrypted");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -283,7 +283,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update a document with fields that get encrypted (with Constants)");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -311,10 +311,10 @@ assert.commandWorked(edb.adminCommand({
     print(
         "Update a document with fields that get encrypted and unencrypted field with arrayFilters");
     res =
-        assert.commandWorked(edb.runCommand({"insert": "basic", documents: [expected_pre_image]}));
+        assert.commandWorked(edb.erunCommand({"insert": "basic", documents: [expected_pre_image]}));
     assert.eq(res.n, 1);
 
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -345,7 +345,7 @@ assert.commandWorked(edb.adminCommand({
     // Verify we decrypt it clean with an encrypted client.
     print("Testing that the document can be decrypted by an encrypted client");
     {
-        let doc = edb.basic.find({"_id": 3}).toArray()[0];
+        let doc = edb.basic.efindOne({"_id": 3});
         print(tojson(doc));
         assert.eq(doc["first"], "linda");
         assert.eq(doc["middle"], "belcher");
@@ -359,7 +359,7 @@ assert.commandWorked(edb.adminCommand({
     print("QE does not support encrypted array field.");
     // If that changes, update this test by changing the print, the asserts
     // AND testing bulkWrite with arrayFilters on encrypted field.
-    let error = assert.throws(() => edb.runCommand({
+    let error = assert.throws(() => edb.erunCommand({
         "insert": "basic",
         documents:
             [{"_id": 4, "first": "linda", "middle": "belcher", "aka": [{b: 5}, {b: 1}, {b: 2}]}]
@@ -372,7 +372,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update a document with fields that get encrypted and collation");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -405,7 +405,7 @@ assert.commandWorked(edb.adminCommand({
     // Verify we decrypt it clean with an encrypted client.
     print("Testing that all documents can be decrypted by an encrypted client");
     {
-        let doc = edb.basic.find({"_id": 1}).toArray()[0];
+        let doc = edb.basic.efindOne({"_id": 1});
         print(tojson(doc));
         assert.eq(doc["first"], "dwayne");
         assert.eq(doc["middle"], "elizondo");
@@ -416,7 +416,7 @@ assert.commandWorked(edb.adminCommand({
 
 {
     print("Update a document with fields that get encrypted and collation (used in the filter)");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,
@@ -437,7 +437,7 @@ assert.commandWorked(edb.adminCommand({
     print(
         "Update a document with no encrypted field in a collection with optional encrypted fields");
 
-    let res = assert.commandWorked(edb.adminCommand({
+    let res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{update: 0, filter: {_id: 2}, updateMods: {$set: {middle: "E"}}}],
         nsInfo: [{ns: "basic_update.unencrypted_middle"}],

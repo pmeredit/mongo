@@ -141,7 +141,7 @@ function runTest(conn, alt_conn) {
         assert.commandWorked(altDB.adminCommand({clearLog: 'global'}));
     }
 
-    assert.commandWorked(edb.adminCommand({
+    assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{insert: 0, document: {first: "mark", middle: "john"}}],
         nsInfo: [{ns: "test.badlog"}]
@@ -154,7 +154,7 @@ function runTest(conn, alt_conn) {
 
     checkBulkWriteLogCounts(db);
 
-    assert.commandWorked(edb.adminCommand({
+    assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{update: 0, filter: {first: "mark"}, updateMods: {$set: {middle: "paul"}}}],
         nsInfo: [{ns: "test.badlog"}]
@@ -167,7 +167,7 @@ function runTest(conn, alt_conn) {
 
     checkBulkWriteLogCounts(db);
 
-    assert.commandWorked(edb.adminCommand({
+    assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{delete: 0, filter: {first: "mark"}}],
         nsInfo: [{ns: "test.badlog"}]

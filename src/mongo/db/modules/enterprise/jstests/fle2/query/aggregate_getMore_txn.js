@@ -31,7 +31,7 @@ let edb = client.getDB();
 
 const coll = edb[collName];
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 
@@ -50,10 +50,12 @@ const session = edb.getMongo().startSession({causalConsistency: false});
 const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection(collName);
 
-for (const testData of tests) {
-    const extraInfo = Object.assign({transaction: true}, testData);
-    session.startTransaction();
+client.runEncryptionOperation(() => {
+    for (const testData of tests) {
+        const extraInfo = Object.assign({transaction: true}, testData);
+        session.startTransaction();
 
-    runTest(testData.pipeline, sessionColl, testData.expected, extraInfo);
-    session.commitTransaction();
-}
+        runTest(testData.pipeline, sessionColl, testData.expected, extraInfo);
+        session.commitTransaction();
+    }
+});

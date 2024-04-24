@@ -65,7 +65,7 @@ function runInsertTests(conn, sharded) {
     function runCommandsAndCompareResults(
         command, pdb, edb, errorCode, expectedN, expectedOk = 1, fleWCEMasked = false) {
         let pres = pdb.runCommand(command);
-        let eres = edb.runCommand(command);
+        let eres = edb.erunCommand(command);
         print("Unencrypted result: " + tojson(pres));
         print("Encrypted result: " + tojson(eres));
         assert.commandFailedWithCode(pres, errorCode);
@@ -128,7 +128,7 @@ function runDeleteTests(conn, sharded) {
     const docsToInsert = VALUES.map((name) => ({first: name}));
     maybeShardTestCollections(sharded, fleDb, plainDb);
 
-    assert.commandWorked(fleDb.runCommand({insert: collName, documents: docsToInsert}));
+    assert.commandWorked(fleDb.erunCommand({insert: collName, documents: docsToInsert}));
     assert.commandWorked(plainDb.runCommand({insert: collName, documents: docsToInsert}));
     client.assertEncryptedCollectionCounts(collName, 5, 5, 5);
 
@@ -142,7 +142,7 @@ function runDeleteTests(conn, sharded) {
     let pres =
         assert.commandFailedWithCode(plainDb.runCommand(cmd), ErrorCodes.UnsatisfiableWriteConcern);
     let eres =
-        assert.commandFailedWithCode(fleDb.runCommand(cmd), ErrorCodes.UnsatisfiableWriteConcern);
+        assert.commandFailedWithCode(fleDb.erunCommand(cmd), ErrorCodes.UnsatisfiableWriteConcern);
     assert(!pres.hasOwnProperty("writeErrors"));
     assert(!eres.hasOwnProperty("writeErrors"));
     assert.eq(pres.n, 2);
@@ -167,7 +167,7 @@ function runUpdateTests(conn, sharded) {
     const docsToInsert = VALUES.map((name) => ({first: name}));
     maybeShardTestCollections(sharded, fleDb, plainDb);
 
-    assert.commandWorked(fleDb.runCommand({insert: collName, documents: docsToInsert}));
+    assert.commandWorked(fleDb.erunCommand({insert: collName, documents: docsToInsert}));
     assert.commandWorked(plainDb.runCommand({insert: collName, documents: docsToInsert}));
     client.assertEncryptedCollectionCounts(collName, 5, 5, 5);
 
@@ -201,7 +201,7 @@ function runUpdateTests(conn, sharded) {
                                           expectedOk = 1,
                                           fleWCEMasked = false) {
         let pres = assert.commandFailedWithCode(pdb.runCommand(command), errorCode);
-        let eres = assert.commandFailedWithCode(edb.runCommand(command), errorCode);
+        let eres = assert.commandFailedWithCode(edb.erunCommand(command), errorCode);
         print("Unencrypted result: " + tojson(pres));
         print("Encrypted result: " + tojson(eres));
         checkHasWCE(pres, ErrorCodes.UnsatisfiableWriteConcern);
@@ -257,7 +257,7 @@ function runFindAndModifyTests(conn, sharded) {
     const docsToInsert = VALUES.map((name) => ({first: name}));
     maybeShardTestCollections(sharded, fleDb, plainDb);
 
-    assert.commandWorked(fleDb.runCommand({insert: collName, documents: docsToInsert}));
+    assert.commandWorked(fleDb.erunCommand({insert: collName, documents: docsToInsert}));
     assert.commandWorked(plainDb.runCommand({insert: collName, documents: docsToInsert}));
     client.assertEncryptedCollectionCounts(collName, 5, 5, 5);
 
@@ -302,7 +302,7 @@ function runFindAndModifyTests(conn, sharded) {
                                           plainWCEMasked = false,
                                           fleWCEMasked = false) {
         let pres = assert.commandFailedWithCode(pdb.runCommand(command), errorCode);
-        let eres = assert.commandFailedWithCode(edb.runCommand(command), errorCode);
+        let eres = assert.commandFailedWithCode(edb.erunCommand(command), errorCode);
         print("Unencrypted result: " + tojson(pres));
         print("Encrypted result: " + tojson(eres));
         if (!plainWCEMasked) {

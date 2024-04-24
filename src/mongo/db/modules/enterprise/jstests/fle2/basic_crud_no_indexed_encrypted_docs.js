@@ -20,18 +20,18 @@ assert.commandWorked(client.createEncryptionCollection(
 
 const edb = client.getDB();
 
-assert.commandWorked(edb.basic_unindexed.insert({"_id": 1, "field": "foo"}));
+assert.commandWorked(edb.basic_unindexed.einsert({"_id": 1, "field": "foo"}));
 
-assert.commandWorked(edb.basic_unindexed.runCommand(
+assert.commandWorked(edb.basic_unindexed.erunCommand(
     {findAndModify: edb.basic_unindexed.getName(), query: {}, update: {$set: {"field": "bar"}}}));
 
 client.assertEncryptedCollectionDocuments("basic_unindexed", [{"_id": 1, "field": "bar"}]);
 
-assert.commandWorked(edb.basic_unindexed.update({}, {$set: {field: 'cool'}}));
+assert.commandWorked(edb.basic_unindexed.eupdateOne({}, {$set: {field: 'cool'}}));
 
 client.assertEncryptedCollectionDocuments("basic_unindexed", [{"_id": 1, "field": "cool"}]);
 
-assert.commandWorked(edb.basic_unindexed.deleteOne({}));
+assert.commandWorked(edb.basic_unindexed.edeleteOne({}));
 
 client.assertEncryptedCollectionDocuments("basic_unindexed", []);
 
@@ -49,19 +49,19 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 {
-    assert.commandWorked(edb.basic.insert({"_id": 1, "field": "foo"}));
+    assert.commandWorked(edb.basic.einsert({"_id": 1, "field": "foo"}));
 
     assert.eq(edb.basic.find({_id: 1}).toArray()[0][kSafeContentField], undefined);
 
     client.assertEncryptedCollectionDocuments("basic", [{"_id": 1, "field": "foo"}]);
 
-    assert.commandWorked(edb.basic.updateOne({_id: 1}, {$set: {field: "bar"}}));
+    assert.commandWorked(edb.basic.eupdateOne({_id: 1}, {$set: {field: "bar"}}));
 
     assert.eq(edb.basic.find({_id: 1}).toArray()[0][kSafeContentField], undefined);
 
     client.assertEncryptedCollectionDocuments("basic", [{"_id": 1, "field": "bar"}]);
 
-    assert.commandWorked(edb.basic.runCommand(
+    assert.commandWorked(edb.basic.erunCommand(
         {findAndModify: edb.basic.getName(), query: {_id: 1}, update: {$set: {field: "rho"}}}));
 
     client.assertEncryptedCollectionDocuments("basic", [{"_id": 1, "field": "rho"}]);
@@ -73,12 +73,12 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 
 // Test that modifying an unencrypted field in a document still works.
 {
-    assert.commandWorked(edb.basic.insert({"_id": 1, "field": "foo", "age": NumberInt(12)}));
+    assert.commandWorked(edb.basic.einsert({"_id": 1, "field": "foo", "age": NumberInt(12)}));
 
     client.assertEncryptedCollectionDocuments("basic",
                                               [{"_id": 1, "field": "foo", "age": NumberInt(12)}]);
 
-    assert.commandWorked(edb.basic.updateOne({_id: 1}, {$set: {field: "bar"}}));
+    assert.commandWorked(edb.basic.eupdateOne({_id: 1}, {$set: {field: "bar"}}));
 
     client.assertEncryptedCollectionDocuments("basic",
                                               [{"_id": 1, "field": "bar", "age": NumberInt(12)}]);

@@ -51,7 +51,7 @@ let insert1 = {
 };
 
 // Insert 1 document with a field that gets encrypted, so following bulkWrite can update it.
-let res = assert.commandWorked(edb.runCommand(insert1));
+let res = assert.commandWorked(edb.erunCommand(insert1));
 assert.eq(res.n, 1);
 
 let insert2 = {
@@ -60,12 +60,12 @@ let insert2 = {
         [{"_id": 2, "first": "dwayne", "middle": "schrute", "aka": "regional manager", "age": 53}]
 };
 
-res = assert.commandWorked(edb.runCommand(insert2));
+res = assert.commandWorked(edb.erunCommand(insert2));
 assert.eq(res.n, 1);
 
 {
     print("Delete a document using an encrypted filter");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{delete: 0, filter: {"first": "dwayne", "_id": 1}}],
         nsInfo: [{ns: "basic_update.basic"}]
@@ -76,15 +76,15 @@ assert.eq(res.n, 1);
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);
-    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+    assert.eq(edb.basic.ecount({"_id": 1}), 0);
 }
 
-res = assert.commandWorked(edb.runCommand(insert1));
+res = assert.commandWorked(edb.erunCommand(insert1));
 assert.eq(res.n, 1);
 
 {
     print("Delete a document using an unencrypted filter");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{delete: 0, filter: {"age": 33}}],
         nsInfo: [{ns: "basic_update.basic"}]
@@ -95,15 +95,15 @@ assert.eq(res.n, 1);
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);
-    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+    assert.eq(edb.basic.ecount({"_id": 1}), 0);
 }
 
-res = assert.commandWorked(edb.runCommand(insert1));
+res = assert.commandWorked(edb.erunCommand(insert1));
 assert.eq(res.n, 1);
 
 {
     print("Delete a document using an encrypted filter and Let");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             delete: 0,
@@ -119,12 +119,12 @@ assert.eq(res.n, 1);
 }
 
 // Previous test is supposed to fail to delete so the document should still exist.
-assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
+assert.eq(edb.basic.ecount({"_id": 1}), 1);
 
 {
     print("Delete documents using an encrypted filter (multiple ops)");
 
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {delete: 0, filter: {"first": "dwayne", "_id": 1}},
@@ -140,11 +140,11 @@ assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
 }
 
 // Previous test is supposed to fail to delete so the document should still exist.
-assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
+assert.eq(edb.basic.ecount({"_id": 1}), 1);
 
 {
     print("Delete a document with fields that get encrypted and collation");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             delete: 0,
@@ -159,10 +159,10 @@ assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);
-    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+    assert.eq(edb.basic.ecount({"_id": 1}), 0);
 }
 
-res = assert.commandWorked(edb.runCommand(insert1));
+res = assert.commandWorked(edb.erunCommand(insert1));
 assert.eq(res.n, 1);
 
 // Not testing "Delete with multi and fields that get encrypted" here,
@@ -170,7 +170,7 @@ assert.eq(res.n, 1);
 
 {
     print("Delete a document with fields that get encrypted and collation (used in the filter)");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             delete: 0,

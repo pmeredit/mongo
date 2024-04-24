@@ -42,7 +42,7 @@ export class MongoCryptD {
 
         // Convert key-value pairs (e.g. from test suite config or command-line flags) into
         // --setParameter key=value arguments
-        if (TestData.setParametersMongocryptd) {
+        if (TestData !== undefined && TestData.setParametersMongocryptd) {
             const setParams = TestData.setParametersMongocryptd;
             for (let [paramName, paramValue] of Object.entries(setParams)) {
                 // --setParameter takes boolean values as lowercase strings.

@@ -33,7 +33,7 @@ let edb = client.getDB();
 
 const coll = edb[collName];
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 
@@ -63,10 +63,12 @@ const runFindTest = (filter, collection, expected, extraInfo) => {
 };
 
 // Run each of the filters above within a find and an aggregate. The results should be consistent.
-for (const testData of matchFilters) {
-    runAggTest([{$match: testData.filter}], coll, testData.expected, testData);
-    runFindTest(testData.filter, coll, testData.expected, testData);
-}
+client.runEncryptionOperation(() => {
+    for (const testData of matchFilters) {
+        runAggTest([{$match: testData.filter}], coll, testData.expected, testData);
+        runFindTest(testData.filter, coll, testData.expected, testData);
+    }
+});
 
 const aggTests = [
     // Similar to the above, test that $geoNear undergoes rewrites for the query field.
@@ -153,9 +155,11 @@ const aggTests = [
     },
 ];
 
-for (const testData of aggTests) {
-    runAggTest(testData.pipeline, coll, testData.expected, testData);
-}
+client.runEncryptionOperation(() => {
+    for (const testData of aggTests) {
+        runAggTest(testData.pipeline, coll, testData.expected, testData);
+    }
+});
 
 const illegalTests = [
     {
@@ -205,15 +209,18 @@ const illegalTests = [
         run: () => coll.aggregate([{$project: {ssn: 1}}, {$match: {ssn: "123"}}]).toArray()
     }
 ];
-for (const testData of illegalTests) {
-    let failed = false;
-    let res;
-    try {
-        res = testData.run();
-    } catch (e) {
-        res = tojson(e);
-        failed = true;
-    }
 
-    assert(failed, {testData, commandRes: res});
-}
+client.runEncryptionOperation(() => {
+    for (const testData of illegalTests) {
+        let failed = false;
+        let res;
+        try {
+            res = testData.run();
+        } catch (e) {
+            res = tojson(e);
+            failed = true;
+        }
+
+        assert(failed, {testData, commandRes: res});
+    }
+});

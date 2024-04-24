@@ -72,7 +72,7 @@ function runTest(conn) {
         const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
-        assert.commandWorked(edb.basic.runCommand({
+        assert.commandWorked(edb.basic.erunCommand({
             insert: edb.basic.getName(),
             documents: [{_id: 1, "first": "mark"}],
             comment: "op_to_kill"
@@ -82,7 +82,7 @@ function runTest(conn) {
 
     // Make sure insert still works
     assert.soonNoExcept(() => {
-        assert.commandWorked(edb.basic.insert({"first": "jack", "fm:": "jack"}));
+        assert.commandWorked(edb.basic.einsert({"first": "jack", "fm:": "jack"}));
         return true;
     });
 
@@ -91,7 +91,7 @@ function runTest(conn) {
         const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
-        assert.commandWorked(edb.basic.runCommand({
+        assert.commandWorked(edb.basic.erunCommand({
             update: edb.basic.getName(),
             updates: [{q: {_id: 1}, u: {$set: {"first": "marco"}}}],
             comment: "op_to_kill"
@@ -110,7 +110,7 @@ function runTest(conn) {
         const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
-        assert.commandWorked(edb.basic.runCommand({
+        assert.commandWorked(edb.basic.erunCommand({
             findAndModify: edb.basic.getName(),
             query: {"_id": 1},
             update: {$set: {"first": "markus"}},
@@ -121,7 +121,7 @@ function runTest(conn) {
 
     // Make sure findAndModify still works
     assert.soonNoExcept(() => {
-        assert.commandWorked(edb.basic.runCommand({
+        assert.commandWorked(edb.basic.erunCommand({
             findAndModify: edb.basic.getName(),
             query: {"_id": 1},
             update: {$set: {"first": "markus"}},
@@ -135,7 +135,7 @@ function runTest(conn) {
         const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
-        assert.commandWorked(edb.basic.runCommand({
+        assert.commandWorked(edb.basic.erunCommand({
             delete: edb.basic.getName(),
             deletes: [
                 {

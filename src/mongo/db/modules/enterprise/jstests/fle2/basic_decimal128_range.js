@@ -45,17 +45,17 @@ const kLEdgesGeneratedPerOp = 129;  // Number of edges generated for length
 const kWEdgesGeneratedPerOp = 1;    // Number of edges generated for width
 
 const edb = client.getDB();
-assert.commandWorked(edb.basic.insert({
+assert.commandWorked(edb.basic.einsert({
     "last": "square1",
     "length": NumberDecimal(3.1415),
     "width": NumberInt(1),
     "height": NumberDecimal(10.325)
 }));
-assert.commandWorked(edb.basic.insert(
+assert.commandWorked(edb.basic.einsert(
     {"last": "square2", "length": NumberDecimal(1.3543), "height": NumberDecimal(22.493)}));
 assert.commandWorked(
-    edb.basic.insert({"last": "square3", "width": NumberInt(5), "height": NumberDecimal(193.50)}));
-assert.commandWorked(edb.basic.insert({
+    edb.basic.einsert({"last": "square3", "width": NumberInt(5), "height": NumberDecimal(193.50)}));
+assert.commandWorked(edb.basic.einsert({
     "last": "square4",
     "length": NumberDecimal(9.7923),
     "width": NumberInt(2),
@@ -70,7 +70,7 @@ currentESCCount = currentECOCCount = edgesForInserts;
 
 client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, currentECOCCount);
 
-assert.commandWorked(edb.runCommand({
+assert.commandWorked(edb.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {"last": "square1"},
     "update": {"$set": {"length": NumberDecimal(9.213)}}
@@ -81,7 +81,7 @@ currentECOCCount += kLEdgesGeneratedPerOp;
 
 client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, currentECOCCount);
 
-assert.commandWorked(edb.runCommand({
+assert.commandWorked(edb.erunCommand({
     update: edb.basic.getName(),
     updates: [{"q": {"last": "square2"}, "u": {"$set": {"width": NumberInt(5)}}}],
 }));

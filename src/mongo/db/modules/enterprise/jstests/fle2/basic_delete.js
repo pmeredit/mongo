@@ -21,10 +21,10 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 let edb = client.getDB();
-assert.commandWorked(edb.basic.insert({"first": "mark", "last": "marco"}));
-assert.commandWorked(edb.basic.insert({"first": "Mark", "last": "Marco"}));
-assert.commandWorked(edb.basic.insert({"first": "frodo", "last": "Baggins"}));
-assert.commandWorked(edb.basic.insert({"first": "bilbo", "last": "baggins"}));
+assert.commandWorked(edb.basic.einsert({"first": "mark", "last": "marco"}));
+assert.commandWorked(edb.basic.einsert({"first": "Mark", "last": "Marco"}));
+assert.commandWorked(edb.basic.einsert({"first": "frodo", "last": "Baggins"}));
+assert.commandWorked(edb.basic.einsert({"first": "bilbo", "last": "baggins"}));
 let docsRemaining = 4;
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
@@ -34,7 +34,7 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "m
 
 // Delete a document
 let res = assert.commandWorked(
-    edb.runCommand({delete: "basic", deletes: [{"q": {"last": "marco"}, limit: 1}]}));
+    edb.erunCommand({delete: "basic", deletes: [{"q": {"last": "marco"}, limit: 1}]}));
 print(tojson(res));
 assert.eq(res.n, 1);
 client.assertWriteCommandReplyFields(res);
@@ -91,45 +91,45 @@ if (!client.useImplicitSharding) {
         }
     }));
     const coll = edb[collName];
-    assert.commandWorked(coll.insert({"first": "mark", "last": "marco"}));
-    assert.commandWorked(coll.insert({"first": "Mark", "last": "Marco"}));
+    assert.commandWorked(coll.einsert({"first": "mark", "last": "marco"}));
+    assert.commandWorked(coll.einsert({"first": "Mark", "last": "Marco"}));
     client.assertEncryptedCollectionCounts(collName, 2, 2, 2);
 
     // Delete a document by an encrypted field.
-    res = assert.commandWorked(coll.deleteOne({"first": "mark"}));
+    res = assert.commandWorked(coll.edeleteOne({"first": "mark"}));
     assert.eq(res.deletedCount, 1);
     client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
 
     // Try deleting a non-existent document.
-    res = assert.commandWorked(coll.deleteOne({"first": "dev"}));
+    res = assert.commandWorked(coll.edeleteOne({"first": "dev"}));
     assert.eq(res.deletedCount, 0);
     client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
 
     // Try deleting a non-existent combination of encrypted and non-encrypted fields, with a
     // case-insensitive collation.
-    res =
-        assert.commandWorked(coll.deleteOne({$and: [{"first": "Mark"}, {"last": "non-existent"}]}));
+    res = assert.commandWorked(
+        coll.edeleteOne({$and: [{"first": "Mark"}, {"last": "non-existent"}]}));
     assert.eq(res.deletedCount, 0);
     client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
 
     // Delete with a combination of encrypted and non-encrypted fields.
-    res = assert.commandWorked(coll.deleteOne({$and: [{"first": "Mark"}, {"last": "Marco"}]}));
+    res = assert.commandWorked(coll.edeleteOne({$and: [{"first": "Mark"}, {"last": "Marco"}]}));
     assert.eq(res.deletedCount, 1);
     client.assertEncryptedCollectionCounts(collName, 0, 2, 2);
 
     // insert more test documents
-    assert.commandWorked(coll.insert({"first": "george", "last": "washington"}));
-    assert.commandWorked(coll.insert({"first": "george", "last": "foreman"}));
-    assert.commandWorked(coll.insert({"first": "george", "last": "michael"}));
-    assert.commandWorked(coll.insert({"first": "denzel", "last": "washington"}));
+    assert.commandWorked(coll.einsert({"first": "george", "last": "washington"}));
+    assert.commandWorked(coll.einsert({"first": "george", "last": "foreman"}));
+    assert.commandWorked(coll.einsert({"first": "george", "last": "michael"}));
+    assert.commandWorked(coll.einsert({"first": "denzel", "last": "washington"}));
     client.assertEncryptedCollectionCounts(collName, 4, 6, 6);
 
     res = assert.commandWorked(
-        coll.deleteMany({$and: [{"first": "george"}, {"last": {$not: {$eq: "washington"}}}]}));
+        coll.edeleteMany({$and: [{"first": "george"}, {"last": {$not: {$eq: "washington"}}}]}));
     assert.eq(res.deletedCount, 2);
     client.assertEncryptedCollectionCounts(collName, 2, 6, 6);
 
-    res = assert.commandWorked(coll.deleteMany({"last": "washington"}));
+    res = assert.commandWorked(coll.edeleteMany({"last": "washington"}));
     assert.eq(res.deletedCount, 2);
     client.assertEncryptedCollectionCounts(collName, 0, 6, 6);
 }

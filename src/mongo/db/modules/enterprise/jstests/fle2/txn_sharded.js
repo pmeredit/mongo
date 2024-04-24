@@ -40,7 +40,7 @@ const sessionColl = sessionDB.getCollection("basic");
 session.startTransaction();
 
 for (let i = 0; i < 10; i++) {
-    assert.commandWorked(sessionColl.insert({
+    assert.commandWorked(sessionColl.einsert({
         _id: i,
         a: i.toString(),
         b: ((i + 1) % 10).toString(),
@@ -67,7 +67,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 session.startTransaction();
 
 for (let i = 0; i < 10; i++) {
-    assert.commandWorked(sessionColl.updateOne({b: i.toString()}, {$set: {a: i.toString()}}));
+    assert.commandWorked(sessionColl.eupdateOne({b: i.toString()}, {$set: {a: i.toString()}}));
 }
 
 assert.commandWorked(session.abortTransaction_forTesting());
@@ -90,7 +90,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 session.startTransaction();
 
 for (let i = 0; i < 10; i++) {
-    assert.commandWorked(sessionColl.runCommand({
+    assert.commandWorked(sessionColl.erunCommand({
         findAndModify: "basic",
         query: {b: i.toString()},
         update: {$set: {a: i.toString()}},
@@ -117,7 +117,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 session.startTransaction();
 
 for (let i = 0; i < 10; i += 2) {
-    assert.commandWorked(sessionColl.deleteOne({b: i.toString()}));
+    assert.commandWorked(sessionColl.edeleteOne({b: i.toString()}));
 }
 
 assert.commandWorked(session.abortTransaction_forTesting());
@@ -140,7 +140,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 session.startTransaction();
 
 for (let i = 0; i < 10; i += 2) {
-    assert.commandWorked(sessionColl.deleteOne({b: i.toString()}));
+    assert.commandWorked(sessionColl.edeleteOne({b: i.toString()}));
 }
 
 session.commitTransaction();

@@ -42,7 +42,7 @@ function runTest(conn, primaryConn) {
 
     // Test retryable writes for insert
     //
-    let result = assert.commandWorked(edb.runCommand({
+    let result = assert.commandWorked(edb.erunCommand({
         "insert": collName,
         documents: [
             {
@@ -67,7 +67,7 @@ function runTest(conn, primaryConn) {
     let oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, 3);
 
-    let retryResult = assert.commandWorked(edb.runCommand({
+    let retryResult = assert.commandWorked(edb.erunCommand({
         "insert": collName,
         documents: [
             {

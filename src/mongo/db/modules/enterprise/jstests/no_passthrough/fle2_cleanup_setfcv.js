@@ -20,7 +20,7 @@ const sampleEncryptedFields = {
 const bgCleanupFunc = async function() {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "fle2_cleanup_setfcv");
-    assert.commandWorked(client.getDB().basic.cleanup());
+    client.runEncryptionOperation(() => { assert.commandWorked(client.getDB().basic.cleanup()); });
 };
 
 const bgSetFCVFunc = function(targetFCV) {

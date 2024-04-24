@@ -33,7 +33,7 @@ let edb = client.getDB();
 
 const coll = edb[collName];
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 
@@ -46,9 +46,11 @@ const runUpdateTest = (filter, collection, expected, extraInfo) => {
 };
 
 // Run each of the filters above within a find and an aggregate. The results should be consistent.
-for (const testData of matchFilters) {
-    runUpdateTest(testData.filter, coll, testData.expected, testData);
-}
+client.runEncryptionOperation(() => {
+    for (const testData of matchFilters) {
+        runUpdateTest(testData.filter, coll, testData.expected, testData);
+    }
+});
 
 const illegalTests = [
     {
@@ -57,15 +59,18 @@ const illegalTests = [
             {}, [{$set: {"updateField": {$cond: [{$eq: ["$ssn", "123"]}, "123", "not123"]}}}])
     },
 ];
-for (const testData of illegalTests) {
-    let failed = false;
-    let res;
-    try {
-        res = testData.run();
-    } catch (e) {
-        res = tojson(e);
-        failed = true;
-    }
 
-    assert(failed, {testData, commandRes: res});
-}
+client.runEncryptionOperation(() => {
+    for (const testData of illegalTests) {
+        let failed = false;
+        let res;
+        try {
+            res = testData.run();
+        } catch (e) {
+            res = tojson(e);
+            failed = true;
+        }
+
+        assert(failed, {testData, commandRes: res});
+    }
+});

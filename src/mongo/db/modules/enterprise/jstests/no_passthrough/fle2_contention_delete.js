@@ -13,7 +13,7 @@ async function bgDeleteFunc(query) {
     let client = new EncryptedClient(db.getMongo(), "txn_contention_delete");
     while (true) {
         try {
-            client.getDB().basic.deleteOne(query);
+            client.getDB().basic.edeleteOne(query);
             return;
         } catch (e) {
             assert.eq(e.code, ErrorCodes.WriteConflict, "Unexpected error: " + tojson(e));
@@ -36,8 +36,8 @@ function runTest(conn) {
     }));
 
     const edb = client.getDB();
-    assert.commandWorked(edb.basic.insert({_id: 1, "first": "mark", "last": "marco"}));
-    assert.commandWorked(edb.basic.insert({_id: 2, "first": "mark", "last": "Marcus"}));
+    assert.commandWorked(edb.basic.einsert({_id: 1, "first": "mark", "last": "marco"}));
+    assert.commandWorked(edb.basic.einsert({_id: 2, "first": "mark", "last": "Marcus"}));
     client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
     // Setup a failpoint that hangs in delete

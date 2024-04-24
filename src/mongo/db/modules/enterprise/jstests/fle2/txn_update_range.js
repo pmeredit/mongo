@@ -60,9 +60,9 @@ const kTagsPerEntry = kHypergraphHeight + kHypergraphNumNum + kEqualityTags;
 // Verify we can insert two documents in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert(
+assert.commandWorked(sessionColl.einsert(
     {name: "joe", "height": NumberLong(4), "num": {"num": NumberInt(2)}, "ssn": "abcd"}));
-assert.commandWorked(sessionColl.insert(
+assert.commandWorked(sessionColl.einsert(
     {name: "bob", "height": NumberLong(5), "num": {"num": NumberInt(1)}, "ssn": "efgh"}));
 
 session.commitTransaction();
@@ -71,11 +71,11 @@ client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsP
 
 session.startTransaction();
 
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     update: edb.basic.getName(),
     updates: [{"q": {name: "joe"}, "u": {"$set": {"num": {"num": NumberInt(0)}}}}]
 }));
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     update: edb.basic.getName(),
     updates: [{"q": {name: "bob"}, "u": {"$set": {"height": NumberLong(6)}}}]
 }));
@@ -87,14 +87,14 @@ client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsP
 session.startTransaction();
 
 // Replace both the documents, same value, but replace all the fields.
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     update: edb.basic.getName(),
     updates: [{
         "q": {name: "joe"},
         "u": {name: "john", "height": NumberLong(4), "num": {"num": NumberInt(2)}, "ssn": "abcd"}
     }]
 }));
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     update: edb.basic.getName(),
     updates: [{
         "q": {name: "bob"},
@@ -108,11 +108,11 @@ client.assertEncryptedCollectionCounts("basic", 2, 4 * kTagsPerEntry, 4 * kTagsP
 
 session.startTransaction();
 
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     update: edb.basic.getName(),
     updates: [{"q": {name: "john"}, "u": {"$set": {"num": {"num": NumberInt(0)}}}}]
 }));
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     update: edb.basic.getName(),
     updates: [{"q": {name: "billy"}, "u": {"$set": {"height": NumberLong(6)}}}]
 }));

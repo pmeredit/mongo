@@ -45,8 +45,8 @@ const sessionColl = sessionDB.getCollection("basic");
 // Verify we can insert two documents in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert({"height": NumberLong(4)}));
-assert.commandWorked(sessionColl.insert({"height": NumberLong(5)}));
+assert.commandWorked(sessionColl.einsert({"height": NumberLong(4)}));
+assert.commandWorked(sessionColl.einsert({"height": NumberLong(5)}));
 
 session.commitTransaction();
 
@@ -55,8 +55,8 @@ client.assertEncryptedCollectionCounts("basic", 2, 8, 8);
 // Verify we insert two documents in a txn but abort it
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert({"height": NumberLong(1)}));
-assert.commandWorked(sessionColl.insert({"height": NumberLong(2)}));
+assert.commandWorked(sessionColl.einsert({"height": NumberLong(1)}));
+assert.commandWorked(sessionColl.einsert({"height": NumberLong(2)}));
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
@@ -65,8 +65,8 @@ client.assertEncryptedCollectionCounts("basic", 2, 8, 8);
 // Verify it aborts cleanly with an unrecoverable error
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert({"_id": 1, "height": NumberLong(7)}));
-let res = assert.commandFailedWithCode(sessionColl.insert({"_id": 1, "height": NumberLong(3)}),
+assert.commandWorked(sessionColl.einsert({"_id": 1, "height": NumberLong(7)}));
+let res = assert.commandFailedWithCode(sessionColl.einsert({"_id": 1, "height": NumberLong(3)}),
                                        ErrorCodes.DuplicateKey);
 
 // DuplicateKey is not a transient error.

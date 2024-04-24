@@ -112,15 +112,17 @@ const docs = [
 
 // Bulk inserts aren't supported in FLE2, so insert each one-by-one.
 function insert(doc) {
-    const res = assert.commandWorked(edb.runCommand({insert: collName, documents: [doc]}));
+    const res = assert.commandWorked(edb.erunCommand({insert: collName, documents: [doc]}));
     assert.eq(res.n, 1);
 }
 docs.forEach(insert);
 
 function assertQueryResults(q, expected) {
-    const res = coll.aggregate([{$match: {$expr: q}}]).toArray();
-    assert.eq(res.length, expected.length, tojson(q));
-    assertArrayEq({actual: res.map(d => d._id), expected, extraErrorMsg: tojson({q, res})});
+    client.runEncryptionOperation(() => {
+        const res = coll.aggregate([{$match: {$expr: q}}]).toArray();
+        assert.eq(res.length, expected.length, tojson(q));
+        assertArrayEq({actual: res.map(d => d._id), expected, extraErrorMsg: tojson({q, res})});
+    });
 }
 
 let res = coll.find({}).toArray();
@@ -374,9 +376,9 @@ const docs = [
     {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3]},
 ];
 
-const coll = edb[collName];
+const coll = edb.getCollection(collName);
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 const runTest = (pipeline, options, collection, expected, extraInfo) => {
@@ -425,8 +427,10 @@ const tests = [{
         },
     ];
 
-for (const testData of tests) {
-    const extraInfo = Object.assign({transaction: false}, testData);
-    runTest(testData.pipeline, {}, coll, testData.expected, extraInfo);
-}
+client.runEncryptionOperation(() => {
+    for (const testData of tests) {
+        const extraInfo = Object.assign({transaction: false}, testData);
+        runTest(testData.pipeline, {}, coll, testData.expected, extraInfo);
+    }
+});
 }());

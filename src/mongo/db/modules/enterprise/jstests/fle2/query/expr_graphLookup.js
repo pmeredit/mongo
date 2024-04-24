@@ -40,7 +40,7 @@ const docs = [
 
 const coll = edb[collName];
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 
@@ -200,6 +200,8 @@ const aggTests = [
     },
 ];
 
-for (const testData of aggTests) {
-    runAggTest(testData.pipeline, coll, testData.expected, testData);
-}
+client.runEncryptionOperation(() => {
+    for (const testData of aggTests) {
+        runAggTest(testData.pipeline, coll, testData.expected, testData);
+    }
+});

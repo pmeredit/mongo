@@ -34,9 +34,9 @@ const sessionColl = sessionDB.getCollection("basic");
 // Verify we can insert two documents in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert({"first": "mark", "last": "marco"}));
-assert.commandWorked(sessionColl.insert({"first": "Mark", "last": "Marco"}));
-assert.commandWorked(sessionColl.deleteOne({"last": "marco"}));
+assert.commandWorked(sessionColl.einsert({"first": "mark", "last": "marco"}));
+assert.commandWorked(sessionColl.einsert({"first": "Mark", "last": "Marco"}));
+assert.commandWorked(sessionColl.edeleteOne({"last": "marco"}));
 
 session.commitTransaction();
 
@@ -45,7 +45,7 @@ client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 // Verify we delete two documents in a txn but abort it
 session.startTransaction();
 
-assert.commandWorked(sessionColl.deleteOne({"last": "Marco"}));
+assert.commandWorked(sessionColl.edeleteOne({"last": "Marco"}));
 
 // In the TXN the counts are right
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 2, 2);
@@ -58,7 +58,7 @@ client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 session.startTransaction();
 
 // Verify we delete a document by an encrypted field but abort it.
-assert.commandWorked(sessionColl.deleteOne({"first": "Mark"}));
+assert.commandWorked(sessionColl.edeleteOne({"first": "Mark"}));
 
 // In the TXN the counts are right
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 2, 2);
@@ -71,25 +71,25 @@ client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 // Insert new documents for testing multi-document deletes
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert({"first": "george", "last": "washington"}));
-assert.commandWorked(sessionColl.insert({"first": "george", "last": "foreman"}));
-assert.commandWorked(sessionColl.insert({"first": "michael", "last": "scott"}));
-assert.commandWorked(sessionColl.insert({"first": "michael", "last": "jackson"}));
-assert.commandWorked(sessionColl.deleteMany({"last": "Marco"}));
+assert.commandWorked(sessionColl.einsert({"first": "george", "last": "washington"}));
+assert.commandWorked(sessionColl.einsert({"first": "george", "last": "foreman"}));
+assert.commandWorked(sessionColl.einsert({"first": "michael", "last": "scott"}));
+assert.commandWorked(sessionColl.einsert({"first": "michael", "last": "jackson"}));
+assert.commandWorked(sessionColl.edeleteMany({"last": "Marco"}));
 session.commitTransaction();
 client.assertEncryptedCollectionCounts("basic", 4, 6, 6);
 
 // Verify we can do multi-document deletes in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.deleteMany({"first": "george"}));
+assert.commandWorked(sessionColl.edeleteMany({"first": "george"}));
 session.commitTransaction();
 client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 
 // Verify we can abort multi-document deletes
 session.startTransaction();
 
-assert.commandWorked(sessionColl.deleteMany({"first": "michael"}));
+assert.commandWorked(sessionColl.edeleteMany({"first": "michael"}));
 // In the TXN the counts are right
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 6, 6);
 assert.commandWorked(session.abortTransaction_forTesting());

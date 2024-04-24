@@ -140,14 +140,14 @@ function runTest(conn, alt_conn) {
 
     // Insert
     //
-    assert.commandWorked(edb.badlog.insert({first: "mark", middle: "john"}));
+    assert.commandWorked(edb.badlog.einsert({first: "mark", middle: "john"}));
     assert.commandWorked(db.goodlog.insert({first: "luke", middle: "john"}));
 
     checkLogCounts(db);
 
     // Compact
     //
-    assert.commandWorked(edb.badlog.compact());
+    client.runEncryptionOperation(() => { assert.commandWorked(edb.badlog.compact()); });
     // Do a find to add log line for the assertions to work correctly
     assert.eq(db.goodlog.find({first: "luke"}).itcount(), 1);
 
@@ -155,7 +155,7 @@ function runTest(conn, alt_conn) {
 
     // Cleanup
     //
-    assert.commandWorked(edb.badlog.cleanup());
+    client.runEncryptionOperation(() => { assert.commandWorked(edb.badlog.cleanup()); });
     // Do a find to add log line for the assertions to work correctly
     assert.eq(db.goodlog.find({first: "luke"}).itcount(), 1);
 
@@ -163,36 +163,42 @@ function runTest(conn, alt_conn) {
 
     // Find
     //
-    assert.eq(edb.badlog.find({first: "mark"}).itcount(), 1);
+    client.runEncryptionOperation(
+        () => { assert.eq(edb.badlog.find({first: "mark"}).itcount(), 1); });
     assert.eq(db.goodlog.find({first: "luke"}).itcount(), 1);
 
     checkLogCounts(db);
 
-    assert.commandWorked(edb.badlog.find({first: "mark"}).explain());
+    client.runEncryptionOperation(
+        () => { assert.commandWorked(edb.badlog.find({first: "mark"}).explain()); });
     assert.commandWorked(db.goodlog.find({first: "luke"}).explain());
 
     checkExplainLogCounts(db);
 
     // Count
     //
-    assert.eq(edb.badlog.count({first: "mark"}), 1);
+    client.runEncryptionOperation(() => { assert.eq(edb.badlog.count({first: "mark"}), 1); });
     assert.eq(db.goodlog.count({first: "luke"}), 1);
 
     checkLogCounts(db);
 
-    assert.commandWorked(edb.badlog.explain().count({first: "mark"}));
+    client.runEncryptionOperation(
+        () => { assert.commandWorked(edb.badlog.explain().count({first: "mark"})); });
     assert.commandWorked(db.goodlog.explain().count({first: "luke"}));
 
     checkExplainLogCounts(db);
 
     // Aggregate
     //
-    assert.eq(edb.badlog.aggregate([{$match: {"first": "mark"}}]).itcount(), 1);
+    client.runEncryptionOperation(
+        () => { assert.eq(edb.badlog.aggregate([{$match: {"first": "mark"}}]).itcount(), 1); });
     assert.eq(db.goodlog.aggregate([{$match: {"first": "luke"}}]).itcount(), 1);
 
     checkLogCounts(db);
 
-    assert.commandWorked(edb.badlog.explain().aggregate([{$match: {"first": "mark"}}]));
+    client.runEncryptionOperation(() => {
+        assert.commandWorked(edb.badlog.explain().aggregate([{$match: {"first": "mark"}}]));
+    });
     assert.commandWorked(db.goodlog.explain().aggregate([{$match: {"first": "luke"}}]));
 
     // aggregate explain looks like normal aggregate with a flag explain: true
@@ -200,11 +206,13 @@ function runTest(conn, alt_conn) {
 
     // FindAndModify
     //
-    assert.commandWorked(edb.badlog.runCommand({
-        findAndModify: edb.badlog.getName(),
-        query: {"first": "mark"},
-        update: {$set: {"last": "marco"}}
-    }));
+    client.runEncryptionOperation(() => {
+        assert.commandWorked(edb.badlog.runCommand({
+            findAndModify: edb.badlog.getName(),
+            query: {"first": "mark"},
+            update: {$set: {"last": "marco"}}
+        }));
+    });
     assert.commandWorked(db.goodlog.runCommand({
         findAndModify: db.goodlog.getName(),
         query: {"first": "luke"},
@@ -213,18 +221,21 @@ function runTest(conn, alt_conn) {
 
     checkLogCounts(db);
 
-    assert.eq(edb.badlog.find({last: "marco"}).itcount(), 1);
+    client.runEncryptionOperation(
+        () => { assert.eq(edb.badlog.find({last: "marco"}).itcount(), 1); });
     assert.eq(db.goodlog.find({last: "marco"}).itcount(), 1);
 
     checkLogCounts(db);
 
-    assert.commandWorked(edb.badlog.runCommand({
-        explain: {
-            findAndModify: edb.badlog.getName(),
-            query: {"first": "mark"},
-            update: {$set: {"last": "marco"}}
-        }
-    }));
+    client.runEncryptionOperation(() => {
+        assert.commandWorked(edb.badlog.runCommand({
+            explain: {
+                findAndModify: edb.badlog.getName(),
+                query: {"first": "mark"},
+                update: {$set: {"last": "marco"}}
+            }
+        }));
+    });
     assert.commandWorked(db.goodlog.runCommand({
         explain: {
             findAndModify: db.goodlog.getName(),
@@ -237,22 +248,27 @@ function runTest(conn, alt_conn) {
 
     // Update
     //
-    assert.commandWorked(edb.badlog.updateOne({"first": "mark"}, {$set: {"last": "markus"}}));
+    client.runEncryptionOperation(() => {
+        assert.commandWorked(edb.badlog.updateOne({"first": "mark"}, {$set: {"last": "markus"}}));
+    });
     assert.commandWorked(db.goodlog.updateOne({"first": "luke"}, {$set: {"last": "markus"}}));
 
     checkLogCounts(db);
 
-    assert.eq(edb.badlog.find({last: "markus"}).itcount(), 1);
+    client.runEncryptionOperation(
+        () => { assert.eq(edb.badlog.find({last: "markus"}).itcount(), 1); });
     assert.eq(db.goodlog.find({last: "markus"}).itcount(), 1);
 
     checkLogCounts(db);
 
-    assert.commandWorked(edb.badlog.runCommand({
-        explain: {
-            update: edb.badlog.getName(),
-            updates: [{q: {"first": "mark"}, u: {$set: {"last": "marco"}}}]
-        }
-    }));
+    client.runEncryptionOperation(() => {
+        assert.commandWorked(edb.badlog.runCommand({
+            explain: {
+                update: edb.badlog.getName(),
+                updates: [{q: {"first": "mark"}, u: {$set: {"last": "marco"}}}]
+            }
+        }));
+    });
     assert.commandWorked(db.goodlog.runCommand({
         explain: {
             update: db.goodlog.getName(),
@@ -264,37 +280,45 @@ function runTest(conn, alt_conn) {
 
     // Delete
     //
-    assert.commandWorked(edb.badlog.runCommand(
-        {explain: {delete: edb.badlog.getName(), deletes: [{q: {"first": "mark"}, limit: 1}]}}));
+    client.runEncryptionOperation(() => {
+        assert.commandWorked(edb.badlog.runCommand({
+            explain: {delete: edb.badlog.getName(), deletes: [{q: {"first": "mark"}, limit: 1}]}
+        }));
+    });
     assert.commandWorked(db.goodlog.runCommand(
         {explain: {delete: db.goodlog.getName(), deletes: [{q: {"first": "luke"}, limit: 1}]}}));
 
     checkExplainDollarLogCounts(db);
 
-    assert.commandWorked(edb.badlog.deleteOne({"first": "mark"}));
+    assert.commandWorked(edb.badlog.edeleteOne({"first": "mark"}));
 
     assert.commandWorked(db.goodlog.deleteOne({"first": "luke"}));
 
     checkLogCounts(db);
 
-    assert.eq(edb.badlog.find({}).itcount(), 0);
+    client.runEncryptionOperation(() => { assert.eq(edb.badlog.find({}).itcount(), 0); });
     assert.eq(db.goodlog.find({}).itcount(), 0);
 
     checkLogCounts(db);
 
     // Batch Size & getMore
     //
-    assert.commandWorked(edb.badlog.insert({first: "mark", middle: "john"}));
+    client.runEncryptionOperation(
+        () => { assert.commandWorked(edb.badlog.insert({first: "mark", middle: "john"})); });
     assert.commandWorked(db.goodlog.insert({first: "luke", middle: "john"}));
     checkLogCounts(db);
 
-    assert.commandWorked(edb.badlog.insert({first: "mark", middle: "john"}));
+    client.runEncryptionOperation(
+        () => { assert.commandWorked(edb.badlog.insert({first: "mark", middle: "john"})); });
     assert.commandWorked(db.goodlog.insert({first: "luke", middle: "john"}));
     checkLogCounts(db);
 
-    let cursorEncrypted = edb.badlog.find({first: "mark"}).batchSize(1);
-    assert.eq(cursorEncrypted.objsLeftInBatch(), 1);
-    assert.eq(cursorEncrypted.hasNext(), true);
+    let cursorEncrypted = client.runEncryptionOperation(() => {
+        let cursorEncrypted = edb.badlog.find({first: "mark"}).batchSize(1);
+        assert.eq(cursorEncrypted.objsLeftInBatch(), 1);
+        assert.eq(cursorEncrypted.hasNext(), true);
+        return cursorEncrypted;
+    });
 
     let cursorUnencrypted = db.goodlog.find({first: "luke"}).batchSize(1);
     assert.eq(cursorUnencrypted.objsLeftInBatch(), 1);
@@ -303,8 +327,10 @@ function runTest(conn, alt_conn) {
     checkLogCounts(db);
 
     // Force a call to getMore
-    let batchE = cursorEncrypted.next();
-    assert.eq(cursorEncrypted.hasNext(), true);
+    client.runEncryptionOperation(() => {
+        let batchE = cursorEncrypted.next();
+        assert.eq(cursorEncrypted.hasNext(), true);
+    });
 
     let batchU = cursorUnencrypted.next();
     assert.eq(cursorUnencrypted.hasNext(), true);

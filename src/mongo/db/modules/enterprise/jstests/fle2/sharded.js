@@ -31,7 +31,7 @@ assert.commandWorked(db.adminCommand({shardCollection: 'sharded.basic', key: {b:
 
 // Insert 10 documents.
 for (let i = 0; i < 10; i++) {
-    assert.commandWorked(edb.basic.insert({
+    assert.commandWorked(edb.basic.einsert({
         _id: i,
         a: i.toString(),
         b: ((i + 1) % 10).toString(),
@@ -54,7 +54,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 // Update all 10 documents.
 for (let i = 0; i < 10; i++) {
-    assert.commandWorked(edb.basic.updateOne({b: i.toString()}, {$set: {a: i.toString()}}));
+    assert.commandWorked(edb.basic.eupdateOne({b: i.toString()}, {$set: {a: i.toString()}}));
 }
 client.assertEncryptedCollectionCounts("basic", 10, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
@@ -72,7 +72,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 // Modify all 10 documents.
 for (let i = 0; i < 10; i++) {
-    assert.commandWorked(edb.runCommand({
+    assert.commandWorked(edb.erunCommand({
         findAndModify: "basic",
         query: {b: i.toString()},
         update: {$set: {a: ((i + 1) % 10).toString()}},

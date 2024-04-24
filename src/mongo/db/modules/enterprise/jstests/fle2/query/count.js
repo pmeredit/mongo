@@ -38,7 +38,7 @@ const collName = jsTestName();
 
 runEncryptedTest(db, "count", collName, encryptedFields, (edb, client) => {
     print("non-transaction test cases.");
-    const coll = edb[collName];
+    const coll = edb.getCollection(collName);
 
     let i = 0;
     for (const test of tests) {

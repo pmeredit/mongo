@@ -64,7 +64,7 @@ function runTest(isMongos, cluster, bulkWrite, retryCount) {
 
     // Simplifies implementation of checkBulkWriteMetrics:
     // totals["testDB.testColl"] will not be undefined on first top call below.
-    coll.insert({_id: 99, i2: "0"});
+    coll.einsert({_id: 99, i2: "0"});
 
     const metricChecker = new BulkWriteMetricChecker(testDB,
                                                      [namespace],
@@ -75,127 +75,130 @@ function runTest(isMongos, cluster, bulkWrite, retryCount) {
                                                      retryCount,
                                                      false /*timeseries*/);
 
-    metricChecker.checkMetrics("Simple insert",
-                               [{insert: 0, document: {_id: 0, i1: "0", i2: "0"}}],
-                               [{insert: collName, documents: [{_id: 0, i1: "0", i2: "0"}]}],
-                               {inserted: 1, eqIndexedEncryptedFields: 2});
+    client.runEncryptionOperation(() => {
+        metricChecker.checkMetrics("Simple insert",
+                                   [{insert: 0, document: {_id: 0, i1: "0", i2: "0"}}],
+                                   [{insert: collName, documents: [{_id: 0, i1: "0", i2: "0"}]}],
+                                   {inserted: 1, eqIndexedEncryptedFields: 2});
 
-    metricChecker.checkMetrics(
-        "Simple Update",
-        [{
-            update: 0,
-            filter: {_id: 0},
-            updateMods: {$set: {i0: "0", i1: "0", ui1: "0", i2: "0", ui2: "1"}}
-        }],
-        [{
-            update: collName,
-            updates: [{q: {_id: 0}, u: {$set: {i0: "0", i1: "0", ui1: "0", i2: "0", ui2: "1"}}}]
-        }],
-        {updated: 1, eqIndexedEncryptedFields: 3});
+        metricChecker.checkMetrics(
+            "Simple Update",
+            [{
+                update: 0,
+                filter: {_id: 0},
+                updateMods: {$set: {i0: "0", i1: "0", ui1: "0", i2: "0", ui2: "1"}}
+            }],
+            [{
+                update: collName,
+                updates: [{q: {_id: 0}, u: {$set: {i0: "0", i1: "0", ui1: "0", i2: "0", ui2: "1"}}}]
+            }],
+            {updated: 1, eqIndexedEncryptedFields: 3});
 
-    metricChecker.checkMetrics(
-        "Simple Update of Unindexed Encrypted Field",
-        [{update: 0, filter: {_id: 0}, updateMods: {$set: {ui2: "2"}}}],
-        [{update: collName, updates: [{q: {_id: 0}, u: {$set: {ui2: "2"}}}]}],
-        {updated: 1, eqIndexedEncryptedFields: 0});
+        metricChecker.checkMetrics(
+            "Simple Update of Unindexed Encrypted Field",
+            [{update: 0, filter: {_id: 0}, updateMods: {$set: {ui2: "2"}}}],
+            [{update: collName, updates: [{q: {_id: 0}, u: {$set: {ui2: "2"}}}]}],
+            {updated: 1, eqIndexedEncryptedFields: 0});
 
-    assert.commandWorked(coll.insert({_id: 1, i2: "0", a: [{b: 5}, {b: 1}, {b: 2}]},
-                                     {writeConcern: {w: "majority"}}));
+        assert.commandWorked(coll.insert({_id: 1, i2: "0", a: [{b: 5}, {b: 1}, {b: 2}]},
+                                         {writeConcern: {w: "majority"}}));
 
-    metricChecker.checkMetrics(
-        "Update with arrayFilters",
-        [{
-            update: 0,
-            filter: {_id: 1},
-            updateMods: {$set: {"a.$[i].b": 6, i2: "1"}},
-            arrayFilters: [{"i.b": 5}]
-        }],
-        [{
-            update: collName,
-            updates:
-                [{q: {_id: 1}, u: {$set: {"a.$[i].b": 6, i2: "1"}}, arrayFilters: [{"i.b": 5}]}]
-        }],
-        {updated: 1, eqIndexedEncryptedFields: 1, updateArrayFilters: isMongos ? 1 : 0});
+        metricChecker.checkMetrics(
+            "Update with arrayFilters",
+            [{
+                update: 0,
+                filter: {_id: 1},
+                updateMods: {$set: {"a.$[i].b": 6, i2: "1"}},
+                arrayFilters: [{"i.b": 5}]
+            }],
+            [{
+                update: collName,
+                updates:
+                    [{q: {_id: 1}, u: {$set: {"a.$[i].b": 6, i2: "1"}}, arrayFilters: [{"i.b": 5}]}]
+            }],
+            {updated: 1, eqIndexedEncryptedFields: 1, updateArrayFilters: isMongos ? 1 : 0});
 
-    metricChecker.checkMetrics("Simple delete",
-                               [{delete: 0, filter: {_id: 0}}],
-                               [{delete: collName, deletes: [{q: {_id: 0}, limit: 1}]}],
-                               {deleted: 1});
+        metricChecker.checkMetrics("Simple delete",
+                                   [{delete: 0, filter: {_id: 0}}],
+                                   [{delete: collName, deletes: [{q: {_id: 0}, limit: 1}]}],
+                                   {deleted: 1});
 
-    metricChecker.checkMetricsWithRetries(
-        "Simple insert with retry",
-        [{insert: 0, document: {_id: 3, i1: "0", i2: "0"}}],
-        {
-            insert: collName,
-            documents: [{_id: 3, i1: "0", i2: "0"}],
-        },
-        {inserted: 1, eqIndexedEncryptedFields: 2, retriedInsert: 1},
-        session.getSessionId(),
-        NumberLong(10));
+        metricChecker.checkMetricsWithRetries(
+            "Simple insert with retry",
+            [{insert: 0, document: {_id: 3, i1: "0", i2: "0"}}],
+            {
+                insert: collName,
+                documents: [{_id: 3, i1: "0", i2: "0"}],
+            },
+            {inserted: 1, eqIndexedEncryptedFields: 2, retriedInsert: 1},
+            session.getSessionId(),
+            NumberLong(10));
 
-    metricChecker.checkMetricsWithRetries(
-        "Simple update with retry",
-        [{
-            update: 0,
-            filter: {_id: 1},
-            updateMods: {$set: {"a.$[i].b": 7, i0: "2", i1: "2", i2: "2", ui2: "3"}},
-            arrayFilters: [{"i.b": 6}]
-        }],
-        {
-            update: collName,
-            updates: [{
-                q: {_id: 1},
-                u: {$set: {"a.$[i].b": 7, i0: "2", i1: "2", i2: "2", ui2: "3"}},
+        metricChecker.checkMetricsWithRetries(
+            "Simple update with retry",
+            [{
+                update: 0,
+                filter: {_id: 1},
+                updateMods: {$set: {"a.$[i].b": 7, i0: "2", i1: "2", i2: "2", ui2: "3"}},
                 arrayFilters: [{"i.b": 6}]
-            }]
-        },
-        {
-            updated: 1,
-            eqIndexedEncryptedFields: 3,
-            updateArrayFilters: isMongos ? retryCount : 0  // This is incremented even on a retry.
-        },
-        session.getSessionId(),
-        NumberLong(11));
+            }],
+            {
+                update: collName,
+                updates: [{
+                    q: {_id: 1},
+                    u: {$set: {"a.$[i].b": 7, i0: "2", i1: "2", i2: "2", ui2: "3"}},
+                    arrayFilters: [{"i.b": 6}]
+                }]
+            },
+            {
+                updated: 1,
+                eqIndexedEncryptedFields: 3,
+                updateArrayFilters: isMongos ? retryCount
+                                             : 0  // This is incremented even on a retry.
+            },
+            session.getSessionId(),
+            NumberLong(11));
 
-    metricChecker.checkMetricsWithRetries(
-        "Simple Update of Unindexed Encrypted Field with retry",
-        [{update: 0, filter: {_id: 1}, updateMods: {$set: {ui0: "3", ui1: "3", ui2: "3"}}}],
-        {update: collName, updates: [{q: {_id: 1}, u: {$set: {ui0: "3", ui1: "3", ui2: "3"}}}]},
-        {
-            updated: 1,
-            eqIndexedEncryptedFields: 0,
-            updateArrayFilters: 0,
-        },
-        session.getSessionId(),
-        NumberLong(12));
+        metricChecker.checkMetricsWithRetries(
+            "Simple Update of Unindexed Encrypted Field with retry",
+            [{update: 0, filter: {_id: 1}, updateMods: {$set: {ui0: "3", ui1: "3", ui2: "3"}}}],
+            {update: collName, updates: [{q: {_id: 1}, u: {$set: {ui0: "3", ui1: "3", ui2: "3"}}}]},
+            {
+                updated: 1,
+                eqIndexedEncryptedFields: 0,
+                updateArrayFilters: 0,
+            },
+            session.getSessionId(),
+            NumberLong(12));
 
-    metricChecker.checkMetricsWithRetries(
-        "Simple Update without encrypted field with retry",
-        [{update: 0, filter: {_id: 1}, updateMods: {$set: {a: "0"}}}],
-        {update: collName, updates: [{q: {_id: 1}, u: {$set: {a: "0"}}}]},
-        {
-            updated: 1,
-            eqIndexedEncryptedFields: 0,
-            updateArrayFilters: 0,
-        },
-        session.getSessionId(),
-        NumberLong(13));
+        metricChecker.checkMetricsWithRetries(
+            "Simple Update without encrypted field with retry",
+            [{update: 0, filter: {_id: 1}, updateMods: {$set: {a: "0"}}}],
+            {update: collName, updates: [{q: {_id: 1}, u: {$set: {a: "0"}}}]},
+            {
+                updated: 1,
+                eqIndexedEncryptedFields: 0,
+                updateArrayFilters: 0,
+            },
+            session.getSessionId(),
+            NumberLong(13));
 
-    metricChecker.checkMetrics(
-        "Multiple inserts",
-        [
-            {insert: 0, document: {_id: 4, i0: "2", i1: "2", i2: "0", ui2: "3"}},
-            {insert: 0, document: {_id: 5, i0: "2", i1: "2", i2: "0", ui2: "3"}},
-            {insert: 0, document: {_id: 6, i0: "2", i1: "2", i2: "0", ui2: "3"}},
-            {insert: 0, document: {_id: 7, i0: "2", i1: "2", i2: "0", ui2: "3"}},
-        ],
-        [
-            {insert: collName, documents: [{_id: 4, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
-            {insert: collName, documents: [{_id: 5, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
-            {insert: collName, documents: [{_id: 6, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
-            {insert: collName, documents: [{_id: 7, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
-        ],
-        {inserted: 4, eqIndexedEncryptedFields: 3});
+        metricChecker.checkMetrics(
+            "Multiple inserts",
+            [
+                {insert: 0, document: {_id: 4, i0: "2", i1: "2", i2: "0", ui2: "3"}},
+                {insert: 0, document: {_id: 5, i0: "2", i1: "2", i2: "0", ui2: "3"}},
+                {insert: 0, document: {_id: 6, i0: "2", i1: "2", i2: "0", ui2: "3"}},
+                {insert: 0, document: {_id: 7, i0: "2", i1: "2", i2: "0", ui2: "3"}},
+            ],
+            [
+                {insert: collName, documents: [{_id: 4, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
+                {insert: collName, documents: [{_id: 5, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
+                {insert: collName, documents: [{_id: 6, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
+                {insert: collName, documents: [{_id: 7, i0: "2", i1: "2", i2: "0", ui2: "3"}]},
+            ],
+            {inserted: 4, eqIndexedEncryptedFields: 3});
+    });
 
     coll.drop();
 }

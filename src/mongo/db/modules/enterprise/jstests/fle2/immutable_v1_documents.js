@@ -115,16 +115,16 @@ const updateTests = [
 for (const test of updateTests) {
     jsTestLog(test.title);
     for (let id = 1; id < v1Documents.length; id++) {
-        res = edb.runCommand({update: "basic", updates: [{q: {_id: id}, u: test.op}]});
+        res = edb.erunCommand({update: "basic", updates: [{q: {_id: id}, u: test.op}]});
         assert.commandFailedWithCode(res, 7293202, "Failed on document: " + id);
 
-        res = edb.runCommand({findAndModify: "basic", query: {_id: id}, update: test.op});
+        res = edb.erunCommand({findAndModify: "basic", query: {_id: id}, update: test.op});
         assert.commandFailedWithCode(res, 7293202, "Failed on document: " + id);
     }
 }
 
 // Test setting v2 encrypted values on an existing unencrypted document works
-res = edb.runCommand({
+res = edb.erunCommand({
     update: "basic",
     updates: [
         {q: {location: "mordor"}, u: {$set: {first: "frodo", class: "hobbit", rank: NumberInt(1)}}}
@@ -137,7 +137,7 @@ client.assertOneEncryptedDocumentFields(
 
 // Test findAndModify remove on a v1 document works
 const schema = edb.getCollectionInfos({name: "basic"})[0].options.encryptedFields;
-res = client.getRawDB().runCommand({
+res = client.getDB().runCommand({
     findAndModify: "basic",
     query: {_id: 1},
     remove: true,

@@ -58,7 +58,7 @@ let edb = client.getDB();
 
 {
     print("Inserting documents with fields that get encrypted");
-    let res = assert.commandWorked(edb.adminCommand({
+    let res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {
@@ -117,21 +117,21 @@ let edb = client.getDB();
     // Verify we decrypt it clean with an encrypted client.
     print("Testing that all documents can be decrypted by an encrypted client");
     {
-        let doc = edb.basic.find({"_id": 1}).toArray()[0];
+        let doc = edb.basic.efindOne({"_id": 1});
         print(tojson(doc));
         assert.eq(doc["first"], "dwayne");
         assert.eq(doc["middle"], "elizondo mountain dew herbert");
         assert.eq(doc["aka"], "president camacho");
         assert(doc[kSafeContentField] !== undefined);
 
-        doc = edb.basic.find({"_id": 2}).toArray()[0];
+        doc = edb.basic.efindOne({"_id": 2});
         print(tojson(doc));
         assert.eq(doc["first"], "bob");
         assert.eq(doc["middle"], "belcher");
         assert.eq(doc["aka"], "bobs burgers");
         assert(doc[kSafeContentField] !== undefined);
 
-        doc = edb.basic.find({"_id": 3}).toArray()[0];
+        doc = edb.basic.efindOne({"_id": 3});
         print(tojson(doc));
         assert.eq(doc["first"], "linda");
         assert.eq(doc["middle"], "belcher");
@@ -145,7 +145,7 @@ let edb = client.getDB();
     // one encrypted collection and one un-encrypted collection, including ordered: false with the
     // encrypted insert failing.
     print("Inserting documents with fields that get encrypted (2 namespaces)");
-    let error = assert.throws(() => edb.adminCommand({
+    let error = assert.throws(() => edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {
@@ -171,7 +171,7 @@ let edb = client.getDB();
 
 {
     print("Inserting documents with encrypted fields with ordered = true and errors");
-    let res = assert.commandWorked(edb.adminCommand({
+    let res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {
@@ -204,13 +204,13 @@ let edb = client.getDB();
 
     {
         print("Testing that all documents are encrypted");
-        let rawDoc = dbTest.basic.find({"_id": 4}).toArray()[0];
+        let rawDoc = dbTest.basic.findOne({"_id": 4});
         print(tojson(rawDoc));
         assertIsIndexedEncryptedField(rawDoc["first"]);
         assertIsIndexedEncryptedField(rawDoc["aka"]);
         assert(rawDoc[kSafeContentField] !== undefined);
 
-        let decryptedDoc = edb.basic.find({"_id": 4}).toArray()[0];
+        let decryptedDoc = edb.basic.efindOne({"_id": 4});
         print(tojson(decryptedDoc));
         assert.eq(decryptedDoc["first"], "tina");
         assert.eq(decryptedDoc["aka"], "belcher");
@@ -226,7 +226,7 @@ let edb = client.getDB();
 
 {
     print("Inserting docs with encrypted fields and ordered = false to skip over errors");
-    let res = assert.commandWorked(edb.adminCommand({
+    let res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {
@@ -276,25 +276,25 @@ let edb = client.getDB();
 
     {
         print("Testing that all documents are encrypted");
-        let rawDoc = dbTest.basic.find({"_id": 7}).toArray()[0];
+        let rawDoc = dbTest.basic.findOne({"_id": 7});
         print(tojson(rawDoc));
         assertIsIndexedEncryptedField(rawDoc["first"]);
         assertIsIndexedEncryptedField(rawDoc["aka"]);
         assert(rawDoc[kSafeContentField] !== undefined);
 
-        let decryptedDoc = edb.basic.find({"_id": 7}).toArray()[0];
+        let decryptedDoc = edb.basic.efindOne({"_id": 7});
         print(tojson(decryptedDoc));
         assert.eq(decryptedDoc["first"], "teddy");
         assert.eq(decryptedDoc["aka"], "handyman");
         assert(decryptedDoc[kSafeContentField] !== undefined);
 
-        rawDoc = dbTest.basic.find({"_id": 10}).toArray()[0];
+        rawDoc = dbTest.basic.findOne({"_id": 10});
         print(tojson(rawDoc));
         assertIsIndexedEncryptedField(rawDoc["first"]);
         assertIsIndexedEncryptedField(rawDoc["aka"]);
         assert(rawDoc[kSafeContentField] !== undefined);
 
-        decryptedDoc = edb.basic.find({"_id": 10}).toArray()[0];
+        decryptedDoc = edb.basic.efindOne({"_id": 10});
         print(tojson(decryptedDoc));
         assert.eq(decryptedDoc["first"], "mort");
         assert.eq(decryptedDoc["aka"], "mortician");
@@ -313,7 +313,7 @@ let edb = client.getDB();
     // FLEBatchResult::kNotProcessed. Checking BulkWrite handles that correctly, especially for
     // retryable writes.
     print("Inserting doc without field needing to get encrypted into an encrypted collection");
-    let res = assert.commandWorked(edb.adminCommand({
+    let res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             insert: 0,
@@ -334,7 +334,7 @@ let edb = client.getDB();
     // Verify it is unencrypted with an unencrypted client
     print("Testing that the document is unencrypted");
     {
-        let rawDoc = dbTest.unencrypted_middle.find({"_id": 1}).toArray()[0];
+        let rawDoc = dbTest.unencrypted_middle.findOne({"_id": 1});
         print(tojson(rawDoc));
         assert.eq(rawDoc["middle"], "elizondo mountain dew herbert");
     }
@@ -342,7 +342,7 @@ let edb = client.getDB();
 
 {
     print("Inserting into an unencrypted collection but through the EncryptedClient");
-    let res = assert.commandWorked(edb.adminCommand({
+    let res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [
             {

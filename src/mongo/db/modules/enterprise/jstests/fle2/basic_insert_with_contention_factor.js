@@ -38,13 +38,13 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 const edb = client.getDB();
 
 assert.commandWorked(
-    edb.runCommand({"insert": "basic", documents: [{"_id": 1, "first": "Bob", "last": "A"}]}));
+    edb.erunCommand({"insert": "basic", documents: [{"_id": 1, "first": "Bob", "last": "A"}]}));
 assert.commandWorked(
-    edb.runCommand({"insert": "basic", documents: [{"_id": 2, "first": "Bob", "last": "B"}]}));
+    edb.erunCommand({"insert": "basic", documents: [{"_id": 2, "first": "Bob", "last": "B"}]}));
 assert.commandWorked(
-    edb.runCommand({"insert": "basic", documents: [{"_id": 3, "first": "Tim", "last": "C"}]}));
+    edb.erunCommand({"insert": "basic", documents: [{"_id": 3, "first": "Tim", "last": "C"}]}));
 assert.commandWorked(
-    edb.runCommand({"insert": "basic", documents: [{"_id": 4, "first": "Tim", "last": "D"}]}));
+    edb.erunCommand({"insert": "basic", documents: [{"_id": 4, "first": "Tim", "last": "D"}]}));
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "Bob", "last": "A"},
@@ -53,19 +53,19 @@ client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 4, "first": "Tim", "last": "D"},
 ]);
 
-{
-    const docs = edb.basic.find({"first": "Bob"}).toArray().sort(function(a, b) {
+client.runEncryptionOperation(() => {
+    {
+        const docs = edb.basic.find({"first": "Bob"}).toArray().sort(function(a, b) {
+            return a.last < b.last ? -1 : a.last > b.last ? 1 : 0;
+        });
+        assert.eq(docs.length, 2);
+        assert.eq(docs[0]["last"], "A");
+        assert.eq(docs[1]["last"], "B");
+    } {const docs = edb.basic.find({"first": "Tim"}).toArray().sort(function(a, b) {
         return a.last < b.last ? -1 : a.last > b.last ? 1 : 0;
     });
-    assert.eq(docs.length, 2);
-    assert.eq(docs[0]["last"], "A");
-    assert.eq(docs[1]["last"], "B");
-}
-{
-    const docs = edb.basic.find({"first": "Tim"}).toArray().sort(function(a, b) {
-        return a.last < b.last ? -1 : a.last > b.last ? 1 : 0;
-    });
-    assert.eq(docs.length, 2);
-    assert.eq(docs[0]["last"], "C");
-    assert.eq(docs[1]["last"], "D");
-}
+       assert.eq(docs.length, 2);
+       assert.eq(docs[0]["last"], "C");
+       assert.eq(docs[1]["last"], "D");}
+
+});

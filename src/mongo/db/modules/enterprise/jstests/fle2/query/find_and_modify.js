@@ -87,7 +87,7 @@ const testCases = [
             query: {secretString: "5"},
             update: {$unset: {'nested.secretInt': 1}}
         },
-        after: () => {
+        eafter: () => {
             assert.eq([{_id: 2, secretString: "5", nested: {}, isNestedFive: true, bothFive: true}],
                       coll.find({_id: 2}, {[kSafeContentField]: 0}).toArray());
         }
@@ -132,9 +132,9 @@ const populateColl = () => {
     coll = client.getDB()[collName];
 
     assert.commandWorked(
-        coll.insert({_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}}));
+        coll.einsert({_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}}));
     assert.commandWorked(
-        coll.insert({_id: 2, secretString: "5", nested: {secretInt: NumberInt(5)}}));
+        coll.einsert({_id: 2, secretString: "5", nested: {secretInt: NumberInt(5)}}));
 
     const docs = coll.find().toArray();
     assert(docs.length == 2 && docs[0].hasOwnProperty(kSafeContentField));
@@ -147,7 +147,13 @@ const populateColl = () => {
 let client = populateColl();
 
 for (const test of testCases) {
-    assert.commandWorked(coll.runCommand(test.command), tojson(test.command));
+    assert.commandWorked(coll.erunCommand(test.command), tojson(test.command));
+
+    client.runEncryptionOperation(() => {
+        if (test.eafter) {
+            test.eafter();
+        }
+    });
 
     if (test.after) {
         test.after();
@@ -167,8 +173,14 @@ for (const test of testCases) {
 
     session.startTransaction();
 
-    assert.commandWorked(coll.runCommand(test.command), tojson(test.command));
+    assert.commandWorked(coll.erunCommand(test.command), tojson(test.command));
     session.commitTransaction();
+
+    client.runEncryptionOperation(() => {
+        if (test.eafter) {
+            test.eafter();
+        }
+    });
 
     if (test.after) {
         test.after();

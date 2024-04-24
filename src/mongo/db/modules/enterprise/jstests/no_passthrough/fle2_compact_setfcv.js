@@ -19,7 +19,7 @@ const sampleEncryptedFields = {
 const bgCompactFunc = async function() {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "txn_compact");
-    assert.commandWorked(client.getDB().basic.compact());
+    client.runEncryptionOperation(() => { assert.commandWorked(client.getDB().basic.compact()); });
 };
 
 const bgSetFCVFunc = function(targetFCV) {

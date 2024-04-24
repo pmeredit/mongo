@@ -60,9 +60,9 @@ const kTagsPerEntry = kHypergraphHeight + kHypergraphNumNum + kEqualityTags;
 // Verify we can insert two documents in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert(
+assert.commandWorked(sessionColl.einsert(
     {name: "joe", "height": NumberLong(4), "num": {"num": NumberInt(2)}, "ssn": "abcd"}));
-assert.commandWorked(sessionColl.insert(
+assert.commandWorked(sessionColl.einsert(
     {name: "bob", "height": NumberLong(5), "num": {"num": NumberInt(1)}, "ssn": "efgh"}));
 
 session.commitTransaction();
@@ -71,12 +71,12 @@ client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsP
 
 session.startTransaction();
 
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {name: "joe"},
     "update": {"$set": {"num": {"num": NumberInt(0)}}}
 }));
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {name: "bob"},
     "update": {"$set": {"height": NumberLong(6)}}
@@ -89,12 +89,12 @@ client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsP
 session.startTransaction();
 
 // Replace both the documents, same value, but replace all the fields.
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {name: "joe"},
     "update": {name: "john", "height": NumberLong(4), "num": {"num": NumberInt(2)}, "ssn": "abcd"}
 }));
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {name: "bob"},
     "update": {name: "billy", "height": NumberLong(4), "num": {"num": NumberInt(2)}, "ssn": "abcd"}
@@ -106,12 +106,12 @@ client.assertEncryptedCollectionCounts("basic", 2, 4 * kTagsPerEntry, 4 * kTagsP
 
 session.startTransaction();
 
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {name: "john"},
     "update": {"$set": {"num": {"num": NumberInt(0)}}}
 }));
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {name: "billy"},
     "update": {"$set": {"height": NumberLong(6)}}

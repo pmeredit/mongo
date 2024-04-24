@@ -43,10 +43,10 @@ assert.commandWorked(client.createEncryptionCollection("unencryptedValidator", {
 }));
 
 // Verify the validator is accepting and rejecting documents properly.
-assert.commandFailed(edb.unencryptedValidator.insert(
+assert.commandFailed(edb.unencryptedValidator.einsert(
     {first: "tony", last: "stark", aka: "iron man", unencrypted: "xyz456"}));
 
-assert.commandWorked(edb.unencryptedValidator.insert(
+assert.commandWorked(edb.unencryptedValidator.einsert(
     {first: "tony", last: "stark", aka: "iron man", unencrypted: "abc123"}));
 
 // Trying to validate an encrypted field fails at query analysis.
@@ -69,13 +69,13 @@ try {
 // Run collMod to modify the validator and make sure the new validator is being used when inserting
 // documents.
 assert.commandWorked(
-    edb.runCommand({collMod: "unencryptedValidator", validator: {unencrypted: "xyz789"}}));
+    edb.erunCommand({collMod: "unencryptedValidator", validator: {unencrypted: "xyz789"}}));
 
-assert.commandFailed(edb.unencryptedValidator.insert(
+assert.commandFailed(edb.unencryptedValidator.einsert(
     {first: "peter", last: "parker", aka: "spider man", unencrypted: "abc123"}));
 
-assert.commandWorked(edb.unencryptedValidator.insert(
+assert.commandWorked(edb.unencryptedValidator.einsert(
     {first: "peter", last: "parker", aka: "spider man", unencrypted: "xyz789"}));
 
 // Remove the validator to avoid failing collection validation.
-assert.commandWorked(edb.runCommand({collMod: "unencryptedValidator", validator: {}}));
+assert.commandWorked(edb.erunCommand({collMod: "unencryptedValidator", validator: {}}));

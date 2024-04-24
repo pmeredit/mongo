@@ -70,11 +70,11 @@ function runTest(conn) {
     }));
 
     for (let i = 0; i < 21; i++) {
-        assert.commandWorked(edb.basic.insert({num: i, first: "mark", last: "marco"}));
+        assert.commandWorked(edb.basic.einsert({num: i, first: "mark", last: "marco"}));
     }
 
     // Run queries in normal mode
-    testQueries(edb);
+    client.runEncryptionOperation(() => { testQueries(edb); });
 
     // Setting this parameter means encrypted rewrites will generate no more than 20 encrypted tags
     // and we will trigger low selectivity mode.
@@ -84,9 +84,9 @@ function runTest(conn) {
         edb.adminCommand({setParameter: 1, internalQueryFLERewriteMemoryLimit: 10 * 40 + 10 * 41}));
 
     // Run queries in low selectivity mode
-    testQueries(edb);
+    client.runEncryptionOperation(() => { testQueries(edb); });
 
-    const result = assert.commandWorked(edb.runCommand({
+    const result = assert.commandWorked(edb.erunCommand({
         explain: {
             find: "basic",
             projection: {[kSafeContentField]: 0},

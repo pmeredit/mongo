@@ -60,9 +60,9 @@ const kTagsPerEntry = kHypergraphHeight + kHypergraphNumNum + kEqualityTags;
 // Verify we can insert two documents in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert(
+assert.commandWorked(sessionColl.einsert(
     {name: "joe", "height": NumberLong(4), "num": {"num": NumberInt(2)}, "ssn": "abcd"}));
-assert.commandWorked(sessionColl.insert(
+assert.commandWorked(sessionColl.einsert(
     {name: "bob", "height": NumberLong(5), "num": {"num": NumberInt(1)}, "ssn": "efgh"}));
 
 session.commitTransaction();
@@ -71,8 +71,8 @@ client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsP
 
 session.startTransaction();
 
-assert.commandWorked(sessionColl.deleteOne({name: "joe"}));
-assert.commandWorked(sessionColl.deleteOne({name: "bob"}));
+assert.commandWorked(sessionColl.edeleteOne({name: "joe"}));
+assert.commandWorked(sessionColl.edeleteOne({name: "bob"}));
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
@@ -80,8 +80,8 @@ client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsP
 
 session.startTransaction();
 
-assert.commandWorked(sessionColl.deleteOne({name: "joe"}));
-assert.commandWorked(sessionColl.deleteOne({name: "bob"}));
+assert.commandWorked(sessionColl.edeleteOne({name: "joe"}));
+assert.commandWorked(sessionColl.edeleteOne({name: "bob"}));
 
 session.commitTransaction();
 

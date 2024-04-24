@@ -73,7 +73,7 @@ function runCRUDTest(BSONType, type, tf, insertsPerDoc, min, max, precision) {
 
     for (let i = 0; i < 32; i++) {
         assert.commandWorked(
-            edb.runCommand({insert: collName, documents: [{_id: i, field1: BSONType(i % 16)}]}));
+            edb.erunCommand({insert: collName, documents: [{_id: i, field1: BSONType(i % 16)}]}));
         client.assertEncryptedCollectionCounts(
             collName, i + 1, (i + 1) * insertsPerDoc, (i + 1) * insertsPerDoc);
     }
@@ -81,27 +81,30 @@ function runCRUDTest(BSONType, type, tf, insertsPerDoc, min, max, precision) {
     for (let _ = 0; _ < 50; _++) {
         const min = Random.randInt(15);
         const max = Random.randInt(15 - min) + min;
-        const res = coll.find({field1: {$gte: BSONType(min), $lte: BSONType(max)}}).toArray();
 
-        assert.eq(res.length, (max - min + 1) * 2);
-        const values = res.map((r) => BSONType(r.field1));
-        assertArrayEq({
-            actual: values,
-            expected: Array.from(new Array((max - min + 1) * 2),
-                                 (x, i) => BSONType(Math.floor(i / 2) + min))
+        client.runEncryptionOperation(() => {
+            const res = coll.find({field1: {$gte: BSONType(min), $lte: BSONType(max)}}).toArray();
+
+            assert.eq(res.length, (max - min + 1) * 2);
+            const values = res.map((r) => BSONType(r.field1));
+            assertArrayEq({
+                actual: values,
+                expected: Array.from(new Array((max - min + 1) * 2),
+                                     (x, i) => BSONType(Math.floor(i / 2) + min))
+            });
         });
     }
 
-    assert.commandWorked(coll.deleteOne({field1: BSONType(1)}));
+    assert.commandWorked(coll.edeleteOne({field1: BSONType(1)}));
     // Delete doesn't remove ESC/ECOC entries
     client.assertEncryptedCollectionCounts(collName, 31, 32 * insertsPerDoc, 32 * insertsPerDoc);
 
-    assert.commandWorked(edb.runCommand({
+    assert.commandWorked(edb.erunCommand({
         update: collName,
         updates: [{q: {"field1": BSONType(1)}, u: {"$set": {"field1": BSONType(8)}}}]
     }));
-    assert.eq(0, coll.find({field1: BSONType(1)}).toArray().length);
-    assert.eq(3, coll.find({field1: BSONType(8)}).toArray().length);
+    assert.eq(0, coll.ecount({field1: BSONType(1)}));
+    assert.eq(3, coll.ecount({field1: BSONType(8)}));
 }
 
 runCreateCollectionTest(false, "int", -1, NumberInt(0), NumberInt(1));

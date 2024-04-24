@@ -85,7 +85,7 @@ export const $config = (function() {
 
                 // Insert a document into encrypted collection; retry on write conflict error
                 this.conflictStats.insertAttempts++;
-                let res = encryptedColl.insert(insertDoc);
+                let res = encryptedColl.einsert(insertDoc);
 
                 while (res.hasWriteError()) {
                     assert.writeErrorWithCode(res,
@@ -93,7 +93,7 @@ export const $config = (function() {
                                               "Insert did not fail with WriteConflict error");
                     this.conflictStats.insert++;
                     this.conflictStats.insertAttempts++;
-                    res = encryptedColl.insert(insertDoc);
+                    res = encryptedColl.einsert(insertDoc);
                 }
                 assert.writeOK(res);
 
@@ -113,7 +113,7 @@ export const $config = (function() {
 
                 // Update a document; retry on write conflict error
                 this.conflictStats.updateAttempts++;
-                let res = encryptedColl.update(queryDoc, updateDoc);
+                let res = encryptedColl.eupdate(queryDoc, updateDoc);
 
                 while (res.hasWriteError()) {
                     assert.writeErrorWithCode(res,
@@ -121,7 +121,7 @@ export const $config = (function() {
                                               "Update did not fail with WriteConflict error");
                     this.conflictStats.update++;
                     this.conflictStats.updateAttempts++;
-                    res = encryptedColl.update(queryDoc, updateDoc);
+                    res = encryptedColl.eupdate(queryDoc, updateDoc);
                 }
                 assert.writeOK(res);
                 if (res.nModified === 0) {
@@ -141,7 +141,7 @@ export const $config = (function() {
                 const queryDoc = {count: indexToUpdate, tid: this.tid};
 
                 this.conflictStats.findAndModifyAttempts++;
-                let res = this.edb.runCommand({
+                let res = this.edb.erunCommand({
                     findAndModify: this.encryptedCollName,
                     query: queryDoc,
                     update: updateDoc,
@@ -156,7 +156,7 @@ export const $config = (function() {
                         "FindAndModify did not fail with WriteConflict error");
                     this.conflictStats.findAndModify++;
                     this.conflictStats.findAndModifyAttempts++;
-                    res = this.edb.runCommand({
+                    res = this.edb.erunCommand({
                         findAndModify: this.encryptedCollName,
                         query: queryDoc,
                         update: updateDoc,
@@ -176,7 +176,7 @@ export const $config = (function() {
                 const query = this.getRandomFindQuery(this.tid);
                 let encryptedRes = null;
                 try {
-                    encryptedRes = encryptedColl.findOne(query);
+                    encryptedRes = encryptedColl.efindOne(query);
                 } catch (e) {
                     print("Encrypted find threw exception: " + tojson(e));
                     // NoSuchTransaction or LockTimeout errors indicate high contention
@@ -205,7 +205,7 @@ export const $config = (function() {
 
                 // Delete a random document
                 this.conflictStats.deleteAttempts++;
-                let res = this.edb.runCommand(
+                let res = this.edb.erunCommand(
                     {delete: this.encryptedCollName, deletes: [{q: queryDoc, limit: 1}]});
 
                 while (res.ok === 0 ||
@@ -215,7 +215,7 @@ export const $config = (function() {
                                                  "Delete did not fail with WriteConflict error");
                     this.conflictStats.delete ++;
                     this.conflictStats.deleteAttempts++;
-                    res = this.edb.runCommand(
+                    res = this.edb.erunCommand(
                         {delete: this.encryptedCollName, deletes: [{q: queryDoc, limit: 1}]});
                 }
 
@@ -341,7 +341,9 @@ export const $config = (function() {
         while (rawDocItr.hasNext()) {
             const rawDoc = rawDocItr.next();
             const query = {count: rawDoc.count, tid: rawDoc.tid};
-            const encDocs = edb[this.encryptedCollName].find(query).toArray();
+
+            const encDocs = eclient.runEncryptionOperation(
+                () => { return edb[this.encryptedCollName].find(query).toArray(); });
 
             let errmsg = () => {
                 let msg = "Raw doc does not match the encrypted doc.";

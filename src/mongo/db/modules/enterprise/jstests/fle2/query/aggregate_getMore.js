@@ -28,7 +28,7 @@ let edb = client.getDB();
 
 const coll = edb[collName];
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 
@@ -42,8 +42,10 @@ const runTest = (pipeline, collection, expected, extraInfo) => {
     assertArrayEq({actual: result, expected: expected, extraErrorMsg: tojson(extraInfo)});
 };
 
-// Run all of the tests.
-for (const testData of tests) {
-    const extraInfo = Object.assign({transaction: false}, testData);
-    runTest(testData.pipeline, coll, testData.expected, extraInfo);
-}
+client.runEncryptionOperation(() => {
+    // Run all of the tests.
+    for (const testData of tests) {
+        const extraInfo = Object.assign({transaction: false}, testData);
+        runTest(testData.pipeline, coll, testData.expected, extraInfo);
+    }
+});

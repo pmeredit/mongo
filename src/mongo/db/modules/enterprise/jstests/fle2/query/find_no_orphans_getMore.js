@@ -20,7 +20,7 @@ let dbName = "find";
 let collName = jsTestName();
 runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     print("non-transaction test cases.");
-    const coll = edb[collName];
+    const coll = edb.getCollection(collName);
 
     let i = 0;
     for (const test of tests) {

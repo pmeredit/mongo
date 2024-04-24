@@ -13,7 +13,7 @@ async function bgInsertFunc(doc) {
 
     let client = new EncryptedClient(db.getMongo(), "txn_contention_insert");
     while (true) {
-        let res = client.getDB().basic.insert(doc);
+        let res = client.getDB().basic.einsert(doc);
         if (!res.hasWriteError()) {
             assert.writeOK(res);
             return;

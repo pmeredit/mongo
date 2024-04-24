@@ -33,19 +33,19 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     }
 }));
 
-assert.commandWorked(edb.basic.insert({"last": "Belcher", "name": "Bob", "age": NumberInt(12)}));
-assert.commandWorked(edb.basic.insert({"last": "Stotch", "name": "Linda"}));
+assert.commandWorked(edb.basic.einsert({"last": "Belcher", "name": "Bob", "age": NumberInt(12)}));
+assert.commandWorked(edb.basic.einsert({"last": "Stotch", "name": "Linda"}));
 
 const kHypergraphHeight = 5;
 
 client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, kHypergraphHeight);
 
-assert.commandWorked(edb.basic.runCommand({
+assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {"last": "Belcher"},
     "update": {"$set": {"age": NumberInt(8)}}
 }));
-assert.commandWorked(edb.basic.runCommand({
+assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {"last": "Stotch"},
     "update": {"$set": {"age": NumberInt(5)}}
@@ -53,7 +53,7 @@ assert.commandWorked(edb.basic.runCommand({
 
 client.assertEncryptedCollectionCounts("basic", 2, 3 * kHypergraphHeight, 3 * kHypergraphHeight);
 
-assert.commandWorked(edb.basic.runCommand({
+assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     "query": {"last": "Belcher"},
     "update": {"$unset": {"age": ""}}

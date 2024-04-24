@@ -37,10 +37,10 @@ const sessionColl = sessionDB.getCollection("basic");
 session.startTransaction();
 
 assert.commandWorked(
-    sessionColl.insert({_id: 1, "first": "mark", "last": "marco", "middle": "matthew"}));
+    sessionColl.einsert({_id: 1, "first": "mark", "last": "marco", "middle": "matthew"}));
 assert.commandWorked(
-    sessionColl.insert({_id: 2, "first": "Mark", "last": "Marco", "middle": "Matthew"}));
-assert.commandWorked(sessionColl.updateOne({"last": "marco"}, {$set: {"first": "matthew"}}));
+    sessionColl.einsert({_id: 2, "first": "Mark", "last": "Marco", "middle": "Matthew"}));
+assert.commandWorked(sessionColl.eupdateOne({"last": "marco"}, {$set: {"first": "matthew"}}));
 
 session.commitTransaction();
 
@@ -54,7 +54,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 // Verify we insert two documents in a txn but abort it
 session.startTransaction();
 
-assert.commandWorked(sessionColl.updateOne({"last": "Marco"}, {$set: {"first": "Matthew"}}));
+assert.commandWorked(sessionColl.eupdateOne({"last": "Marco"}, {$set: {"first": "Matthew"}}));
 
 // In the TXN the counts are right
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
@@ -68,7 +68,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 // Verify we can update documents while querying by an encrypted field and abort the transaction.
 session.startTransaction();
 
-assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
+assert.commandWorked(sessionColl.eupdateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
 // In the TXN the counts are right
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 assert.commandWorked(session.abortTransaction_forTesting());
@@ -78,7 +78,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 // Verify we can update documents while querying by an encrypted field and commit the transaction.
 session.startTransaction();
 
-assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
+assert.commandWorked(sessionColl.eupdateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 session.commitTransaction();
 // Counts should persist outside the transaction.

@@ -68,7 +68,7 @@ function runTest(conn) {
 
     for (const doc of docs) {
         assert.commandWorked(coll.insert(doc));
-        assert.commandWorked(encryptedColl.insert(doc));
+        assert.commandWorked(encryptedColl.einsert(doc));
     }
 
     // Test for aggregation requests that query stats are only collected when encryption is not
@@ -79,7 +79,8 @@ function runTest(conn) {
 
         // Assert that telemetry is not collected on an aggregation on an encryption-enabled
         // collection.
-        assert.eq(encryptedColl.aggregate(pipeline).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(encryptedColl.aggregate(pipeline).itcount(), 1); });
         let queryStats = getQueryStatsAggCmd(testDB);
         assert.eq(0, queryStats.length, queryStats);
 
@@ -95,13 +96,15 @@ function runTest(conn) {
         const redactedEncryptedPipeline = [{$match: {ssn: {$eq: "?string"}}}];
 
         // Assert that telemetry is not collected on an aggregation that queries an encrypted field.
-        assert.eq(encryptedColl.aggregate(encryptedPipeline).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(encryptedColl.aggregate(encryptedPipeline).itcount(), 1); });
         queryStats = getQueryStatsAggCmd(testDB);
         assert.eq(1,
                   queryStats.length);  // We still have the 1 previous query with stats collected.
 
         // Assert that telemetry is collected when querying the same field in a regular collection.
-        assert.eq(coll.aggregate(encryptedPipeline).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(coll.aggregate(encryptedPipeline).itcount(), 1); });
         queryStats = getQueryStatsAggCmd(testDB);
         assert.eq(2, queryStats.length);
         assert.eq({"db": `${dbName}`, "coll": `${jsTestName()}`},
@@ -148,14 +151,16 @@ function runTest(conn) {
 
         // Assert that telemetry is not collected on a find command on an encryption-enabled
         // collection.
-        assert.eq(encryptedColl.find(findCmd).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(encryptedColl.find(findCmd).itcount(), 1); });
         let queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(0, queryStats.length, queryStats);
         // assert.eq({"db": "admin", "coll": "system.keys"}, queryStats[0].key.queryShape.cmdNs);
         // assert.eq({"db": "test", "coll": "keystore"}, queryStats[1].key.queryShape.cmdNs);
 
         // Assert that telemetry is collected on a find command on a regular collection.
-        assert.eq(coll.find(findCmd).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(coll.find(findCmd).itcount(), 1); });
         queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(1, queryStats.length, queryStats);
         assert.eq({"db": `${dbName}`, "coll": `${jsTestName()}`},
@@ -167,13 +172,15 @@ function runTest(conn) {
 
         // Assert that telemetry is not collected on a find command on an encryption-enabled
         // collection.
-        assert.eq(encryptedColl.find(encryptedFindCmd).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(encryptedColl.find(encryptedFindCmd).itcount(), 1); });
         queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         // We still have the 1 previous query with stats collected.
         assert.eq(1, queryStats.length, queryStats);
 
         // Assert that telemetry is collected on a find command on a regular collection.
-        assert.eq(coll.find(encryptedFindCmd).itcount(), 1);
+        encryptedClient.runEncryptionOperation(
+            () => { assert.eq(coll.find(encryptedFindCmd).itcount(), 1); });
         queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(2, queryStats.length, queryStats);
         assert.eq({"db": `${dbName}`, "coll": `${jsTestName()}`},

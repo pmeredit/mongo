@@ -17,8 +17,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 const edb = client.getDB();
-assert.commandWorked(edb.basic.insert({"_id": 1, "first": "mark", "last": "Markus"}));
-assert.commandWorked(edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marco"}));
+assert.commandWorked(edb.basic.einsert({"_id": 1, "first": "mark", "last": "Markus"}));
+assert.commandWorked(edb.basic.einsert({"_id": 2, "first": "Mark", "last": "Marco"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
@@ -29,7 +29,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Replace an encrypted field with a new document
-let res = assert.commandWorked(edb.basic.runCommand({
+let res = assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "Marco"},
     update: {"last": "marco", "first": "matthew"}
@@ -46,10 +46,10 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Remove the encrypted field via replace
-assert.commandWorked(edb.basic.runCommand(
+assert.commandWorked(edb.basic.erunCommand(
     {findAndModify: edb.basic.getName(), query: {"last": "markus"}, update: {"last": "marco"}}));
 
-res = assert.commandWorked(edb.basic.replaceOne({"last": "marco"}, {"last": "marco"}));
+res = assert.commandWorked(edb.basic.ereplaceOne({"last": "marco"}, {"last": "marco"}));
 assert.eq(res.modifiedCount, 1);
 let rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], []);
@@ -62,7 +62,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Add the encrypted field
-assert.commandWorked(edb.basic.runCommand({
+assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
     update: {"last": "marco", "first": "luke"}
@@ -99,7 +99,7 @@ res = assert.commandFailedWithCode(dbTest.basic.runCommand({
 client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
 // Add a document via upsert
-res = assert.commandWorked(edb.basic.runCommand({
+res = assert.commandWorked(edb.basic.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "Marco"},
     update: {"last": "Marco", "first": "Luke"},

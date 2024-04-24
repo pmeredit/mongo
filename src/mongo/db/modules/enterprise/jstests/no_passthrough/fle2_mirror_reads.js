@@ -19,9 +19,9 @@ function verifyEncryptedMirrorReads(rst, edb, cmd, mirrorCount) {
 
     // Run the command
     if (cmd.hasOwnProperty("bulkWrite")) {
-        assert.commandWorked(edb.adminCommand(cmd));
+        assert.commandWorked(edb.eadminCommand(cmd));
     } else {
-        assert.commandWorked(edb.runCommand(cmd));
+        assert.commandWorked(edb.erunCommand(cmd));
     }
 
     // Verify the secondary gets the mirrored read, which contains encryptionInformation
@@ -65,7 +65,7 @@ function runTest(conn, rst) {
 
     // insert test data
     for (let i = 1; i <= 10; i++) {
-        assert.commandWorked(coll.insert({_id: i, "first": "bob", ctr: i}));
+        assert.commandWorked(coll.einsert({_id: i, "first": "bob", ctr: i}));
     }
 
     for (let testCollScan of [false, true]) {

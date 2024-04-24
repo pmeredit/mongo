@@ -13,7 +13,8 @@ async function bgFindAndModifyFunc(query, update) {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "txn_contention_find_and_modify");
     while (true) {
-        let res = client.getDB().runCommand({findAndModify: "basic", query: query, update: update});
+        let res =
+            client.getDB().erunCommand({findAndModify: "basic", query: query, update: update});
         if (res.ok === 0 || (res.hasOwnProperty("writeErrors") && res.writeErrors.length > 0)) {
             assert.commandFailedWithCode(
                 res, ErrorCodes.WriteConflict, "Unexpected error: " + tojson(res));
@@ -40,8 +41,8 @@ function runTest(conn) {
     }));
 
     const edb = client.getDB();
-    assert.commandWorked(edb.basic.insert({_id: 1, "first": "mark", "last": "marco"}));
-    assert.commandWorked(edb.basic.insert({_id: 2, "first": "Mark", "last": "Marcus"}));
+    assert.commandWorked(edb.basic.einsert({_id: 1, "first": "mark", "last": "marco"}));
+    assert.commandWorked(edb.basic.einsert({_id: 2, "first": "Mark", "last": "Marcus"}));
     client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
     // Setup a failpoint that hangs in findAndModify

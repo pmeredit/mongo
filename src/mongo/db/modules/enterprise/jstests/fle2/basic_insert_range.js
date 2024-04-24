@@ -82,7 +82,7 @@ let edb = client.getDB();
 
 // Insert a document with fields which get encrypted
 jsTest.log("insert: basic");
-let res = assert.commandWorked(edb.runCommand({
+let res = assert.commandWorked(edb.erunCommand({
     "insert": "basic",
     documents: [{
         "_id": 355647829019,
@@ -116,7 +116,7 @@ assertIsRangeIndexedEncryptedField(rawDoc["weight"]);
 assert(rawDoc[kSafeContentField] !== undefined);
 
 // Verify we decrypt it clean with an encrypted client.
-let doc = edb.basic.find().toArray()[0];
+let doc = edb.basic.efindOne();
 jsTest.log("cleandoc");
 print(tojson(doc));
 assert.eq(doc["issueDate"], new Date("2505-03-03"));
@@ -131,7 +131,7 @@ assert.eq(doc["weight"], 178.0);
 assert(doc[kSafeContentField] !== undefined);
 
 // Make an insert with no encrypted fields
-assert.commandWorked(edb.basic.insert({"firstName": "Frito"}));
+assert.commandWorked(edb.basic.einsert({"firstName": "Frito"}));
 rawDoc = dbTest.basic.find({"firstName": "Frito"}).toArray()[0];
 print(tojson(rawDoc));
 assert.eq(rawDoc["firstName"], "Frito");
@@ -140,8 +140,8 @@ assert(rawDoc[kSafeContentField] === undefined);
 client.assertEncryptedCollectionCounts("basic", 2, kExpectEdges, kExpectEdges);
 
 // Trigger a duplicate key exception and validate the response
-res = assert.commandFailed(
-    edb.runCommand({"insert": "basic", documents: [{"_id": 355647829019, "lastName": "camacho"}]}));
+res = assert.commandFailed(edb.erunCommand(
+    {"insert": "basic", documents: [{"_id": 355647829019, "lastName": "camacho"}]}));
 print(tojson(res));
 
 assert.eq(res.n, 0);
@@ -150,5 +150,5 @@ client.assertWriteCommandReplyFields(res);
 // Inserting a document with encrypted data at a path that is marked for encryption, throws an
 // error.
 assert.throwsWithCode(
-    () => edb.basic.runCommand({"insert": "basic", documents: [{"weight": BinData(6, "data")}]}),
+    () => edb.basic.erunCommand({"insert": "basic", documents: [{"weight": BinData(6, "data")}]}),
     31041);

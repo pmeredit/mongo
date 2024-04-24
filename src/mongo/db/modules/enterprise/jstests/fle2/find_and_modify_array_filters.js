@@ -20,16 +20,16 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 const edb = client.getDB();
-edb.basic.insertOne({"_id": 1, "first": "mark", "grades": [95, 92, 90]});
-edb.basic.insertOne({"_id": 2, "first": "mark", "grades": [98, 100, 102]});
-edb.basic.insertOne({"_id": 3, "first": "mark", "grades": [95, 110, 100]});
+edb.basic.einsertOne({"_id": 1, "first": "mark", "grades": [95, 92, 90]});
+edb.basic.einsertOne({"_id": 2, "first": "mark", "grades": [98, 100, 102]});
+edb.basic.einsertOne({"_id": 3, "first": "mark", "grades": [95, 110, 100]});
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
 client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
 
 // Update a document by array filters
 client.assertDocumentChanges("basic", [0, 2], [1], () => {
-    assert.commandWorked(edb.basic.runCommand({
+    assert.commandWorked(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {grades: {$gte: 100}},
         update: {$set: {"grades.$[element]": 100}},
@@ -37,7 +37,7 @@ client.assertDocumentChanges("basic", [0, 2], [1], () => {
     }));
 });
 
-const doc = edb.basic.find({_id: 2}).toArray()[0];
+const doc = edb.basic.findOne({_id: 2});
 assert.eq(doc["grades"], [98, 100, 100]);
 
 client.assertEncryptedCollectionCounts("basic", 3, 3, 3);

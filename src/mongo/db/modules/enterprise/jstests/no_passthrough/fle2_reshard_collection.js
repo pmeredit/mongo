@@ -44,8 +44,8 @@ reshardingTest.createShardedCollection({
 const testDb = client.getDB();
 const testColl = testDb[collName];
 
-assert.commandWorked(testColl.insert({name: "Al", oldKey: 0, newKey: 100}));
-assert.commandWorked(testColl.insert({name: "Bob", oldKey: 77, newKey: 26}));
+assert.commandWorked(testColl.einsert({name: "Al", oldKey: 0, newKey: 100}));
+assert.commandWorked(testColl.einsert({name: "Bob", oldKey: 77, newKey: 26}));
 
 // Reshard the collection on "newKey"
 // Run writes in the background which will be applied by the oplog applier.
@@ -58,13 +58,13 @@ reshardingTest.withReshardingInBackground(
         // We wait until cloneTimestamp has been chosen to guarantee that any subsequent writes will
         // be applied by the ReshardingOplogApplier.
         reshardingTest.awaitCloneTimestampChosen();
-        assert.commandWorked(testColl.insert({name: "Charlie", oldKey: 1, newKey: -1}));
-        assert.commandWorked(testColl.updateOne({name: "Al"}, {$set: {name: "Allen"}}));
+        assert.commandWorked(testColl.einsert({name: "Charlie", oldKey: 1, newKey: -1}));
+        assert.commandWorked(testColl.eupdateOne({name: "Al"}, {$set: {name: "Allen"}}));
     });
 
 // Assert encrypted fields are still queryable
 for (let value of ["Allen", "Bob", "Charlie"]) {
-    let doc = testColl.findOne({name: value});
+    let doc = testColl.efindOne({name: value});
     assert(doc);
     assert(doc.hasOwnProperty(kSafeContentField));
 }

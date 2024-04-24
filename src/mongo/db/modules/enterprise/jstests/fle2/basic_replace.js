@@ -20,15 +20,15 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 let edb = client.getDB();
-assert.commandWorked(edb.basic.insert({"_id": 1, "first": "mark", "last": "marco"}));
-assert.commandWorked(edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marcus"}));
+assert.commandWorked(edb.basic.einsert({"_id": 1, "first": "mark", "last": "marco"}));
+assert.commandWorked(edb.basic.einsert({"_id": 2, "first": "Mark", "last": "Marcus"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Replace an encrypted field with a new document
 let res = assert.commandWorked(
-    edb.basic.replaceOne({"last": "marco"}, {"last": "marco", "first": "matthew"}));
+    edb.basic.ereplaceOne({"last": "marco"}, {"last": "marco", "first": "matthew"}));
 print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
@@ -46,7 +46,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Remove the encrypted field via replace
-res = assert.commandWorked(edb.basic.replaceOne({"last": "marco"}, {"last": "marco"}));
+res = assert.commandWorked(edb.basic.ereplaceOne({"last": "marco"}, {"last": "marco"}));
 assert.eq(res.modifiedCount, 1);
 let rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], [], tojson(rawDoc));
@@ -64,7 +64,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 // Add the encrypted field
 res = assert.commandWorked(
-    edb.basic.replaceOne({"last": "marco"}, {"last": "marco", "first": "luke"}));
+    edb.basic.ereplaceOne({"last": "marco"}, {"last": "marco", "first": "luke"}));
 assert.eq(res.modifiedCount, 1);
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
@@ -95,7 +95,7 @@ assert.commandFailedWithCode(dbTest.basic.runCommand({
 client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
 // Add a document via upsert
-res = assert.commandWorked(edb.basic.runCommand({
+res = assert.commandWorked(edb.basic.erunCommand({
     update: edb.basic.getName(),
     updates: [{q: {"last": "Marco"}, u: {"last": "Marco", "first": "Luke"}, upsert: true}]
 }));

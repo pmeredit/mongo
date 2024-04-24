@@ -29,19 +29,19 @@ function runTest(bypassValidation, connection) {
         };
     }
 
-    assert.commandWorked(edb.runCommand({
+    assert.commandWorked(edb.erunCommand({
         insert: "basic",
         documents: [{"first": "first1", "last": "last1"}],
         ordered: false,
     }));
 
-    assert.commandWorked(edb.runCommand({
+    assert.commandWorked(edb.erunCommand({
         insert: "basic",
         documents: [{"first": "first2", "last": "last2"}],
         ordered: false,
     }));
 
-    assert.commandWorked(edb.runCommand({
+    assert.commandWorked(edb.erunCommand({
         insert: "basic",
         documents: [{"first": "first3", "last": "last3"}],
         ordered: false,

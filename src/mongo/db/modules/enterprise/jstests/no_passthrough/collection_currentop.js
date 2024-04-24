@@ -21,18 +21,18 @@ async function bgRunCmdFunc(command) {
     let edb = client.getDB();
 
     if (command.hasOwnProperty('find')) {
-        client.getDB().runCommand(command);
+        client.getDB().erunCommand(command);
     } else {
-        client.getDB().runCommand({find: edb.basic.getName(), filter: {}});
+        client.getDB().erunCommand({find: edb.basic.getName(), filter: {}});
         let resultFind =
-            client.getDB().runCommand({find: edb.basic.getName(), filter: {}, batchSize: 1});
+            client.getDB().erunCommand({find: edb.basic.getName(), filter: {}, batchSize: 1});
 
         assert.eq(resultFind.ok, 1, " RESULT: " + tojson(resultFind));
         let cid = resultFind.cursor.id;
 
         let cr = undefined;
         do {
-            cr = client.getDB().runCommand({
+            cr = client.getDB().erunCommand({
                 "getMore": NumberLong(cid),
                 collection: edb.basic.getName(),
                 batchSize: 1,
@@ -147,12 +147,12 @@ function runTest(conn) {
         }
     }));
 
-    assert.commandWorked(edb.basic.insert({first: "mark", count: 1}));
-    assert.commandWorked(edb.basic.insert({first: "mark", count: 2}));
-    assert.commandWorked(edb.basic.insert({first: "mark", count: 3}));
-    assert.commandWorked(edb.basic.insert({first: "mark", count: 4}));
-    assert.commandWorked(edb.basic.insert({first: "mark", count: 5}));
-    assert.commandWorked(edb.basic.insert({first: "mark", count: 6}));
+    assert.commandWorked(edb.basic.einsert({first: "mark", count: 1}));
+    assert.commandWorked(edb.basic.einsert({first: "mark", count: 2}));
+    assert.commandWorked(edb.basic.einsert({first: "mark", count: 3}));
+    assert.commandWorked(edb.basic.einsert({first: "mark", count: 4}));
+    assert.commandWorked(edb.basic.einsert({first: "mark", count: 5}));
+    assert.commandWorked(edb.basic.einsert({first: "mark", count: 6}));
 
     // Verify currentOp on encrypted collection returns redacted information for find command.
     runCommentParamTest(conn, {coll: edb.basic, command: {find: edb.basic.getName(), filter: {}}});

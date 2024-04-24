@@ -37,8 +37,8 @@ async function bgRetryInsertFunc(doc) {
     const lsid = UUID();
     const retryableCmd =
         {insert: "basic", documents: [doc], lsid: {id: lsid}, txnNumber: NumberLong(1)};
-    let result = assert.commandWorked(client.getDB().runCommand(retryableCmd));
-    let retryResult = assert.commandWorked(client.getDB().runCommand(retryableCmd));
+    let result = assert.commandWorked(client.getDB().erunCommand(retryableCmd));
+    let retryResult = assert.commandWorked(client.getDB().erunCommand(retryableCmd));
 
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -75,13 +75,13 @@ function runTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(31)
     };
-    let result = assert.commandWorked(edb.runCommand(command));
+    let result = assert.commandWorked(edb.erunCommand(command));
     print(tojson(result));
 
     let oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, 1);
 
-    let retryResult = assert.commandWorked(edb.runCommand(command));
+    let retryResult = assert.commandWorked(edb.erunCommand(command));
 
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
@@ -104,7 +104,7 @@ function runTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(37)
     };
-    result = assert.commandWorked(edb.runCommand(command));
+    result = assert.commandWorked(edb.erunCommand(command));
     print(tojson(result));
 
     client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
@@ -113,7 +113,7 @@ function runTest(conn, primaryConn) {
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 1);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.erunCommand(command));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -138,14 +138,14 @@ function runTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(41)
     };
-    result = assert.commandWorked(edb.runCommand(command));
+    result = assert.commandWorked(edb.erunCommand(command));
     print(tojson(result));
 
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 1);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.erunCommand(command));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -160,7 +160,7 @@ function runTest(conn, primaryConn) {
 
     // Test retryable writes for findAndModify update
     //
-    assert.commandWorked(edb.runCommand(
+    assert.commandWorked(edb.erunCommand(
         {"insert": "basic", documents: [{"_id": 1, "first": "mark", "last": "marco"}]}));
 
     command = {
@@ -170,14 +170,14 @@ function runTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(43)
     };
-    result = assert.commandWorked(edb.runCommand(command));
+    result = assert.commandWorked(edb.erunCommand(command));
     print(tojson(result));
 
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 2);  // +2 for the insert and findAndModify
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.erunCommand(command));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -199,14 +199,14 @@ function runTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(47)
     };
-    result = assert.commandWorked(edb.runCommand(command));
+    result = assert.commandWorked(edb.erunCommand(command));
     print(tojson(result));
 
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 1);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.erunCommand(command));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -231,13 +231,13 @@ function runTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(48)
     };
-    result = assert.commandWorked(edb.runCommand(command));
+    result = assert.commandWorked(edb.erunCommand(command));
     print(tojson(result));
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 2);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.erunCommand(command));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -265,7 +265,7 @@ function runUpdateRetryWithPreimageRemovedTest(conn, primaryConn) {
     let edb = client.getDB();
     const lsid = UUID();
 
-    assert.commandWorked(edb.runCommand({
+    assert.commandWorked(edb.erunCommand({
         insert: collName,
         documents: [{"_id": 1, "first": "mark", "last": "marco"}],
         lsid: {id: lsid},
@@ -281,19 +281,19 @@ function runUpdateRetryWithPreimageRemovedTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(20)
     };
-    let result = assert.commandWorked(edb.runCommand(command));
-    let retryResult = assert.commandWorked(edb.runCommand(command));
+    let result = assert.commandWorked(edb.erunCommand(command));
+    let retryResult = assert.commandWorked(edb.erunCommand(command));
 
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
     assertRetriedStmtIds(retryResult, [2]);
     client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
 
-    assert.commandWorked(edb.runCommand({delete: collName, deletes: [{q: {_id: 1}, limit: 1}]}));
+    assert.commandWorked(edb.erunCommand({delete: collName, deletes: [{q: {_id: 1}, limit: 1}]}));
     client.assertEncryptedCollectionCounts(collName, 0, 2, 2);
 
     let oplogCount = countOplogEntries(primaryConn);
-    let secondRetryResult = assert.commandWorked(edb.runCommand(command));
+    let secondRetryResult = assert.commandWorked(edb.erunCommand(command));
 
     // Assert we get the same response even if the original document was removed
     assert.eq(secondRetryResult.ok, retryResult.ok);
@@ -327,7 +327,7 @@ function runFindAndModifyRetryWithPreimageRemovedTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(1)
     };
-    assert.commandWorked(edb.runCommand(command));
+    assert.commandWorked(edb.erunCommand(command));
     client.assertEncryptedCollectionCounts(collName, 1, 1, 1);
 
     command = {
@@ -337,19 +337,19 @@ function runFindAndModifyRetryWithPreimageRemovedTest(conn, primaryConn) {
         lsid: {id: lsid},
         txnNumber: NumberLong(20)
     };
-    let result = assert.commandWorked(edb.runCommand(command));
-    let retryResult = assert.commandWorked(edb.runCommand(command));
+    let result = assert.commandWorked(edb.erunCommand(command));
+    let retryResult = assert.commandWorked(edb.erunCommand(command));
 
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
     assert.eq(retryResult.retriedStmtId, 2);
     client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
 
-    assert.commandWorked(edb.runCommand({delete: collName, deletes: [{q: {_id: 1}, limit: 1}]}));
+    assert.commandWorked(edb.erunCommand({delete: collName, deletes: [{q: {_id: 1}, limit: 1}]}));
     client.assertEncryptedCollectionCounts(collName, 0, 2, 2);
 
     let oplogCount = countOplogEntries(primaryConn);
-    let secondRetryResult = assert.commandWorked(edb.runCommand(command));
+    let secondRetryResult = assert.commandWorked(edb.erunCommand(command));
 
     // Assert we get the same response even if the original document was removed
     assert.eq(secondRetryResult.ok, retryResult.ok);

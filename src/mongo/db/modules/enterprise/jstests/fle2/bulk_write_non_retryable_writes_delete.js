@@ -52,7 +52,7 @@ let insert1 = {
 };
 
 // Insert 1 document with a field that gets encrypted, so following bulkWrite can update it.
-let res = assert.commandWorked(edb.runCommand(insert1));
+let res = assert.commandWorked(edb.erunCommand(insert1));
 assert.eq(res.n, 1);
 
 let insert2 = {
@@ -61,12 +61,12 @@ let insert2 = {
         [{"_id": 2, "first": "dwayne", "middle": "schrute", "aka": "regional manager", "age": 53}]
 };
 
-res = assert.commandWorked(edb.runCommand(insert2));
+res = assert.commandWorked(edb.erunCommand(insert2));
 assert.eq(res.n, 1);
 
 {
     print("Delete documents using an encrypted filter and multi: true");
-    res = assert.commandWorked(edb.adminCommand({
+    res = assert.commandWorked(edb.eadminCommand({
         bulkWrite: 1,
         ops: [{delete: 0, filter: {"first": "dwayne"}, multi: true}],
         nsInfo: [{ns: "basic_update.basic"}]
@@ -78,6 +78,6 @@ assert.eq(res.n, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 2});
     client.assertWriteCommandReplyFields(res);
 
-    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
-    assert.eq(edb.basic.find({"_id": 2}).toArray().length, 0);
+    assert.eq(edb.basic.ecount({"_id": 1}), 0);
+    assert.eq(edb.basic.ecount({"_id": 2}), 0);
 }

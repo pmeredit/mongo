@@ -28,7 +28,7 @@ let edb = client.getDB();
 
 const coll = edb[collName];
 for (const doc of docs) {
-    assert.commandWorked(coll.insert(doc));
+    assert.commandWorked(coll.einsert(doc));
 }
 
 // Run the pipeline on the provided collection, and assert that the results are equivalent to
@@ -151,7 +151,9 @@ const tests = [
 ];
 
 // Run all of the tests.
-for (const testData of tests) {
-    const extraInfo = Object.assign({transaction: false}, testData);
-    runTest(testData.pipeline, coll, testData.expected, extraInfo);
-}
+client.runEncryptionOperation(() => {
+    for (const testData of tests) {
+        const extraInfo = Object.assign({transaction: false}, testData);
+        runTest(testData.pipeline, coll, testData.expected, extraInfo);
+    }
+});

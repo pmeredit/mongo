@@ -53,15 +53,15 @@ const doc = {
     "field2": "bar"
 };
 
-assert.commandWorked(edb.basic1.insert(doc));
-assert.commandWorked(edb.basic2.insert(doc));
+assert.commandWorked(edb.basic1.einsert(doc));
+assert.commandWorked(edb.basic2.einsert(doc));
 
 const unencryptedDbTest = db.getSiblingDB(dbName);
 
 jsTest.log("Ensuring that two items with the same value encrypted by fle2 are different BinData.");
 
-const basic1Doc = unencryptedDbTest.basic1.find({_id: 1}).toArray()[0];
-const basic2Doc = unencryptedDbTest.basic2.find({_id: 1}).toArray()[0];
+const basic1Doc = unencryptedDbTest.basic1.findOne({_id: 1});
+const basic2Doc = unencryptedDbTest.basic2.findOne({_id: 1});
 
 assert.neq(basic1Doc.field1, basic2Doc.field1);
 assert.neq(basic1Doc.field2, basic2Doc.field2);

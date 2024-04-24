@@ -26,7 +26,7 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
 const edb = client.getDB();
 
 for (let i = 0; i < 99; i++) {
-    assert.commandWorked(edb.basic.insert({num: i, firstName: "Toby"}));
+    assert.commandWorked(edb.basic.einsert({num: i, firstName: "Toby"}));
 }
 
 // Setting this parameter means encrypted rewrites will generate no more than 99 encrypted tags.
@@ -43,7 +43,7 @@ const command = {
 };
 
 // The FLE rewriter will generate 99 tags for this query, so the update command should pass.
-assert.commandWorked(edb.basic.runCommand(command));
+assert.commandWorked(edb.basic.erunCommand(command));
 
 // Set limit to 98 tags.
 assert.commandWorked(
@@ -51,10 +51,10 @@ assert.commandWorked(
 
 // Running the same query again should fail because rewriting the filter will require creating more
 // tags than the newly set internal limit.
-assert.commandFailedWithCode(edb.basic.runCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);
+assert.commandFailedWithCode(edb.basic.erunCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);
 
 // Delete a document
-assert.commandWorked(edb.runCommand({delete: "basic", deletes: [{"q": {"num": 50}, limit: 1}]}));
+assert.commandWorked(edb.erunCommand({delete: "basic", deletes: [{"q": {"num": 50}, limit: 1}]}));
 
 // Even after deleting one value the rewriter will generate 99 tags for this query
-assert.commandFailedWithCode(edb.basic.runCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);
+assert.commandFailedWithCode(edb.basic.erunCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);

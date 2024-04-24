@@ -15,10 +15,12 @@ const sampleEncryptedFields = {
 const bgCompactFunc = async function(assertWorked = true) {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "txn_compact_coordinator");
-    const result = client.getDB().basic.compact();
-    if (assertWorked) {
-        assert.commandWorked(result);
-    }
+    client.runEncryptionOperation(() => {
+        const result = client.getDB().basic.compact();
+        if (assertWorked) {
+            assert.commandWorked(result);
+        }
+    });
 };
 
 function setupTest(client) {
@@ -33,7 +35,7 @@ function setupTest(client) {
 
     // Insert data to compact
     for (let i = 1; i <= 10; i++) {
-        assert.commandWorked(coll.insert({_id: i, "first": "mark"}));
+        assert.commandWorked(coll.einsert({_id: i, "first": "mark"}));
     }
     client.assertEncryptedCollectionCounts(collName, 10, 10, 10);
     return client;
@@ -109,7 +111,8 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
         // Assert that the compact phase never actually happened
         client.assertEncryptedCollectionCounts(collName, 10, 10, 0);
         // Retry the compact. Afterwards, the renamed ecoc should no longer exist.
-        assert.commandWorked(client.getDB()[collName].compact());
+        client.runEncryptionOperation(
+            () => { assert.commandWorked(client.getDB()[collName].compact()); });
         client.assertStateCollectionsAfterCompact(collName, true, false);
     }
 
@@ -141,7 +144,8 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate(conn, fixture) {
         // Assert that the compact phase never actually happened
         client.assertEncryptedCollectionCounts(collName, 10, 10, 0);
         // Retry the compact. Afterwards, the renamed ecoc should no longer exist.
-        assert.commandWorked(client.getDB()[collName].compact());
+        client.runEncryptionOperation(
+            () => { assert.commandWorked(client.getDB()[collName].compact()); });
         client.assertStateCollectionsAfterCompact(collName, true, false);
     }
 

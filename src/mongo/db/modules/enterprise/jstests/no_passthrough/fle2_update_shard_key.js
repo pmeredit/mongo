@@ -31,22 +31,22 @@ assert.commandWorked(testDb.adminCommand({shardCollection: nss, key: {id: 1}}));
 
 assert.commandWorked(st.s.adminCommand({split: nss, middle: {id: 3}}));
 
-assert.commandWorked(testDb.basic.insert({name: "Shreyas", id: 0}));
-assert.commandWorked(testDb.basic.insert({name: "Bob", id: 6}));
-assert.commandWorked(testDb.basic.insert({name: "Kaitlin", id: 2}));
+assert.commandWorked(testDb.basic.einsert({name: "Shreyas", id: 0}));
+assert.commandWorked(testDb.basic.einsert({name: "Bob", id: 6}));
+assert.commandWorked(testDb.basic.einsert({name: "Kaitlin", id: 2}));
 
 assert.commandWorked(testDb.adminCommand({moveChunk: nss, find: {id: 0}, to: st.shard0.shardName}));
 assert.commandWorked(testDb.adminCommand({moveChunk: nss, find: {id: 6}, to: st.shard1.shardName}));
 
 assert.soon(() => {
-    let result = testDb.runCommand(
+    let result = testDb.erunCommand(
         {findAndModify: "basic", query: {id: 0}, update: {name: "Shreyas", id: 5}});
 
     return result.ok === 1;
 });
 
 assert.soon(() => {
-    let result = testDb.runCommand({
+    let result = testDb.erunCommand({
         update: "basic",
         updates: [{
             q: {id: 6},
@@ -58,7 +58,7 @@ assert.soon(() => {
 });
 
 assert.soon(() => {
-    let result = testDb.adminCommand({
+    let result = testDb.eadminCommand({
         bulkWrite: 1,
         ops: [{
             update: 0,

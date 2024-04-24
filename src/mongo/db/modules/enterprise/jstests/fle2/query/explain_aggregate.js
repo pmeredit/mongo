@@ -41,18 +41,20 @@ const assertExplainResult = (edb, collName, pipeline, assertions) => {
     }
 };
 
-assert.commandWorked(edb[collName].insert({_id: 0, ssn: "123"}));
+assert.commandWorked(edb.getCollection(collName).einsert({_id: 0, ssn: "123"}));
 
-// When a query is on encrypted fields, the explain contains the rewritten query.
-assertExplainResult(edb, collName, [{$match: {ssn: "123"}}], (query, result) => {
-    assert(query.hasOwnProperty("__safeContent__"), result);
-    assert(!query.hasOwnProperty("ssn"), result);
-});
+client.runEncryptionOperation(() => {
+    // When a query is on encrypted fields, the explain contains the rewritten query.
+    assertExplainResult(edb, collName, [{$match: {ssn: "123"}}], (query, result) => {
+        assert(query.hasOwnProperty("__safeContent__"), result);
+        assert(!query.hasOwnProperty("ssn"), result);
+    });
 
-// When a query is not on encrypted fields, the explain contains the original query, since no
-// rewrites should be done.
-assertExplainResult(edb, collName, [{$match: {_id: "456"}}], (query, result) => {
-    assert(!query.hasOwnProperty("__safeContent__"), result);
-    assert(!query.hasOwnProperty("ssn"), result);
-    assert(query.hasOwnProperty("_id"), result);
+    // When a query is not on encrypted fields, the explain contains the original query, since no
+    // rewrites should be done.
+    assertExplainResult(edb, collName, [{$match: {_id: "456"}}], (query, result) => {
+        assert(!query.hasOwnProperty("__safeContent__"), result);
+        assert(!query.hasOwnProperty("ssn"), result);
+        assert(query.hasOwnProperty("_id"), result);
+    });
 });

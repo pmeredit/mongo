@@ -22,9 +22,9 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 
 const edb = client.getDB();
 assert.commandWorked(
-    edb.basic.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
+    edb.basic.einsert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
 assert.commandWorked(
-    edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"}));
+    edb.basic.einsert({"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
@@ -33,7 +33,7 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "m
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Remove a document
-assert.commandWorked(edb.basic.runCommand(
+assert.commandWorked(edb.basic.erunCommand(
     {findAndModify: edb.basic.getName(), query: {"last": "marco"}, remove: true}));
 
 client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
@@ -45,7 +45,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 if (!client.useImplicitSharding) {
     //////////////////////////////////////////////////////////////////////////////////////////////////////
     // Remove a document by collation
-    assert.commandWorked(edb.basic.runCommand({
+    assert.commandWorked(edb.basic.erunCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marcus"},
         remove: true,
@@ -60,7 +60,7 @@ if (!client.useImplicitSharding) {
     // The FLE sharding code throws this directly. In replica sets, the regular mongod code throws
     // this with a different error code
     if (isMongos(db)) {
-        assert.commandFailedWithCode(edb.basic.runCommand({
+        assert.commandFailedWithCode(edb.basic.erunCommand({
             findAndModify: edb.basic.getName(),
             query: {"last": "marco"},
             remove: true,

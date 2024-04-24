@@ -52,22 +52,27 @@ const codeFailedInQueryAnalysis = (cb) => {
 };
 
 client.createBasicEncryptionCollection = function(coll, options, failure, qaFailure) {
-    if (failure != null) {
-        assert.commandFailedWithCode(this._edb.createCollection(coll, options), failure);
-        return;
-    }
-    assert.commandWorked(this._edb.createCollection(coll, options));
+    client.runEncryptionOperation(() => {
+        if (failure != null) {
+            assert.commandFailedWithCode(this._db.createCollection(coll, options), failure);
+            return;
+        }
+        assert.commandWorked(this._db.createCollection(coll, options));
+    });
 };
 
 assert.commandWorked(client.createEncryptionCollection("enc_fields", sampleEncryptedFields));
 client.createBasicEncryptionCollection("json_schema", sampleJSONSchema);
+
 assert(codeFailedInQueryAnalysis(
     () => client.createBasicEncryptionCollection("merged", mergedOptions, 224)));
 
 // Test collmod
 const collmodPayload = Object.assign({}, {collMod: "enc_fields"}, sampleJSONSchema);
 
-assert(codeFailedInQueryAnalysis(() => client.getDB().runCommand(collmodPayload), 224));
+client.runEncryptionOperation(() => {
+    assert(codeFailedInQueryAnalysis(() => client.getDB().runCommand(collmodPayload), 224));
+});
 
 // Test that bsontype needs to be specified if queries is specified, and that bsontype
 // does not need to be specified if queries is not specified.

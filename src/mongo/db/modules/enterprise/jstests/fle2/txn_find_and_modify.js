@@ -36,10 +36,10 @@ const sessionColl = sessionDB.getCollection("basic");
 session.startTransaction();
 
 assert.commandWorked(
-    sessionColl.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "marky"}));
+    sessionColl.einsert({"_id": 1, "first": "mark", "last": "marco", "middle": "marky"}));
 assert.commandWorked(
-    sessionColl.insert({"_id": 2, "first": "Mark", "last": "Marco", "middle": "Marky"}));
-let res = assert.commandWorked(sessionColl.runCommand({
+    sessionColl.einsert({"_id": 2, "first": "Mark", "last": "Marco", "middle": "Marky"}));
+let res = assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
     update: {$set: {"first": "matthew"}}
@@ -59,7 +59,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 // Verify we insert two documents in a txn but abort it
 session.startTransaction();
 
-assert.commandWorked(sessionColl.runCommand({
+assert.commandWorked(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "Marco"},
     update: {$set: {"first": "Matthew"}}
@@ -78,7 +78,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 session.startTransaction();
 
-res = assert.commandFailed(sessionColl.runCommand({
+res = assert.commandFailed(sessionColl.erunCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
     update: {$set: {"middle": "Marky"}}
