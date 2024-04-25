@@ -765,6 +765,8 @@ function testAfterInvalidateWithFullDocumentOnly() {
         },
     ];
     const spName = "sp1";
+    dlqColl.drop();
+    inputColl.drop();
 
     // Create the collection and drop it. This will cause an invalidate
     // event in the changestream.

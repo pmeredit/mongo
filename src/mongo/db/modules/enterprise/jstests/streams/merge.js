@@ -787,7 +787,10 @@ const kExecutorGenericSinkErrorCode = 8143705;
     inputColl.insert(
         {_id: 4, ts: ISODate("2024-03-01T05:00:00.000Z"), docCount: 1, docSize: 1, seed: seed});
 
-    assert.soon(() => { return dlqColl.count() == 1; });
+    assert.soon(() => {
+        let result = dlqColl.find({}).toArray();
+        return result.some(doc => { return doc.errInfo.reason.includes("BSONObjectTooLarge"); });
+    });
     assert.soon(() => { return outColl.count() == 1; });
 
     // Stop the streamProcessor.
