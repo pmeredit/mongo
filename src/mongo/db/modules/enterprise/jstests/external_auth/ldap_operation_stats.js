@@ -56,10 +56,10 @@ let expectedCommandUserOneAuth = {
 let expectedCommandUserTwoAuth = {
     LDAPOperations: {
         LDAPNumberOfSuccessfulReferrals: 0,
-        LDAPNumberOfFailedReferrals: 1,
-        LDAPNumberOfReferrals: 1,
-        bindStats: {numOp: 2, opDurationMicros: waitTimeRegex},
-        searchStats: {numOp: 1, opDurationMicros: waitTimeRegex}
+        LDAPNumberOfFailedReferrals: 4,
+        LDAPNumberOfReferrals: 4,
+        bindStats: {numOp: 5, opDurationMicros: waitTimeRegex},
+        searchStats: {numOp: 4, opDurationMicros: waitTimeRegex}
     },
 };
 
@@ -107,6 +107,9 @@ function runTest(conn) {
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserOneAuth, 1);
     let ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
+
+    // We expect 1 successful referral, 0 failed referrals, 1 total referral, 2 binds, and 1 search
+    // operation so far. All of this should come from the userOne auth.
     checkCumulativeLDAPMetrics(ldapOperations, 1, 0, 1, 2, 1);
     adminDB.logout();
 
@@ -116,11 +119,19 @@ function runTest(conn) {
     assert(!externalDB.auth(userTwoAuthOptions));
     ldapReferralFp.off();
 
+    // The cumulative LDAP operation stats should reflect the sum of the previous stats and the new
+    // values from the failed referrals (including retries).
     assert(adminDB.auth('admin', 'pwd'));
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserTwoAuth, 1);
     ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
-    checkCumulativeLDAPMetrics(ldapOperations, 1, 1, 2, 4, 2);
+
+    // We expect 1 successful referral, 4 failed referrals, 5 total referrals, 7 binds, and 5 search
+    // operations so far. The 4 failed referrals come from 1 failure + 3 retries, the 5 additional
+    // binds come from 1 successful bind against the configured LDAP server + 1 failure + 3 retry
+    // binds against the referred LDAP server, and the 4 additional searches come from 1 failure + 3
+    // retries.
+    checkCumulativeLDAPMetrics(ldapOperations, 1, 4, 5, 7, 5);
     adminDB.logout();
 }
 

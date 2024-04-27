@@ -251,7 +251,7 @@ public:
                 return;
             }
 
-            state->promise.setError({ErrorCodes::OperationFailed, "Operation timed out"});
+            state->promise.setError({ErrorCodes::NetworkTimeout, "Operation timed out"});
         });
 
         auto anchor = shared_from_this();
