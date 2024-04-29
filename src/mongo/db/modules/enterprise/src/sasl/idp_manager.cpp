@@ -17,8 +17,10 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/clock_source.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/pcre.h"
+#include "mongo/util/system_clock_source.h"
 #include "sasl/oidc_parameters_gen.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -32,8 +34,25 @@ namespace {
 
 class JWKSFetcherFactoryImpl : public JWKSFetcherFactory {
 public:
+    // TODO (SERVER-90136) Move globalIDPManager to a ServiceContext decoration,
+    // initialized after FastClockSource is set.
+    // Once we unroll that, we can enforece always having an instance of FastClockSource.
+    static ClockSource* getClockSource() {
+        if (hasGlobalServiceContext()) {
+            auto clock = getGlobalServiceContext()->getFastClockSource();
+            if (MONGO_likely(clock)) {
+                // Background thread with fast clock source is available, prefer it.
+                return clock;
+            }
+        }
+
+        // We're likely in initial statup, no fast clock source available.
+        // Fall back on SystemClockSource which is only a litte slower.
+        return SystemClockSource::get();
+    }
+
     std::unique_ptr<crypto::JWKSFetcher> makeJWKSFetcher(StringData issuer) const final {
-        return std::make_unique<crypto::JWKSFetcherImpl>(issuer);
+        return std::make_unique<crypto::JWKSFetcherImpl>(getClockSource(), issuer);
     }
 };
 

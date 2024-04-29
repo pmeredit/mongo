@@ -110,6 +110,7 @@ if ssl_provider == 'openssl':
             '$BUILD_DIR/mongo/crypto/jwt',
             '$BUILD_DIR/mongo/db/server_base',
             '$BUILD_DIR/mongo/db/server_feature_flags',
+            '$BUILD_DIR/mongo/util/clock_source_mock',
             'sasl_oidc_server',
         ],
     )

@@ -38,6 +38,7 @@ const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     logComponentVerbosity: tojson({accessControl: 3}),
     oidcIdentityProviders: tojson(kOIDCConfig),
+    JWKSMinimumQuiescePeriodSecs: 0,
 };
 const expectedRoles = ['issuer1/myReadRole', 'readAnyDatabase'];
 const verifyAuthFn =

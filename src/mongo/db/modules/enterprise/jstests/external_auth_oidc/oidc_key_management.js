@@ -91,6 +91,7 @@ const kOIDCConfig = [
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     oidcIdentityProviders: tojson(kOIDCConfig),
+    JWKSMinimumQuiescePeriodSecs: 0,
 };
 
 const oidcArtifacts = OIDCVars(KeyServer.getURL());

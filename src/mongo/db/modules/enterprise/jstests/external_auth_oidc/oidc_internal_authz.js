@@ -111,6 +111,7 @@ KeyServer.start();
     const startupOptions = {
         authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
         oidcIdentityProviders: tojson(validOIDCConfig),
+        JWKSMinimumQuiescePeriodSecs: 0,
     };
 
     const mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
@@ -154,6 +155,7 @@ KeyServer.start();
     const startupOptions = {
         authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
         oidcIdentityProviders: tojson(validOIDCConfig),
+        JWKSMinimumQuiescePeriodSecs: 0,
     };
 
     const mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
@@ -204,6 +206,7 @@ KeyServer.start();
     const startupOptions = {
         authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
         oidcIdentityProviders: tojson(validOIDCConfig),
+        JWKSMinimumQuiescePeriodSecs: 0,
     };
 
     const mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
@@ -259,6 +262,7 @@ KeyServer.start();
     const startupOptions = {
         authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
         oidcIdentityProviders: tojson(invalidOIDCConfig),
+        JWKSMinimumQuiescePeriodSecs: 0,
     };
     assert.throws(() => MongoRunner.runMongod({auth: '', setParameter: startupOptions}));
 }
@@ -292,6 +296,7 @@ KeyServer.start();
     const startupOptions = {
         authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
         oidcIdentityProviders: tojson(invalidOIDCConfig),
+        JWKSMinimumQuiescePeriodSecs: 0,
     };
     assert.throws(() => MongoRunner.runMongod({auth: '', setParameter: startupOptions}));
 }

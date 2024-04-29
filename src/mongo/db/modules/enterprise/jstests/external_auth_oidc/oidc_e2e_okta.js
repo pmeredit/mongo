@@ -30,6 +30,7 @@ const kOktaStartupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     logComponentVerbosity: tojson({accessControl: 3}),
     oidcIdentityProviders: tojson(kOktaConfig),
+    JWKSMinimumQuiescePeriodSecs: 0,
 };
 const kExpectedTestServerSecurityOneRoles = [
     'admin.issuerOkta/Everyone',

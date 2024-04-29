@@ -5,6 +5,7 @@
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/clock_source_mock.h"
 
 #include "mongo/crypto/jwks_fetcher_mock.h"
 
@@ -22,6 +23,8 @@ constexpr auto kAudience2 = "jwt@kernel.10gen.com"_sd;
 
 class MockJWKSFetcherFactory : public JWKSFetcherFactory {
 public:
+    MockJWKSFetcherFactory() : _clock(std::make_unique<ClockSourceMock>()) {}
+
     BSONObj getTestJWKSet(bool includeKnownKeyTypes = true,
                           bool includeUnknownKeyTypes = false) const {
         BSONObjBuilder set;
@@ -71,7 +74,7 @@ public:
 
     std::unique_ptr<crypto::JWKSFetcher> makeJWKSFetcher(StringData issuer) const final {
         auto fetcher = std::make_unique<crypto::MockJWKSFetcher>(
-            getTestJWKSet(_includeKnownKeyTypes, _includeUnknownKeyTypes));
+            _clock.get(), getTestJWKSet(_includeKnownKeyTypes, _includeUnknownKeyTypes));
         if (_shouldFail) {
             fetcher->setShouldFail(_shouldFail);
         }
@@ -89,13 +92,20 @@ public:
         _includeKnownKeyTypes = include;
     }
 
+    ClockSourceMock* getClock() {
+        return _clock.get();
+    }
+
 private:
     bool _shouldFail{false};
     bool _includeUnknownKeyTypes{false};
     bool _includeKnownKeyTypes{true};
+    std::unique_ptr<ClockSourceMock> _clock;
 };
 
 TEST(IDPManager, singleIDP) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration idpc;
     idpc.setIssuer(kIssuer1);
     idpc.setAudience(kAudience1);
@@ -113,6 +123,8 @@ TEST(IDPManager, singleIDP) {
 }
 
 TEST(IDPManager, multipleIDPs) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setAudience(kAudience1);
@@ -150,6 +162,8 @@ TEST(IDPManager, multipleIDPs) {
 }
 
 TEST(IDPManager, multipleIDPsWithSameIssuer) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -193,6 +207,8 @@ TEST(IDPManager, multipleIDPsWithSameIssuer) {
 }
 
 TEST(IDPManager, updateConfigurationsResetsIdentityProviders) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     auto configs = [] {
         IDPConfiguration cfg1, cfg2, cfg3;
         cfg1.setIssuer(kIssuer1);
@@ -239,6 +255,8 @@ TEST(IDPManager, updateConfigurationsResetsIdentityProviders) {
 }
 
 TEST(IDPManager, unsetHintWithMultipleMatchPatternsFails) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setMatchPattern("@mongodb.com$"_sd);
@@ -255,6 +273,8 @@ TEST(IDPManager, unsetHintWithMultipleMatchPatternsFails) {
 }
 
 TEST(IDPManager, unsetHintWithMultipleIdPs) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setSupportsHumanFlows(false);
@@ -272,6 +292,8 @@ TEST(IDPManager, unsetHintWithMultipleIdPs) {
 }
 
 TEST(IDPManager, firstMatchingIdPWins) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     auto configs = [] {
         IDPConfiguration cfg1, cfg2, cfg3;
         cfg1.setIssuer(kIssuer1);
@@ -305,6 +327,8 @@ TEST(IDPManager, firstMatchingIdPWins) {
 }
 
 TEST(IDPJWKSRefresher, refreshIDPKeys) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration idpConfig;
     idpConfig.setIssuer(kIssuer1);
     idpConfig.setMatchPattern("@mongodb.com$"_sd);
@@ -347,6 +371,8 @@ TEST(IDPJWKSRefresher, refreshIDPKeys) {
 }
 
 TEST(IDPManager, serializeJWKSets) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -406,6 +432,8 @@ TEST(IDPManager, serializeJWKSets) {
 }
 
 TEST(IDPManager, serializeConfig) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -473,6 +501,8 @@ TEST(IDPManager, serializeConfig) {
 }
 
 TEST(IDPManager, getNextRefreshTime) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -525,6 +555,8 @@ TEST(IDPManager, getNextRefreshTime) {
 }
 
 TEST(IDPJWKSRefresher, unknownKeyTypesDisregarded) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     IDPConfiguration idpConfig;
     idpConfig.setIssuer(kIssuer1);
     idpConfig.setMatchPattern("@mongodb.com$"_sd);
@@ -610,6 +642,7 @@ BSONObj makeMachineIssuerBSON(StringData issuer) {
 }
 
 TEST(IDPManager, oneHumanIdPWithoutMatchers) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -619,6 +652,8 @@ TEST(IDPManager, oneHumanIdPWithoutMatchers) {
 }
 
 TEST(IDPManager, twoIdPsWithSameIssuerAndAudienceFails) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     auto configuration =
         BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true) << makeHumanIssuerBSON(kIssuer1, true));
     ASSERT_THROWS_WITH_CHECK(IDPManager::parseConfigFromBSONObj(configuration),
@@ -630,12 +665,16 @@ TEST(IDPManager, twoIdPsWithSameIssuerAndAudienceFails) {
 }
 
 TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentAudience) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     auto configuration = BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true, "mongo")
                                     << makeHumanIssuerBSON(kIssuer1, true, "mango"));
     std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
 }
 
 TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentJWKSPollSecs) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
+
     auto cfg1 = makeHumanIssuerBSONObjBuilder(kIssuer1, "mongo", "prefix1", true);
     cfg1.append("JWKSPollSecs", 60);
     auto cfg2 = makeHumanIssuerBSONObjBuilder(kIssuer1, "mango", "prefix2", true);
@@ -650,6 +689,7 @@ TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentJWKSPollSecs) {
 }
 
 TEST(IDPManager, twoHumanIdPsWithoutMatchersFail) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -661,6 +701,7 @@ TEST(IDPManager, twoHumanIdPsWithoutMatchersFail) {
 }
 
 TEST(IDPManager, twoHumanIdPsWithOneMatcherFails) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -672,6 +713,7 @@ TEST(IDPManager, twoHumanIdPsWithOneMatcherFails) {
 }
 
 TEST(IDPManager, oneMachineIdP) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -681,6 +723,7 @@ TEST(IDPManager, oneMachineIdP) {
 }
 
 TEST(IDPManager, twoMachineIdPs) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -691,6 +734,7 @@ TEST(IDPManager, twoMachineIdPs) {
 }
 
 TEST(IDPManager, oneHumanOneMachineIdPsWithoutMatchers) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -701,6 +745,7 @@ TEST(IDPManager, oneHumanOneMachineIdPsWithoutMatchers) {
 }
 
 TEST(IDPManager, twoHumanOneMachineIdPsWithoutMatchersFail) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -713,6 +758,7 @@ TEST(IDPManager, twoHumanOneMachineIdPsWithoutMatchersFail) {
 }
 
 TEST(IDPManager, twoHumanOneMachineIdPsWithOneMatchersFail) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -725,6 +771,7 @@ TEST(IDPManager, twoHumanOneMachineIdPsWithOneMatchersFail) {
 }
 
 TEST(IDPManager, twoHumanOneMachineIdPsWithMatchers) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
@@ -736,6 +783,7 @@ TEST(IDPManager, twoHumanOneMachineIdPsWithMatchers) {
 }
 
 TEST(IDPManager, matchersMustBeFirst) {
+    RAIIServerParameterControllerForTest quiesceController("JWKSMinimumQuiescePeriodSecs", 0);
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagOIDCInternalAuthorization", true);
 
