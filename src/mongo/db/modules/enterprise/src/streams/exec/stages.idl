@@ -97,6 +97,24 @@ enums:
             RelaxedJson: "relaxedJson"
             CanonicalJson: "canonicalJson"
 
+    KafkaKeyFormat:
+        description: "The data type used to serialize and deserialize Kafka key"
+        type: string
+        values:
+            BinData: "binData"
+            String: "string"
+            Json: "json"
+            # The int and long are big-endian to align with the Java serializer/deserializer for Kafka
+            Int: "int"
+            Long: "long"
+
+    KafkaSourceKeyFormatError:
+        description: "How to handle error during Kafka key deserialization"
+        type: string
+        values:
+            Dlq: "dlq"
+            PassThrough: "passThrough"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -276,6 +294,14 @@ structs:
                 description: "Whether to enable the deserialization of Kafka key and headers into the metadata of the stream documents."
                 type: bool
                 default: false
+            keyFormat:
+                description: "The data type used to deserialize Kafka key"
+                type: KafkaKeyFormat
+                default: BinData
+            keyFormatError:
+                description: "How to handle error during Kafka key deserialization"
+                type: KafkaSourceKeyFormatError
+                default: Dlq
 
     KafkaSinkConfigOptions:
         description: "Optional configuration options for a Kafka Sink."
@@ -285,6 +311,10 @@ structs:
                 type:
                     variant: [object, string]
                 description: "The expression that evaluates to the key of the Kafka message."
+                optional: true
+            keyFormat:
+                description: "The data type used to serialize Kafka key"
+                type: KafkaKeyFormat
                 optional: true
             headers:
                 type:

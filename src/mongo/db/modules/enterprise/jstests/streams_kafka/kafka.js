@@ -79,21 +79,29 @@ function getRestoreDirectory(tenantId, processorId) {
 }
 
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
-function makeMongoToKafkaStartCmd(
-    collName, topicName, connName, key = null, headers = null, jsonType = null) {
+function makeMongoToKafkaStartCmd(collName,
+                                  topicName,
+                                  connName,
+                                  sinkKey = undefined,
+                                  sinkKeyFormat = undefined,
+                                  sinkHeaders = undefined,
+                                  jsonType = undefined) {
     const processorId = `processor-coll_${collName}-to-topic`;
     const emitOptions = {
         connectionName: connName,
         topic: topicName,
-        config: {outputFormat: 'relaxedJson'}
+        config: {outputFormat: 'canonicalJson'}
     };
-    if (key !== null) {
-        emitOptions.config.key = key;
+    if (sinkKey !== undefined) {
+        emitOptions.config.key = sinkKey;
     }
-    if (headers !== null) {
-        emitOptions.config.headers = headers;
+    if (sinkKey !== undefined) {
+        emitOptions.config.keyFormat = sinkKeyFormat;
     }
-    if (jsonType != null) {
+    if (sinkHeaders !== undefined) {
+        emitOptions.config.headers = sinkHeaders;
+    }
+    if (jsonType != undefined) {
         emitOptions.config.outputFormat = jsonType;
     }
     let options = {
@@ -125,7 +133,8 @@ function makeMongoToKafkaStartCmd(
 }
 
 // Makes kafkaToMongoStartCmd for a specific topic name & collection name pair.
-function makeKafkaToMongoStartCmd(topicName, collName, pipeline = []) {
+function makeKafkaToMongoStartCmd(
+    topicName, collName, pipeline = [], sourceKeyFormat = 'binData', sourceKeyFormatError = 'dlq') {
     const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
     let options = {
         checkpointOptions: {
@@ -146,7 +155,11 @@ function makeKafkaToMongoStartCmd(topicName, collName, pipeline = []) {
                 $source: {
                     connectionName: kafkaPlaintextName,
                     topic: topicName,
-                    config: {enableKeysAndHeaders: true}
+                    config: {
+                        enableKeysAndHeaders: true,
+                        keyFormat: sourceKeyFormat,
+                        keyFormatError: sourceKeyFormatError,
+                    }
                 }
             },
             {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
@@ -211,7 +224,11 @@ function insertData(coll) {
                 {k: "h2", v: binData},
             ],
             headersObj: {h1: binData, h2: binData},
-            key: binData
+            keyBinData: binData,
+            keyInt: NumberInt(i),
+            keyJson: {a: 1},
+            keyLong: NumberLong(i),
+            keyString: "s" + i.toString(),
         });
     }
     sourceColl1.insertMany(input);
@@ -223,7 +240,16 @@ function insertData(coll) {
 // Then use another streamProcessor to write data from the Kafka topic to a sink collection.
 // Verify the data in the sink collection equals to data originally inserted into the source
 // collection.
-function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, jsonType = null) {
+function mongoToKafkaToMongo({
+    expectDlq,
+    sinkKey,
+    sinkKeyFormat,
+    expectedKeyFunc,
+    sinkHeaders,
+    sourceKeyFormat,
+    sourceKeyFormatError,
+    jsonType
+} = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
@@ -232,7 +258,8 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, json
     // kafkaToMongo uses the default kafka startAt behavior, which starts reading
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
-    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd(topicName1, sinkColl1.getName());
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd(
+        topicName1, sinkColl1.getName(), [] /* pipeline */, sourceKeyFormat, sourceKeyFormatError);
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
@@ -247,8 +274,13 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, json
     // Start the mongoToKafka streamProcessor.
     // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
     // processor.
-    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
-        sourceColl1.getName(), topicName1, kafkaPlaintextName, key, headers, jsonType)));
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(sourceColl1.getName(),
+                                                                topicName1,
+                                                                kafkaPlaintextName,
+                                                                sinkKey,
+                                                                sinkKeyFormat,
+                                                                sinkHeaders,
+                                                                jsonType)));
 
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
@@ -264,18 +296,16 @@ function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null, json
         let output = [];
         for (let i = 0; i < results.length; i++) {
             let outputDoc = results[i];
-            // Verify the Kafka related metadata.
-            const expectedKey = key === null ? undefined : input[i].key;
-            const expectedHeaders = headers === null ? undefined : input[i].headers;
+            const expectedKey = sinkKey === undefined ? undefined : expectedKeyFunc(input[i]);
+            const expectedHeaders = sinkHeaders === undefined ? undefined : input[i].headers;
             assert.eq(outputDoc._stream_meta.source.topic, topicName1, outputDoc);
             assert.eq(outputDoc._stream_meta.source.key, expectedKey, outputDoc);
             assert.eq(outputDoc._stream_meta.source.headers, expectedHeaders, outputDoc);
 
             outputDoc = sanitizeDoc(outputDoc);
             delete outputDoc._id;
-            output.push(outputDoc);
+            assert.docEq(input[i], outputDoc, outputDoc);
         }
-        assert.eq(input, output);
     }
 
     // Stop the streamProcessors.
@@ -786,33 +816,6 @@ function testKafkaAsyncError() {
 
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
-runKafkaTest(
-    kafka,
-    () => mongoToKafkaToMongo(false /* expectDlq */, "$key" /* key */, "$headers" /* headers
-    */));
-runKafkaTest(kafka,
-             () => mongoToKafkaToMongo(
-                 false /* expectDlq */, "$key" /* key */, "$headersObj" /* headers */));
-runKafkaTest(kafka,
-             () => mongoToKafkaToMongo(false /* expectDlq */,
-                                       {$getField: "key"} /* key
-                                                           */
-                                       ,
-                                       {$getField: "headers"} /* headers */));
-runKafkaTest(
-    kafka,
-    () => mongoToKafkaToMongo(true /* expectDlq */, "$a" /* key */, "$headers" /* headers */));
-runKafkaTest(kafka,
-             () => mongoToKafkaToMongo(true /* expectDlq */, "$key" /* key */, "$a" /* headers
-             */));
-runKafkaTest(kafka,
-             () => mongoToKafkaToMongo(
-                 true /* expectDlq */, {$divide: ["$a", 0]} /* key */, "$headers" /* headers */
-                 ));
-runKafkaTest(kafka,
-             () => mongoToKafkaToMongo(
-                 true /* expectDlq */, "$key" /* key */, {$divide: ["$a", 0]} /* headers */
-                 ));
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka,
              () => mongoToKafkaToMongoMaintainStreamMeta({$limit: 1} /* nonGroupWindowStage */));
@@ -827,16 +830,128 @@ numDocumentsToInsert = 100000;
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 
 numDocumentsToInsert = 1000;
-runKafkaTest(
-    kafka,
-    () => mongoToKafkaToMongo(
-        false /* expectDlq */, null /* key */, null /* headers */, "relaxedJson" /* jsonType */
-        ));
-
-runKafkaTest(
-    kafka,
-    () => mongoToKafkaToMongo(
-        false /* expectDlq */, null /* key */, null /* headers */, "canonicalJson" /* jsonType */
-        ));
+runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "relaxedJson"}));
+runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "canonicalJson"}));
 
 testKafkaAsyncError();
+
+// binData key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "binData",
+                        expectedKeyFunc: (doc) => doc.keyBinData,
+                    }));
+// binData key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "binData",
+                        expectedKeyFunc: (doc) => doc.keyBinData,
+                    }));
+// binData key expression
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: {$getField: "keyBinData"},
+                        sinkKeyFormat: "binData",
+                        expectedKeyFunc: (doc) => doc.keyBinData,
+                    }));
+// int key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyInt",
+                        sinkKeyFormat: "int",
+                        sourceKeyFormat: "int",
+                        expectedKeyFunc: (doc) => doc.keyInt,
+                    }));
+// invalid int key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "binData",
+                        sourceKeyFormat: "int",
+                    }));
+// invalid int key field passthrough
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "binData",
+                        sourceKeyFormat: "int",
+                        sourceKeyFormatError: "passThrough",
+                        expectedKeyFunc: (doc) => doc.keyBinData,
+                    }));
+// long key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyLong",
+                        sinkKeyFormat: "long",
+                        sourceKeyFormat: "long",
+                        expectedKeyFunc: (doc) => doc.keyLong,
+                    }));
+// invalid long key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "binData",
+                        sourceKeyFormat: "long",
+                    }));
+// string key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyString",
+                        sinkKeyFormat: "string",
+                        sourceKeyFormat: "string",
+                        expectedKeyFunc: (doc) => doc.keyString,
+                    }));
+// json key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyJson",
+                        sinkKeyFormat: "json",
+                        sourceKeyFormat: "json",
+                        expectedKeyFunc: (doc) => doc.keyJson,
+                    }));
+// invalid json key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkKey: "$keyString",
+                        sinkKeyFormat: "string",
+                        sourceKeyFormat: "json",
+                    }));
+// sink key format mismatch
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "int",
+                    }));
+// invalid key expression
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkKey: {$divide: ["$a", 0]},
+                        sinkKeyFormat: "binData",
+                    }));
+// array headers field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkHeaders: "$headers",
+                    }));
+// object headers field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkHeaders: "$headersObj",
+                    }));
+// array headers expression
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkHeaders: {$getField: "headers"},
+                    }));
+// invalid headers type
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkHeaders: "$a",
+                    }));
+// invalid headers expression
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkHeaders: {$divide: ["$a", 0]},
+                    }));

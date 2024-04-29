@@ -106,7 +106,8 @@ structs:
                 optional: true
             key:
                 description: "Key of this Kafka document"
-                type: bindata_generic
+                type:
+                    variant: [bindata_generic, string, object, int, long]
                 optional: true
             headers:
                 description: "Headers of this Kafka document"

@@ -490,3 +490,15 @@ env.CppUnitTest(
         '../streams_operators',
     ],
 )
+
+env.CppUnitTest(
+    target='kafka_key_deserialization_test',
+    source=[
+        'kafka_key_deserialization_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../streams_operators',
+        'streams_test_utils',
+    ],
+)

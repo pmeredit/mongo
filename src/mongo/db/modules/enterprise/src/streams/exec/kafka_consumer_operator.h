@@ -16,6 +16,7 @@
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/unflushed_state_container.h"
 #include "streams/exec/watermark_combiner.h"
 #include "streams/exec/watermark_generator.h"
@@ -81,6 +82,11 @@ public:
         boost::optional<std::string> gwproxyEndpoint;
         // GWProxy endpoint symmetric encryption key.
         boost::optional<std::string> gwproxyKey;
+        // The data type used to deserialize Kafka key.
+        mongo::KafkaKeyFormatEnum keyFormat{mongo::KafkaKeyFormatEnum::BinData};
+        // How to handle error during Kafka key deserialization.
+        mongo::KafkaSourceKeyFormatErrorEnum keyFormatError{
+            mongo::KafkaSourceKeyFormatErrorEnum::Dlq};
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -111,6 +117,7 @@ private:
     friend class WindowOperatorTest;
     friend class CheckpointTestWorkload;
     friend class PlannerTest;
+    friend class KafkaKeyDeserializationTest;
 
     // Encapsulates state for a Kafka partition consumer.
     struct ConsumerInfo {
@@ -244,6 +251,12 @@ private:
     // If this consumer group ID does not exist or doesn't have any committed offsets, then this
     // will return an empty vector.
     std::vector<int64_t> getCommittedOffsets() const;
+
+    // Deserialize the Kafka key according to the specified key format. If the deserialization
+    // fails, the key will be returned as BinData.
+    static std::
+        variant<std::vector<std::uint8_t>, std::string, mongo::BSONObj, std::int32_t, std::int64_t>
+        deserializeKafkaKey(std::vector<std::uint8_t> key, mongo::KafkaKeyFormatEnum keyFormat);
 
     Options _options;
     boost::optional<mongo::KafkaSourceCheckpointState> _restoredCheckpointState;

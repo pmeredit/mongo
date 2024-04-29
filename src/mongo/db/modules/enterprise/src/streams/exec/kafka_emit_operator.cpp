@@ -296,6 +296,78 @@ RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& st
     return headers;
 }
 
+Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
+    if (_options.key) {
+        Value keyField = _options.key->evaluate(streamDoc.doc, &_context->expCtx->variables);
+        if (!keyField.missing()) {
+            auto unexpectedKeyTypeError = [](BSONType type) {
+                return (str::stream()
+                        << "Kafka $emit key expression must evaluate to '" << typeName(type)
+                        << "' according to the "
+                           "specified key format")
+                    .ss.str();
+            };
+
+            switch (_options.keyFormat) {
+                case mongo::KafkaKeyFormatEnum::BinData: {
+                    uassert(ErrorCodes::BadValue,
+                            unexpectedKeyTypeError(BinData),
+                            keyField.getType() == BinData);
+                    return keyField;
+                }
+                case mongo::KafkaKeyFormatEnum::String: {
+                    uassert(ErrorCodes::BadValue,
+                            unexpectedKeyTypeError(String),
+                            keyField.getType() == String);
+                    return keyField;
+                }
+                case mongo::KafkaKeyFormatEnum::Json: {
+                    uassert(ErrorCodes::BadValue,
+                            unexpectedKeyTypeError(Object),
+                            keyField.getType() == Object);
+                    auto keyObject = keyField.getDocument().toBson();
+                    auto keyJson = tojson(keyObject, _options.jsonStringFormat, false /* pretty */);
+                    return Value(std::move(keyJson));
+                }
+                case mongo::KafkaKeyFormatEnum::Int: {
+                    uassert(ErrorCodes::BadValue,
+                            unexpectedKeyTypeError(NumberInt),
+                            keyField.getType() == NumberInt);
+                    int32_t keyInt = keyField.getInt();
+                    std::vector<uint8_t> keyIntBytes(sizeof(keyInt), 0);
+                    // Big-endian serialization
+                    for (size_t i = 0; i < keyIntBytes.size(); i++) {
+                        keyIntBytes[i] = keyInt >> ((sizeof(keyInt) - i - 1) * 8);
+                    }
+                    Value keyHolder(BSONBinData{keyIntBytes.data(),
+                                                static_cast<int>(keyIntBytes.size()),
+                                                mongo::BinDataGeneral});
+                    return keyHolder;
+                }
+                case mongo::KafkaKeyFormatEnum::Long: {
+                    uassert(ErrorCodes::BadValue,
+                            unexpectedKeyTypeError(NumberLong),
+                            keyField.getType() == NumberLong);
+                    int64_t keyLong = keyField.getLong();
+                    std::vector<uint8_t> keyLongBytes(sizeof(keyLong), 0);
+                    // Big-endian serialization
+                    for (size_t i = 0; i < keyLongBytes.size(); i++) {
+                        keyLongBytes[i] = keyLong >> ((sizeof(keyLong) - i - 1) * 8);
+                    }
+                    Value keyHolder(BSONBinData{keyLongBytes.data(),
+                                                static_cast<int>(keyLongBytes.size()),
+                                                mongo::BinDataGeneral});
+                    return keyHolder;
+                }
+                default: {
+                    MONGO_UNREACHABLE;
+                }
+            }
+        }
+    }
+    return {};
+}
+
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto docAsStr = tojson(streamDoc.doc.toBson(), _options.jsonStringFormat);
     auto docSize = docAsStr.size();
@@ -325,17 +397,18 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
 
     const void* keyPointer = nullptr;
     size_t keyLength = 0;
-    Value keyField;
-    if (_options.key) {
-        keyField = _options.key->evaluate(streamDoc.doc, &_context->expCtx->variables);
-        if (!keyField.missing()) {
-            uassert(ErrorCodes::BadValue,
-                    "Kafka $emit key expression must evaluate to BinData",
-                    keyField.getType() == BinData);
-            auto keyBinData = keyField.getBinData();
-            keyPointer = keyBinData.data;
-            keyLength = keyBinData.length;
-        }
+    // The 'keyHolder' is the serialized Kafka key held in mongo::Value. It may either be a binData
+    // or a string. It may be a stack value for short string, so it's important to assign
+    // 'keyPointer' at the current function. Otherwise it may point to returned stack address.
+    auto keyHolder = createKafkaKey(streamDoc);
+    if (keyHolder.getType() == BinData) {
+        keyPointer = keyHolder.getBinData().data;
+        keyLength = keyHolder.getBinData().length;
+    } else if (keyHolder.getType() == String) {
+        keyPointer = keyHolder.getStringData().data();
+        keyLength = keyHolder.getStringData().length();
+    } else {
+        invariant(keyHolder.getType() == EOO);
     }
 
     RdKafka::Headers* headers = createKafkaHeaders(streamDoc, topicName);

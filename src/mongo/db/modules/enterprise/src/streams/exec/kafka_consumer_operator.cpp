@@ -13,6 +13,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/text.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -603,6 +604,62 @@ int64_t KafkaConsumerOperator::doRunOnce() {
     return totalNumInputDocs;
 }
 
+std::variant<std::vector<std::uint8_t>, std::string, mongo::BSONObj, std::int32_t, std::int64_t>
+KafkaConsumerOperator::deserializeKafkaKey(std::vector<std::uint8_t> key,
+                                           KafkaKeyFormatEnum keyFormat) {
+    switch (keyFormat) {
+        case KafkaKeyFormatEnum::BinData: {
+            return key;
+        }
+        case KafkaKeyFormatEnum::String: {
+            auto keyStr = StringData{reinterpret_cast<const char*>(key.data()),
+                                     static_cast<size_t>(key.size())};
+            if (!isValidUTF8(keyStr)) {
+                return key;
+            }
+            std::string deserializedKey(key.begin(), key.end());
+            return deserializedKey;
+        }
+        case KafkaKeyFormatEnum::Json: {
+            auto keyStr = StringData{reinterpret_cast<const char*>(key.data()),
+                                     static_cast<size_t>(key.size())};
+            try {
+                BSONObj deserializedKey = fromjson(keyStr);
+                return deserializedKey;
+            } catch (std::exception&) {
+                return key;
+            }
+        }
+        case KafkaKeyFormatEnum::Int: {
+            if (key.size() != sizeof(int32_t)) {
+                return key;
+            }
+            int32_t deserializedKey = 0;
+            // Big-endian deserialization
+            for (auto byte : key) {
+                deserializedKey <<= 8;
+                deserializedKey |= byte & 0xFF;
+            }
+            return deserializedKey;
+        }
+        case KafkaKeyFormatEnum::Long: {
+            if (key.size() != sizeof(int64_t)) {
+                return key;
+            }
+            int64_t deserializedKey = 0;
+            // Big-endian deserialization
+            for (auto byte : key) {
+                deserializedKey <<= 8;
+                deserializedKey |= byte & 0xFF;
+            }
+            return deserializedKey;
+        }
+        default: {
+            MONGO_UNREACHABLE;
+        }
+    }
+}
+
 boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {
     if (!sourceDoc.doc) {
@@ -638,7 +695,20 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         streamMetaSource.setTopic(StringData{_options.topicName});
         streamMetaSource.setPartition(sourceDoc.partition);
         streamMetaSource.setOffset(sourceDoc.offset);
-        streamMetaSource.setKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
+        auto deserializedKey = deserializeKafkaKey(std::move(sourceDoc.key), _options.keyFormat);
+        // If the required format is not binData but we find binData to be the result, this means
+        // deserialization error happened. Push error to the DLQ if that is the requested way to
+        // deal with the error.
+        if (_options.keyFormat != KafkaKeyFormatEnum::BinData &&
+            std::holds_alternative<std::vector<std::uint8_t>>(deserializedKey) &&
+            _options.keyFormatError == KafkaSourceKeyFormatErrorEnum::Dlq) {
+            sourceDoc.key = std::move(std::get<std::vector<std::uint8_t>>(deserializedKey));
+            uasserted(ErrorCodes::BadValue,
+                      str::stream() << "Failed to deserialize the Kafka key according to the "
+                                       "specified key format '"
+                                    << KafkaKeyFormat_serializer(_options.keyFormat) << "'");
+        }
+        streamMetaSource.setKey(std::move(deserializedKey));
         streamMetaSource.setHeaders(std::move(sourceDoc.headers));
         StreamMeta streamMeta;
         streamMeta.setSource(std::move(streamMetaSource));
@@ -682,7 +752,7 @@ BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument s
     streamMetaSource.setTopic(StringData{_options.topicName});
     streamMetaSource.setPartition(sourceDoc.partition);
     streamMetaSource.setOffset(sourceDoc.offset);
-    streamMetaSource.setKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
+    streamMetaSource.setKey(deserializeKafkaKey(std::move(sourceDoc.key), _options.keyFormat));
     streamMetaSource.setHeaders(std::move(sourceDoc.headers));
     StreamMeta streamMeta;
     streamMeta.setSource(std::move(streamMetaSource));

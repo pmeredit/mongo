@@ -158,16 +158,28 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                 Value(static_cast<long long>(*internalStreamMeta.getSource()->getOffset())));
         }
         if (internalStreamMeta.getSource()->getKey()) {
-            if (internalStreamMeta.getSource()->getKey()->length()) {
-                BSONBinData binData(internalStreamMeta.getSource()->getKey()->data(),
-                                    internalStreamMeta.getSource()->getKey()->length(),
-                                    mongo::BinDataGeneral);
-                newStreamMeta.setNestedField(
-                    FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
-                                             << StreamMetaSource::kKeyFieldName)
-                                  .ss.str()),
-                    Value(std::move(binData)));
-            }
+            auto keyPath = FieldPath((str::stream() << StreamMeta::kSourceFieldName << "."
+                                                    << StreamMetaSource::kKeyFieldName)
+                                         .ss.str());
+            std::visit(
+                OverloadedVisitor{
+                    [&](const std::vector<uint8_t>& key) {
+                        if (key.size()) {
+                            BSONBinData binData(key.data(), key.size(), mongo::BinDataGeneral);
+                            newStreamMeta.setNestedField(keyPath, Value(std::move(binData)));
+                        }
+                    },
+                    [&](const std::string& key) {
+                        newStreamMeta.setNestedField(keyPath, Value(key));
+                    },
+                    [&](const mongo::BSONObj& key) {
+                        newStreamMeta.setNestedField(keyPath, Value(key));
+                    },
+                    [&](int32_t key) { newStreamMeta.setNestedField(keyPath, Value(key)); },
+                    [&](int64_t key) {
+                        newStreamMeta.setNestedField(keyPath, Value(static_cast<long long>(key)));
+                    }},
+                *internalStreamMeta.getSource()->getKey());
         }
         if (internalStreamMeta.getSource()->getHeaders()) {
             if (!internalStreamMeta.getSource()->getHeaders()->empty()) {

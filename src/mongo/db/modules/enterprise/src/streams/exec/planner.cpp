@@ -516,6 +516,8 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
             internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
         }
         internalOptions.enableKeysAndHeaders = config->getEnableKeysAndHeaders();
+        internalOptions.keyFormat = config->getKeyFormat();
+        internalOptions.keyFormatError = config->getKeyFormatError();
     }
 
     if (config && config->getGroupId()) {
@@ -805,22 +807,29 @@ void Planner::planEmitSink(const BSONObj& spec) {
             if (auto auth = baseOptions.getAuth(); auth) {
                 kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
             }
-            kafkaEmitOptions.key = options.getConfig() && options.getConfig()->getKey()
-                ? parseStringOrObjectExpression(_context->expCtx, *options.getConfig()->getKey())
-                : nullptr;
-            kafkaEmitOptions.headers = options.getConfig() && options.getConfig()->getHeaders()
-                ? parseStringOrObjectExpression(_context->expCtx,
-                                                *options.getConfig()->getHeaders())
-                : nullptr;
-
             if (baseOptions.getGwproxyEndpoint()) {
                 kafkaEmitOptions.gwproxyEndpoint = baseOptions.getGwproxyEndpoint()->toString();
             }
-
             if (baseOptions.getGwproxyKey()) {
                 kafkaEmitOptions.gwproxyKey = baseOptions.getGwproxyKey()->toString();
             }
-
+            if (options.getConfig()) {
+                kafkaEmitOptions.key = options.getConfig()->getKey()
+                    ? parseStringOrObjectExpression(_context->expCtx,
+                                                    *options.getConfig()->getKey())
+                    : nullptr;
+                if (kafkaEmitOptions.key) {
+                    uassert(
+                        ErrorCodes::InvalidOptions,
+                        "Expected config.keyFormat to be specified when config.key is specified",
+                        options.getConfig()->getKeyFormat());
+                    kafkaEmitOptions.keyFormat = *options.getConfig()->getKeyFormat();
+                }
+                kafkaEmitOptions.headers = options.getConfig()->getHeaders()
+                    ? parseStringOrObjectExpression(_context->expCtx,
+                                                    *options.getConfig()->getHeaders())
+                    : nullptr;
+            }
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
                 : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;

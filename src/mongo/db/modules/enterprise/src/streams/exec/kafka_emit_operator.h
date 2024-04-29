@@ -10,6 +10,7 @@
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/sink_operator.h"
+#include "streams/exec/stages_gen.h"
 
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -40,6 +41,8 @@ public:
         mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
         // The expression that evaluates to the key of the Kafka message.
         boost::intrusive_ptr<mongo::Expression> key{nullptr};
+        // The expected data type used to serialize the key of the Kafka message.
+        mongo::KafkaKeyFormatEnum keyFormat{mongo::KafkaKeyFormatEnum::BinData};
         // The expression that evaluates to the headers of the Kafka message.
         boost::intrusive_ptr<mongo::Expression> headers{nullptr};
         // GWProxy endpoint hostname or IP address.
@@ -124,6 +127,8 @@ private:
     void processStreamDoc(const StreamDocument& streamDoc);
 
     RdKafka::Headers* createKafkaHeaders(const StreamDocument& streamDoc, std::string topicName);
+
+    mongo::Value createKafkaKey(const StreamDocument& streamDoc);
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Producer.
