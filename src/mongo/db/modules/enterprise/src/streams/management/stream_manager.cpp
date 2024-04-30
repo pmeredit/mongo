@@ -546,12 +546,32 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
     }
 
     if (!status->isOK()) {
-        stopStreamProcessor(name, StopReason::ErrorDuringStart, deadline);
+        StopStreamProcessorCommand stopCommand;
+        stopCommand.setTenantId(request.getTenantId());
+        stopCommand.setName(request.getName());
+        stopCommand.setProcessorId(request.getProcessorId());
+        stopCommand.setTimeout(mongo::duration_cast<Seconds>(deadline - Date_t::now()));
+        stopStreamProcessor(stopCommand, StopReason::ErrorDuringStart);
 
         // Throw an error back to the client calling start.
         uasserted(status->code(), status->reason());
     }
     return startResult;
+}
+
+boost::optional<std::string> StreamManager::getAssignedTenantId(mongo::WithLock) {
+    if (mongo::streams::gStreamsAllowMultiTenancy || _processors.empty()) {
+        return boost::none;
+    }
+    return _processors.begin()->second->context->tenantId;
+}
+
+void StreamManager::assertTenantIdIsValid(mongo::WithLock lk, mongo::StringData tenantId) {
+    auto assignedTenantId = getAssignedTenantId(lk);
+    uassert(mongo::ErrorCodes::InternalError,
+            str::stream() << "Unexpected tenantId (" << tenantId << " vs " << *assignedTenantId
+                          << ")",
+            !assignedTenantId || *assignedTenantId == tenantId);
 }
 
 StreamManager::StartResult StreamManager::startStreamProcessorAsync(
@@ -590,8 +610,12 @@ StreamManager::StartResult StreamManager::startStreamProcessorAsync(
     }
 
     if (shouldStopStreamProcessor) {
-        Date_t deadline = Date_t::now() + request.getTimeout();
-        stopStreamProcessor(name, StopReason::ExternalStartRequestForFailedState, deadline);
+        StopStreamProcessorCommand stopCommand;
+        stopCommand.setTenantId(request.getTenantId());
+        stopCommand.setName(request.getName());
+        stopCommand.setProcessorId(request.getProcessorId());
+        stopCommand.setTimeout(request.getTimeout());
+        stopStreamProcessor(stopCommand, StopReason::ExternalStartRequestForFailedState);
     }
 
     boost::optional<int64_t> sampleCursorId;
@@ -605,18 +629,7 @@ StreamManager::StartResult StreamManager::startStreamProcessorAsync(
 
         if (!mongo::streams::gStreamsAllowMultiTenancy) {
             // Ensure all SPs running on this process belong to the same tenant ID.
-            bool isAllSameTenantId =
-                std::all_of(_processors.begin(), _processors.end(), [tenantId](const auto& e) {
-                    return e.second->context->tenantId == tenantId;
-                });
-            uassert(mongo::ErrorCodes::InternalError,
-                    str::stream() << "Not allowed to schedule a stream processor with a different "
-                                     "tenant ID ("
-                                  << tenantId
-                                  << ") than the "
-                                     "other running stream processors' tenant ID ("
-                                  << _processors.begin()->second->context->tenantId << ")",
-                    isAllSameTenantId);
+            assertTenantIdIsValid(lk, tenantId);
 
             if (_processors.empty()) {
                 // Recreate all Metric instances to use the new tenantId label.
@@ -671,9 +684,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     auto context = std::make_unique<Context>();
     context->tenantId = request.getTenantId().toString();
     context->streamName = name;
-    if (request.getProcessorId()) {
-        context->streamProcessorId = request.getProcessorId()->toString();
-    }
+    context->streamProcessorId = request.getProcessorId().toString();
     if (request.getOptions().getFeatureFlags()) {
         context->featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
             request.getOptions().getFeatureFlags().get());
@@ -819,6 +830,9 @@ void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& r
                "streamProcessorName"_attr = request.getName());
 
     stdx::lock_guard<Latch> lk(_mutex);
+
+    assertTenantIdIsValid(lk, request.getTenantId());
+
     std::string name = request.getName().toString();
     auto* info = getProcessorInfo(lk, name);
     uassert(mongo::ErrorCodes::InternalError,
@@ -846,15 +860,14 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
     });
     activeGauge->incBy(1);
 
-    Date_t deadline = Date_t::now() + request.getTimeout();
-    stopStreamProcessor(request.getName().toString(), StopReason::ExternalStopRequest, deadline);
+    stopStreamProcessor(request, StopReason::ExternalStopRequest);
 }
 
-void StreamManager::stopStreamProcessor(std::string name,
-                                        StopReason stopReason,
-                                        mongo::Date_t deadline) {
-    stopStreamProcessorAsync(name, stopReason);
+void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand& request,
+                                        StopReason stopReason) {
+    stopStreamProcessorAsync(request, stopReason);
 
+    std::string name = request.getName().toString();
     auto getExecutorStopStatus = [this, name]() -> boost::optional<mongo::Status> {
         stdx::lock_guard<Latch> lk(_mutex);
 
@@ -876,6 +889,7 @@ void StreamManager::stopStreamProcessor(std::string name,
     };
 
     // Wait for the executor to succesfully stop or report an error.
+    Date_t deadline = Date_t::now() + request.getTimeout();
     boost::optional<Status> status = getExecutorStopStatus();
     while (!status) {
         sleepFor(Milliseconds(100));
@@ -909,12 +923,21 @@ void StreamManager::stopStreamProcessor(std::string name,
     }
 }
 
-void StreamManager::stopStreamProcessorAsync(std::string name, StopReason stopReason) {
+void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCommand& request,
+                                             StopReason stopReason) {
     stdx::lock_guard<Latch> lk(_mutex);
+
+    assertTenantIdIsValid(lk, request.getTenantId());
+
+    std::string name = request.getName().toString();
     auto it = _processors.find(name);
     uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "Stream processor does not exist: " << name,
             it != _processors.end());
+    uassert(mongo::ErrorCodes::InternalError,
+            str::stream() << "Unexpected tenantId (" << request.getTenantId() << " vs "
+                          << it->second->context->tenantId << ")",
+            request.getTenantId() == it->second->context->tenantId);
     uassert(mongo::ErrorCodes::InternalError,
             str::stream() << "Stream processor is already being stopped: " << name,
             it->second->streamStatus != StreamStatusEnum::Stopping);
@@ -944,6 +967,9 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     activeGauge->incBy(1);
 
     stdx::lock_guard<Latch> lk(_mutex);
+
+    assertTenantIdIsValid(lk, request.getTenantId());
+
     std::string name = request.getName().toString();
     auto it = _processors.find(name);
     uassert(ErrorCodes::StreamProcessorDoesNotExist,
@@ -983,17 +1009,20 @@ int64_t StreamManager::startSample(mongo::WithLock,
     return cursorId;
 }
 
-StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
-                                                             int64_t cursorId,
-                                                             int64_t batchSize) {
+StreamManager::OutputSample StreamManager::getMoreFromSample(
+    const mongo::GetMoreStreamSampleCommand& request) {
     stdx::lock_guard<Latch> lk(_mutex);
 
+    assertTenantIdIsValid(lk, request.getTenantId());
+
+    std::string name = request.getName().toString();
     auto it = _processors.find(name);
     uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "Stream processor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
 
+    int64_t cursorId = request.getCommandParameter();
     auto samplerIt = std::find_if(
         processorInfo->outputSamplers.begin(),
         processorInfo->outputSamplers.end(),
@@ -1003,7 +1032,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
             samplerIt != processorInfo->outputSamplers.end());
 
     OutputSample nextBatch;
-    nextBatch.outputDocs = samplerIt->outputSampler->getNext(batchSize);
+    nextBatch.outputDocs = samplerIt->outputSampler->getNext(request.getBatchSize());
     if (samplerIt->outputSampler->done()) {
         nextBatch.done = true;
         // Since the OutputSampler is done sampling, remove it from
@@ -1016,6 +1045,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
 
 GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
     stdx::lock_guard<Latch> lk(_mutex);
+    assertTenantIdIsValid(lk, request.getTenantId());
     return getStats(lk, request, getProcessorInfo(lk, request.getName().toString()));
 }
 
@@ -1164,6 +1194,10 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
 
     stdx::lock_guard<Latch> lk(_mutex);
 
+    if (request.getTenantId()) {
+        assertTenantIdIsValid(lk, *request.getTenantId());
+    }
+
     std::vector<mongo::ListStreamProcessorsReplyItem> streamProcessors;
     streamProcessors.reserve(_processors.size());
     for (auto& [name, processorInfo] : _processors) {
@@ -1197,15 +1231,24 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
     return reply;
 }
 
-void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs) {
+void StreamManager::testOnlyInsertDocuments(const mongo::TestOnlyInsertCommand& request) {
     stdx::lock_guard<Latch> lk(_mutex);
 
+    assertTenantIdIsValid(lk, request.getTenantId());
+
+    std::string name = request.getName().toString();
     auto it = _processors.find(name);
     uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "Stream processor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
 
+    // The incoming documents may not be owned. Since we need them to outlive this command
+    // execution, get owned copies of them.
+    std::vector<mongo::BSONObj> docs;
+    for (const auto& doc : request.getDocuments()) {
+        docs.push_back(doc.getOwned());
+    }
     processorInfo->executor->testOnlyInsertDocuments(std::move(docs));
 }
 
@@ -1252,22 +1295,28 @@ GetMetricsReply StreamManager::getMetrics() {
 }
 
 mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
-    // TODO SERVER-86336 This path needs to be changed to support multi tenancy.
     const mongo::UpdateFeatureFlagsCommand& request) {
-    mongo::UpdateFeatureFlagsReply reply;
-    _tenantFeatureFlags->updateFeatureFlags(request.getFeatureFlags());
     stdx::lock_guard<Latch> lk(_mutex);
+
+    assertTenantIdIsValid(lk, request.getTenantId());
+
+    _tenantFeatureFlags->updateFeatureFlags(request.getFeatureFlags());
     for (auto& iter : _processors) {
         iter.second->executor->onFeatureFlagsUpdated();
     }
+
+    mongo::UpdateFeatureFlagsReply reply;
     return reply;
 }
 
 mongo::GetFeatureFlagsReply StreamManager::testOnlyGetFeatureFlags(
     const mongo::GetFeatureFlagsCommand& request) {
-    if (request.getStreamProcessor()) {
-        std::string name = request.getStreamProcessor()->toString();
+    if (request.getName()) {
         stdx::lock_guard<Latch> lk(_mutex);
+
+        assertTenantIdIsValid(lk, request.getTenantId());
+
+        std::string name = request.getName()->toString();
         auto processor = _processors.find(name);
         mongo::GetFeatureFlagsReply reply;
         if (processor != _processors.end()) {
@@ -1316,24 +1365,28 @@ void StreamManager::shutdown() {
 }
 
 void StreamManager::stopAllStreamProcessors() {
-    std::vector<std::string> streamProcessors;
+    std::vector<StopStreamProcessorCommand> stopCommands;
     {
         stdx::lock_guard<Latch> lock(_mutex);
-        streamProcessors.reserve(_processors.size());
+        stopCommands.reserve(_processors.size());
         for (const auto& [name, sp] : _processors) {
-            streamProcessors.push_back(name);
+            StopStreamProcessorCommand stopCommand;
+            stopCommand.setTenantId(sp->context->tenantId);
+            stopCommand.setName(sp->context->streamName);
+            stopCommand.setProcessorId(StringData(sp->context->streamProcessorId));
+            stopCommands.push_back(std::move(stopCommand));
         }
     }
 
     LOGV2_INFO(75914, "Stopping all stream processors");
-    for (const auto& processorName : streamProcessors) {
+    for (auto& stopCommand : stopCommands) {
         try {
-            Date_t deadline = Date_t::now() + Minutes{3};
-            stopStreamProcessor(processorName, StopReason::Shutdown, deadline);
+            stopCommand.setTimeout(Seconds{3 * 60});
+            stopStreamProcessor(stopCommand, StopReason::Shutdown);
         } catch (const DBException& ex) {
             LOGV2_WARNING(75906,
                           "Failed to stop stream processor during stopAllStreamProcessors",
-                          "name"_attr = processorName,
+                          "name"_attr = stopCommand.getName(),
                           "errorCode"_attr = ex.code(),
                           "exception"_attr = ex.reason());
         }
@@ -1346,6 +1399,9 @@ void StreamManager::sendEvent(const mongo::SendEventCommand& request) {
             request.getCheckpointFlushedEvent());
 
     stdx::lock_guard<Latch> lk(_mutex);
+
+    assertTenantIdIsValid(lk, request.getTenantId());
+
     // It's easier for the streams Agent to only supply a processor ID here (not name), so we lookup
     // the processor by ID.
     auto it =

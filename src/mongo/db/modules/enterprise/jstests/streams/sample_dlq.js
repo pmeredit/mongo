@@ -26,7 +26,7 @@ sp.createStreamProcessor(spName, [
 sp[spName].start();
 
 // Start a sample session.
-const cursorId = sp[spName].startSample();
+const cursorId = sp[spName].startSample()["id"];
 
 // Insert a doc that will be DLQ-ed in the $validate stage.
 const doc = {

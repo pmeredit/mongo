@@ -8,7 +8,10 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    TEST_TENANT_ID
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const CA_CERT = 'jstests/libs/ca.pem';
 const SERVER_CERT = 'jstests/libs/server.pem';
@@ -87,7 +90,7 @@ const connectionRegistry = [
     },
 
 ];
-const sp = new Streams(connectionRegistry);
+const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
 const validationExpr = {
     $gt: ['$fullDocument._id', 9]
@@ -215,7 +218,8 @@ assert.eq(13053, result.code);
 assert.commandWorked(db.runCommand(caFileDoesNotMatchSubjectDNProcessor.makeStartCmd()));
 
 const listCmd = {
-    streams_listStreamProcessors: ''
+    streams_listStreamProcessors: '',
+    tenantId: TEST_TENANT_ID
 };
 result = db.runCommand(listCmd);
 assert.eq(result["ok"], 1, result);
@@ -224,7 +228,6 @@ assert.commandWorked(writeColl.insert({}));
 
 // Verify this streamProcessor goes into an error state.
 assert.soon(() => {
-    const listCmd = {streams_listStreamProcessors: ''};
     result = db.runCommand(listCmd);
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 1, result);

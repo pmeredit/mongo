@@ -4,7 +4,12 @@
  * ]
  */
 
-import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    getStats,
+    listStreamProcessors,
+    stopStreamProcessor,
+    TEST_TENANT_ID,
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 "use strict";
 
@@ -20,7 +25,7 @@ const goodUri = 'mongodb://' + db.getMongo().host;
 function startStreamProcessor(pipeline) {
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'testTenant',
+        tenantId: TEST_TENANT_ID,
         name: 'timeseriesTest',
         processorId: 'timeseriesTest1',
         pipeline: pipeline,
@@ -37,8 +42,7 @@ function startStreamProcessor(pipeline) {
 }
 
 function getOperatorStats(operator = "") {
-    let getStatsCmd = {streams_getStats: '', name: 'timeseriesTest', verbose: true};
-    let result = db.runCommand(getStatsCmd);
+    let result = getStats('timeseriesTest');
     if (result["ok"] != 1) {
         return 0;
     }
@@ -53,15 +57,6 @@ function getOperatorStats(operator = "") {
     }
 
     return opStats;
-}
-
-function stopStreamProcessor() {
-    let stopCmd = {
-        streams_stopStreamProcessor: '',
-        name: 'timeseriesTest',
-    };
-    let result = db.runCommand(stopCmd);
-    assert.eq(result["ok"], 1);
 }
 
 function testEmitToTimeSeriesCollection() {
@@ -91,8 +86,7 @@ function testEmitToTimeSeriesCollection() {
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 1);
 
-    let listCmd = {streams_listStreamProcessors: ''};
-    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
 
     inputColl.insert(
         Array.from({length: 10}, (_, i) => ({_id: i, ts: ISODate('2024-01-01T01:00:00Z')})));
@@ -108,7 +102,7 @@ function testEmitToTimeSeriesCollection() {
     });
     assert.eq(opStats["inputMessageCount"], 30);
     assert.eq(opStats["outputMessageCount"], 10);
-    stopStreamProcessor();
+    stopStreamProcessor('timeseriesTest');
 }
 
 function testEmitToTimeSeriesMissingTimeField() {
@@ -143,8 +137,7 @@ function testEmitToTimeSeriesMissingTimeField() {
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 1);
 
-    let listCmd = {streams_listStreamProcessors: ''};
-    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
 
     inputColl.insert(
         Array.from({length: 10}, (_, i) => ({_id: i, ts: ISODate('2024-01-01T01:00:00Z')})));
@@ -160,7 +153,7 @@ function testEmitToTimeSeriesMissingTimeField() {
     });
     assert.eq(opStats["inputMessageCount"], 30);
     assert.eq(opStats["outputMessageCount"], 10);
-    stopStreamProcessor();
+    stopStreamProcessor('timeseriesTest');
 }
 
 // test missing timeseries field in $emit
@@ -189,8 +182,7 @@ function testMissingTimeseries() {
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 1);
 
-    let listCmd = {streams_listStreamProcessors: ''};
-    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
 
     inputColl.insert(
         Array.from({length: 100}, (_, i) => ({_id: i, ts: ISODate('2024-01-01T01:00:00Z')})));
@@ -207,7 +199,7 @@ function testMissingTimeseries() {
     });
     assert.eq(opStats["inputMessageCount"], 200);
     assert.eq(opStats["outputMessageCount"], 100);
-    stopStreamProcessor();
+    stopStreamProcessor('timeseriesTest');
 }
 
 function testMissingTimeseriesCollection() {
@@ -243,8 +235,7 @@ function testMissingTimeseriesCollection() {
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 1);
 
-    let listCmd = {streams_listStreamProcessors: ''};
-    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
 
     inputColl.insert(
         Array.from({length: 100}, (_, i) => ({_id: i, ts: ISODate('2024-01-01T01:00:00Z')})));
@@ -259,7 +250,7 @@ function testMissingTimeseriesCollection() {
     });
     assert.eq(opStats["inputMessageCount"], 200);
     assert.eq(opStats["outputMessageCount"], 100);
-    stopStreamProcessor();
+    stopStreamProcessor('timeseriesTest');
 }
 
 function testBadUri() {
@@ -498,8 +489,7 @@ function testLargeDocumentEmitToTimeSeries() {
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 1);
 
-    let listCmd = {streams_listStreamProcessors: ''};
-    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
 
     // Seed of size 8KB.
     const seed = Array(8 * 1024).toString();
@@ -533,7 +523,7 @@ function testLargeDocumentEmitToTimeSeries() {
     assert.eq(opStats["inputMessageCount"], 5);
     assert.eq(opStats["outputMessageCount"], 3);
 
-    stopStreamProcessor();
+    stopStreamProcessor('timeseriesTest');
 }
 
 testEmitToTimeSeriesCollection();

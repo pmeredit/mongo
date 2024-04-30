@@ -4,7 +4,10 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    TEST_TENANT_ID
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const STREAM_NAME = 'sp0';
 const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert}) => {
@@ -17,7 +20,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
         db: 'test',
         coll: 'dlq',
     };
-    const sp = new Streams(connRegistry);
+    const sp = new Streams(TEST_TENANT_ID, connRegistry);
 
     const source = {$source};
     const aggregation = {
@@ -110,6 +113,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
         insert: (documents) => {
             assert.commandWorked(db.runCommand({
                 streams_testOnlyInsert: '',
+                tenantId: TEST_TENANT_ID,
                 name: STREAM_NAME,
                 documents,
             }));

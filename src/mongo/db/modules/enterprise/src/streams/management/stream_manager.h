@@ -97,7 +97,7 @@ public:
     // When OutputSample.done is true, the cursor is automatically closed, so the caller
     // should not make any more getMoreFromSample() calls for the a cursor.
     // Throws if the stream processor or the cursor is not found.
-    OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);
+    OutputSample getMoreFromSample(const mongo::GetMoreStreamSampleCommand& request);
 
     // Returns stats for a stream processor.
     mongo::GetStatsReply getStats(const mongo::GetStatsCommand& request);
@@ -107,7 +107,7 @@ public:
         const mongo::ListStreamProcessorsCommand& request);
 
     // Test-only method to insert documents into a stream processor.
-    void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);
+    void testOnlyInsertDocuments(const mongo::TestOnlyInsertCommand& request);
 
     // Returns a GetMetricsReply message that contains current values of all the metrics
     // in the MetricManager.
@@ -172,6 +172,13 @@ private:
                            StreamProcessorInfo* processorInfo,
                            mongo::StreamStatusEnum state);
 
+    // Returns boost::none if gStreamsAllowMultiTenancy is true.
+    // Otherwise, returns the assigned tenant id that all SPs need to correspond to.
+    boost::optional<std::string> getAssignedTenantId(mongo::WithLock);
+
+    // Asserts that requests for the given tenantId are permitted on this worker.
+    void assertTenantIdIsValid(mongo::WithLock lk, mongo::StringData tenantId);
+
     // Caller must hold the _mutex.
     // Helper method used during startStreamProcessor. This parses the OperatorDag and creates
     // the Context and other things for the streamProcessor. This does not actually start
@@ -207,11 +214,13 @@ private:
                                   StreamManager::StreamProcessorInfo* processorInfo);
 
     // Stops a stream processor with the given name.
-    void stopStreamProcessor(std::string name, StopReason stopReason, mongo::Date_t deadline);
+    void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request,
+                             StopReason stopReason);
 
     // Helper method of stopStreamProcessor() method that stops the stream processor in an
     // asynchronous manner.
-    void stopStreamProcessorAsync(std::string name, StopReason stopReason);
+    void stopStreamProcessorAsync(const mongo::StopStreamProcessorCommand& request,
+                                  StopReason stopReason);
 
     // Stop all the running streamProcessors.
     void stopAllStreamProcessors();

@@ -31,6 +31,8 @@ using namespace mongo;
 
 namespace {
 
+constexpr const char kTestTenantId1[] = "tenant1";
+constexpr const char kTestTenantId2[] = "tenant2";
 static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
 
 };  // namespace
@@ -72,17 +74,25 @@ public:
         it->second->executor->ensureConnected(Date_t::now() + mongo::Seconds(15));
     }
 
-    void stopStreamProcessor(StreamManager* streamManager, StringData name) {
+    void stopStreamProcessor(StreamManager* streamManager, std::string tenantId, StringData name) {
         StopStreamProcessorCommand stopRequest;
+        stopRequest.setTenantId(tenantId);
         stopRequest.setName(name);
+        stopRequest.setProcessorId(StringData(name));
+        stopRequest.setTimeout(mongo::Seconds(60));
         streamManager->stopStreamProcessor(stopRequest);
     }
 
     void stopStreamProcessor(StreamManager* streamManager,
+                             std::string tenantId,
                              std::string name,
                              StopReason stopReason) {
-        Date_t deadline = Date_t::now() + Minutes{1};
-        streamManager->stopStreamProcessor(name, stopReason, deadline);
+        StopStreamProcessorCommand stopCommand;
+        stopCommand.setTenantId(tenantId);
+        stopCommand.setName(name);
+        stopCommand.setProcessorId(StringData(name));
+        stopCommand.setTimeout(mongo::Seconds(60));
+        streamManager->stopStreamProcessor(stopCommand, stopReason);
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
@@ -165,9 +175,9 @@ TEST_F(StreamManagerTest, Start) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData("name1"));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData("name1"));
     request.setCorrelationId(StringData("userRequest1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
@@ -176,7 +186,8 @@ TEST_F(StreamManagerTest, Start) {
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
     ASSERT(streamProcessorExists(streamManager.get(), "name1"));
-    stopStreamProcessor(streamManager.get(), "name1", StopReason::ExternalStopRequest);
+    stopStreamProcessor(
+        streamManager.get(), kTestTenantId1, "name1", StopReason::ExternalStopRequest);
     ASSERT(!streamProcessorExists(streamManager.get(), "name1"));
 }
 
@@ -189,7 +200,7 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
     for (int i = 0; i < 10; ++i) {
         startThreads.push_back(stdx::thread([i, &streamManager, this]() {
             StartStreamProcessorCommand request;
-            request.setTenantId(StringData("tenant1"));
+            request.setTenantId(StringData(kTestTenantId1));
             auto processorName = fmt::format("name{}", i);
             request.setName(processorName);
             request.setProcessorId(StringData(processorName));
@@ -212,8 +223,10 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
             while (!isStreamProcessorConnected(streamManager.get(), processorName)) {
                 sleepFor(Milliseconds(100));
             }
-            stopStreamProcessor(
-                streamManager.get(), processorName, StopReason::ExternalStopRequest);
+            stopStreamProcessor(streamManager.get(),
+                                kTestTenantId1,
+                                processorName,
+                                StopReason::ExternalStopRequest);
         }));
     }
 
@@ -241,7 +254,7 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
 
     stdx::thread startThread = stdx::thread([&]() {
         StartStreamProcessorCommand request;
-        request.setTenantId(StringData("tenant1"));
+        request.setTenantId(StringData(kTestTenantId1));
         auto processorName = "name";
         request.setName(processorName);
         request.setProcessorId(StringData(processorName));
@@ -264,7 +277,8 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
             sleepFor(Milliseconds(100));
         }
         ASSERT_FALSE(isStreamProcessorConnected(streamManager.get(), processorName));
-        stopStreamProcessor(streamManager.get(), processorName, StopReason::ExternalStopRequest);
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, processorName, StopReason::ExternalStopRequest);
     });
 
     startThread.join();
@@ -288,7 +302,7 @@ TEST_F(StreamManagerTest, StartTimesOut) {
                             << "data" << BSON("sleepSeconds" << 15)));
 
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     auto processorName = "name";
     request.setName(processorName);
     request.setProcessorId(StringData(processorName));
@@ -303,7 +317,8 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     ASSERT_THROWS_WHAT(
         streamManager->startStreamProcessor(request), DBException, "Timeout while connecting"_sd);
 
-    stopStreamProcessor(streamManager.get(), processorName, StopReason::ExternalStopRequest);
+    stopStreamProcessor(
+        streamManager.get(), kTestTenantId1, processorName, StopReason::ExternalStopRequest);
     ASSERT_FALSE(streamProcessorExists(streamManager.get(), processorName));
 
     ListStreamProcessorsCommand listRequest;
@@ -319,13 +334,12 @@ TEST_F(StreamManagerTest, StartTimesOut) {
 
 TEST_F(StreamManagerTest, GetStats) {
     const std::string streamName = "name1";
-    const std::string processorId = "processor1";
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
-    request.setProcessorId(StringData(processorId));
+    request.setProcessorId(StringData(streamName));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
     request.setConnections(
@@ -341,6 +355,7 @@ TEST_F(StreamManagerTest, GetStats) {
            });
 
     GetStatsCommand getStatsRequest;
+    getStatsRequest.setTenantId(StringData(kTestTenantId1));
     getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setScale(1);
     getStatsRequest.setVerbose(true);
@@ -353,7 +368,7 @@ TEST_F(StreamManagerTest, GetStats) {
     }
 
     ASSERT_EQUALS(streamName, statsReply.getName());
-    ASSERT_EQUALS(processorId, statsReply.getProcessorId());
+    ASSERT_EQUALS(streamName, statsReply.getProcessorId());
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
     ASSERT_EQUALS(2, statsReply.getInputMessageCount());
@@ -386,7 +401,7 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(statsReply.getOutputMessageCount(), operatorStats[2].getInputMessageCount());
     ASSERT_EQUALS(statsReply.getOutputMessageSize(), operatorStats[2].getInputMessageSize());
 
-    stopStreamProcessor(streamManager.get(), streamName);
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName);
 }
 
 TEST_F(StreamManagerTest, GetStats_Kafka) {
@@ -396,9 +411,9 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData(streamName));
     request.setPipeline({BSON("$source" << BSON("connectionName"
                                                 << "kafka"
                                                 << "topic"
@@ -416,6 +431,7 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     createStreamProcessor(streamManager.get(), request, std::numeric_limits<int64_t>::max());
 
     GetStatsCommand getStatsRequest;
+    getStatsRequest.setTenantId(StringData(kTestTenantId1));
     getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setVerbose(true);
     getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
@@ -466,9 +482,9 @@ TEST_F(StreamManagerTest, GetMetrics) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamProcessorName));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData(streamProcessorName));
     request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
@@ -490,16 +506,16 @@ TEST_F(StreamManagerTest, GetMetrics) {
         ASSERT_APPROX_EQUAL(expectedValue, actualSnapshotValue, 0.0000001);
     }
 
-    stopStreamProcessor(streamManager.get(), streamProcessorName);
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, streamProcessorName);
 }
 
 TEST_F(StreamManagerTest, List) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request1;
-    request1.setTenantId(StringData("tenant1"));
+    request1.setTenantId(StringData(kTestTenantId1));
     request1.setName(StringData("name1"));
-    request1.setProcessorId(StringData("processor1"));
+    request1.setProcessorId(StringData("name1"));
     request1.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request1.setConnections(
@@ -508,9 +524,9 @@ TEST_F(StreamManagerTest, List) {
     streamManager->startStreamProcessor(request1);
 
     StartStreamProcessorCommand request2;
-    request2.setTenantId(StringData("tenant1"));
+    request2.setTenantId(StringData(kTestTenantId1));
     request2.setName(StringData("name2"));
-    request2.setProcessorId(StringData("processor2"));
+    request2.setProcessorId(StringData("name2"));
     request2.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request2.setConnections(
@@ -529,17 +545,19 @@ TEST_F(StreamManagerTest, List) {
     });
 
     const auto& sp0 = sps[0];
-    ASSERT_EQUALS(StringData("tenant1"), sp0.getTenantId());
-    ASSERT_EQUALS(StringData("processor1"), sp0.getProcessorId());
+    ASSERT_EQUALS(StringData(kTestTenantId1), sp0.getTenantId());
+    ASSERT_EQUALS(StringData("name1"), sp0.getProcessorId());
     ASSERT_EQUALS(StringData("name1"), sp0.getName());
 
     const auto& sp1 = sps[1];
-    ASSERT_EQUALS(StringData("tenant1"), sp1.getTenantId());
-    ASSERT_EQUALS(StringData("processor2"), sp1.getProcessorId());
+    ASSERT_EQUALS(StringData(kTestTenantId1), sp1.getTenantId());
+    ASSERT_EQUALS(StringData("name2"), sp1.getProcessorId());
     ASSERT_EQUALS(StringData("name2"), sp1.getName());
 
-    stopStreamProcessor(streamManager.get(), "name1", StopReason::ExternalStopRequest);
-    stopStreamProcessor(streamManager.get(), "name2", StopReason::ExternalStopRequest);
+    stopStreamProcessor(
+        streamManager.get(), kTestTenantId1, "name1", StopReason::ExternalStopRequest);
+    stopStreamProcessor(
+        streamManager.get(), kTestTenantId1, "name2", StopReason::ExternalStopRequest);
     listReply = streamManager->listStreamProcessors(listRequest);
     ASSERT_EQUALS(0, listReply.getStreamProcessors().size());
 }
@@ -548,9 +566,9 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData("name1"));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData("name1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request.setConnections(
@@ -586,7 +604,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
 
     // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
     ASSERT(streamProcessorExists(streamManager.get(), request.getName().toString()));
-    stopStreamProcessor(streamManager.get(), request.getName().toString());
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
     ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
 }
 
@@ -596,9 +614,9 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
 
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData("name1"));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData("name1"));
     request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
@@ -608,13 +626,13 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo->context->checkpointStorage.get());
-    stopStreamProcessor(streamManager.get(), request.getName().toString());
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
     ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
 
     StartStreamProcessorCommand request2;
-    request2.setTenantId(StringData("tenant1"));
+    request2.setTenantId(StringData(kTestTenantId1));
     request2.setName(StringData("name2"));
-    request2.setProcessorId(StringData("processor2"));
+    request2.setProcessorId(StringData("name2"));
     request2.setPipeline({BSON(kSourceStageName << BSON("connectionName"
                                                         << "sample_data_solar")),
                           getTestLogSinkSpec()});
@@ -627,7 +645,7 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
         getStreamProcessorInfo(streamManager.get(), request2.getName().toString());
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo2->context->checkpointStorage.get());
-    stopStreamProcessor(streamManager.get(), request2.getName().toString());
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, request2.getName().toString());
     ASSERT(!streamProcessorExists(streamManager.get(), request2.getName().toString()));
 }
 
@@ -637,9 +655,9 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
+    request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData(streamName));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
     request.setConnections(
@@ -662,6 +680,7 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     }
 
     GetStatsCommand getStatsRequest;
+    getStatsRequest.setTenantId(StringData(kTestTenantId1));
     getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setScale(1);
     getStatsRequest.setVerbose(true);
@@ -687,9 +706,9 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         auto streamManager =
             std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
         StartStreamProcessorCommand request;
-        request.setTenantId(StringData("tenant1"));
+        request.setTenantId(StringData(kTestTenantId1));
         request.setName(StringData("name1"));
-        request.setProcessorId(StringData("processor1"));
+        request.setProcessorId(StringData("name1"));
         StartOptions startOptions;
         CheckpointOptions checkpointOptions;
         LocalDiskStorageOptions localDiskOptions{writeDir};
@@ -725,7 +744,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         updateContextFeatureFlags(processorInfo, tFeatureFlags);
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
-        stopStreamProcessor(streamManager.get(), request.getName().toString());
+        stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
         ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
         std::filesystem::remove_all(writeDir);
     };
@@ -836,7 +855,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     StreamManager::Options options{.memoryLimitBytes = 2 * kMemoryUsageBatchSize};
     auto streamManager = std::make_unique<StreamManager>(getServiceContext(), std::move(options));
     StartStreamProcessorCommand request1;
-    request1.setTenantId(StringData("tenant1"));
+    request1.setTenantId(StringData(kTestTenantId1));
     request1.setName(StringData(sp1));
     request1.setProcessorId(StringData(sp1));
     request1.setPipeline(parsePipelineFromBSON(pipeline));
@@ -846,7 +865,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     createStreamProcessor(streamManager.get(), request1);
 
     StartStreamProcessorCommand request2;
-    request2.setTenantId(StringData("tenant1"));
+    request2.setTenantId(StringData(kTestTenantId1));
     request2.setName(StringData(sp2));
     request2.setProcessorId(StringData(sp2));
     request2.setPipeline(parsePipelineFromBSON(pipeline));
@@ -856,7 +875,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     createStreamProcessor(streamManager.get(), request2);
 
     StartStreamProcessorCommand request3;
-    request3.setTenantId(StringData("tenant1"));
+    request3.setTenantId(StringData(kTestTenantId1));
     request3.setName(StringData(sp3));
     request3.setProcessorId(StringData(sp3));
     request3.setPipeline(parsePipelineFromBSON(pipeline));
@@ -997,17 +1016,17 @@ TEST_F(StreamManagerTest, SingleTenancy) {
         return request;
     };
 
-    streamManager->startStreamProcessor(makeRequest("tenant1", sp1));
-    streamManager->startStreamProcessor(makeRequest("tenant1", sp2));
+    streamManager->startStreamProcessor(makeRequest(kTestTenantId1, sp1));
+    streamManager->startStreamProcessor(makeRequest(kTestTenantId1, sp2));
 
     // Creating another stream processor with a different tenant ID should throw an
     // invariant exception.
-    ASSERT_THROWS_CODE(streamManager->startStreamProcessor(makeRequest("tenant2", sp3)),
+    ASSERT_THROWS_CODE(streamManager->startStreamProcessor(makeRequest(kTestTenantId2, sp3)),
                        AssertionException,
                        ErrorCodes::InternalError);
 
-    stopStreamProcessor(streamManager.get(), sp2);
-    stopStreamProcessor(streamManager.get(), sp1);
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, sp2);
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, sp1);
 }
 
 TEST_F(StreamManagerTest, MultiTenancy) {
@@ -1041,10 +1060,10 @@ TEST_F(StreamManagerTest, MultiTenancy) {
 
     // Should allow scheduling stream processors from two different tenants when multi-tenancy
     // is enabled.
-    streamManager->startStreamProcessor(makeRequest("tenant1", sp1));
-    streamManager->startStreamProcessor(makeRequest("tenant2", sp2));
-    stopStreamProcessor(streamManager.get(), sp2);
-    stopStreamProcessor(streamManager.get(), sp1);
+    streamManager->startStreamProcessor(makeRequest(kTestTenantId1, sp1));
+    streamManager->startStreamProcessor(makeRequest(kTestTenantId2, sp2));
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, sp1);
+    stopStreamProcessor(streamManager.get(), kTestTenantId2, sp2);
     mongo::streams::gStreamsAllowMultiTenancy = false;
 }
 

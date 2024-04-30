@@ -6,6 +6,7 @@
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     listStreamProcessors,
+    TEST_TENANT_ID,
     waitForCount
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
@@ -21,7 +22,7 @@ function smokeTestDLQ() {
         {name: "db1", type: 'atlas', options: {uri: uri}},
         {name: '__testMemory', type: 'in_memory', options: {}},
     ];
-    const sp = new Streams(connectionRegistry);
+    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     sp.createStreamProcessor("sp1", [
         {$source: {connectionName: '__testMemory'}},
@@ -44,7 +45,8 @@ function smokeTestDLQ() {
         {id: 0, value: 1},
         {id: 5, value: 1},
     ];
-    assert.commandWorked(db.runCommand({streams_testOnlyInsert: '', name: "sp1", documents: docs}));
+    assert.commandWorked(db.runCommand(
+        {streams_testOnlyInsert: '', tenantId: TEST_TENANT_ID, name: "sp1", documents: docs}));
 
     // Validate the 2 docs with { id: 0 } are in the output collection.
     const expectedCount = 2;

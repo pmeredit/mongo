@@ -4,7 +4,10 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    listStreamProcessors,
+    TEST_TENANT_ID
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function sampleDataSourceWindowMerge() {
     const uri = 'mongodb://' + db.getMongo().host;
@@ -17,7 +20,7 @@ function sampleDataSourceWindowMerge() {
         },
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
-    const sp = new Streams(connectionRegistry);
+    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     sp.process([
         {

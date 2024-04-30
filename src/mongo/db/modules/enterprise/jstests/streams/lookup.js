@@ -6,7 +6,8 @@
 
 import {
     listStreamProcessors,
-    sanitizeDoc
+    sanitizeDoc,
+    TEST_TENANT_ID
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
@@ -42,7 +43,7 @@ function startStreamProcessor(pipeline) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: 'testTenant',
+        tenantId: TEST_TENANT_ID,
         name: 'lookupTest',
         processorId: 'lookupTest1',
         pipeline: pipeline,
@@ -63,6 +64,7 @@ function startStreamProcessor(pipeline) {
 function stopStreamProcessor() {
     let stopCmd = {
         streams_stopStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
         name: 'lookupTest',
     };
     let result = db.runCommand(stopCmd);
