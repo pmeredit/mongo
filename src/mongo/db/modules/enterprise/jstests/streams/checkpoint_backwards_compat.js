@@ -1,9 +1,5 @@
 import {
-    documentEq,
-} from "jstests/aggregation/extras/utils.js";
-import {
-    CheckPointTestHelper,
-    removeProjections,
+    resumeFromCheckpointTest,
     uuidStr
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
@@ -36,48 +32,15 @@ function _setupAndRunTest(pipeline, srcDir, expectedResultsLen, expectedStartOff
     // copy test data files to an absolute path that is accessible from mongod
     const destDir = "/tmp/checkpoint/" + uuidStr();
 
-    let inputDocs = _readDumpFile(srcDir + "/inputDocs.bson");
-
-    var test2 =
-        new CheckPointTestHelper(inputDocs, pipeline, 10000000, "kafka", true, destDir, destDir);
-
     // mkdir and copyDir are builtins available in mongodb js driver code.
     // But for some reason, eslint complains about copyDir being an undefined
     // function. So disabling eslint for the copyDir invocation
-    // mkdir(test2.spRestoreDir);
-    mkdir(test2.spRestoreDir);
+    mkdir(destDir);
     // eslint-disable-next-line
-    copyDir(srcDir + "/jstests-tenant/resume_from_checkpoint_test_spid", test2.spRestoreDir);
+    copyDir(srcDir, destDir);
 
-    let ids = test2.getCheckpointIds();
-    assert.eq(ids.length, 1, "expected one checkpoint");
-    const id = ids[0];
-
-    test2.run();
-    assert.soon(() => { return test2.outputColl.find({}).count() == expectedResults.length; });
-
-    const startingOffset = test2.getStartOffsetFromCheckpoint(id, true);
-    assert.eq(startingOffset, expectedStartOffset);
-    test2.stop();
-
-    let results = test2.getResults();
-    assert.eq(results.length, expectedResults.length);
-
-    var r = new Set();
-    for (let i = 0; i < results.length; i++) {
-        results[i] = removeProjections(results[i]);
-        for (let j = 0; j < expectedResults.length; j++) {
-            if (documentEq(results[i], expectedResults[j])) {
-                if (r.has(j)) {
-                    continue;
-                } else {
-                    r.add(j);
-                    break;
-                }
-            }
-        }
-    }
-    assert.eq(r.size, results.length);
+    const spId = "resume_from_checkpoint_test_spid";
+    resumeFromCheckpointTest(destDir, spId, pipeline, expectedStartOffset);
 }
 
 function testHoppingWindowGroupSort() {

@@ -1,7 +1,6 @@
 import {
     getCallerName,
 } from 'jstests/core/timeseries/libs/timeseries_writes_util.js';
-import {TEST_TENANT_ID} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 export const dbNamePrefix = jsTestName();  // for multithreading usage this is not the final dbname
 
@@ -30,7 +29,7 @@ function startStreamProcessor(pipeline, spName, threadId) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: `${spName}${threadId}`,
         processorId: spName,
         pipeline: pipeline,

@@ -1,9 +1,9 @@
 import {
     listStreamProcessors,
     startStreamProcessor,
-    stopStreamProcessor,
-    TEST_TENANT_ID
+    stopStreamProcessor
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const spName = "featureFlagTest";
 const inputCollName = "testin";
@@ -30,26 +30,22 @@ startStreamProcessor(spName, [
 ]);
 
 inputColl.insert([{id: 1, ts: 1, a: 1, b: 2, c: 3}, {id: 3, ts: 3, a: 3, b: 2, c: 3}]);
-let result =
-    db.runCommand({streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID, name: spName});
+let result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
 jsTestLog(result);
 assert.eq(result.featureFlags, {});
 
-result = db.runCommand({
-    streams_updateFeatureFlags: '',
-    tenantId: TEST_TENANT_ID,
-    featureFlags: {feature_flag_a: {value: true}}
-});
+result =
+    db.runCommand({streams_updateFeatureFlags: '', featureFlags: {feature_flag_a: {value: true}}});
 jsTestLog(result);
 assert.eq(result.ok, true);
 
 assert.soon(() => {
-    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID});
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: ''});
     return result.featureFlags.feature_flag_a.value;
 });
 
 assert.soon(() => {
-    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID});
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: ''});
     return result.featureFlags.feature_flag_a;
 });
 
@@ -57,13 +53,11 @@ let ff = {feature_flag_a: {value: true}};
 ff.feature_flag_a["streamProcessors"] = {};
 ff.feature_flag_a.streamProcessors[spName] = false;
 
-result =
-    db.runCommand({streams_updateFeatureFlags: '', tenantId: TEST_TENANT_ID, featureFlags: ff});
+result = db.runCommand({streams_updateFeatureFlags: '', featureFlags: ff});
 assert.eq(result.ok, true);
 
 assert.soon(() => {
-    result = db.runCommand(
-        {streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID, name: spName});
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
     return (!result.featureFlags.feature_flag_a);
 });
 
@@ -74,13 +68,11 @@ ff = {
 ff.feature_flag_a["streamProcessors"] = {};
 ff.feature_flag_a.streamProcessors["someOtherSp"] = false;
 
-result =
-    db.runCommand({streams_updateFeatureFlags: '', tenantId: TEST_TENANT_ID, featureFlags: ff});
+result = db.runCommand({streams_updateFeatureFlags: '', featureFlags: ff});
 assert.eq(result.ok, true);
 
 assert.soon(() => {
-    result = db.runCommand(
-        {streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID, name: spName});
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
     return (result.featureFlags.feature_flag_a && !result.featureFlags.feature_flag_b);
 });
 
@@ -107,7 +99,7 @@ const pipeline = [
 const uri = 'mongodb://' + db.getMongo().host;
 let startCmd = {
     streams_startStreamProcessor: '',
-    tenantId: TEST_TENANT_ID,
+    tenantId: 'testTenant',
     name: spName,
     processorId: spName,
     pipeline: pipeline,
@@ -128,8 +120,7 @@ let startCmd = {
 assert.commandWorked(db.runCommand(startCmd));
 
 assert.soon(() => {
-    result = db.runCommand(
-        {streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID, name: spName});
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
     return (result.featureFlags.feature_flag_a && !result.featureFlags.feature_flag_b);
 });
 

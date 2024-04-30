@@ -4,8 +4,7 @@ import {
 } from 'src/mongo/db/modules/enterprise/jstests/streams/multithreading_utils.js';
 import {
     generateDocs,
-    listStreamProcessors,
-    TEST_TENANT_ID
+    listStreamProcessors
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const spName = "windowGroupTest";
@@ -25,14 +24,8 @@ function getWindowPipeline(pipeline) {
 // another class) This function inserts the documents and computes the aggregate results and
 // compares them with passing the same set of documents into a tumbling window and run the same
 // aggregation.
-const windowGroupMTFunc = function testWindowGroup(docs,
-                                                   pipeline,
-                                                   batchSize,
-                                                   tenantId,
-                                                   spName,
-                                                   threadId,
-                                                   comparisonFunc = assert.eq,
-                                                   stripIds = false) {
+const windowGroupMTFunc = function testWindowGroup(
+    docs, pipeline, batchSize, spName, threadId, comparisonFunc = assert.eq, stripIds = false) {
     const dbName = `${jsTestName()}${threadId}`;
     jsTestLog(`dbName=${dbName} spName=${spName}`);
     const coll = db.getSiblingDB(dbName).project_coll;
@@ -48,7 +41,6 @@ const windowGroupMTFunc = function testWindowGroup(docs,
     jsTestLog(`expecting ${expectedResults.length}`);
     let insertCmd = {
         streams_testOnlyInsert: '',
-        tenantId: tenantId,
         name: `${spName}${threadId}`,
         documents: docs,
     };
@@ -76,7 +68,6 @@ const windowGroupMTFunc = function testWindowGroup(docs,
     }
     let stopCmd = {
         streams_stopStreamProcessor: '',
-        tenantId: tenantId,
         name: `${spName}${threadId}`,
     };
     jsTestLog(`Stopping ${spName} - \n${tojson(stopCmd)}`);
@@ -93,8 +84,7 @@ function runMultiThreadedTest(pipeline, docs, batchSize) {
         startStreamProcessorForThread(
             {pipeline: getWindowPipeline(pipeline), spName: spName, threadId: minThreadId});
         // windowGroupMTFunc(docs, [{$sort: {b: 1, d: 1}}, {$limit: 50}], 50, spName, 1);
-        let thread = new Thread(
-            windowGroupMTFunc, docs, pipeline, batchSize, TEST_TENANT_ID, spName, minThreadId);
+        let thread = new Thread(windowGroupMTFunc, docs, pipeline, batchSize, spName, minThreadId);
         threads.push(thread);
         thread.start();
     }

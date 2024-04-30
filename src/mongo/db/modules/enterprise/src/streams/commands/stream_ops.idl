@@ -442,6 +442,7 @@ commands:
             processorId:
                 description: "Stream processor id."
                 type: string
+                optional: true
             pipeline:
                 description: "An unparsed version of the pipeline."
                 type: pipeline
@@ -471,9 +472,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             name:
                 description: "Name of the stream processor."
                 type: string
@@ -501,10 +499,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
-                optional: true
             correlationId:
                 description: "Correlation ID for the request that ties it to a user initiated operation."
                 type: string
@@ -527,6 +521,7 @@ commands:
             tenantId:
                 description: "Tenant id."
                 type: string
+                optional: true
             name:
                 description: "Stream processor name."
                 type: string
@@ -554,9 +549,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             name:
                 description: "Name of the stream processor."
                 type: string
@@ -586,9 +578,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             name:
                 description: "Name of the stream processor."
                 type: string
@@ -619,9 +608,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             name:
                 description: "Name of the stream processor."
                 type: string
@@ -654,9 +640,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             name:
                 description: "Name of the stream processor."
                 type: string
@@ -690,9 +673,6 @@ commands:
         access_check:
             none: true
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             processorId:
                 description: "Unique stream processor id."
                 type: string
@@ -709,9 +689,6 @@ commands:
         namespace: ignored
         reply_type: UpdateFeatureFlagsReply
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
             featureFlags:
                 description: "Bson object containing all feature flags for this instance."
                 type: object
@@ -726,11 +703,8 @@ commands:
         namespace: ignored
         reply_type: GetFeatureFlagsReply
         fields:
-            tenantId:
-                description: "Tenant id."
-                type: string
-            name:
-                description: "Name of the stream processor."
+            streamProcessor:
+                description: "stream processor name for which we are requesting feature flags."
                 type: string
                 optional: true
         access_check:

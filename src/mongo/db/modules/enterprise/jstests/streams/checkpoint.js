@@ -364,6 +364,7 @@ function testBoth(useNewCheckpointing) {
                                   interval,
                                   "changestream" /* sourceType */,
                                   useNewCheckpointing,
+                                  null /* spId */,
                                   null /* writeDir */,
                                   null /* restoreDir */,
                                   dbForTest /* dbForTest */);
@@ -859,7 +860,8 @@ function testBoth(useNewCheckpointing) {
             let test = new TestHelper(
                 input, [], 99999999 /* long interval */, 'changestream', useNewCheckpointing);
             test.sp.createStreamProcessor(test.spName, test.pipeline);
-            assert.commandWorked(test.sp[test.spName].start(test.startOptions));
+            assert.commandWorked(
+                test.sp[test.spName].start(test.startOptions, test.processorId, test.tenantId));
             // The streamProcessor will crash after the first document is output.
             assert.commandWorked(test.inputColl.insertMany(test.input));
             // Wait for one checkpoint to be committed.

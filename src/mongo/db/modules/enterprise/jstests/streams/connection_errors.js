@@ -6,8 +6,7 @@
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     listStreamProcessors,
-    stopStreamProcessor,
-    TEST_TENANT_ID,
+    stopStreamProcessor
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 (function() {
@@ -29,9 +28,8 @@ function badDBSourceStartError() {
     // Calls streams_startStreamProcessor with a bad $source.
     let result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -64,9 +62,8 @@ function badKafkaSourceStartError() {
     // Calls streams_startStreamProcessor with a bad $source.
     let result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {$source: {connectionName: connectionName, topic: inputTopicName}},
             {$emit: {connectionName: "__testMemory"}}
@@ -118,9 +115,8 @@ function badMergeStartError() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -172,9 +168,8 @@ function badMerge_WithOn_StartError() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -224,9 +219,8 @@ function badMongoDLQAsyncError() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {$source: {connectionName: '__testMemory'}},
             {
@@ -242,15 +236,11 @@ function badMongoDLQAsyncError() {
     });
     assert.commandWorked(result);
 
-    assert.commandWorked(db.runCommand({
-        streams_testOnlyInsert: '',
-        tenantId: TEST_TENANT_ID,
-        name: spName,
-        documents: [{value: 2}]
-    }));
+    assert.commandWorked(
+        db.runCommand({streams_testOnlyInsert: '', name: spName, documents: [{value: 2}]}));
 
     assert.soon(() => {
-        const result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+        const result = db.runCommand({streams_listStreamProcessors: ''});
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
         return sp.status == "error" && sp.error.code == 13053 &&
             sp.error.reason ===
@@ -286,9 +276,8 @@ function badKafkaEmit() {
     const spName = "sp1";
     let result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -316,9 +305,8 @@ function badKafkaEmit() {
     // Try the same thing, with a dynamic topic name.
     result = db.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: "sp2",
-        processorId: "sp2",
         pipeline: [
             {
                 $source: {
@@ -396,9 +384,8 @@ function changeSourceFailsAfterSuccesfulStart() {
     const spName = "sp1";
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -423,8 +410,7 @@ function changeSourceFailsAfterSuccesfulStart() {
 
     // Verify the streamProcessor goes into an error state.
     assert.soon(() => {
-        let result =
-            dbMerge.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+        let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         jsTestLog(sp);
         return sp.status == "error" &&
@@ -482,9 +468,8 @@ function startFailedStreamProcessor() {
     const spName = "sp1";
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -509,8 +494,7 @@ function startFailedStreamProcessor() {
 
     // Verify the streamProcessor goes into an error state.
     assert.soon(() => {
-        let result =
-            dbMerge.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+        let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         jsTestLog(sp);
         return sp.status == "error" &&
@@ -526,9 +510,8 @@ function startFailedStreamProcessor() {
     // Issue the start command again for the same SP.
     let result = assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
-        processorId: spName,
         pipeline: [
             {
                 $source: {
@@ -543,7 +526,7 @@ function startFailedStreamProcessor() {
         options: {}
     }));
     assert.commandWorked(result);
-    result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+    result = db.runCommand({streams_listStreamProcessors: ''});
     let sp = result.streamProcessors.find((sp) => sp.name == spName);
     assert.eq(sp.status, "running");
 
@@ -558,15 +541,14 @@ function unparseableMongocxxUri() {
     const expectedErrorCode = 1;  // InternalError
     const spName = "sp1";
     const result = db.runCommand({
-        streams_startStreamProcessor: "Test roll back random",
-        tenantId: TEST_TENANT_ID,
-        name: spName,
-        processorId: spName,
-        pipeline: [
+        "streams_startStreamProcessor": "Test roll back random",
+        "tenantId": "testTenant",
+        "name": spName,
+        "pipeline": [
             {"$source": {"connectionName": "conn1", "db": "test", "coll": "testin"}},
             {"$merge": {"into": {"connectionName": "conn1", "db": "test", "coll": "testout"}}}
         ],
-        connections: [{name: "conn1", type: "atlas", options: {uri: ""}}],
+        "connections": [{name: "conn1", type: "atlas", options: {uri: ""}}],
         options: {}
     });
     assert.commandFailedWithCode(result, expectedErrorCode);
@@ -600,7 +582,7 @@ function mergeListIndexesAuthFailure() {
     const readOnlyUri = `mongodb://${userName}:${password}@${admin.getMongo().host}`;
     const connectionName = "limited";
     const inputColl = "coll";
-    const sp = new Streams(TEST_TENANT_ID, [
+    const sp = new Streams([
         {
             name: connectionName,
             type: 'atlas',
@@ -622,7 +604,10 @@ function mergeListIndexesAuthFailure() {
             }
         },
     ]);
-    let result = sp[spName].start(undefined /* options */, false /* assertWorked */);
+    let result = sp[spName].start(undefined /* options */,
+                                  undefined /* processorId */,
+                                  undefined /* tenantId */,
+                                  false /* assertWorked */);
     assert.commandFailedWithCode(result, 13);
     assert(result.errmsg.includes(
         "Failed to connect to $merge to test.outcoll: not authorized on test to execute command { listIndexes: \"outcoll\", cursor: {}, $db: \"test\""));
@@ -661,7 +646,7 @@ function mergeUpdateFailure() {
     const readOnlyUri = `mongodb://${userName}:${password}@${admin.getMongo().host}`;
     const connectionName = "limited";
     const inputColl = "coll";
-    const sp = new Streams(TEST_TENANT_ID, [
+    const sp = new Streams([
         {
             name: connectionName,
             type: 'atlas',
@@ -734,7 +719,7 @@ function timeseriesEmitUpdateFailure() {
     const readOnlyUri = `mongodb://${userName}:${password}@${admin.getMongo().host}`;
     const connectionName = "limited";
     const inputColl = "coll";
-    const sp = new Streams(TEST_TENANT_ID, [
+    const sp = new Streams([
         {
             name: connectionName,
             type: 'atlas',

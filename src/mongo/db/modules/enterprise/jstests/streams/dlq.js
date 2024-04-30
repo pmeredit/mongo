@@ -6,14 +6,10 @@
 
 "use strict";
 
+import {startSample, sampleUntil} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 import {
-    startSample,
-    sampleUntil,
-    getStats,
     listStreamProcessors,
-    stopStreamProcessor,
-    sanitizeDoc,
-    TEST_TENANT_ID
+    sanitizeDoc
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const inputColl = db.input_coll;
@@ -30,7 +26,7 @@ function startStreamProcessor(pipeline) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: processorName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -46,8 +42,12 @@ function startStreamProcessor(pipeline) {
 }
 
 function getDlqOperatorStats() {
-    let result = getStats(processorName);
-    jsTestLog(result);
+    let getStatsCmd = {streams_getStats: '', name: processorName, verbose: true};
+    let result = db.runCommand(getStatsCmd);
+    // jsTestLog(result);
+    if (result["ok"] != 1) {
+        return 0;
+    }
 
     let numDlqDocs = 0;
     let numDlqBytes = 0;
@@ -64,13 +64,31 @@ function getDlqOperatorStats() {
 }
 
 function getDlqStreamStats() {
-    let result = getStats(processorName);
+    let getStatsCmd = {
+        streams_getStats: '',
+        name: processorName,
+    };
+
+    let result = db.runCommand(getStatsCmd);
     jsTestLog(result);
+
+    if (result["ok"] != 1) {
+        return 0;
+    }
 
     let numDlqDocs = result["dlqMessageCount"];
     let numDlqBytes = result["dlqMessageSize"];
 
     return {numDlqDocs, numDlqBytes};
+}
+
+function stopStreamProcessor() {
+    let stopCmd = {
+        streams_stopStreamProcessor: '',
+        name: processorName,
+    };
+    let result = db.runCommand(stopCmd);
+    assert.eq(result["ok"], 1);
 }
 
 const pipeline = [
@@ -124,10 +142,11 @@ const pipeline = [
 
 startStreamProcessor(pipeline);
 
-assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
+let listCmd = {streams_listStreamProcessors: ''};
+assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
 
 // Start a sample session.
-const cursorId = startSample(processorName)["id"];
+const cursorId = startSample(processorName);
 
 inputColl.insert(
     Array.from({length: 100}, (_, i) => ({_id: i, ts: i, a: i, b: i % 10, c: Math.floor(i / 20)})));
@@ -247,12 +266,13 @@ assert.soon(() => {
         streamStats.numDlqBytes > 0 && streamStats.numDlqBytes == opStats.numDlqBytes;
 });
 
-const result = getStats(processorName);
+let getStatsCmd = {streams_getStats: '', name: processorName, verbose: true};
+const result = db.runCommand(getStatsCmd);
 // verify numOutputDocs matches the actual emitted docs;
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 assert.eq(result["outputMessageCount"], 5);
-stopStreamProcessor(processorName);
+stopStreamProcessor();
 outColl.drop();
 dlqColl.drop();
 inputColl.drop();

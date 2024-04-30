@@ -58,7 +58,8 @@ public:
             CursorResponseBuilder nextBatch(reply, CursorResponseBuilder::Options{});
             try {
                 StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-                auto outputSample = streamManager->getMoreFromSample(_request);
+                auto outputSample = streamManager->getMoreFromSample(
+                    _request.getName().toString(), cursorId, _request.getBatchSize());
 
                 size_t bytesToReserve{0};
                 for (auto& doc : outputSample.outputDocs) {

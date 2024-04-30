@@ -6,11 +6,7 @@
 
 import {Thread} from "jstests/libs/parallelTester.js";
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
-import {
-    listStreamProcessors,
-    stopStreamProcessor,
-    TEST_TENANT_ID
-} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
 "use strict";
@@ -30,7 +26,7 @@ const connectionRegistry = [{name: dbConnectionName, type: 'atlas', options: {ur
 function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
         processorId: 'spName1',
         pipeline: pipeline,
@@ -44,6 +40,15 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
         assert.commandWorked(result);
     }
     return result;
+}
+
+function stopStreamProcessor() {
+    let stopCmd = {
+        streams_stopStreamProcessor: '',
+        name: spName,
+    };
+    let result = db.runCommand(stopCmd);
+    assert.commandWorked(result);
 }
 
 (function startNormal() {
@@ -66,8 +71,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
     ]);
 
     assert.soon(() => {
-        let result = db.runCommand(
-            {streams_getStats: '', tenantId: TEST_TENANT_ID, name: spName, verbose: true});
+        let result = db.runCommand({streams_getStats: '', name: spName, verbose: true});
         assert.commandWorked(result);
         assert.eq(result["ok"], 1);
         const operatorStats = result["operatorStats"];
@@ -78,7 +82,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
         return false;
     });
 
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 }());
 
 (function startEnableDataFlow() {
@@ -116,7 +120,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
     });
     assert.eq(0, outputColl.find({}).toArray().length);
 
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 }());
 
 (function startValidate() {
@@ -141,7 +145,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
     ]);
     // Validate the streamProcessor was not actually started.
     // Validate nothing shows up in listStreamProcessors.
-    let result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+    let result = db.runCommand({streams_listStreamProcessors: ''});
     assert.commandWorked(result);
     assert.eq(result["streamProcessors"].length, 0, result);
     // Wait 3 seconds and verify nothing is in the output even though we sent some input.
@@ -250,12 +254,12 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
         },
     ]);
 
-    let stopThread = new Thread((spName, tenantId) => {
+    let stopThread = new Thread((spName) => {
         sleep(300);
-        db.runCommand({streams_stopStreamProcessor: "", tenantId: tenantId, name: spName});
-    }, spName, TEST_TENANT_ID);
+        db.runCommand({streams_stopStreamProcessor: "", name: spName});
+    }, spName);
     stopThread.start();
-    sp[spName].start(undefined, /* assertWorked */ false);
+    sp[spName].start(undefined, undefined, undefined, /* assertWorked */ false);
     stopThread.join();
 }());
 

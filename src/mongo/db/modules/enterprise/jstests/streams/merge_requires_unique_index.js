@@ -2,8 +2,7 @@
 // identify documents by checking that there is a supporting unique index.
 import {
     listStreamProcessors,
-    sanitizeDoc,
-    TEST_TENANT_ID,
+    sanitizeDoc
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const st = new ShardingTest({shards: 2, rs: {nodes: 1}});
@@ -24,7 +23,7 @@ function startStreamProcessor(pipeline, assertWorked = true) {
     const uri = 'mongodb://' + mongosDB.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -46,7 +45,6 @@ function startStreamProcessor(pipeline, assertWorked = true) {
 function stopStreamProcessor() {
     let stopCmd = {
         streams_stopStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
         name: spName,
     };
     let result = db.runCommand(stopCmd);
@@ -56,7 +54,6 @@ function stopStreamProcessor() {
 function insertDocs(docs) {
     let insertCmd = {
         streams_testOnlyInsert: '',
-        tenantId: TEST_TENANT_ID,
         name: spName,
         documents: docs,
     };

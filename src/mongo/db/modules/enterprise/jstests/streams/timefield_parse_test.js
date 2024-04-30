@@ -6,10 +6,7 @@
 
 import {uuidStr} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {
-    listStreamProcessors,
-    TEST_TENANT_ID
-} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function testWithAtlasConn(testConfig, streams) {
     let dbName = "test";
@@ -53,7 +50,7 @@ function testWithAtlasConn(testConfig, streams) {
     };
 
     let sp = streams.createStreamProcessor("timefield_parse_test-" + uuidStr(), pipeline);
-    sp.start(startOptions);
+    sp.start(startOptions, "basicTestProcessorId-" + uuidStr(), "jstests");
 
     let inputDocs = [];
     for (let i = 1; i <= 10; i++) {
@@ -80,7 +77,7 @@ function testTimeFieldsWithAtlasSource() {
         {name: '__testMemory', type: 'in_memory', options: {}}
     ];
 
-    let streams = new Streams(TEST_TENANT_ID, connectionRegistry);
+    let streams = new Streams(connectionRegistry);
 
     let testConfigs = [];
     let ts_str = "2023-01-01T00:00:00.000Z";

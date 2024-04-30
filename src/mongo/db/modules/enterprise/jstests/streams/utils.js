@@ -5,13 +5,6 @@ import {
     getCallerName,
 } from 'jstests/core/timeseries/libs/timeseries_writes_util.js';
 
-export const TEST_TENANT_ID = 'testTenant';
-// TODO: Rename following variables to use UPPER_SNAKE_CASE naming pattern.
-export const connectionName = 'db1';
-export const dbName = jsTestName();
-export const dlqCollName = 'dlq';
-export const outCollName = "out";
-
 export const sink = Object.freeze({
     memory: {$emit: {connectionName: '__testMemory'}},
 });
@@ -45,19 +38,18 @@ export function verifyInputEqualsOutput(input, output) {
 /**
  * Start a sample on a streamProcessor.
  */
-export function startSample(name, limit) {
-    let startSampleCmd =
-        {streams_startStreamSample: '', tenantId: TEST_TENANT_ID, name: name, limit: limit};
+export function startSample(name) {
+    let startSampleCmd = {streams_startStreamSample: '', name: name};
     let result = db.runCommand(startSampleCmd);
     assert.commandWorked(result);
-    return result;
+    return result["id"];
 }
 
 /**
  * Sample until count results are retrieved.
  */
 export function sampleUntil(cursorId, count, name, maxIterations = 100, sleepInterval = 50) {
-    let getMoreCmd = {streams_getMoreStreamSample: cursorId, tenantId: TEST_TENANT_ID, name: name};
+    let getMoreCmd = {streams_getMoreStreamSample: cursorId, name: name};
     let sampledDocs = [];
     let i = 0;
     while (i < maxIterations && sampledDocs.length < count) {
@@ -113,6 +105,84 @@ export function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
     throw 'maximum time elapsed';
 }
 
+// Utilities to interact with the new local disk checkpoint storage.
+export class LocalDiskCheckpointUtil {
+    constructor(checkpointDir, tenantId, streamProcessorId, processorName) {
+        this._spCheckpointDir = `${checkpointDir}/${tenantId}/${streamProcessorId}`;
+        this.processorName = processorName;
+        this.processorId = streamProcessorId;
+        this.flushedIds = [];
+    }
+
+    get streamProcessorCheckpointDir() {
+        return this._spCheckpointDir;
+    }
+
+    get checkpointIds() {
+        if (!fileExists(this._spCheckpointDir)) {
+            return [];
+        }
+
+        const checkpointIds =
+            listFiles(this._spCheckpointDir)
+                .filter((e) => e.isDirectory)
+                .filter((checkpointDir) => {
+                    const manifestFile =
+                        listFiles(checkpointDir.name).find((file) => file.baseName === "MANIFEST");
+                    return manifestFile !== undefined;
+                })
+                .map((checkpointDir) => checkpointDir.baseName);
+        checkpointIds.sort();
+        return checkpointIds;
+    }
+
+    getCheckpointIds() {
+        return this.checkpointIds;
+    }
+
+    get latestCheckpointId() {
+        const ids = this.checkpointIds;
+        assert.gt(ids.length, 0);
+        // checkpointIds returns the IDs in earliest to latest order.
+        return ids[ids.length - 1];
+    }
+
+    get hasCheckpoint() {
+        return this.checkpointIds.length > 0;
+    }
+
+    getRestoreDirectory(checkpointId) {
+        return `${this._spCheckpointDir}/${checkpointId}`;
+    }
+
+    deleteCheckpointDirectory(checkpointId) {
+        removeFile(this.getRestoreDirectory(checkpointId));
+    }
+
+    clear() {
+        if (!fileExists(this._spCheckpointDir)) {
+            return;
+        }
+
+        listFiles(this._spCheckpointDir).forEach((file) => removeFile(file.name));
+    }
+
+    flushAll() {
+        for (const id of this.getCheckpointIds()) {
+            // only flush checkpoint IDs that we haven't flushed already.
+            if (!this.flushedIds.includes(id)) {
+                jsTestLog(`Flushing checkpoint ${id}`);
+                assert.commandWorked(db.runCommand({
+                    streams_sendEvent: '',
+                    processorId: this.processorId,
+                    checkpointFlushedEvent: {checkpointId: parseInt(id)}
+                }));
+                this.flushedIds.push(id);
+            }
+        }
+    }
+}
+
 /**
  * Returns a cloned object with the metadata fields removed (e.g. `_ts` and `_stream_meta`) for
  * easier comparison checks.
@@ -124,6 +194,11 @@ export function sanitizeDoc(doc, fieldNames = ['_ts', '_stream_meta']) {
     }
     return clone;
 }
+
+export const connectionName = 'db1';
+export const dbName = jsTestName();
+export const dlqCollName = 'dlq';
+export const outCollName = "out";
 
 /**
  * Starts a stream processor named 'spName' with 'pipeline' specification. Returns the start command
@@ -142,7 +217,7 @@ export function startStreamProcessor(spName, pipeline) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
         processorId: spName,
         pipeline: pipeline,
@@ -170,19 +245,10 @@ export function startStreamProcessor(spName, pipeline) {
 export function stopStreamProcessor(spName) {
     let stopCmd = {
         streams_stopStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
         name: spName,
     };
     jsTestLog(`Stopping ${spName} - \n${tojson(stopCmd)}`);
     return assert.commandWorked(db.runCommand(stopCmd));
-}
-
-/**
- * Retrieves stats for the given stream processor.
- */
-export function getStats(spName) {
-    let statsCmd = {streams_getStats: '', tenantId: TEST_TENANT_ID, name: spName, verbose: true};
-    return assert.commandWorked(db.runCommand(statsCmd));
 }
 
 /**
@@ -192,7 +258,6 @@ export function getStats(spName) {
 export function insertDocs(spName, docs) {
     let insertCmd = {
         streams_testOnlyInsert: '',
-        tenantId: TEST_TENANT_ID,
         name: spName,
         documents: docs,
     };
@@ -204,8 +269,7 @@ export function insertDocs(spName, docs) {
  * Lists all stream processors. Returns the listStreamProcessors command result.
  */
 export function listStreamProcessors() {
-    return assert.commandWorked(
-        db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID}));
+    return assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
 }
 
 /**
@@ -592,7 +656,7 @@ export const windowPipelines =
     [].concat([group_sort_pipeline], _windowPipelines, [sort_limit_pipeline]);
 
 export function getOperatorStats(spName, operatorType) {
-    let getStatsCmd = {streams_getStats: '', tenantId: TEST_TENANT_ID, name: spName, verbose: true};
+    let getStatsCmd = {streams_getStats: '', name: spName, verbose: true};
     let result = db.runCommand(getStatsCmd);
     if (result["ok"] != 1) {
         return {};

@@ -8,8 +8,7 @@ import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_clie
 import {
     listStreamProcessors,
     sampleUntil,
-    startSample,
-    TEST_TENANT_ID
+    startSample
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function runAll() {
@@ -22,7 +21,7 @@ function runAll() {
         },
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
-    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
+    const sp = new Streams(connectionRegistry);
 
     function createWindowOp(windowOp, interval, hopSize = null, pipeline = []) {
         let arg = {
@@ -84,18 +83,13 @@ function runAll() {
 
         function insert(docs) {
             // Insert 2 documents into the stream.
-            let insertCmd = {
-                streams_testOnlyInsert: '',
-                tenantId: TEST_TENANT_ID,
-                name: "window1",
-                documents: docs
-            };
+            let insertCmd = {streams_testOnlyInsert: '', name: "window1", documents: docs};
             let result = db.runCommand(insertCmd);
             assert.commandWorked(result);
         }
 
         // Start a sample on the stream processor.
-        let cursorId = startSample("window1")["id"];
+        let cursorId = startSample("window1");
 
         // Insert a few docs into the stream processor
         let docs = [
@@ -190,18 +184,13 @@ function runAll() {
 
         function insert(docs) {
             // Insert 'docs' into the stream.
-            let insertCmd = {
-                streams_testOnlyInsert: '',
-                tenantId: TEST_TENANT_ID,
-                name: "window1",
-                documents: docs
-            };
+            let insertCmd = {streams_testOnlyInsert: '', name: "window1", documents: docs};
             let result = db.runCommand(insertCmd);
             assert.commandWorked(result);
         }
 
         // Start a sample on the stream processor.
-        let cursorId = startSample("window1")["id"];
+        let cursorId = startSample("window1");
 
         // Insert a few docs into the stream processor
         let docs = [
@@ -302,7 +291,7 @@ function runAll() {
                 source = {$source: {connectionName: "db1", db: dbName, coll: inputCollName}};
             }
 
-            const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
+            const sp = new Streams(connectionRegistry);
             const hopSizeSeconds = 1;
             sp.createStreamProcessor(spName, [
                 source,
@@ -330,12 +319,8 @@ function runAll() {
             function insert(doc) {
                 if (isKafka) {
                     // Insert 'docs' into the stream.
-                    assert.commandWorked(db.runCommand({
-                        streams_testOnlyInsert: '',
-                        tenantId: TEST_TENANT_ID,
-                        name: spName,
-                        documents: [doc]
-                    }));
+                    assert.commandWorked(db.runCommand(
+                        {streams_testOnlyInsert: '', name: spName, documents: [doc]}));
                 } else {
                     assert.commandWorked(inputColl.insertOne(doc));
                 }

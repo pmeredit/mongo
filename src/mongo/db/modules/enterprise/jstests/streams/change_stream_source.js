@@ -7,10 +7,7 @@
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
-    getStats,
     listStreamProcessors,
-    stopStreamProcessor,
-    TEST_TENANT_ID,
     waitForCount
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
@@ -22,7 +19,7 @@ outputColl.drop();
 
 const uri = 'mongodb://' + db.getMongo().host;
 let connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
-const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
+const sp = new Streams(connectionRegistry);
 
 // Collections and databases to issues writes against. When we write to these namespaces, this will
 // generate change events that may or may not be picked up by our stream processor, depending on how
@@ -132,7 +129,7 @@ function runChangeStreamSourceTest({
 
     processor.sample();
     // Get verbose stats.
-    const verboseStats = getStats(processorName);
+    const verboseStats = db.runCommand({streams_getStats: '', name: processorName, verbose: true});
     jsTestLog(verboseStats);
     assert.eq(verboseStats["ok"], 1);
     const startingPoint = verboseStats['changeStreamState']['_data'];
@@ -547,8 +544,9 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 
     // Start the processor.
     const processor = sp[processorName];
-    assert.commandFailed(processor.start({}, false));
-    let result = listStreamProcessors();
+    assert.commandFailed(processor.start({}, "", "", false));
+    const listCmd = {streams_listStreamProcessors: ''};
+    let result = db.runCommand(listCmd);
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 0, result);
 }
@@ -575,8 +573,9 @@ function verifyThatStreamProcessorFailsToStartForInvalidFullDocumentMode(fullDoc
 
     // Start the processor.
     const processor = sp[processorName];
-    assert.commandFailed(processor.start({}, false));
-    let result = listStreamProcessors();
+    assert.commandFailed(processor.start({}, "", "", false));
+    const listCmd = {streams_listStreamProcessors: ''};
+    let result = db.runCommand(listCmd);
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 0, result);
 }
@@ -615,8 +614,9 @@ function verifyUpdateFullDocument() {
         ]);
 
         const processor = sp[processorName];
-        assert.commandWorked(processor.start({}, false));
-        let result = listStreamProcessors();
+        assert.commandWorked(processor.start({}, "", "", false));
+        const listCmd = {streams_listStreamProcessors: ''};
+        let result = db.runCommand(listCmd);
         assert.eq(result["ok"], 1, result);
         assert.eq(result["streamProcessors"].length, 1, result);
 
@@ -699,7 +699,7 @@ function testAfterInvalidate() {
         streams_startStreamProcessor: '',
         name: spName,
         processorId: spName,
-        tenantId: TEST_TENANT_ID,
+        tenantId: "testTenant",
         pipeline: [
             {
                 $source: {
@@ -720,7 +720,7 @@ function testAfterInvalidate() {
     assert.commandWorked(result);
 
     // Get verbose stats.
-    const verboseStats = getStats(spName);
+    const verboseStats = db.runCommand({streams_getStats: '', name: spName, verbose: true});
     jsTestLog(verboseStats);
     assert.eq(verboseStats["ok"], 1);
     // Ensure that the maxMemoryUsage for the source operator is more than 0.
@@ -741,7 +741,7 @@ function testAfterInvalidate() {
         });
     });
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }
 
 testAfterInvalidate();
@@ -844,7 +844,7 @@ function testInvalidPipeline() {
     ]);
 
     const processor = sp[processorName];
-    let result = processor.start({}, false /* assertWorked */);
+    let result = processor.start({}, undefined, undefined, false /* assertWorked */);
     // This is the error the target changestream $source gives us.
     assert.commandFailedWithCode(result, 40324);
     assert.eq(

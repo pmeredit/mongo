@@ -38,10 +38,17 @@ public:
     public:
         using InvocationBase::InvocationBase;
         void typedRun(OperationContext* opCtx) {
-            const auto& requestParams = request();
+            TestOnlyInsertCommand requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
 
-            streamManager->testOnlyInsertDocuments(requestParams);
+            // The incoming documents may not be owned. Since we need them to outlive this command
+            // execution, get owned copies of them.
+            std::vector<mongo::BSONObj> ownedDocs;
+            for (const auto& doc : requestParams.getDocuments()) {
+                ownedDocs.push_back(doc.getOwned());
+            }
+            streamManager->testOnlyInsertDocuments(requestParams.getName().toString(),
+                                                   std::move(ownedDocs));
         }
 
     private:

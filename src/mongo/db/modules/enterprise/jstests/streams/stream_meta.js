@@ -5,10 +5,7 @@
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {
-    listStreamProcessors,
-    TEST_TENANT_ID
-} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 function testStreamMeta({
     documents,
@@ -23,7 +20,7 @@ function testStreamMeta({
     const dlqCollName = "dlq";
     const connectionName = "db1";
     const connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
-    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
+    const sp = new Streams(connectionRegistry);
     const coll = db.getSiblingDB(dbName)[collName];
     const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
     coll.drop();

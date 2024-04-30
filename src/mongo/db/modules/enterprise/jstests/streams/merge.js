@@ -5,11 +5,8 @@
  */
 
 import {
-    insertDocs,
     listStreamProcessors,
-    sanitizeDoc,
-    stopStreamProcessor,
-    TEST_TENANT_ID
+    sanitizeDoc
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
@@ -25,7 +22,7 @@ const badUri = "mongodb://badUri";
 function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
+        tenantId: 'testTenant',
         name: spName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -42,6 +39,27 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
         assert.commandWorked(result);
     }
     return result;
+}
+
+function stopStreamProcessor() {
+    let stopCmd = {
+        streams_stopStreamProcessor: '',
+        name: spName,
+    };
+    let result = db.runCommand(stopCmd);
+    assert.commandWorked(result);
+}
+
+function insertDocs(docs) {
+    let insertCmd = {
+        streams_testOnlyInsert: '',
+        name: spName,
+        documents: docs,
+    };
+
+    let result = db.runCommand(insertCmd);
+    jsTestLog(result);
+    assert.commandWorked(result);
 }
 
 (function testKeepExistingInsertMode() {
@@ -63,7 +81,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 2 documents into the stream.
-    insertDocs(spName, [{_id: 0, a: 0}, {_id: 1, a: 1}]);
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
 
@@ -71,7 +89,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     // Insert 8 more documents (4 good, 4 bad that violate unique constraint on field a) into the
     // stream.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 2, a: 2},
         {_id: 3, a: 1},
         {_id: 4, a: 4},
@@ -103,14 +121,14 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     // Insert 3 more documents (2 good, 1 bad that violates unique constraint on field a) into the
     // stream. The 2 good documents have the same _id. Due to the 'keepExisting' whenMatched mode
     // only the first one should get inserted.
-    insertDocs(spName, [{_id: 10, a: 0}, {_id: 11, a: 11}, {_id: 11, a: 12}]);
+    insertDocs([{_id: 10, a: 0}, {_id: 11, a: 11}, {_id: 11, a: 12}]);
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
     assert.eq([{_id: 11, a: 11}], outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc)));
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testMergeInsertMode() {
@@ -132,7 +150,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 2 documents into the stream.
-    insertDocs(spName, [{_id: 0, a: 0}, {_id: 1, a: 1}]);
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
 
@@ -140,7 +158,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     // Insert 8 more documents (4 good, 4 bad that violate unique constraint on field a) into the
     // stream.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 2, a: 2},
         {_id: 3, a: 1},
         {_id: 4, a: 4},
@@ -157,7 +175,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     // Insert 3 more documents (2 good, 1 bad that violates unique constraint on field a) into the
     // stream. The 2 good documents have the same _id. Due to the 'merge' whenMatched mode the 2
     // documents the should get merged.
-    insertDocs(spName, [{_id: 10, a: 0}, {_id: 11, a: 11, obj: {a: 1}}, {_id: 11, obj: {b: 1}}]);
+    insertDocs([{_id: 10, a: 0}, {_id: 11, a: 11, obj: {a: 1}}, {_id: 11, obj: {b: 1}}]);
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
@@ -169,7 +187,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     });
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testMergeInsertModeWithOnFields() {
@@ -192,12 +210,12 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 2 documents into the stream.
-    insertDocs(spName, [{_id: 0, a: 0}, {_id: 1, a: 1}]);
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testReplaceInsertMode() {
@@ -219,7 +237,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 2 documents into the stream.
-    insertDocs(spName, [{_id: 0, a: 0}, {_id: 1, a: 1}]);
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
 
@@ -227,7 +245,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     // Insert 8 more documents (4 good, 4 bad that violate unique constraint on field a) into the
     // stream.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 2, a: 2},
         {_id: 3, a: 1},
         {_id: 4, a: 4},
@@ -244,7 +262,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     // Insert 3 more documents (2 good, 1 bad that violates unique constraint on field a) into the
     // stream. The 2 good documents have the same _id. Due to the 'replace' whenMatched mode the
     // second document should overwrite the first one.
-    insertDocs(spName, [{_id: 10, a: 0}, {_id: 11, a: 11, obj: {a: 1}}, {_id: 11, obj: {b: 1}}]);
+    insertDocs([{_id: 10, a: 0}, {_id: 11, a: 11, obj: {a: 1}}, {_id: 11, obj: {b: 1}}]);
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
@@ -252,7 +270,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
               outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc)));
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testReplaceDiscardMode() {
@@ -277,7 +295,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 3 documents into the stream, only 2 should get inserted.
-    insertDocs(spName, [{_id: 0, a: 0}, {_id: 1, a: 1}, {_id: 2, a: 2}]);
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}, {_id: 2, a: 2}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => { return dlqColl.find().itcount() == 0; });
@@ -285,7 +303,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     assert.commandWorked(outColl.createIndex({a: 1}, {unique: true}));
 
     // Insert 8 more documents into the stream.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 0, a: 2},
         {_id: 1, a: 2},
         {_id: 0, a: 1},
@@ -311,7 +329,6 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     // stream. The 2 good documents have the same _id. Due to the 'replace' whenMatched mode the
     // second document should overwrite the first one.
     insertDocs(
-        spName,
         [{_id: 1, a: 4}, {_id: 0, a: 2}, {_id: 1, a: 11, obj: {a: 1}}, {_id: 1, obj: {b: 1}}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
@@ -326,7 +343,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     });
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testReplaceDiscardModeWithOnFields() {
@@ -357,7 +374,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     // - one does not contains the on field 'x' and is added to the dlq while creating the batch
     // - one violates unique constraint on field 'a' and is added to the dlq while the batch is
     //   getting flushed
-    insertDocs(spName, [{x: 0, a: 0, b: 0}, {x: 1, a: 0}, {a: 0}, {x: 1, a: 1, b: 1}]);
+    insertDocs([{x: 0, a: 0, b: 0}, {x: 1, a: 0}, {a: 0}, {x: 1, a: 1, b: 1}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => {
@@ -371,7 +388,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     assert.soon(() => { return dlqColl.find().itcount() == 2; });
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testDynamicTarget() {
@@ -400,7 +417,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 2 documents into the stream. One document has gid: 0 and the other has gid: 1.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 0, customer: {name: "cust1"}, a: 0, gid: 0},
         {_id: 1, customer: {name: "cust2"}, a: 1, gid: 1}
     ]);
@@ -415,7 +432,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     // Insert 8 more documents (5 good, 3 bad that violate unique constraint on field a) into the
     // stream.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 2, customer: {name: "cust2"}, a: 2},          // missing != 0, goes to outColl2
         {_id: 3, customer: {name: "cust1"}, a: 0, gid: 0},  // dup key error for outColl1
         {_id: 4, customer: {name: "cust2"}, a: 4, gid: 1},  // goes to outColl2
@@ -462,7 +479,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     assert.eq(3, res.length, `DLQ contents: ${tojson(dlqColl.find().toArray())}`);
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testEvaluationFailure() {
@@ -492,7 +509,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     // Insert 2 documents into the stream. One document has gid: 0 and the other has no gid but
     // ggid. The collection name expression will fail to be evaluated for the second document.
-    insertDocs(spName, [
+    insertDocs([
         {_id: 0, customer: {name: "cust1"}, a: 0, gid: 0},
         {_id: 1, customer: {name: "cust2"}, a: 1, ggid: 1}
     ]);
@@ -506,11 +523,11 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     let res = dlqColl.find({"errInfo.reason": /evaluate target namespace/}).toArray();
     assert.eq(1, res.length, `DLQ contents: ${tojson(dlqColl.find().toArray())}`);
 
-    const spStatus = listStreamProcessors();
+    const spStatus = assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
     assert.eq("running", spStatus.streamProcessors[0].status, tojson(spStatus));
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 // The max number of dynamic targets allowed is 100.
@@ -556,7 +573,7 @@ const kMaxDynamicTargets = 100;
         }
         // Insert all documents into the stream. Each documents has a different value for field 'a'
         // and so will go to a different collection.
-        insertDocs(spName, docs);
+        insertDocs(docs);
 
         colls.forEach((coll) => {
             assert.soon(() => {
@@ -574,7 +591,7 @@ const kMaxDynamicTargets = 100;
         });
 
         // Stop the streamProcessor.
-        stopStreamProcessor(spName);
+        stopStreamProcessor();
     });
 })();
 
@@ -610,11 +627,11 @@ const kExecutorGenericSinkErrorCode = 8143705;
     }
     // Insert all documents into the stream. Each documents has a different value for field 'a' and
     // so will go to a different database.
-    insertDocs(spName, docs);
+    insertDocs(docs);
 
     // The sp should fail when the number of unique databases exceeds 'kMaxDynamicTargets'.
     assert.soon(() => {
-        let result = listStreamProcessors();
+        let result = db.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         jsTestLog(`${spName} status - \n${tojson(sp)}`);
         // 8143705 is the error code for "Too many unique databases". The error code is translated
@@ -624,7 +641,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
     });
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 
 (function testBadUri() {
@@ -661,7 +678,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
             setup();
         }
         startStreamProcessor([{$source: {'connectionName': '__testMemory'}}, merge]);
-        stopStreamProcessor(spName);
+        stopStreamProcessor();
     };
 
     // A test that validates a bad $merge fails to start with the expected error.
@@ -755,7 +772,8 @@ const kExecutorGenericSinkErrorCode = 8143705;
         }
     ]);
 
-    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
+    let listCmd = {streams_listStreamProcessors: ''};
+    assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
 
     // Seed of size 16KB.
     const seed = Array(16 * 1024).toString();
@@ -776,7 +794,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
     assert.soon(() => { return outColl.count() == 1; });
 
     // Stop the streamProcessor.
-    stopStreamProcessor(spName);
+    stopStreamProcessor();
 })();
 // Cleanup the output collection and DLQ.
 outColl.drop();
