@@ -337,7 +337,6 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     invariant(_options.memoryLimitBytes > 0);
     _memoryUsageMonitor = std::make_shared<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes);
     _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(_memoryUsageMonitor);
-    _tenantFeatureFlags = std::make_shared<TenantFeatureFlags>();
 
     _streamProcessorStartRequestSuccessCounter = _metricManager->registerCounter(
         "stream_processor_requests_total",
@@ -815,7 +814,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         // every run.
         executorOptions.sourceNotIdleSleepDurationMs = 1000;
     }
-    executorOptions.tenantFeatureFlags = _tenantFeatureFlags;
     processorInfo->executor =
         std::make_unique<Executor>(processorInfo->context.get(), std::move(executorOptions));
     processorInfo->startedAt = Date_t::now();
@@ -1300,34 +1298,26 @@ mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
-    _tenantFeatureFlags->updateFeatureFlags(request.getFeatureFlags());
+    auto tenantFeatureFlags = std::make_shared<TenantFeatureFlags>(request.getFeatureFlags());
     for (auto& iter : _processors) {
-        iter.second->executor->onFeatureFlagsUpdated();
+        iter.second->executor->onFeatureFlagsUpdated(tenantFeatureFlags);
     }
-
-    mongo::UpdateFeatureFlagsReply reply;
-    return reply;
+    return mongo::UpdateFeatureFlagsReply{};
 }
 
 mongo::GetFeatureFlagsReply StreamManager::testOnlyGetFeatureFlags(
     const mongo::GetFeatureFlagsCommand& request) {
-    if (request.getName()) {
-        stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
 
-        assertTenantIdIsValid(lk, request.getTenantId());
+    assertTenantIdIsValid(lk, request.getTenantId());
 
-        std::string name = request.getName()->toString();
-        auto processor = _processors.find(name);
-        mongo::GetFeatureFlagsReply reply;
-        if (processor != _processors.end()) {
-            reply.setFeatureFlags(processor->second->executor->testOnlyGetFeatureFlags());
-        }
-        return reply;
-    } else {
-        mongo::GetFeatureFlagsReply reply;
-        reply.setFeatureFlags(_tenantFeatureFlags->testOnlyGetFeatureFlags());
-        return reply;
+    std::string name = request.getName().toString();
+    auto processor = _processors.find(name);
+    mongo::GetFeatureFlagsReply reply;
+    if (processor != _processors.end()) {
+        reply.setFeatureFlags(processor->second->executor->testOnlyGetFeatureFlags());
     }
+    return reply;
 }
 
 void StreamManager::onExecutorShutdown(std::string name, Status status) {

@@ -2,7 +2,6 @@
 #include <chrono>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/platform/mutex.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 
 namespace streams {
@@ -19,20 +18,12 @@ namespace streams {
 
 class TenantFeatureFlags {
 public:
-    TenantFeatureFlags() {}
-    TenantFeatureFlags(TenantFeatureFlags const&) = delete;
-    TenantFeatureFlags(TenantFeatureFlags&&) = delete;
-    TenantFeatureFlags operator=(TenantFeatureFlags&&) = delete;
-    TenantFeatureFlags operator=(TenantFeatureFlags const&) = delete;
+    TenantFeatureFlags(const mongo::BSONObj& featureFlags);
 
-    mongo::BSONObj testOnlyGetFeatureFlags() const;
-    void updateFeatureFlags(const mongo::BSONObj&);
-    std::chrono::time_point<std::chrono::system_clock> getLastModifiedTime() const;
     StreamProcessorFeatureFlags getStreamProcessorFeatureFlags(const std::string&) const;
 
 private:
     mongo::BSONObj _tenantFeatureFlags;
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("TenantFeatureFlags::mutex");
     std::chrono::time_point<std::chrono::system_clock> _updateTimestamp;
 };
 

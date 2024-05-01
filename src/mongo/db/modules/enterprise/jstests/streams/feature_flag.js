@@ -35,24 +35,6 @@ let result =
 jsTestLog(result);
 assert.eq(result.featureFlags, {});
 
-result = db.runCommand({
-    streams_updateFeatureFlags: '',
-    tenantId: TEST_TENANT_ID,
-    featureFlags: {feature_flag_a: {value: true}}
-});
-jsTestLog(result);
-assert.eq(result.ok, true);
-
-assert.soon(() => {
-    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID});
-    return result.featureFlags.feature_flag_a.value;
-});
-
-assert.soon(() => {
-    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID});
-    return result.featureFlags.feature_flag_a;
-});
-
 let ff = {feature_flag_a: {value: true}};
 ff.feature_flag_a["streamProcessors"] = {};
 ff.feature_flag_a.streamProcessors[spName] = false;
@@ -64,7 +46,8 @@ assert.eq(result.ok, true);
 assert.soon(() => {
     result = db.runCommand(
         {streams_testOnlyGetFeatureFlags: '', tenantId: TEST_TENANT_ID, name: spName});
-    return (!result.featureFlags.feature_flag_a);
+    return (result.featureFlags.hasOwnProperty("feature_flag_a") &&
+            !result.featureFlags.feature_flag_a);
 });
 
 ff = {

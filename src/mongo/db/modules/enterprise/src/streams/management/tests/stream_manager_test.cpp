@@ -160,8 +160,7 @@ public:
 
     void updateContextFeatureFlags(StreamManager::StreamProcessorInfo* processorInfo,
                                    std::shared_ptr<TenantFeatureFlags> featureFlags) {
-        processorInfo->executor->_tenantFeatureFlags = featureFlags;
-        processorInfo->executor->_featureFlagsUpdated = true;
+        processorInfo->executor->_tenantFeatureFlagsUpdate = std::move(featureFlags);
         processorInfo->executor->updateContextFeatureFlags();
     }
 
@@ -732,15 +731,14 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
 
         mongo::BSONObj featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: 50000}}}");
-        std::shared_ptr<TenantFeatureFlags> tFeatureFlags = std::make_shared<TenantFeatureFlags>();
-        tFeatureFlags->updateFeatureFlags(featureFlags);
+        std::shared_ptr<TenantFeatureFlags> tFeatureFlags =
+            std::make_shared<TenantFeatureFlags>(featureFlags);
         updateContextFeatureFlags(processorInfo, tFeatureFlags);
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
         featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: \"60000\"}}}");
-        tFeatureFlags = std::make_shared<TenantFeatureFlags>();
-        tFeatureFlags->updateFeatureFlags(featureFlags);
+        tFeatureFlags = std::make_shared<TenantFeatureFlags>(featureFlags);
         updateContextFeatureFlags(processorInfo, tFeatureFlags);
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 

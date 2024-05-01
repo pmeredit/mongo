@@ -266,7 +266,6 @@ private:
         _numStreamProcessorsByStatusGauges;
     mongo::stdx::unordered_map<Command, std::shared_ptr<IntGauge>> _streamProcessorActiveGauges;
     mongo::stdx::unordered_map<Command, std::shared_ptr<Counter>> _streamProcessorFailedCounters;
-    std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlags;
 
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};

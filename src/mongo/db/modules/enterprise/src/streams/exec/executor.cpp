@@ -79,7 +79,6 @@ Executor::Executor(Context* context, Options options)
         "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
     _runOnceCounter = _metricManager->registerCounter(
         "runonce_count", "Number of runOnce iterations in the stream processor", labels);
-    _tenantFeatureFlags = std::move(_options.tenantFeatureFlags);
 }
 
 Executor::~Executor() {
@@ -555,35 +554,37 @@ BSONObj Executor::testOnlyGetFeatureFlags() const {
 
 
 void Executor::updateContextFeatureFlags() {
-    if (_featureFlagsUpdated) {
-        if (!_context->featureFlags) {
-            _context->featureFlags =
-                _tenantFeatureFlags->getStreamProcessorFeatureFlags(_context->streamName);
-        } else {
-            _context->featureFlags->updateFeatureFlags(
-                _tenantFeatureFlags->getStreamProcessorFeatureFlags(_context->streamName));
-        }
-        // normally we would want to just call getFeatureFlagValue to get the value, but we have
-        // different defaults, depending on the presence of window.
-        if (_context->featureFlags->isOverridden(FeatureFlags::kCheckpointDurationInMs)) {
-            auto val =
-                _context->featureFlags->getFeatureFlagValue(FeatureFlags::kCheckpointDurationInMs)
-                    .getInt();
-            if (val) {
-                _context->checkpointInterval = std::chrono::milliseconds(val.get());
-                auto checkpointCoordinator = _options.checkpointCoordinator;
-                if (checkpointCoordinator) {
-                    checkpointCoordinator->setCheckpointInterval(_context->checkpointInterval);
-                }
+    if (!_tenantFeatureFlagsUpdate) {
+        return;
+    }
+
+    if (!_context->featureFlags) {
+        _context->featureFlags =
+            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(_context->streamName);
+    } else {
+        _context->featureFlags->updateFeatureFlags(
+            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(_context->streamName));
+    }
+    // normally we would want to just call getFeatureFlagValue to get the value, but we have
+    // different defaults, depending on the presence of window.
+    if (_context->featureFlags->isOverridden(FeatureFlags::kCheckpointDurationInMs)) {
+        auto val =
+            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kCheckpointDurationInMs)
+                .getInt();
+        if (val) {
+            _context->checkpointInterval = std::chrono::milliseconds(val.get());
+            auto checkpointCoordinator = _options.checkpointCoordinator;
+            if (checkpointCoordinator) {
+                checkpointCoordinator->setCheckpointInterval(_context->checkpointInterval);
             }
         }
-        _featureFlagsUpdated = false;
     }
+    _tenantFeatureFlagsUpdate.reset();
 }
 
-void Executor::onFeatureFlagsUpdated() {
+void Executor::onFeatureFlagsUpdated(std::shared_ptr<TenantFeatureFlags> tenantFeatureFlags) {
     stdx::lock_guard<Latch> lock(_mutex);
-    _featureFlagsUpdated = true;
+    _tenantFeatureFlagsUpdate = std::move(tenantFeatureFlags);
 }
 
 }  // namespace streams

@@ -57,7 +57,6 @@ public:
         // this threshold is hit, all subsequent inserts will block until there is
         // space available.
         int64_t testOnlyDocsQueueMaxSizeBytes{512 * 1024 * 1024};  // 512 MB
-        std::shared_ptr<TenantFeatureFlags> tenantFeatureFlags;
     };
 
     Executor(Context* context, Options options);
@@ -110,7 +109,7 @@ public:
     mongo::BSONObj testOnlyGetFeatureFlags() const;
 
     // To notify the executor that the feature flags have been updated.
-    void onFeatureFlagsUpdated();
+    void onFeatureFlagsUpdated(std::shared_ptr<TenantFeatureFlags> tenantFeatureFlags);
 
     // This gets invoked via a RPC command to get this SP to take a checkpoint. If force is true,
     // then it leads to bypassing the normal logic in the checkpoint coordinator around skipping
@@ -226,8 +225,7 @@ private:
         WriteCheckpointCommand::kNone};
     // The current resume token or timestamp for a change stream $source.
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
-    bool _featureFlagsUpdated{false};
-    std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlags;
+    std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlagsUpdate;
 
     // A queue of checkpointIDs that have been flushed to remote storage.
     std::deque<CheckpointId> _checkpointFlushEvents;

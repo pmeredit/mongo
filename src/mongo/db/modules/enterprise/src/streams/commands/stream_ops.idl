@@ -732,6 +732,5 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-                optional: true
         access_check:
             none: true
