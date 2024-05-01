@@ -92,8 +92,10 @@ public:
         BSONObj filter = BSON("name" << ns.coll());
         BSONObj cmdObj =
             BSON("listCollections" << 1 << "filter" << filter << "cursor" << BSONObj());
+        ReadPreferenceSetting readPref{ReadPreference::PrimaryPreferred};
 
-        OpMsgRequest req = OpMsgRequestBuilder::create(vts, ns.dbName(), cmdObj);
+        OpMsgRequest req = OpMsgRequestBuilder::create(
+            vts, ns.dbName(), cmdObj.addFields(readPref.toContainingBSON()));
         auto highLevelSchema = doFindOne(req);
 
         if (!highLevelSchema.isEmpty()) {
