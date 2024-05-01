@@ -4,12 +4,8 @@
  * ]
  */
 
-import {
-    documentEq,
-} from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
-    LocalDiskCheckpointUtil,
     waitForCount,
     waitWhenThereIsMoreData
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -25,13 +21,91 @@ export function removeProjections(doc) {
     return doc;
 }
 
+// Utilities to interact with the new local disk checkpoint storage.
+export class LocalDiskCheckpointUtil {
+    constructor(checkpointDir, tenantId, streamProcessorId) {
+        this.tenantId = tenantId;
+        this._spCheckpointDir = `${checkpointDir}/${tenantId}/${streamProcessorId}`;
+        this.processorId = streamProcessorId;
+        this.flushedIds = [];
+    }
+
+    get streamProcessorCheckpointDir() {
+        return this._spCheckpointDir;
+    }
+
+    get checkpointIds() {
+        if (!fileExists(this._spCheckpointDir)) {
+            return [];
+        }
+
+        const checkpointIds =
+            listFiles(this._spCheckpointDir)
+                .filter((e) => e.isDirectory)
+                .filter((checkpointDir) => {
+                    const manifestFile =
+                        listFiles(checkpointDir.name).find((file) => file.baseName === "MANIFEST");
+                    return manifestFile !== undefined;
+                })
+                .map((checkpointDir) => checkpointDir.baseName);
+        checkpointIds.sort();
+        return checkpointIds;
+    }
+
+    getCheckpointIds() {
+        return this.checkpointIds;
+    }
+
+    get latestCheckpointId() {
+        const ids = this.checkpointIds;
+        assert.gt(ids.length, 0);
+        // checkpointIds returns the IDs in earliest to latest order.
+        return ids[ids.length - 1];
+    }
+
+    get hasCheckpoint() {
+        return this.checkpointIds.length > 0;
+    }
+
+    getRestoreDirectory(checkpointId) {
+        return `${this._spCheckpointDir}/${checkpointId}`;
+    }
+
+    deleteCheckpointDirectory(checkpointId) {
+        removeFile(this.getRestoreDirectory(checkpointId));
+    }
+
+    clear() {
+        if (!fileExists(this._spCheckpointDir)) {
+            return;
+        }
+
+        listFiles(this._spCheckpointDir).forEach((file) => removeFile(file.name));
+    }
+
+    flushAll() {
+        for (const id of this.getCheckpointIds()) {
+            // only flush checkpoint IDs that we haven't flushed already.
+            if (!this.flushedIds.includes(id)) {
+                jsTestLog(`Flushing checkpoint ${id}`);
+                assert.commandWorked(db.runCommand({
+                    streams_sendEvent: '',
+                    tenantId: this.tenantId,
+                    processorId: this.processorId,
+                    checkpointFlushedEvent: {checkpointId: parseInt(id)}
+                }));
+                this.flushedIds.push(id);
+            }
+        }
+    }
+}
+
 export class TestHelper {
     constructor(input,
                 middlePipeline,
                 interval = 0,
                 sourceType = "kafka",
                 useNewCheckpointing = true,
-                spId = null,
                 writeDir = null,
                 restoreDir = null,
                 dbForTest = null,
@@ -65,16 +139,14 @@ export class TestHelper {
         if (dbForTest != null) {
             this.db = dbForTest;
         }
-        if (spId == null) {
-            this.processorId = uuidStr();
-        } else {
-            this.processorId = spId;
-        }
         this.tenantId = "jstests-tenant";
         this.outputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.outputCollName];
         this.inputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.inputCollName];
         this.dlqColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.dlqCollName];
+
+        // this.spName = "resume_from_checkpoint_test_spid";
         this.spName = uuidStr();
+        this.processorId = this.spName;
         this.checkpointIntervalMs = null;  // Use the default.
 
         this.useNewCheckpointing = useNewCheckpointing;
@@ -165,9 +237,9 @@ export class TestHelper {
                 },
             }
         });
-        this.sp = new Streams(this.connectionRegistry, this.db);
-        this.checkpointUtil = new LocalDiskCheckpointUtil(
-            this.writeDir, this.tenantId, this.processorId, this.spName);
+        this.sp = new Streams(this.tenantId, this.connectionRegistry, this.db);
+        this.checkpointUtil =
+            new LocalDiskCheckpointUtil(this.writeDir, this.tenantId, this.processorId);
     }
 
     // Helper functions.
@@ -177,6 +249,7 @@ export class TestHelper {
             // Insert the input.
             assert.commandWorked(this.db.runCommand({
                 streams_testOnlyInsert: '',
+                tenantId: this.tenantId,
                 name: this.spName,
                 documents: this.input,
             }));
@@ -200,8 +273,7 @@ export class TestHelper {
         this.sp.createStreamProcessor(this.spName, this.pipeline);
         jsTestLog(`Starting ${this.spName} with pipeline ${this.pipeline}, options ${
             tojson(this.startOptions)}`);
-        return this.sp[this.spName].start(
-            this.startOptions, this.processorId, this.tenantId, assertWorked);
+        return this.sp[this.spName].start(this.startOptions, assertWorked);
     }
 
     stop(assertWorked = true) {
@@ -328,31 +400,24 @@ export class TestHelper {
  * CheckpointTestHelper adds a utility method
  * to send partial input.
  */
-class CheckPointTestHelper extends TestHelper {
+export class CheckPointTestHelper extends TestHelper {
     constructor(inputDocs,
                 pipeline,
                 interval,
                 sourceType = "kafka",
                 useNewCheckpointing = false,
-                spId = null,
                 writeDir = null,
                 restoreDir = null) {
-        super(inputDocs,
-              pipeline,
-              interval,
-              sourceType,
-              useNewCheckpointing,
-              spId,
-              writeDir,
-              restoreDir);
+        super(inputDocs, pipeline, interval, sourceType, useNewCheckpointing, writeDir, restoreDir);
     }
     runWithInputSlice(endRange, firstStart = true) {
         this.sp.createStreamProcessor(this.spName, this.pipeline);
-        this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
+        this.sp[this.spName].start(this.startOptions);
         if (this.sourceType === 'kafka') {
             // Insert the input.
             assert.commandWorked(this.db.runCommand({
                 streams_testOnlyInsert: '',
+                tenantId: this.tenantId,
                 name: this.spName,
                 documents: this.input.slice(0, endRange),
             }));
@@ -447,41 +512,4 @@ export function checkpointInTheMiddleTest(
     for (let i = 0; i < originalResults.length; i++) {
         compareFunc(results[i], originalResults[i]);
     }
-}
-
-export function resumeFromCheckpointTest(testDir, spid, windowPipeline, expectedStartOffset) {
-    let inputDocs = _readDumpFile(testDir + "/inputDocs.bson");
-    let expectedResults = _readDumpFile(testDir + "/expectedResults.bson");
-
-    var test2 = new CheckPointTestHelper(
-        inputDocs, windowPipeline, 10000000, "kafka", true, spid, testDir, testDir);
-    let ids = test2.getCheckpointIds();
-    assert.eq(ids.length, 1, "expected one checkpoint");
-    const id = ids[0];
-
-    test2.run();
-    assert.soon(() => { return test2.outputColl.find({}).count() == expectedResults.length; });
-
-    const startingOffset = test2.getStartOffsetFromCheckpoint(id, true);
-    assert.eq(startingOffset, expectedStartOffset);
-    test2.stop();
-
-    let results = test2.getResults();
-    assert.eq(results.length, expectedResults.length);
-
-    var r = new Set();
-    for (let i = 0; i < results.length; i++) {
-        results[i] = removeProjections(results[i]);
-        for (let j = 0; j < expectedResults.length; j++) {
-            if (documentEq(results[i], expectedResults[j])) {
-                if (r.has(j)) {
-                    continue;
-                } else {
-                    r.add(j);
-                    break;
-                }
-            }
-        }
-    }
-    assert.eq(r.size, results.length);
 }

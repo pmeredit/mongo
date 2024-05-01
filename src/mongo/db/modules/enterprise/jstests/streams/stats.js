@@ -4,12 +4,16 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {listStreamProcessors, sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    sink,
+    TEST_TENANT_ID
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 (function() {
 
 (function testGetStats_Basic() {
-    const sp = new Streams([
+    const sp = new Streams(TEST_TENANT_ID, [
         {name: 'db', type: 'atlas', options: {uri: `mongodb://${db.getMongo().host}`}},
         {
             name: 'kafka',
@@ -143,7 +147,7 @@ import {listStreamProcessors, sink} from "src/mongo/db/modules/enterprise/jstest
     inputColl.drop();
 
     const uri = 'mongodb://' + db.getMongo().host;
-    const sp = new Streams([
+    const sp = new Streams(TEST_TENANT_ID, [
         {name: 'db', type: 'atlas', options: {uri: uri}},
     ]);
     const pipeline = [

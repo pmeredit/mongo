@@ -6,8 +6,12 @@
 
 import {getDefaultSp} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
 import {
+    getStats,
     listStreamProcessors,
     sanitizeDoc,
+    startSample,
+    stopStreamProcessor,
+    TEST_TENANT_ID,
     verifyInputEqualsOutput
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
@@ -29,7 +33,7 @@ let initialStopSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',
-    tenantId: 'testTenant',
+    tenantId: TEST_TENANT_ID,
     name: 'sampleTest',
     processorId: 'sampleTest1',
     pipeline:
@@ -43,9 +47,7 @@ jsTestLog(result);
 assert.eq(result["ok"], 1);
 
 // List stream processors.
-let listCmd = {streams_listStreamProcessors: ''};
-
-result = db.runCommand(listCmd);
+result = listStreamProcessors();
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 assert.eq(result["streamProcessors"].length, 1);
@@ -54,9 +56,7 @@ assert.eq(result["streamProcessors"][0].status, "running");
 assert.eq(result["streamProcessors"][0].pipeline, startCmd.pipeline);
 
 // Start a sample on the stream processor.
-let startSampleCmd = {streams_startStreamSample: '', name: 'sampleTest', limit: 4};
-
-result = db.runCommand(startSampleCmd);
+result = startSample('sampleTest', 4);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 
@@ -66,6 +66,7 @@ let cursorId = result["id"];
 // Insert 2 documents into the stream.
 let insertCmd = {
     streams_testOnlyInsert: '',
+    tenantId: TEST_TENANT_ID,
     name: 'sampleTest',
     documents: [{'xyz': 10}, {'xyz': 20}],
 };
@@ -75,7 +76,12 @@ jsTestLog(result);
 assert.eq(result["ok"], 1);
 
 // Retrieve 2 documents from the sample using the cursor id.
-let getMoreCmd = {streams_getMoreStreamSample: cursorId, name: 'sampleTest', batchSize: 4};
+let getMoreCmd = {
+    streams_getMoreStreamSample: cursorId,
+    tenantId: TEST_TENANT_ID,
+    name: 'sampleTest',
+    batchSize: 4
+};
 
 let sampledDocs = [];
 while (sampledDocs.length < 2) {
@@ -89,8 +95,7 @@ assert.eq(sanitizeDoc(sampledDocs[0]), {'xyz': 10});
 assert.eq(sanitizeDoc(sampledDocs[1]), {'xyz': 20});
 
 // Get stats for the stream processor.
-let statsCmd = {streams_getStats: '', name: 'sampleTest'};
-result = db.runCommand(statsCmd);
+result = getStats('sampleTest');
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 assert.eq(result["name"], "sampleTest");
@@ -103,6 +108,7 @@ assert.gt(result["outputMessageSize"], 200);
 // Insert 3 more documents into the stream.
 insertCmd = {
     streams_testOnlyInsert: '',
+    tenantId: TEST_TENANT_ID,
     name: 'sampleTest',
     documents: [{'xyz': 30}, {'xyz': 40}, {'xyz': 50}],
 };
@@ -113,6 +119,7 @@ assert.eq(result["ok"], 1);
 
 getMoreCmd = {
     streams_getMoreStreamSample: cursorId,
+    tenantId: TEST_TENANT_ID,
     name: 'sampleTest',
     batchSize: 1
 };
@@ -134,7 +141,7 @@ assert.eq(sampledDocs.length, 2);
 assert.eq(sanitizeDoc(sampledDocs[0]), {'xyz': 30});
 
 // Get stats for the stream processor one more time.
-result = db.runCommand(statsCmd);
+result = getStats('sampleTest');
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 assert.eq(result["name"], "sampleTest");
@@ -169,11 +176,7 @@ assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value - initialStartSpCounter, 1);
 
 // Stop the streamProcessor.
-let stopCmd = {
-    streams_stopStreamProcessor: '',
-    name: 'sampleTest',
-};
-result = db.runCommand(stopCmd);
+result = stopStreamProcessor('sampleTest');
 assert.eq(result["ok"], 1);
 
 getMetricsCmd = {

@@ -1,8 +1,16 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+import {TEST_TENANT_ID} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
 // StreamProcessor and Streams classes are used to make the
 // client javascript look like the syntax spec.
 // See kafkaExample below for usage instructions.
 export class StreamProcessor {
-    constructor(name, pipeline, connectionRegistry, dbForTest) {
+    constructor(tenantId, name, pipeline, connectionRegistry, dbForTest) {
+        this._tenantId = tenantId;
         this._name = name;
         this._pipeline = pipeline;
         this._connectionRegistry = connectionRegistry;
@@ -15,22 +23,22 @@ export class StreamProcessor {
     // Utilities to make test streams comamnds.
     // Testing both scenarios for correlationId (null vs not-null) as this
     // is an optional param.
-    makeStartCmd(options = {}, processorId, tenantId = 'testTenant') {
+    makeStartCmd(options = {}) {
         return {
             streams_startStreamProcessor: '',
+            tenantId: this._tenantId,
             name: this._name,
+            processorId: this._name,
             pipeline: this._pipeline,
             connections: this._connectionRegistry,
             options: options,
-            processorId: processorId,
-            tenantId: tenantId,
             correlationId: Math.random() < 0.2 ? null : 'userRequest1'
         };
     }
 
     // Start the streamProcessor.
-    start(options, processorId, tenantId, assertWorked = true) {
-        const result = this._db.runCommand(this.makeStartCmd(options, processorId, tenantId));
+    start(options, assertWorked = true) {
+        const result = this._db.runCommand(this.makeStartCmd(options));
         if (assertWorked) {
             assert.commandWorked(result);
         }
@@ -38,7 +46,7 @@ export class StreamProcessor {
     }
 
     makeStopCmd() {
-        return {streams_stopStreamProcessor: '', name: this._name};
+        return {streams_stopStreamProcessor: '', tenantId: this._tenantId, name: this._name};
     }
 
     // Stop the streamProcessor.
@@ -53,7 +61,11 @@ export class StreamProcessor {
     // Gets more sample results with the supplied cursor ID.
     getMoreSample(dbConn, cursorId, maxLoops = 10) {
         for (let loop = 0; loop < maxLoops; loop++) {
-            let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
+            let cmd = {
+                streams_getMoreStreamSample: cursorId,
+                tenantId: this._tenantId,
+                name: this._name
+            };
             let result = dbConn.runCommand(cmd);
             assert.commandWorked(result);
 
@@ -80,6 +92,7 @@ export class StreamProcessor {
     runGetMoreSample(dbConn, maxLoops = 10) {
         let cmd = {
             streams_startStreamSample: '',
+            tenantId: this._tenantId,
             name: this._name,
         };
         let result = dbConn.runCommand(cmd);
@@ -96,15 +109,20 @@ export class StreamProcessor {
     startSample() {
         let cmd = {
             streams_startStreamSample: '',
+            tenantId: this._tenantId,
             name: this._name,
         };
         let result = this._db.runCommand(cmd);
         assert.commandWorked(result);
-        return result["id"];
+        return result;
     }
 
     getNextSample(cursorId) {
-        let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
+        let cmd = {
+            streams_getMoreStreamSample: cursorId,
+            tenantId: this._tenantId,
+            name: this._name
+        };
         let result = this._db.runCommand(cmd);
         assert.commandWorked(result);
         return result["cursor"]["nextBatch"];
@@ -112,15 +130,20 @@ export class StreamProcessor {
 
     // `stats` returns the stats corresponding to this stream processor.
     stats(verbose = true) {
-        const res = this._db.runCommand({streams_getStats: '', name: this._name, verbose});
+        const res = this._db.runCommand(
+            {streams_getStats: '', tenantId: this._tenantId, name: this._name, verbose});
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;
     }
 
     checkpoint(force) {
-        const res =
-            this._db.runCommand({streams_writeCheckpoint: '', name: this._name, force: force});
+        const res = this._db.runCommand({
+            streams_writeCheckpoint: '',
+            tenantId: this._tenantId,
+            name: this._name,
+            force: force
+        });
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;
@@ -129,6 +152,7 @@ export class StreamProcessor {
     testInsert(...documents) {
         const res = this._db.runCommand({
             streams_testOnlyInsert: '',
+            tenantId: this._tenantId,
             name: this._name,
             documents,
         });
@@ -138,7 +162,8 @@ export class StreamProcessor {
 }
 
 export class Streams {
-    constructor(connectionRegistry, dbForTest = null) {
+    constructor(tenantId, connectionRegistry, dbForTest = null) {
+        this._tenantId = tenantId;
         this._connectionRegistry = connectionRegistry;
         this._db = db;
         if (dbForTest != null) {
@@ -147,20 +172,23 @@ export class Streams {
     }
 
     createStreamProcessor(name, pipeline) {
-        const sp = new StreamProcessor(name, pipeline, this._connectionRegistry, this._db);
+        const sp =
+            new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
         this[name] = sp;
         return sp;
     }
 
     listStreamProcessors(verbose = true) {
-        const res = this._db.runCommand({streams_listStreamProcessors: '', verbose: verbose});
+        const res = this._db.runCommand(
+            {streams_listStreamProcessors: '', tenantId: this._tenantId, verbose: verbose});
         assert.commandWorked(res);
         return res;
     }
 
     process(pipeline, maxLoops = 3) {
         let name = UUID().toString();
-        this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry, this._db);
+        this[name] =
+            new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
         let startResult = this[name].start({ephemeral: true, shouldStartSample: true});
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
@@ -177,7 +205,7 @@ export class Streams {
     }
 }
 
-export let sp = new Streams([]);
+export let sp = new Streams(TEST_TENANT_ID, []);
 export const test = {
     atlasConnection: "StreamsAtlasConnection",
     dbName: "test",
@@ -188,7 +216,7 @@ export const test = {
 
 export function getDefaultSp() {
     const uri = 'mongodb://' + db.getMongo().host;
-    return new Streams([
+    return new Streams(TEST_TENANT_ID, [
         {
             name: test.atlasConnection,
             type: 'atlas',
@@ -206,7 +234,7 @@ export function kafkaExample(
         type: 'kafka',
         options: {bootstrapServers: 'localhost:9092', isTestKafka: isTestKafka},
     }];
-    sp = new Streams(connectionRegistry);
+    sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     // Below here, things should look mostly like the syntax spec.
 

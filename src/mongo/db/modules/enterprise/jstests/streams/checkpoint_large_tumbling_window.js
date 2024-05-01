@@ -56,9 +56,11 @@ function largeGroupTest() {
     assert.eq(test.stats()["operatorStats"][5]["name"], "GroupOperator");
 
     // Wait for all the messages to be read.
-    assert.soon(() => { return test.stats()["inputMessageCount"] == inputBeforeStop.length; },
-                "InputMessageCount mismatch",
-                180000);
+    assert.soon(() => {
+        let stats = test.stats();
+        jsTestLog(stats);
+        return stats["inputMessageCount"] == inputBeforeStop.length;
+    }, "InputMessageCount mismatch", 180000);
     assert.soon(() => { return test.stats()["operatorStats"][5]["inputMessageCount"] == cnt - 1; });
     assert.eq(0, test.stats()["operatorStats"][5]["outputMessageCount"]);
     assert.eq(0, test.getResults().length, "expected no output");

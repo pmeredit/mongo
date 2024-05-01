@@ -4,14 +4,17 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    listStreamProcessors,
+    TEST_TENANT_ID
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function documentsDataSourceWindowMerge() {
     const uri = 'mongodb://' + db.getMongo().host;
     const dbName = "test";
     const collName = "sp1";
     let connectionRegistry = [{name: "atlas_conn", type: 'atlas', options: {uri: uri}}];
-    const sp = new Streams(connectionRegistry);
+    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     const documentGroups = [
         [
@@ -82,7 +85,7 @@ function documentsDataSourceInvalidExpr() {
     const dbName = "test";
     const collName = "sp1";
     let connectionRegistry = [{name: "atlas_conn", type: 'atlas', options: {uri: uri}}];
-    const sp = new Streams(connectionRegistry);
+    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     const testCases = [
         [{$toUpper: "abc"}, 8243600],
@@ -117,11 +120,8 @@ function documentsDataSourceInvalidExpr() {
         ]);
         const coll = db.getSiblingDB(dbName)[collName];
         coll.drop();
-        assert.commandFailedWithCode(sp[processorName].start(undefined /* options */,
-                                                             undefined /* processorId */,
-                                                             undefined /* tenantId */,
-                                                             false /* assertWorked */),
-                                     errorCode);
+        assert.commandFailedWithCode(
+            sp[processorName].start(undefined /* options */, false /* assertWorked */), errorCode);
     });
 }
 
