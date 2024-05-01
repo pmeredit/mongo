@@ -140,7 +140,7 @@ function runChangeStreamSourceTest({
     assert.commandWorked(processor.stop());
     const res = outputColl.find().toArray();
 
-    assert.eq(res.length, expectedNumberOfDataMessages);
+    assert.eq(res.length, expectedNumberOfDataMessages, tojson(res));
     let previousTime = null;
     let resumeTokenSet = new Set();
     for (const doc of res) {
@@ -273,6 +273,14 @@ runChangeStreamSourceTest({
     overrideTsField: null,
     streamMetaFieldName: "foo",
     timeField: null,
+});
+
+// Test whole cluster support.
+runChangeStreamSourceTest({
+    // The 17 documents inserted in performWrites, plus the drop event.
+    expectedNumberOfDataMessages: 18,
+    dbName: undefined,
+    collName: undefined,
 });
 
 // With fullDocumentOnly
@@ -853,6 +861,26 @@ function testInvalidPipeline() {
 }
 
 testInvalidPipeline();
+
+function testCollWithoutDb() {
+    clearState();
+    const processorName = "changeStreamSourceProcessor";
+    sp.createStreamProcessor(processorName, [
+        {
+            $source: {
+                connectionName: connectionName,
+                coll: writeCollOne,
+            }
+        },
+        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+    ]);
+    const processor = sp[processorName];
+    let result = processor.start({}, false /* assertWorked */);
+    // This is the error the target changestream $source gives us.
+    assert.commandFailedWithCode(result, 72);
+}
+
+testCollWithoutDb();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.

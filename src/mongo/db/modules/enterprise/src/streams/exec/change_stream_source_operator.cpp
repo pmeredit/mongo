@@ -10,6 +10,7 @@
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/message.h"
 #include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/document/value.hpp>
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/types.hpp>
 #include <chrono>
@@ -79,10 +80,13 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
         std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
 
     const auto& db = _options.clientOptions.database;
-    tassert(7596201, "Expected a non-empty database name", db && !db->empty());
-    _database = std::make_unique<mongocxx::database>(_client->database(*db));
+    if (db && !db->empty()) {
+        _database = std::make_unique<mongocxx::database>(_client->database(*db));
+    }
     const auto& coll = _options.clientOptions.collection;
     if (coll && !coll->empty()) {
+        // Enforced in planner.
+        tassert(ErrorCodes::InternalError, "Expected a database to be set", _database);
         _collection = std::make_unique<mongocxx::collection>(_database->collection(*coll));
     }
 
@@ -193,7 +197,17 @@ void ChangeStreamSourceOperator::connectToSource() {
 
     // Run the hello command to test the connection and retrieve the current operationTime.
     // A failure will throw an exception.
-    auto helloResponse = _database->run_command(make_document(kvp("hello", "1")));
+    auto helloRequest = make_document(kvp("hello", "1"));
+    bsoncxx::document::value helloResponse{bsoncxx::document::view()};
+    if (_database) {
+        helloResponse = _database->run_command(std::move(helloRequest));
+    } else {
+        // Use the config database because the driver requires us to call run_command under a
+        // particular DB.
+        const std::string defaultDb{"config"};
+        helloResponse = _client->database(defaultDb).run_command(std::move(helloRequest));
+    }
+
     if (!_state.getStartingPoint()) {
         // If we don't have a starting point, use the operationTime from the hello request.
         auto operationTime = helloResponse.find("operationTime");
@@ -233,9 +247,12 @@ void ChangeStreamSourceOperator::connectToSource() {
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
             _collection->watch(_pipeline, _changeStreamOptions));
-    } else {
+    } else if (_database) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
             _database->watch(_pipeline, _changeStreamOptions));
+    } else {
+        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+            _client->watch(_pipeline, _changeStreamOptions));
     }
 
     _it = mongocxx::change_stream::iterator();
@@ -352,7 +369,7 @@ void ChangeStreamSourceOperator::doStart() {
             IDLParserContext("ChangeStreamSourceOperator"), std::move(*bsonState));
     }
 
-    invariant(_database);
+    invariant(_client);
     invariant(!_changeStreamThread.joinable());
     _changeStreamThread = stdx::thread([this]() {
         try {

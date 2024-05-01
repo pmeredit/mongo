@@ -569,12 +569,15 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
     clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
 
     auto db = options.getDb();
-    uassert(ErrorCodes::InvalidOptions,
-            "Cannot specify a non-empty database name to $source when configuring a change stream",
-            !db.empty());
+    if (db) {
+        uassert(ErrorCodes::InvalidOptions,
+                "Cannot specify an empty database name to $source when configuring a change stream",
+                !db->empty());
+        clientOptions.database = db->toString();
+    }
 
-    clientOptions.database = db.toString();
     if (auto coll = options.getColl(); coll) {
+        uassert(ErrorCodes::InvalidOptions, "If coll is specified, db must be specified.", db);
         if (std::holds_alternative<std::string>(*coll)) {
             auto singleColl = std::get<std::string>(*coll);
             clientOptions.collection = singleColl;
