@@ -584,25 +584,25 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Messa
     sourceDoc.partition = partition();
     sourceDoc.offset = message.offset();
     sourceDoc.sizeBytes = message.len();
-    if (_options.enableKeysAndHeaders) {
-        auto keyPointer = static_cast<const uint8_t*>(message.key_pointer());
+    auto keyPointer = static_cast<const uint8_t*>(message.key_pointer());
+    if (keyPointer) {
         auto keyLen = message.key_len();
         sourceDoc.key.reserve(keyLen);
         sourceDoc.key.assign(keyPointer, keyPointer + keyLen);
-        auto msgHeaders = message.headers();
-        if (msgHeaders) {
-            for (auto&& msgHeader : msgHeaders->get_all()) {
-                std::vector<uint8_t> value;
-                auto valuePointer = static_cast<const uint8_t*>(msgHeader.value());
-                auto valueLen = msgHeader.value_size();
-                value.reserve(valueLen);
-                value.assign(valuePointer, valuePointer + valueLen);
-                mongo::KafkaHeader header{
-                    msgHeader.key(),
-                    std::move(value),
-                };
-                sourceDoc.headers.emplace_back(std::move(header));
-            }
+    }
+    auto msgHeaders = message.headers();
+    if (msgHeaders) {
+        for (auto&& msgHeader : msgHeaders->get_all()) {
+            std::vector<uint8_t> value;
+            auto valuePointer = static_cast<const uint8_t*>(msgHeader.value());
+            auto valueLen = msgHeader.value_size();
+            value.reserve(valueLen);
+            value.assign(valuePointer, valuePointer + valueLen);
+            mongo::KafkaHeader header{
+                msgHeader.key(),
+                std::move(value),
+            };
+            sourceDoc.headers.emplace_back(std::move(header));
         }
     }
     // TODO: https://jira.mongodb.org/browse/STREAMS-245

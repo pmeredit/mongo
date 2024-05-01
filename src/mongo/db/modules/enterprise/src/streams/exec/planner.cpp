@@ -515,7 +515,6 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
             autoOffsetReset == KafkaSourceAutoOffsetResetEnum::Beginning) {
             internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
         }
-        internalOptions.enableKeysAndHeaders = config->getEnableKeysAndHeaders();
         internalOptions.keyFormat = config->getKeyFormat();
         internalOptions.keyFormatError = config->getKeyFormatError();
     }

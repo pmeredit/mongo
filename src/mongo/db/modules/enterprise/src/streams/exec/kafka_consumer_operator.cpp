@@ -969,7 +969,6 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
     options.queueSizeGauge = _queueSizeGauge;
     options.queueByteSizeGauge = _queueByteSizeGauge;
-    options.enableKeysAndHeaders = _options.enableKeysAndHeaders;
     options.gwproxyEndpoint = _options.gwproxyEndpoint;
     options.gwproxyKey = _options.gwproxyKey;
     if (_options.isTest) {

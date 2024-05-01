@@ -290,10 +290,6 @@ structs:
                 type: string
                 optional: true
                 cpp_name: groupId
-            enableKeysAndHeaders:
-                description: "Whether to enable the deserialization of Kafka key and headers into the metadata of the stream documents."
-                type: bool
-                default: false
             keyFormat:
                 description: "The data type used to deserialize Kafka key"
                 type: KafkaKeyFormat

@@ -163,7 +163,6 @@ function makeKafkaToMongoStartCmd(
                     connectionName: kafkaPlaintextName,
                     topic: topicName,
                     config: {
-                        enableKeysAndHeaders: true,
                         keyFormat: sourceKeyFormat,
                         keyFormatError: sourceKeyFormatError,
                     }
@@ -339,7 +338,6 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
             $source: {
                 connectionName: kafkaPlaintextName,
                 topic: topicName1,
-                config: {enableKeysAndHeaders: true},
                 timeField: {$toDate: {$toLong: "$a"}},
             }
         },
