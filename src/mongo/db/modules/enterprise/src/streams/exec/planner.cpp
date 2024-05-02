@@ -860,6 +860,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
                                                                 std::move(timeseriesOptions)};
             sinkOperator =
                 std::make_unique<TimeseriesEmitOperator>(_context, std::move(internalOptions));
+            sinkOperator->setOperatorId(_nextOperatorId++);
         }
     }
 
