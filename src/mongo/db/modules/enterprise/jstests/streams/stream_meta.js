@@ -46,6 +46,7 @@ function testStreamMeta({
 
     const options = {
         dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName},
+        featureFlags: {},
     };
     assert.commandWorked(processor.start(options));
     assert.soon(() => {

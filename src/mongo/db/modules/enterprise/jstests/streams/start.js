@@ -27,7 +27,11 @@ const outputColl = db.getSiblingDB(dbName)[outputCollName];
 const spName = "sp1";
 const connectionRegistry = [{name: dbConnectionName, type: 'atlas', options: {uri: uri}}];
 
-function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = true) {
+function startStreamProcessor(pipeline,
+                              startOptions = {
+                                  featureFlags: {}
+                              },
+                              validateSuccess = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
@@ -92,7 +96,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
             {$source: {connectionName: dbConnectionName, db: dbName, coll: inputCollName}},
             {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
         ],
-        {enableDataFlow: false});
+        {enableDataFlow: false, featureFlags: {}});
 
     // Insert some documents into the "input column".
     inputColl.insert([
@@ -130,7 +134,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
             {$source: {connectionName: dbConnectionName, db: dbName, coll: inputCollName}},
             {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
         ],
-        {validateOnly: true});
+        {validateOnly: true, featureFlags: {}});
 
     // Insert some documents into the "input column".
     inputColl.insert([
@@ -164,7 +168,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
             },
             {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
         ],
-        {validateOnly: true},
+        {validateOnly: true, featureFlags: {}},
         false /* validateSuccess */);
     assert.commandFailed(result);
 
@@ -196,7 +200,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
             },
             {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
         ],
-        {validateOnly: true},
+        {validateOnly: true, featureFlags: {}},
         false /* validateSuccess */);
     assert.commandFailed(result);
 
@@ -217,7 +221,8 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
                 connectionName: "thisDlqDoesntExist",
                 db: dbName,
                 coll: dlqCollName,
-            }
+            },
+            featureFlags: {},
         },
         false /* validateSuccess */);
     assert.commandFailed(result);
@@ -255,7 +260,7 @@ function startStreamProcessor(pipeline, startOptions = {}, validateSuccess = tru
         db.runCommand({streams_stopStreamProcessor: "", tenantId: tenantId, name: spName});
     }, spName, TEST_TENANT_ID);
     stopThread.start();
-    sp[spName].start(undefined, /* assertWorked */ false);
+    sp[spName].start({featureFlags: {}}, /* assertWorked */ false);
     stopThread.join();
 }());
 

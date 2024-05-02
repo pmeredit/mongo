@@ -43,7 +43,10 @@ function startStreamProcessor(pipeline, spName, threadId) {
                 options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
             },
         ],
-        options: {dlq: {connectionName: connectionName, db: getDbName(threadId), coll: dlqCollName}}
+        options: {
+            dlq: {connectionName: connectionName, db: getDbName(threadId), coll: dlqCollName},
+            featureFlags: {}
+        }
     };
 
     jsTestLog(`Starting ${spName}${threadId} - \n${tojson(startCmd)}`);

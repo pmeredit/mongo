@@ -411,7 +411,6 @@ structs:
             featureFlags:
                 description: "Bson object containing all feature flags for this stream processor. These options are supplied by service components."
                 type: object
-                optional: true
 
     CheckpointFlushedEvent:
         description: "The streams Agent sends this after it uploads a checkpoint to remote storage."

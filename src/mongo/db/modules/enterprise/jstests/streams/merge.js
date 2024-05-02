@@ -33,7 +33,8 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
             {name: "db1", type: 'atlas', options: {uri: uri}},
             {name: '__testMemory', type: 'in_memory', options: {}},
         ],
-        options: {dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()}}
+        options:
+            {dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()}, featureFlags: {}}
     };
 
     let result = db.runCommand(startCmd);
