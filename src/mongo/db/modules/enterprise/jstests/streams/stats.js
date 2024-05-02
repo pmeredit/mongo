@@ -41,8 +41,7 @@ import {
         },
     };
     const stream = sp.createStreamProcessor('sp0', [source, aggregation, sink.memory]);
-
-    stream.start({featureFlags: {}});
+    stream.start({});
 
     const documents = [
         // Two documents with same grouping key (`id`) and `timestamp`, so
@@ -185,7 +184,7 @@ import {
     ];
 
     const stream = sp.createStreamProcessor('sp0', pipeline);
-    stream.start({featureFlags: {}});
+    stream.start({});
 
     inputColl.insert({a: 1, b: 1});
 

@@ -32,10 +32,7 @@ function startStreamProcessor(pipeline, assertWorked = true) {
             {name: "db1", type: 'atlas', options: {uri: uri}},
             {name: '__testMemory', type: 'in_memory', options: {}},
         ],
-        options: {
-            dlq: {connectionName: "db1", db: mongosDB.getName(), coll: dlqColl.getName()},
-            featureFlags: {}
-        }
+        options: {dlq: {connectionName: "db1", db: mongosDB.getName(), coll: dlqColl.getName()}}
     };
 
     let result = db.runCommand(startCmd);

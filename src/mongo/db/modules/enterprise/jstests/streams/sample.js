@@ -39,7 +39,7 @@ let startCmd = {
     pipeline:
         [{$source: {'connectionName': '__testMemory'}}, {$emit: {'connectionName': '__testLog'}}],
     connections: [{name: '__testMemory', type: 'in_memory', options: {}}],
-    options: {featureFlags: {}}
+    options: {}
 };
 
 result = db.runCommand(startCmd);

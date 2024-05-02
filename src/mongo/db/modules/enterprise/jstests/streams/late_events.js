@@ -40,7 +40,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     db.dlq.drop();
 
     const stream = sp.createStreamProcessor(STREAM_NAME, [source, aggregation, sink]);
-    stream.start({dlq, featureFlags: {}});
+    stream.start({dlq});
 
     const head = [
         {timestamp: "2023-03-03T20:42:30.000Z", id: 1, value: 1},

@@ -106,8 +106,7 @@ const processor = sp[processorName];
 
 const dlqCollName = "validateDLQ";
 const options = {
-    dlq: {connectionName: validConnectionName, db: dbName, coll: dlqCollName},
-    featureFlags: {},
+    dlq: {connectionName: validConnectionName, db: dbName, coll: dlqCollName}
 };
 assert.commandWorked(db.runCommand(processor.makeStartCmd(options)));
 

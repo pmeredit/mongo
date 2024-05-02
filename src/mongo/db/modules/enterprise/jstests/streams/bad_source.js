@@ -19,7 +19,7 @@ assert.commandFailedWithCode(db.runCommand({
         {$emit: {connectionName: "__testLog"}}
     ],
     connections: [{name: "__testMemory", type: "in_memory", options: {}}],
-    options: {featureFlags: {}},
+    options: {}
 }),
                              8661200);
 

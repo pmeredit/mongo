@@ -33,8 +33,7 @@ function startStreamProcessor(pipeline) {
             {name: 'db1', type: 'atlas', options: {uri: goodUri}},
             {name: 'db2', type: 'atlas', options: {uri: badUri}}
         ],
-        options:
-            {dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()}, featureFlags: {}}
+        options: {dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()}}
     };
 
     let result = db.runCommand(startCmd);

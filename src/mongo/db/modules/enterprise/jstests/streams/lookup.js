@@ -53,7 +53,6 @@ function startStreamProcessor(pipeline) {
         ],
         options: {
             dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()},
-            featureFlags: {},
         }
     };
 

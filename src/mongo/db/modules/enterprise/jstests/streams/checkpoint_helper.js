@@ -177,8 +177,7 @@ export class TestHelper {
 
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
-            checkpointOptions: checkpointOptions,
-            featureFlags: {},
+            checkpointOptions: checkpointOptions
         };
         this.connectionRegistry = [
             {name: this.dbConnectionName, type: 'atlas', options: {uri: this.uri}},

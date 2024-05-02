@@ -701,9 +701,10 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->tenantId = request.getTenantId().toString();
     context->streamName = name;
     context->streamProcessorId = request.getProcessorId().toString();
-
-    context->featureFlags =
-        StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
+    if (request.getOptions().getFeatureFlags()) {
+        context->featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
+            request.getOptions().getFeatureFlags().get());
+    }
     // The streams Agent sets the tenantID and stream processor ID, so this is an InternalError.
     uassert(mongo::ErrorCodes::InternalError,
             "streamProcessorId and tenantId cannot contain '/' characters",

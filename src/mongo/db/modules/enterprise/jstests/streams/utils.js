@@ -157,7 +157,6 @@ export function startStreamProcessor(spName, pipeline) {
         ],
         options: {
             dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName},
-            featureFlags: {},
         }
     };
 
