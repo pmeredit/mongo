@@ -10,6 +10,7 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/catalog/collection_crud',
+        '$BUILD_DIR/mongo/db/commands/servers',
         '$BUILD_DIR/mongo/db/concurrency/exception_util',
         '$BUILD_DIR/mongo/db/dbhelpers',
         '$BUILD_DIR/mongo/db/mongod_options',
@@ -39,6 +40,7 @@ env.CppUnitTest(
         'magic_restore_test.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/repl/oplog',
         '$BUILD_DIR/mongo/db/repl/oplog_entry',
         '$BUILD_DIR/mongo/db/repl/replmocks',
