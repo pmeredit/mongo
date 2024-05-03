@@ -234,11 +234,9 @@ structs:
             tenantId:
                 description: "Tenant id that this stream processor belongs to."
                 type: string
-                optional: true
             processorId:
                 description: "Unique stream processor id."
                 type: string
-                optional: true
             name:
                 description: "Name of the stream processor."
                 type: string

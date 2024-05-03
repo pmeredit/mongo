@@ -17,8 +17,10 @@
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
+#include "streams/exec/executor.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/memory_usage_monitor.h"
+#include "streams/exec/operator_dag.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/util/metric_manager.h"
@@ -32,9 +34,6 @@ class Future;
 }  // namespace mongo
 
 namespace streams {
-
-class Executor;
-class OperatorDag;
 
 namespace {
 
@@ -162,6 +161,15 @@ private:
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
     };
 
+    // Encapsulates state for a tenant.
+    struct TenantInfo {
+        TenantInfo(std::string tid) : tenantId(std::move(tid)) {}
+
+        std::string tenantId;
+        // Mapping from stream processor name to StreamProcessorInfo object.
+        mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> processors;
+    };
+
     enum Command { kStartCommand = 1, kStopCommand, kListCommand, kSampleCommand, kStatsCommand };
 
     // Recreates all Metric instances to use the given tenantId label.
@@ -182,7 +190,7 @@ private:
     // Caller must hold the _mutex.
     // Helper method used during startStreamProcessor. This parses the OperatorDag and creates
     // the Context and other things for the streamProcessor. This does not actually start
-    // the streamProcessor or insert it into the _processors map. It is important that
+    // the streamProcessor or insert it into the _tenantProcessors map. It is important that
     // this method does not write any data to the sources, sinks, DLQs, or checkpoint storage
     // for the streamProcessor.
     std::unique_ptr<StreamProcessorInfo> createStreamProcessorInfo(
@@ -203,7 +211,7 @@ private:
     void pruneOutputSamplers();
 
     // Sets StreamProcessorInfo::executorStatus for the given executor.
-    void onExecutorShutdown(std::string name, mongo::Status status);
+    void onExecutorShutdown(std::string tenantId, std::string name, mongo::Status status);
 
     // Waits for the Executor to fully start the streamProcessor, or error out.
     std::pair<mongo::Status, mongo::Future<void>> waitForStartOrError(const std::string& name);
@@ -230,26 +238,33 @@ private:
                                           const std::string& name,
                                           StreamManager::StreamProcessorInfo* processorInfo);
 
-    // Returns the processor info for the given name.
-    // uasserts if the stream processor does not exist.
-    StreamProcessorInfo* getProcessorInfo(mongo::WithLock, const std::string& name);
+    TenantInfo* getOrCreateTenantInfo(mongo::WithLock, const std::string& tenantId);
+
+    // Returns the StreamProcessorInfo instance for the given name.
+    // Returns nullptr if the stream processor does not exist.
+    StreamProcessorInfo* tryGetProcessorInfo(mongo::WithLock,
+                                             const std::string& tenantId,
+                                             const std::string& name);
+
+    // Like above but uasserts if the stream processor does not exist.
+    StreamProcessorInfo* getProcessorInfo(mongo::WithLock,
+                                          const std::string& tenantId,
+                                          const std::string& name);
 
     Options _options;
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
     // Memory aggregator that tracks memory usage across all active stream processors. This must be
-    // placed before `_processors` to ensure that all child `ChunkedMemoryAggregator` instances are
-    // destroyed before this parent `ConcurrentMemoryAggregator` is destroyed.
+    // placed before `_tenantProcessors` to ensure that all child `ChunkedMemoryAggregator`
+    // instances are destroyed before this parent `ConcurrentMemoryAggregator` is destroyed.
     std::unique_ptr<mongo::ConcurrentMemoryAggregator> _memoryAggregator;
     // The callback that `_memoryAggregator` invokes when the memory usage increases.
     std::shared_ptr<KillAllMemoryUsageMonitor> _memoryUsageMonitor;
-    // The map of streamProcessors.
-    mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> _processors;
+    // Tracks all stream processors.
+    mongo::stdx::unordered_map<std::string, std::unique_ptr<TenantInfo>> _tenantProcessors;
     // Background job that performs any background operations like state pruning.
     mongo::PeriodicJobAnchor _backgroundjob;
-    // Exports the number of stream processors.
-    std::shared_ptr<CallbackGauge> _numStreamProcessorsGauge;
     // Exports the total count of startStreamProcessor.
     std::shared_ptr<Counter> _streamProcessorStartRequestSuccessCounter;
     // Exports the total latency of startStreamProcessor across all startStreamProcessor calls.

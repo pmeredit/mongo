@@ -39,18 +39,22 @@ static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
 
 class StreamManagerTest : public AggregationContextFixture {
 public:
-    bool streamProcessorExists(StreamManager* streamManager, std::string name) {
+    bool streamProcessorExists(StreamManager* streamManager,
+                               std::string tenantId,
+                               std::string name) {
         stdx::lock_guard<Latch> lk(streamManager->_mutex);
-        return streamManager->_processors.contains(name);
+        return streamManager->tryGetProcessorInfo(lk, tenantId, name);
     }
 
-    bool isStreamProcessorConnected(StreamManager* streamManager, std::string name) {
+    bool isStreamProcessorConnected(StreamManager* streamManager,
+                                    std::string tenantId,
+                                    std::string name) {
         stdx::lock_guard<Latch> lk(streamManager->_mutex);
-        auto it = streamManager->_processors.find(name);
-        if (it == streamManager->_processors.end()) {
+        auto spInfo = streamManager->tryGetProcessorInfo(lk, tenantId, name);
+        if (!spInfo) {
             return false;
         }
-        return it->second->executor->isConnected();
+        return spInfo->executor->isConnected();
     }
 
     void createStreamProcessor(
@@ -58,12 +62,14 @@ public:
         StartStreamProcessorCommand request,
         int64_t testOnlyDocsQueueMaxSizeBytes = std::numeric_limits<int64_t>::max()) {
         stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        auto tenantInfo =
+            streamManager->getOrCreateTenantInfo(lk, request.getTenantId().toString());
         auto info = streamManager->createStreamProcessorInfo(lk, request);
         auto executorOptions = info->executor->_options;
         executorOptions.testOnlyDocsQueueMaxSizeBytes = testOnlyDocsQueueMaxSizeBytes;
         info->executor =
             std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
-        auto [it, _] = streamManager->_processors.emplace(
+        auto [it, _] = tenantInfo->processors.emplace(
             std::make_pair(request.getName().toString(), std::move(info)));
 
         // Register metrics and start all operators.
@@ -72,6 +78,13 @@ public:
         }
         it->second->operatorDag->start();
         it->second->executor->ensureConnected(Date_t::now() + mongo::Seconds(15));
+    }
+
+    void onExecutorShutdown(StreamManager* streamManager,
+                            std::string tenantId,
+                            std::string name,
+                            mongo::Status status) {
+        streamManager->onExecutorShutdown(tenantId, name, status);
     }
 
     void stopStreamProcessor(StreamManager* streamManager, std::string tenantId, StringData name) {
@@ -96,24 +109,29 @@ public:
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
-                                                               const std::string& name) {
-        return streamManager->_processors.at(name).get();
+                                                               std::string tenantId,
+                                                               std::string name) {
+        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        return streamManager->getProcessorInfo(lk, tenantId, name);
     }
 
     void insert(StreamManager* streamManager,
-                const std::string streamName,
+                std::string tenantId,
+                std::string streamName,
                 const std::vector<BSONObj>& documents) {
-        auto spInfo = getStreamProcessorInfo(streamManager, streamName);
+        auto spInfo = getStreamProcessorInfo(streamManager, tenantId, streamName);
         spInfo->executor->testOnlyInsertDocuments(std::move(documents));
     }
 
-    void runOnce(StreamManager* streamManager, const std::string streamName) {
-        auto spInfo = getStreamProcessorInfo(streamManager, streamName);
+    void runOnce(StreamManager* streamManager, std::string tenantId, std::string streamName) {
+        auto spInfo = getStreamProcessorInfo(streamManager, tenantId, streamName);
         spInfo->executor->runOnce();
     }
 
-    const auto& getTestOnlyDocs(StreamManager* streamManager, const std::string& streamName) {
-        auto spInfo = getStreamProcessorInfo(streamManager, streamName);
+    const auto& getTestOnlyDocs(StreamManager* streamManager,
+                                std::string tenantId,
+                                std::string streamName) {
+        auto spInfo = getStreamProcessorInfo(streamManager, tenantId, streamName);
         return spInfo->executor->_testOnlyDocsQueue;
     }
 
@@ -121,13 +139,14 @@ public:
         return streamManager->_memoryAggregator.get();
     }
 
-    void checkSPMemoryUsage(const StreamManager* streamManager,
-                            const std::string& spID,
+    void checkSPMemoryUsage(StreamManager* streamManager,
+                            std::string tenantId,
+                            std::string name,
                             int64_t expectedMemoryUsage) const {
-        auto it = streamManager->_processors.find(spID);
-        ASSERT_NOT_EQUALS(it, streamManager->_processors.end());
+        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        auto spInfo = streamManager->getProcessorInfo(lk, tenantId, name);
         ASSERT_EQUALS(expectedMemoryUsage,
-                      it->second->context->memoryAggregator->getCurrentMemoryUsageBytes());
+                      spInfo->context->memoryAggregator->getCurrentMemoryUsageBytes());
     }
 
     void ensureSPsOOMKilled(const std::vector<ListStreamProcessorsReplyItem>& sps) const {
@@ -184,10 +203,10 @@ TEST_F(StreamManagerTest, Start) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
-    ASSERT(streamProcessorExists(streamManager.get(), "name1"));
+    ASSERT(streamProcessorExists(streamManager.get(), kTestTenantId1, "name1"));
     stopStreamProcessor(
         streamManager.get(), kTestTenantId1, "name1", StopReason::ExternalStopRequest);
-    ASSERT(!streamProcessorExists(streamManager.get(), "name1"));
+    ASSERT(!streamProcessorExists(streamManager.get(), kTestTenantId1, "name1"));
 }
 
 TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
@@ -219,7 +238,8 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
         stopThreads.push_back(stdx::thread([i, &streamManager, this]() {
             // Wait until the stream processor is connected before stopping it.
             auto processorName = fmt::format("name{}", i);
-            while (!isStreamProcessorConnected(streamManager.get(), processorName)) {
+            while (
+                !isStreamProcessorConnected(streamManager.get(), kTestTenantId1, processorName)) {
                 sleepFor(Milliseconds(100));
             }
             stopStreamProcessor(streamManager.get(),
@@ -272,10 +292,11 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
     stdx::thread stopThread = stdx::thread([&]() {
         // Wait until the stream processor is connected before stopping it.
         auto processorName = "name";
-        while (!streamProcessorExists(streamManager.get(), processorName)) {
+        while (!streamProcessorExists(streamManager.get(), kTestTenantId1, processorName)) {
             sleepFor(Milliseconds(100));
         }
-        ASSERT_FALSE(isStreamProcessorConnected(streamManager.get(), processorName));
+        ASSERT_FALSE(
+            isStreamProcessorConnected(streamManager.get(), kTestTenantId1, processorName));
         stopStreamProcessor(
             streamManager.get(), kTestTenantId1, processorName, StopReason::ExternalStopRequest);
     });
@@ -318,7 +339,7 @@ TEST_F(StreamManagerTest, StartTimesOut) {
 
     stopStreamProcessor(
         streamManager.get(), kTestTenantId1, processorName, StopReason::ExternalStopRequest);
-    ASSERT_FALSE(streamProcessorExists(streamManager.get(), processorName));
+    ASSERT_FALSE(streamProcessorExists(streamManager.get(), kTestTenantId1, processorName));
 
     ListStreamProcessorsCommand listRequest;
     listRequest.setCorrelationId(StringData("userRequest1"));
@@ -347,6 +368,7 @@ TEST_F(StreamManagerTest, GetStats) {
     streamManager->startStreamProcessor(request);
 
     insert(streamManager.get(),
+           kTestTenantId1,
            streamName,
            {
                BSON("id" << 1),
@@ -436,19 +458,21 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
 
     insert(streamManager.get(),
+           kTestTenantId1,
            streamName,
            {
                BSON("id" << 1),
            });
 
     // Wait until the input document has been processed.
-    while (getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth == 0) {
+    while (getTestOnlyDocs(streamManager.get(), kTestTenantId1, streamName).getStats().queueDepth ==
+           0) {
     }
 
     // Run the first time to consume the document, and then run the second time to update
     // the kafka consumer partition state snapshot.
-    runOnce(streamManager.get(), streamName);
-    runOnce(streamManager.get(), streamName);
+    runOnce(streamManager.get(), kTestTenantId1, streamName);
+    runOnce(streamManager.get(), kTestTenantId1, streamName);
 
     // Poll stats until the doc has made it to the output sink.
     auto statsReply = streamManager->getStats(getStatsRequest);
@@ -474,6 +498,9 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
 
         ASSERT_EQUALS(0, state.getCheckpointOffset());
     }
+
+    onExecutorShutdown(streamManager.get(), kTestTenantId1, streamName, Status::OK());
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName);
 }
 
 TEST_F(StreamManagerTest, GetMetrics) {
@@ -574,10 +601,10 @@ TEST_F(StreamManagerTest, ErrorHandling) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
-    ASSERT(streamProcessorExists(streamManager.get(), "name1"));
+    ASSERT(streamProcessorExists(streamManager.get(), kTestTenantId1, "name1"));
 
     // Inject an exception into the executor.
-    auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
+    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
     processorInfo->executor->testOnlyInjectException(
         std::make_exception_ptr(std::runtime_error("hello exception")));
 
@@ -602,9 +629,11 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     ASSERT(success);
 
     // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
-    ASSERT(streamProcessorExists(streamManager.get(), request.getName().toString()));
+    ASSERT(
+        streamProcessorExists(streamManager.get(), kTestTenantId1, request.getName().toString()));
     stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
-    ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
+    ASSERT(
+        !streamProcessorExists(streamManager.get(), kTestTenantId1, request.getName().toString()));
 }
 
 // Verifies that checkpointing is disabled for sources other than Kafka and Changestream.
@@ -621,12 +650,13 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
-    ASSERT(streamProcessorExists(streamManager.get(), "name1"));
-    auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
+    ASSERT(streamProcessorExists(streamManager.get(), kTestTenantId1, "name1"));
+    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo->context->checkpointStorage.get());
     stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
-    ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
+    ASSERT(
+        !streamProcessorExists(streamManager.get(), kTestTenantId1, request.getName().toString()));
 
     StartStreamProcessorCommand request2;
     request2.setTenantId(StringData(kTestTenantId1));
@@ -639,13 +669,14 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
         "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});
     request2.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request2);
-    ASSERT(streamProcessorExists(streamManager.get(), "name2"));
+    ASSERT(streamProcessorExists(streamManager.get(), kTestTenantId1, "name2"));
     auto processorInfo2 =
-        getStreamProcessorInfo(streamManager.get(), request2.getName().toString());
+        getStreamProcessorInfo(streamManager.get(), kTestTenantId1, request2.getName().toString());
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo2->context->checkpointStorage.get());
     stopStreamProcessor(streamManager.get(), kTestTenantId1, request2.getName().toString());
-    ASSERT(!streamProcessorExists(streamManager.get(), request2.getName().toString()));
+    ASSERT(
+        !streamProcessorExists(streamManager.get(), kTestTenantId1, request2.getName().toString()));
 }
 
 TEST_F(StreamManagerTest, TestOnlyInsert) {
@@ -669,13 +700,14 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     createStreamProcessor(streamManager.get(), request, objSize);
 
     auto insertThread = stdx::thread([&]() {
-        insert(streamManager.get(), streamName, {BSON("id" << 1)});
+        insert(streamManager.get(), kTestTenantId1, streamName, {BSON("id" << 1)});
 
         // This next insert should block.
-        insert(streamManager.get(), streamName, {BSON("id" << 2)});
+        insert(streamManager.get(), kTestTenantId1, streamName, {BSON("id" << 2)});
     });
 
-    while (getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth == 0) {
+    while (getTestOnlyDocs(streamManager.get(), kTestTenantId1, streamName).getStats().queueDepth ==
+           0) {
     }
 
     GetStatsCommand getStatsRequest;
@@ -689,12 +721,16 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     for (int i = 0; i < 10; ++i) {
         stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
         (void)streamManager->getStats(getStatsRequest);
-        ASSERT_EQUALS(objSize,
-                      getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth);
+        ASSERT_EQUALS(
+            objSize,
+            getTestOnlyDocs(streamManager.get(), kTestTenantId1, streamName).getStats().queueDepth);
     }
 
-    runOnce(streamManager.get(), streamName);
+    runOnce(streamManager.get(), kTestTenantId1, streamName);
     insertThread.join();
+
+    onExecutorShutdown(streamManager.get(), kTestTenantId1, streamName, Status::OK());
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName);
 }
 
 TEST_F(StreamManagerTest, CheckpointInterval) {
@@ -722,9 +758,10 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
         request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
         streamManager->startStreamProcessor(request);
-        ASSERT(streamProcessorExists(streamManager.get(), request.getName().toString()));
+        ASSERT(streamProcessorExists(
+            streamManager.get(), kTestTenantId1, request.getName().toString()));
 
-        auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
+        auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
         ASSERT(processorInfo->checkpointCoordinator);
         ASSERT_EQ(stdx::chrono::milliseconds{expectedIntervalMs},
                   processorInfo->checkpointCoordinator->getCheckpointInterval());
@@ -743,7 +780,8 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
         stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
-        ASSERT(!streamProcessorExists(streamManager.get(), request.getName().toString()));
+        ASSERT(!streamProcessorExists(
+            streamManager.get(), kTestTenantId1, request.getName().toString()));
         std::filesystem::remove_all(writeDir);
     };
 
@@ -886,6 +924,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
 
     // Insert documents into sp1
     insert(streamManager.get(),
+           kTestTenantId1,
            sp1,
            {
                BSON("id" << 1 << "value" << 1 << "ts"
@@ -894,65 +933,70 @@ TEST_F(StreamManagerTest, MemoryTracking) {
                          << "2023-01-01T00:00:00.000Z"),
            });
 
-    runOnce(streamManager.get(), sp1);
-    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 288);
-    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 0);
+    runOnce(streamManager.get(), kTestTenantId1, sp1);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 0);
     ASSERT_EQUALS(kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Insert documents into sp2
     insert(streamManager.get(),
+           kTestTenantId1,
            sp2,
            {
                BSON("id" << 1 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:00.000Z"),
            });
 
-    runOnce(streamManager.get(), sp2);
-    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 288);
-    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 144);
+    runOnce(streamManager.get(), kTestTenantId1, sp2);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 144);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Add a new key to get $group state for sp1
     insert(streamManager.get(),
+           kTestTenantId1,
            sp1,
            {
                BSON("id" << 3 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:00.000Z"),
            });
 
-    runOnce(streamManager.get(), sp1);
-    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 432);
-    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 144);
+    runOnce(streamManager.get(), kTestTenantId1, sp1);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 432);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 144);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Add a new key to get $group state for sp2
     insert(streamManager.get(),
+           kTestTenantId1,
            sp2,
            {
                BSON("id" << 3 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:00.000Z"),
            });
 
-    runOnce(streamManager.get(), sp2);
-    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 432);
-    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 288);
+    runOnce(streamManager.get(), kTestTenantId1, sp2);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 432);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 288);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Open a new window for sp1
     insert(streamManager.get(),
+           kTestTenantId1,
            sp1,
            {
                BSON("id" << 1 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:01.000Z"),
            });
 
-    runOnce(streamManager.get(), sp1);
-    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 576);
-    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 288);
+    runOnce(streamManager.get(), kTestTenantId1, sp1);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 288);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Close the first window while opening a third window for sp1
     insert(streamManager.get(),
+           kTestTenantId1,
            sp1,
            {
                BSON("id" << 1 << "value" << 1 << "ts"
@@ -960,29 +1004,38 @@ TEST_F(StreamManagerTest, MemoryTracking) {
                BSON("id" << 2 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:07.000Z"),
            });
-    runOnce(streamManager.get(), sp1);
+    runOnce(streamManager.get(), kTestTenantId1, sp1);
 
     // The first window that closed had 3 $group keys, so the memory should go down by
     // a total of 48 bytes, and the previous insert opened a new window with two new keys,
     // so that added a total of 32 bytes -- (64 - 48 + 32) = 48
-    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 432);
-    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 432);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 288);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Insert documents into sp3 for the first time which should cause the approximate memory
     // usage to exceed the limit, which should kill all the stream processors.
     insert(streamManager.get(),
+           kTestTenantId1,
            sp3,
            {
                BSON("id" << 1 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:00.000Z"),
            });
-    ASSERT_THROWS_WHAT(
-        runOnce(streamManager.get(), sp3), SPException, "stream processing instance out of memory");
-    ASSERT_THROWS_WHAT(
-        runOnce(streamManager.get(), sp2), SPException, "stream processing instance out of memory");
-    ASSERT_THROWS_WHAT(
-        runOnce(streamManager.get(), sp1), SPException, "stream processing instance out of memory");
+    ASSERT_THROWS_WHAT(runOnce(streamManager.get(), kTestTenantId1, sp3),
+                       SPException,
+                       "stream processing instance out of memory");
+    ASSERT_THROWS_WHAT(runOnce(streamManager.get(), kTestTenantId1, sp2),
+                       SPException,
+                       "stream processing instance out of memory");
+    ASSERT_THROWS_WHAT(runOnce(streamManager.get(), kTestTenantId1, sp1),
+                       SPException,
+                       "stream processing instance out of memory");
+
+    for (const auto& streamName : {sp1, sp2, sp3}) {
+        onExecutorShutdown(streamManager.get(), kTestTenantId1, streamName, Status::OK());
+        stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName);
+    }
 }
 
 TEST_F(StreamManagerTest, SingleTenancy) {
