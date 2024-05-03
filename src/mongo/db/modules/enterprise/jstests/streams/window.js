@@ -79,7 +79,8 @@ function runAll() {
         ]);
 
         // Start the streamProcessor.
-        let result = sp.window1.start({dlq: {connectionName: "db1", db: "test", coll: "dlq1"}});
+        let result = sp.window1.start(
+            {dlq: {connectionName: "db1", db: "test", coll: "dlq1"}, featureFlags: {}});
         assert.commandWorked(result);
 
         function insert(docs) {
@@ -185,7 +186,8 @@ function runAll() {
         ]);
 
         // Start the streamProcessor.
-        let result = sp.window1.start({dlq: {connectionName: "db1", db: "test", coll: "dlq1"}});
+        let result = sp.window1.start(
+            {dlq: {connectionName: "db1", db: "test", coll: "dlq1"}, featureFlags: {}});
         assert.commandWorked(result);
 
         function insert(docs) {

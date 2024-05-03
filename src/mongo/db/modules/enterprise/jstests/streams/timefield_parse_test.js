@@ -49,7 +49,8 @@ function testWithAtlasConn(testConfig, streams) {
 
     let startOptions = {
         dlq: {connectionName: "db1", db: dbName, coll: dlqCollName},
-        checkpointOptions: checkpointOptions
+        checkpointOptions: checkpointOptions,
+        featureFlags: {},
     };
 
     let sp = streams.createStreamProcessor("timefield_parse_test-" + uuidStr(), pipeline);

@@ -31,8 +31,8 @@ function smokeTestDLQ() {
     ]);
 
     // Start the streamProcessor.
-    assert.commandWorked(
-        sp.sp1.start({dlq: {connectionName: "db1", db: "test", coll: "validatedlq1"}}));
+    assert.commandWorked(sp.sp1.start(
+        {dlq: {connectionName: "db1", db: "test", coll: "validatedlq1"}, featureFlags: {}}));
 
     let docs = [
         {id: 0, value: 1},

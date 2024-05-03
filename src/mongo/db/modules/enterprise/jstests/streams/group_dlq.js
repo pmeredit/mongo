@@ -49,8 +49,10 @@ function smokeTest() {
             }
         },
     ]);
-    sp[spName].start(
-        {dlq: {connectionName: test.atlasConnection, db: test.dbName, coll: "dlqColl"}});
+    sp[spName].start({
+        dlq: {connectionName: test.atlasConnection, db: test.dbName, coll: "dlqColl"},
+        featureFlags: {}
+    });
     inputColl.insertMany([
         {x: 2, y: 30, ts: "2023-03-03T20:42:30.000Z"},
         // This will be DLQ-ed.

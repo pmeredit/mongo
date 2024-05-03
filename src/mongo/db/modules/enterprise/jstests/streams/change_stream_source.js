@@ -127,7 +127,7 @@ function runChangeStreamSourceTest({
     ]);
 
     const processor = sp[processorName];
-    assert.commandWorked(processor.start({}));
+    assert.commandWorked(processor.start({featureFlags: {}}));
     performWrites();
 
     processor.sample();
@@ -320,7 +320,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
     ]);
 
     const processor = sp[processorName];
-    assert.commandWorked(processor.start({}));
+    assert.commandWorked(processor.start({featureFlags: {}}));
     performWrites();
 
     processor.sample();
@@ -459,7 +459,7 @@ function testChangeStreamSourceWindowPipeline() {
     ]);
 
     const processor = sp[processorName];
-    assert.commandWorked(processor.start({}));
+    assert.commandWorked(processor.start({featureFlags: {}}));
 
     const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
 
@@ -555,7 +555,7 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 
     // Start the processor.
     const processor = sp[processorName];
-    assert.commandFailed(processor.start({}, false));
+    assert.commandFailed(processor.start({featureFlags: {}}, false));
     let result = listStreamProcessors();
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 0, result);
@@ -583,7 +583,7 @@ function verifyThatStreamProcessorFailsToStartForInvalidFullDocumentMode(fullDoc
 
     // Start the processor.
     const processor = sp[processorName];
-    assert.commandFailed(processor.start({}, false));
+    assert.commandFailed(processor.start({featureFlags: {}}, false));
     let result = listStreamProcessors();
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 0, result);
@@ -623,7 +623,7 @@ function verifyUpdateFullDocument() {
         ]);
 
         const processor = sp[processorName];
-        assert.commandWorked(processor.start({}, false));
+        assert.commandWorked(processor.start({featureFlags: {}}, false));
         let result = listStreamProcessors();
         assert.eq(result["ok"], 1, result);
         assert.eq(result["streamProcessors"].length, 1, result);
@@ -723,7 +723,7 @@ function testAfterInvalidate() {
             }
         ],
         connections: connectionRegistry,
-        options: {}
+        options: {featureFlags: {}},
     });
     assert.commandWorked(result);
 
@@ -807,7 +807,10 @@ function testAfterInvalidateWithFullDocumentOnly() {
             }
         ],
         connections: connectionRegistry,
-        options: {dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName}},
+        options: {
+            dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName},
+            featureFlags: {}
+        },
     });
     assert.commandWorked(result);
 
@@ -852,7 +855,7 @@ function testInvalidPipeline() {
     ]);
 
     const processor = sp[processorName];
-    let result = processor.start({}, false /* assertWorked */);
+    let result = processor.start({featureFlags: {}}, false /* assertWorked */);
     // This is the error the target changestream $source gives us.
     assert.commandFailedWithCode(result, 40324);
     assert.eq(
@@ -875,7 +878,7 @@ function testCollWithoutDb() {
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
     const processor = sp[processorName];
-    let result = processor.start({}, false /* assertWorked */);
+    let result = processor.start({featureFlags: {}}, false /* assertWorked */);
     // This is the error the target changestream $source gives us.
     assert.commandFailedWithCode(result, 72);
 }
