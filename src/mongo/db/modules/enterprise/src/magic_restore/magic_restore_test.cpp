@@ -8,12 +8,14 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/timestamp.h"
+#include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/repl/storage_interface_impl.h"
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/transport/transport_layer_mock.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
@@ -1076,6 +1078,184 @@ TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryNoTerm) {
     checkNoOpOplogEntry(docs, Timestamp(11, 1), highTerm + 100, now + Seconds(1));
 }
 
+// Tests that the 'upsertAutomationCredentials' correctly parses createRole
+// and createUser commands and inserts them into the auth collections.
+TEST_F(MagicRestoreFixture, CreateNewAutomationCredentials) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+
+    // TODO SERVER-88169: Ensure the roles and users collections are created before running
+    // 'upsertAutomationCredentials()'.
+    // The user and roles collections will be created when we perform the inserts.
+    auto res = storage->findSingleton(opCtx, NamespaceString::kAdminRolesNamespace);
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
+    res = storage->findSingleton(opCtx, NamespaceString::kAdminUsersNamespace);
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
+
+    auto testRole = BSON("createRole"
+                         << "testRole"
+                         << "$db"
+                         << "admin"
+                         << "privileges" << BSONArray() << "roles" << BSONArray());
+
+    auto testUser = BSON("createUser"
+                         << "testUser"
+                         << "$db"
+                         << "admin"
+                         << "pwd"
+                         << "password"
+                         << "roles" << BSONArray());
+
+    auto autoCreds = magic_restore::AutomationCredentials::parse(
+        IDLParserContext("AutomationCredentials"),
+        BSON("createRoleCommands" << BSON_ARRAY(testRole) << "createUserCommands"
+                                  << BSON_ARRAY(testUser)));
+
+    magic_restore::upsertAutomationCredentials(opCtx, autoCreds, storage);
+
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kAdminRolesNamespace);
+    ASSERT_EQ(1, docs.size());
+    ASSERT_BSONOBJ_EQ(BSON("_id"
+                           << "admin.testRole"
+                           << "role"
+                           << "testRole"
+                           << "db"
+                           << "admin"
+                           << "privileges" << BSONArray() << "roles" << BSONArray()),
+                      docs[0]);
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kAdminUsersNamespace);
+    ASSERT_EQ(1, docs.size());
+    // The user document contains randomly generated fields such as UUIDs and SCRAM-SHA-1
+    // credentials, so we can only assert on certain fields.
+    ASSERT_EQ(docs[0].getField("_id").String(), "admin.testUser");
+    ASSERT_EQ(docs[0].getField("user").String(), "testUser");
+    ASSERT_EQ(docs[0].getField("db").String(), "admin");
+    ASSERT(docs[0].getField("roles").Array().empty());
+}
+
+// Tests that the 'upsertAutomationCredentials' will convert create operations into updates if the
+// specified roles or users already exist.
+TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
+    auto storage = storageInterface();
+
+    // The update code path checks if the role and user exist in the mock authorization manager
+    // external state, so we need to set it up.
+    auto localExternalState = std::make_unique<AuthzManagerExternalStateMock>();
+    auto externalState = localExternalState.get();
+    auto localAuthzManager =
+        std::make_unique<AuthorizationManagerImpl>(getService(), std::move(localExternalState));
+    auto authzManager = localAuthzManager.get();
+    authzManager->setAuthEnabled(true);
+    AuthorizationManager::set(getService(), std::move(localAuthzManager));
+
+    // Re-initialize the client after setting the AuthorizationManager to get an
+    // AuthorizationSession.
+    Client::releaseCurrent();
+    Client::initThread(getThreadName(), getServiceContext()->getService());
+    auto op = cc().makeOperationContext();
+    auto opCtx = op.get();
+    opCtx->getClient()->setIsInternalClient(true);
+
+    // TODO SERVER-88169: Ensure the roles and users collections are created before running
+    // 'upsertAutomationCredentials()'.
+    // The user and roles collections will be created when we perform the inserts.
+    auto res = storage->findSingleton(opCtx, NamespaceString::kAdminRolesNamespace);
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
+    res = storage->findSingleton(opCtx, NamespaceString::kAdminUsersNamespace);
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
+
+    auto testRole = BSON("createRole"
+                         << "testRole"
+                         << "$db"
+                         << "admin"
+                         << "privileges" << BSONArray() << "roles" << BSONArray());
+
+    auto testUser = BSON("createUser"
+                         << "testUser"
+                         << "$db"
+                         << "admin"
+                         << "pwd"
+                         << "password"
+                         << "roles" << BSONArray());
+
+    auto autoCreds = magic_restore::AutomationCredentials::parse(
+        IDLParserContext("AutomationCredentials"),
+        BSON("createRoleCommands" << BSON_ARRAY(testRole) << "createUserCommands"
+                                  << BSON_ARRAY(testUser)));
+
+    magic_restore::upsertAutomationCredentials(opCtx, autoCreds, storage);
+
+    // Insert the role and user docs into the mock authorization manager state. This will ensure the
+    // update code path can succeed.
+    auto roleDoc = BSON("_id"
+                        << "admin.testRole"
+                        << "role"
+                        << "testRole"
+                        << "db"
+                        << "admin"
+                        << "privileges" << BSONArray() << "roles" << BSONArray());
+    auto userDoc = BSON("_id"
+                        << "admin.testUser"
+                        << "user"
+                        << "testUser"
+                        << "db"
+                        << "admin");
+    ASSERT_OK(externalState->insert(opCtx, NamespaceString::kAdminRolesNamespace, roleDoc, {}));
+    ASSERT_OK(externalState->insert(opCtx, NamespaceString::kAdminUsersNamespace, userDoc, {}));
+
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kAdminRolesNamespace);
+    ASSERT_EQ(1, docs.size());
+    docs = getDocuments(opCtx, storage, NamespaceString::kAdminUsersNamespace);
+    ASSERT_EQ(1, docs.size());
+
+    // Now that the role and user already exist, the 'createRole' and 'createUser' should be
+    // converted into an 'updateRole' and 'updateUser' commands with the same arguments.
+    auto updatedRole = BSON("createRole"
+                            << "testRole"
+                            << "$db"
+                            << "admin"
+                            << "privileges" << BSONArray() << "roles"
+                            << BSON_ARRAY("readWriteAnyDatabase"));
+
+    auto updatedUser = BSON("createUser"
+                            << "testUser"
+                            << "$db"
+                            << "admin"
+                            << "pwd"
+                            << "password"
+                            << "roles" << BSON_ARRAY("readWriteAnyDatabase"));
+
+    autoCreds = magic_restore::AutomationCredentials::parse(
+        IDLParserContext("AutomationCredentials"),
+        BSON("createRoleCommands" << BSON_ARRAY(updatedRole) << "createUserCommands"
+                                  << BSON_ARRAY(updatedUser)));
+
+    magic_restore::upsertAutomationCredentials(opCtx, autoCreds, storage);
+    docs = getDocuments(opCtx, storage, NamespaceString::kAdminRolesNamespace);
+    ASSERT_EQ(1, docs.size());
+    ASSERT_EQ(docs[0].getField("_id").String(), "admin.testRole");
+    ASSERT_EQ(docs[0].getField("role").String(), "testRole");
+    ASSERT_EQ(docs[0].getField("db").String(), "admin");
+    ASSERT_EQ(docs[0].getField("roles").Array().size(), 1);
+    ASSERT_BSONOBJ_EQ(docs[0].getField("roles").Array().begin()->Obj(),
+                      BSON("role"
+                           << "readWriteAnyDatabase"
+                           << "db"
+                           << "admin"));
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kAdminUsersNamespace);
+    ASSERT_EQ(1, docs.size());
+    ASSERT_EQ(docs[0].getField("_id").String(), "admin.testUser");
+    ASSERT_EQ(docs[0].getField("user").String(), "testUser");
+    ASSERT_EQ(docs[0].getField("db").String(), "admin");
+    ASSERT_EQ(docs[0].getField("roles").Array().size(), 1);
+    ASSERT_BSONOBJ_EQ(docs[0].getField("roles").Array().begin()->Obj(),
+                      BSON("role"
+                           << "readWriteAnyDatabase"
+                           << "db"
+                           << "admin"));
+}
 
 }  // namespace repl
 }  // namespace mongo

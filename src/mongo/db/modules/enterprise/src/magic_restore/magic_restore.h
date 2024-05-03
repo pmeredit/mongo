@@ -108,6 +108,26 @@ void updateShardingMetadata(OperationContext* opCtx,
 void writeOplogEntriesToOplog(ServiceContext* svcCtx, const BSONStreamReader& reader);
 
 
+/**
+ * Helper function to execute the automation agent credentials upsert. If a create command fails
+ * with a DuplicateKey error, the function will convert the command into an update command run it
+ * again.
+ *
+ */
+void executeCredentialsCommand(OperationContext* opCtx,
+                               const BSONObj& cmd,
+                               repl::StorageInterface* storageInterface);
+
+/**
+ * Inserts automation credentials into admin.system.roles and admin.system.users. Attempts to run
+ * createRole/createUser commands, but if the role/user already exists on the snapshotted data
+ * files, converts the commands to updateRole/updateUser commands.
+ */
+class AutomationCredentials;
+void upsertAutomationCredentials(OperationContext* opCtx,
+                                 const AutomationCredentials& autoCreds,
+                                 repl::StorageInterface* storageInterface);
+
 /*
  * Inserts a no-op oplog entry with a term value influenced by the 'restoreToHigherTermThan' field
  * in the restore configuration. If the last oplog entry's term is higher than the
