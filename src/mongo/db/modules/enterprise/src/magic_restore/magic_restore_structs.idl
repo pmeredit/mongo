@@ -12,7 +12,6 @@ imports:
     - "mongo/db/repl/repl_set_config.idl"
     - "mongo/db/s/type_shard_identity.idl"
     - "mongo/s/sharding_types.idl"
-    - "mongo/db/commands/user_management_commands.idl"
 
 enums:
     NodeType:
@@ -61,23 +60,6 @@ structs:
             stopped:
                 description: Whether or not the balancer is disabled after the restore.
                 type: bool
-
-    AutomationCredentials:
-        description: >
-            Structure that includes automation agent credential commands to upsert.
-        fields:
-            createRoleCommands:
-                description: >
-                    The list of createRole commands to run during magic restore. If a role exists,
-                    the command will convert to updateRole. Note that the command object must
-                    contain a $db field, to indicate what database to apply the create operation on.
-                type: array<object_owned>
-            createUserCommands:
-                description: >
-                    The list of createUser commands to run during magic restore. If a user exists,
-                    the command will convert to updateUser. Note that the command object must
-                    contain a $db field, to indicate what database to apply the create operation on.
-                type: array<object_owned>
 
     RestoreConfiguration:
         description: >
@@ -142,7 +124,4 @@ structs:
                 optional: true
             balancerSettings:
                 type: BalancerSettings
-                optional: true
-            automationCredentials:
-                type: AutomationCredentials
                 optional: true

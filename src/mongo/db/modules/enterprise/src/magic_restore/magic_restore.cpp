@@ -8,26 +8,24 @@
 
 #include "magic_restore.h"
 
-#include <algorithm>
 #include <boost/filesystem/operations.hpp>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
 
+#include "magic_restore/magic_restore_options_gen.h"
 #include "magic_restore/magic_restore_structs_gen.h"
-#include "mongo/bson/bsonelement.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/catalog/collection_impl.h"
 #include "mongo/db/catalog/collection_write_path.h"
 #include "mongo/db/catalog/database_holder_impl.h"
 #include "mongo/db/catalog_raii.h"
-#include "mongo/db/commands/user_management_commands_gen.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/mongod_options.h"
-#include "mongo/db/namespace_string.h"
 #include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/db/repl/oplog_entry_gen.h"
@@ -40,7 +38,6 @@
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
-#include <vector>
 
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
@@ -141,70 +138,6 @@ void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader)
           "All additional oplog entries have been inserted",
           "total entries inserted"_attr = reader.getTotalObjectsRead() - 1,
           "total bytes inserted"_attr = reader.getTotalBytesRead() - restoreConfigBytes);
-}
-
-
-void executeCredentialsCommand(OperationContext* opCtx,
-                               const BSONObj& cmd,
-                               repl::StorageInterface* storageInterface) {
-
-    // For commands, the first element must be the command name.
-    auto cmdName = cmd.firstElementFieldNameStringData();
-
-    DBDirectClient dbClient(opCtx);
-    OpMsgRequest request;
-    request.body = cmd;
-    auto replyStatus =
-        getStatusFromWriteCommandReply(dbClient.runCommand(request)->getCommandReply());
-
-    // If the create operation succeeded, we can return early.
-    if (replyStatus.isOK()) {
-        return;
-    }
-
-    // The user management command layer catches duplicate key errors and returns the 51002/51003
-    // error codes instead.
-    if (replyStatus.code() != 51002 && replyStatus.code() != 51003) {
-        LOGV2_FATAL_NOTRACE(8291701,
-                            "Failed to create new role or user for magic restore",
-                            "replyStatus"_attr = replyStatus);
-    }
-
-    // If there was a duplicate key, we must convert the create operation into an update.
-    auto roleOrUser = cmd.getField(cmdName);
-    auto bob = BSONObjBuilder();
-    bob.appendAs(roleOrUser, cmdName.toString().replace(0, 6, "update"));
-    bob.appendElements(cmd.removeField(cmdName));
-
-    request.body = bob.obj();
-    replyStatus = getStatusFromWriteCommandReply(dbClient.runCommand(request)->getCommandReply());
-    if (!replyStatus.isOK()) {
-        LOGV2_FATAL_NOTRACE(8291702,
-                            "Failed to update role or user for magic restore",
-                            "replyStatus"_attr = replyStatus);
-    }
-}
-
-void upsertAutomationCredentials(OperationContext* opCtx,
-                                 const AutomationCredentials& autoCreds,
-                                 repl::StorageInterface* storageInterface) {
-    // TODO SERVER-88169: Add a check to ensure the roles and users collections exist before
-    // performing inserts or updates.
-    LOGV2(8291700, "Creating roles and users in magic restore for automation agent");
-    // Note that for both the createRole and createUser commands below, we need
-    // to ensure they can successfully parse into the corresponding IDL commands. In the magic
-    // restore IDL specification, we needed to mark the arrays as containing BSONObjs rather than
-    // commands, as commands cannot be specified in array types. Therefore, we need to do the
-    // error-checking here.
-    for (auto& createRole : autoCreds.getCreateRoleCommands()) {
-        mongo::CreateRoleCommand::parse(IDLParserContext("CreateRoleCommand"), createRole);
-        executeCredentialsCommand(opCtx, createRole, storageInterface);
-    }
-
-    for (auto& createUser : autoCreds.getCreateUserCommands()) {
-        mongo::CreateUserCommand::parse(IDLParserContext("CreateUserCommand"), createUser);
-        executeCredentialsCommand(opCtx, createUser, storageInterface);
-    }
 }
 
 void validateRestoreConfiguration(const RestoreConfiguration* config) {
@@ -687,11 +620,6 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
         // update the oldest timestamp again before exiting.
         opCtx->getServiceContext()->getStorageEngine()->setStableTimestamp(lastOplogEntryTs,
                                                                            false /*force*/);
-    }
-
-    auto autoCreds = restoreConfig.getAutomationCredentials();
-    if (autoCreds) {
-        upsertAutomationCredentials(opCtx.get(), autoCreds.get(), storageInterface);
     }
 
     // Set the initial data timestamp to the stable timestamp. For a PIT restore, the stable
