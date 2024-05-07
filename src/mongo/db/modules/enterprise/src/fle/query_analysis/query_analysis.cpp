@@ -1628,13 +1628,14 @@ std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
-    int32_t payloadId) {
+    int32_t payloadId,
+    std::vector<BSONObj>& bsonBuffer) {
     auto ki = metadata.keyId.uuids()[0];
     // TODO: SERVER-67421 support multiple queries for a field.
     auto indexConfig = metadata.fle2SupportedQueries.get()[0];
 
     return buildTwoSidedEncryptedRangeWithPlaceholder(
-        fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId);
+        fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId, bsonBuffer);
 }
 
 std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
@@ -1643,8 +1644,9 @@ std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     QueryTypeConfig indexConfig,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
-    int32_t payloadId) {
-    auto placeholder = makeAndSerializeRangePlaceholder(
+    int32_t payloadId,
+    std::vector<BSONObj>& bsonBuffer) {
+    auto placeholder = bsonBuffer.emplace_back(makeAndSerializeRangePlaceholder(
         fieldname,
         ki,
         indexConfig,
@@ -1652,15 +1654,15 @@ std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
         upperSpec,
         payloadId,
         lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
-        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt);
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt));
 
-    auto stub = makeAndSerializeRangeStub(
+    auto stub = bsonBuffer.emplace_back(makeAndSerializeRangeStub(
         fieldname,
         ki,
         indexConfig,
         payloadId,
         lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
-        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt);
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt));
 
     auto lowerBoundExpr = [&]() -> std::unique_ptr<MatchExpression> {
         if (lowerSpec.second) {
@@ -1691,7 +1693,8 @@ boost::intrusive_ptr<Expression> buildTwoSidedEncryptedRangeWithPlaceholder(
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
-    int32_t payloadId) {
+    int32_t payloadId,
+    std::vector<BSONObj>& bsonBuffer) {
     auto ki = metadata.keyId.uuids()[0];
     // TODO: SERVER-67421 support multiple queries for a field.
     auto indexConfig = metadata.fle2SupportedQueries.get()[0];
@@ -1699,6 +1702,7 @@ boost::intrusive_ptr<Expression> buildTwoSidedEncryptedRangeWithPlaceholder(
     return buildEncryptedRangeWithPlaceholder(
         expCtx, fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId);
 }
+
 boost::intrusive_ptr<Expression> buildEncryptedRangeWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,

@@ -305,14 +305,22 @@ std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     QueryTypeConfig indexConfig,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
-    int32_t payloadId);
+    int32_t payloadId,
+    // Passing bsonBuffer around like this is BAD. We shouldn't be doing this. But it's also the
+    // only sensible choice in this pattern. If we can fix this pattern in the future, we should
+    // absolutely choose a design that avoids having to pass this around everywhere.
+    std::vector<BSONObj>& bsonBuffer);
 
 std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     StringData fieldname,
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
-    int32_t payloadId);
+    int32_t payloadId,
+    // Passing bsonBuffer around like this is BAD. We shouldn't be doing this. But it's also the
+    // only sensible choice in this pattern. If we can fix this pattern in the future, we should
+    // absolutely choose a design that avoids having to pass this around everywhere.
+    std::vector<BSONObj>& bsonBuffer);
 
 /**
  * Build a $expressionEncryptedRange (aggregation) Expression with a placeholder range.
@@ -323,7 +331,12 @@ boost::intrusive_ptr<Expression> buildTwoSidedEncryptedRangeWithPlaceholder(
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
-    int32_t payloadId);
+    int32_t payloadId,
+    // Passing bsonBuffer around like this is BAD. We shouldn't be doing this. But it's also the
+    // only sensible choice in this pattern. If we can fix this pattern in the future, we should
+    // absolutely choose a design that avoids having to pass this around everywhere.
+    std::vector<BSONObj>& bsonBuffer);
+
 boost::intrusive_ptr<Expression> buildEncryptedRangeWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,

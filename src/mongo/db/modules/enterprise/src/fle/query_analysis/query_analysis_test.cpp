@@ -1129,12 +1129,14 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
             ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes),
                                    BSONType::NumberDouble,
                                    boost::optional<std::vector<QueryTypeConfig>>({config}));
+        auto bsonBuffer = std::vector<BSONObj>{};
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
                                                                       metadata.keyId.uuids()[0],
                                                                       config,
                                                                       {rangeBoundElements[0], true},
                                                                       {rangeBoundElements[1], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991000);
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
@@ -1142,7 +1144,8 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                       config,
                                                                       {rangeBoundElements[0], true},
                                                                       {rangeBoundElements[2], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991000);
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
@@ -1150,7 +1153,8 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                       config,
                                                                       {rangeBoundElements[1], true},
                                                                       {rangeBoundElements[0], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991000);
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
@@ -1158,7 +1162,8 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                       config,
                                                                       {rangeBoundElements[2], true},
                                                                       {rangeBoundElements[0], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991000);
     }
@@ -1178,12 +1183,14 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
             ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes),
                                    BSONType::NumberDecimal,
                                    boost::optional<std::vector<QueryTypeConfig>>({config}));
+        auto bsonBuffer = std::vector<BSONObj>{};
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
                                                                       metadata.keyId.uuids()[0],
                                                                       config,
                                                                       {rangeBoundElements[0], true},
                                                                       {rangeBoundElements[1], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991001);
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
@@ -1191,7 +1198,8 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                       config,
                                                                       {rangeBoundElements[0], true},
                                                                       {rangeBoundElements[2], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991001);
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
@@ -1199,7 +1207,8 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                       config,
                                                                       {rangeBoundElements[1], true},
                                                                       {rangeBoundElements[0], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991001);
         ASSERT_THROWS_CODE(buildTwoSidedEncryptedRangeWithPlaceholder("age",
@@ -1207,7 +1216,8 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                       config,
                                                                       {rangeBoundElements[2], true},
                                                                       {rangeBoundElements[0], true},
-                                                                      -1),
+                                                                      -1,
+                                                                      bsonBuffer),
                            AssertionException,
                            6991001);
     }

@@ -351,11 +351,17 @@ bool isRangeComparison(MatchType t) {
     }
 }
 
-std::unique_ptr<MatchExpression> makeEncryptedRangeFromInterval(
-    const ResolvedEncryptionInfo& metadata, StringData path, Interval interval, int32_t payloadId) {
+namespace {
+static const auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
+static const auto kMaxDouble = BSON("" << std::numeric_limits<double>::infinity());
+}  // namespace
 
-    auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
-    auto kMaxDouble = BSON("" << std::numeric_limits<double>::infinity());
+std::unique_ptr<MatchExpression> makeEncryptedRangeFromInterval(
+    const ResolvedEncryptionInfo& metadata,
+    StringData path,
+    Interval interval,
+    int32_t payloadId,
+    std::vector<BSONObj>& bsonBuffer) {
 
     if (interval.start.type() == BSONType::Date && interval.start.Date() == Date_t::min()) {
         interval.start = kMinDouble.firstElement();
@@ -368,24 +374,24 @@ std::unique_ptr<MatchExpression> makeEncryptedRangeFromInterval(
     // If one side of the range is infinite, then don't create a $and, but just create the one $gt
     // or $lt expression.
     if (elementIsInfinite(interval.start)) {
-        auto placeholder = buildOneSidedEncryptedRangePlaceholder(
+        auto placeholder = bsonBuffer.emplace_back(buildOneSidedEncryptedRangePlaceholder(
             path,
             metadata,
             interval.end,
             interval.endInclusive ? MatchExpression::LTE : MatchExpression::LT,
-            payloadId);
+            payloadId));
         if (interval.endInclusive) {
             return std::make_unique<LTEMatchExpression>(path, placeholder.firstElement());
         } else {
             return std::make_unique<LTMatchExpression>(path, placeholder.firstElement());
         }
     } else if (elementIsInfinite(interval.end)) {
-        auto placeholder = buildOneSidedEncryptedRangePlaceholder(
+        auto placeholder = bsonBuffer.emplace_back(buildOneSidedEncryptedRangePlaceholder(
             path,
             metadata,
             interval.start,
             interval.startInclusive ? MatchExpression::GTE : MatchExpression::GT,
-            payloadId);
+            payloadId));
         if (interval.startInclusive) {
             return std::make_unique<GTEMatchExpression>(path, placeholder.firstElement());
         } else {
@@ -409,7 +415,8 @@ std::unique_ptr<MatchExpression> makeEncryptedRangeFromInterval(
                                                       metadata,
                                                       {interval.start, interval.startInclusive},
                                                       {interval.end, interval.endInclusive},
-                                                      payloadId);
+                                                      payloadId,
+                                                      bsonBuffer);
 }
 }  // namespace
 
@@ -491,7 +498,7 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
         for (const auto& interval : intervals) {
             _didMark = aggregate_expression_intender::Intention::Marked;
             children->emplace_back(makeEncryptedRangeFromInterval(
-                metadata.value(), path, interval, getRangePayloadId()));
+                metadata.value(), path, interval, getRangePayloadId(), _encryptedElements));
         }
     }
 }
@@ -544,7 +551,8 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
                 eqExpr->path(),
                 // This is an equality, so only need to match one point.
                 IndexBoundsBuilder::makePointInterval(BSON("" << eqExpr->getData())),
-                getRangePayloadId());
+                getRangePayloadId(),
+                _encryptedElements);
         }
         case MatchExpression::AND: {
             auto andExpr = static_cast<AndMatchExpression*>(root);
@@ -603,7 +611,8 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
                                                                             metadata.get(),
                                                                             {thisEquality, true},
                                                                             {thisEquality, true},
-                                                                            getRangePayloadId()));
+                                                                            getRangePayloadId(),
+                                                                            _encryptedElements));
 
                 _didMark = aggregate_expression_intender::Intention::Marked;
             }
