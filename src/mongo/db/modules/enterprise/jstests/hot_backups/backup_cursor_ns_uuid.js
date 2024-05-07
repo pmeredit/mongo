@@ -21,6 +21,8 @@ function runTest(nodeOptionsArg) {
     const db = primary.getDB(dbName);
 
     // Opening backup cursors can race with taking a checkpoint, so disable checkpoints.
+    // This makes testing quicker and more predictable. In production, a poorly interleaved
+    // checkpoint will return an error, requiring retry.
     assert.commandWorked(
         primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "alwaysOn"}));
 
@@ -49,6 +51,9 @@ function runTest(nodeOptionsArg) {
         } else {
             let pathsep = _isWindows() ? '\\' : '/';
             let stem = doc.filename.substr(doc.filename.lastIndexOf(pathsep) + 1);
+            // Denylisting internal files that don't need to have ns/uuid set. Denylisting known
+            // patterns will help catch subtle API changes if new filename patterns are added that
+            // don't generate ns/uuid.
             if (!stem.startsWith("size") && !stem.startsWith("Wired") && !stem.startsWith("_")) {
                 assert.neq(doc.ns, "");
                 assert.neq(doc.uuid, "");

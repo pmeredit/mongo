@@ -7,6 +7,12 @@
  * ]
  */
 
+// TODO(SERVER-90072): Does not currently work on Windows.
+if (_isWindows()) {
+    print("Skipping test on windows");
+    quit();
+}
+
 import {
     NoopWorker,
     ShardedBackupRestoreTest

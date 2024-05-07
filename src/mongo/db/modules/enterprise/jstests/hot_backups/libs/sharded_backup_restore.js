@@ -47,10 +47,18 @@ import {
 } from "jstests/libs/backup_utils.js";
 import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
 
-export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard} = {}) {
+export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
+                                               isDirectoryPerDb = false,
+                                               isWiredTigerDirectoryForIndexes = false,
+                                               {configShard} = {}) {
     // When opening a backup cursor, only checkpointed data is backed up. However, the most
     // up-to-date size storer information is used. Thus the fast count may be inaccurate.
     TestData.skipEnforceFastCountOnValidate = true;
+
+    jsTestLog("ShardedBackupRestoreTest: " + tojson({
+                  isDirectoryPerDb: isDirectoryPerDb,
+                  isWiredTigerDirectoryForIndexes: isWiredTigerDirectoryForIndexes
+              }));
 
     const numShards = 4;
     const dbName = "test";
@@ -58,12 +66,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
     const collNameUnrestored = "continuous_writes_unrestored";
     let collUUIDUnrestored;
 
+    const pathsep = _isWindows() ? "\\" : "/";
     const restorePaths = [
-        MongoRunner.dataPath + "forRestore/shard0",
-        MongoRunner.dataPath + "forRestore/shard1",
-        MongoRunner.dataPath + "forRestore/shard2",
-        MongoRunner.dataPath + "forRestore/shard3",
-        MongoRunner.dataPath + "forRestore/config"
+        MongoRunner.dataPath + "forRestore" + pathsep + "shard0",
+        MongoRunner.dataPath + "forRestore" + pathsep + "shard1",
+        MongoRunner.dataPath + "forRestore" + pathsep + "shard2",
+        MongoRunner.dataPath + "forRestore" + pathsep + "shard3",
+        MongoRunner.dataPath + "forRestore" + pathsep + "config"
     ];
     if (configShard) {
         // With a config shard, the first shard is the config server, so it doesn't need a separate
@@ -73,6 +82,23 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
 
     // The config shard is always the first shard in this test, if there is one.
     const configServerIdx = configShard ? 0 : numShards;
+
+    function _addServerParams(options, isCSRS, isSelectiveRestore) {
+        if (isSelectiveRestore) {
+            Object.assign(options, {restore: ''});
+        }
+
+        if (!isCSRS) {
+            if (isDirectoryPerDb) {
+                Object.assign(options, {directoryperdb: ''});
+            }
+            if (isWiredTigerDirectoryForIndexes) {
+                Object.assign(options, {wiredTigerDirectoryForIndexes: ''});
+            }
+        }
+
+        return options;
+    }
 
     const csrsName = jsTestName() + (configShard ? "-rs0" : "-configRS");
     function _shardName(shardNum) {
@@ -249,9 +275,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
 
             jsTestLog("Starting restored shard" + i + " with data from " + restorePaths[i] +
                       " at port " + restoredNodePorts[i]);
+            let options = _addServerParams(
+                {noCleanData: true, dbpath: restorePaths[i], port: restoredNodePorts[i]},
+                /*isCSRS=*/ false,
+                /*isSelectiveRestore=*/ false);
             restoredShards[i] = new ReplSetTest({
                 name: _replicaSetName(i),
-                nodes: [{noCleanData: true, dbpath: restorePaths[i], port: restoredNodePorts[i]}],
+                nodes: [options],
             });
             restoredShards[i].startSet({shardsvr: ""});
 
@@ -625,15 +655,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
          * For selective restores, checks that collNameUnrestored was not restored on each shard
          * server.
          */
-        let options = {
+        let options = _addServerParams({
             dbpath: restorePath,
             noCleanData: true,  // Do not delete existing data on startup.
             setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
-        };
-
-        if (isSelectiveRestore) {
-            Object.assign(options, {restore: ""});
-        }
+        },
+                                       isCSRS,
+                                       isSelectiveRestore);
 
         let conn = MongoRunner.runMongod(options);
 
@@ -705,15 +733,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
              * PIT-1. Restart node as a single node replica set on an ephemeral port.
              */
             jsTestLog(restorePath + ": Restarting node on temporary port " + tmpPort);
-            options = {
+            options = _addServerParams({
                 noCleanData: true,
                 dbpath: restorePath,
                 port: tmpPort,
-            };
-
-            if (isSelectiveRestore) {
-                Object.assign(options, {restore: ""});
-            }
+            },
+                                       isCSRS,
+                                       isSelectiveRestore);
 
             const tmpSet = new ReplSetTest({
                 name: setName,
@@ -742,15 +768,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
              * These settings may not actually be necessary, but this matches what Cloud does today
              * and could be re-evaluated in the future.
              */
-            options = {
+            options = _addServerParams({
                 dbpath: restorePath,
                 noCleanData: true,
                 setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
-            };
-
-            if (isSelectiveRestore) {
-                Object.assign(options, {restore: ""});
-            }
+            },
+                                       isCSRS,
+                                       isSelectiveRestore);
 
             conn = MongoRunner.runMongod(options);
 
@@ -771,15 +795,14 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
              * PIT-6. Replaying oplog.
              */
             jsTestLog(restorePath + ": Replaying oplog");
-            options = {
+            options = _addServerParams({
                 dbpath: restorePath,
                 noCleanData: true,
                 setParameter:
                     {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
-            };
-            if (isSelectiveRestore) {
-                Object.assign(options, {restore: ""});
-            }
+            },
+                                       isCSRS,
+                                       isSelectiveRestore);
             conn = MongoRunner.runMongod(options);
             assert.neq(conn, null);
             // Once the mongod is up and accepting connections, safely shut down the node.
@@ -799,16 +822,14 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
              *    and `takeUnstableCheckpointOnShutdown`.
              */
             jsTestLog(restorePath + ": Replaying oplog");
-            options = {
+            options = _addServerParams({
                 dbpath: restorePath,
                 noCleanData: true,
                 setParameter:
                     {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
-            };
-
-            if (isSelectiveRestore) {
-                Object.assign(options, {restore: ""});
-            }
+            },
+                                       isCSRS,
+                                       isSelectiveRestore);
 
             conn = MongoRunner.runMongod(options);
             assert.neq(conn, null);
@@ -827,7 +848,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
             conn = MongoRunner.runMongod({
                 dbpath: restorePath,
                 noCleanData: true,
-                restore: "",
+                restore: '',
                 setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
             });
             assert.neq(conn, null);
@@ -866,11 +887,17 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
          * These settings may not actually be necessary, but this matches what Cloud does today and
          * could be re-evaluated in the future.
          */
-        return MongoRunner.runMongod({
-            dbpath: restorePath,
-            noCleanData: true,
-            setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
-        });
+        options = _addServerParams(
+            {
+                dbpath: restorePath,
+                noCleanData: true,
+                setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
+            },
+            isCSRS,
+            /*isSelectiveRestore=*/ false);  // hard-code selective restore param to false for the
+                                             // final boot at end of restore process.
+
+        return MongoRunner.runMongod(options);
     }
 
     function _restoreCSRS(restorePath,
@@ -1155,11 +1182,15 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
         /**
          *  Setup for backup
          */
+        let rsOptions = _addServerParams(
+            {syncdelay: 1, oplogSize: oplogSize, setParameter: {writePeriodicNoops: true}},
+            /*isCSRS=*/ false,
+            /*isSelectiveRestore=*/ false);
         const st = new ShardingTest({
             name: jsTestName(),
             shards: numShards,
             configShard: configShard,
-            rs: {syncdelay: 1, oplogSize: oplogSize, setParameter: {writePeriodicNoops: true}},
+            rs: rsOptions,
             other: {
                 mongosOptions: {binVersion: backupBinaryVersion},
                 configOptions: {
@@ -1196,7 +1227,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
         let writerPid = _startCausalWriterClient(st, collNames);
 
         jsTestLog("Resetting db path");
-        resetDbpath(MongoRunner.dataPath + "forRestore/");
+        resetDbpath(MongoRunner.dataPath + "forRestore" + pathsep);
 
         /**
          *  Backup

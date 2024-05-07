@@ -175,6 +175,8 @@ let db = primary.getDB(dbName);
 let collectionNames = ["a", "b"];
 
 // Opening backup cursors can race with taking a checkpoint, so disable checkpoints.
+// This makes testing quicker and more predictable. In production, a poorly interleaved checkpoint
+// will return an error, requiring retry.
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "alwaysOn"}));
 
