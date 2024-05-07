@@ -14,18 +14,23 @@ OperatorStats toOperatorStats(const mongo::OperatorStatsDoc& stats) {
                          .numOutputDocs = stats.getOutputDocs(),
                          .numOutputBytes = stats.getOutputBytes(),
                          .numDlqDocs = stats.getDlqDocs(),
-                         .numDlqBytes = stats.getDlqBytes()};
+                         .numDlqBytes = stats.getDlqBytes(),
+                         .executionTime =
+                             mongo::duration_cast<Microseconds>(stats.getExecutionTime())};
 }
 
 mongo::OperatorStatsDoc toOperatorStatsDoc(const OperatorStats& stats) {
-    return mongo::OperatorStatsDoc{stats.operatorName,
-                                   stats.numInputDocs,
-                                   stats.numInputBytes,
-                                   stats.numOutputDocs,
-                                   stats.numOutputBytes,
-                                   stats.numDlqDocs,
-                                   stats.numDlqBytes,
-                                   stats.memoryUsageBytes};
+    mongo::OperatorStatsDoc statsDoc;
+    statsDoc.setName(stats.operatorName);
+    statsDoc.setInputDocs(stats.numInputDocs);
+    statsDoc.setInputBytes(stats.numInputBytes);
+    statsDoc.setOutputDocs(stats.numOutputDocs);
+    statsDoc.setOutputBytes(stats.numOutputBytes);
+    statsDoc.setDlqDocs(stats.numDlqDocs);
+    statsDoc.setDlqBytes(stats.numDlqBytes);
+    statsDoc.setStateSize(stats.memoryUsageBytes);
+    statsDoc.setExecutionTime(mongo::duration_cast<Milliseconds>(stats.executionTime));
+    return statsDoc;
 }
 
 std::vector<OperatorStats> combineAdditiveStats(

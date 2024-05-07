@@ -13,15 +13,15 @@ imports:
 # TOOD(SERVER-78463): Version all these structs so updates are easily supported.
 structs:
     WatermarkState:
-        strict: true
         description: Watermark state in checkpoint data.
+        strict: false
         fields:
             eventTimeMs:
                 type: safeInt64
 
     KafkaPartitionCheckpointState:
-        strict: true
         description: Checkpoint state of a single Kafka topic partition in a $source operator.
+        strict: false
         fields:
             partition:
                 description: Partition number.
@@ -36,7 +36,7 @@ structs:
 
     KafkaSourceCheckpointState:
         description: Checkpoint state of a Kafka $source operator.
-        strict: true
+        strict: false
         fields:
             partitions:
                 type: array<KafkaPartitionCheckpointState>
@@ -47,7 +47,7 @@ structs:
     
     ChangeStreamSourceCheckpointState:
         description: "Checkpoint state of a MongoDB changestream $source operator."
-        strict: true
+        strict: false
         fields:
             startingPoint:
                 type:
@@ -63,8 +63,8 @@ structs:
                 optional: true
 
     OperatorState:
-        strict: true
         description: The serialized state of a single operator in a checkpoint.
+        strict: false
         fields:
             _id:
                 description: A primary key string ID that identifies the operator within a checkpoint.
@@ -74,8 +74,8 @@ structs:
                 type: object
 
     CheckpointOperatorInfo:
-        strict: true
         description: High level information about an operator in a checkpoint, like stats.
+        strict: false
         fields:
             operatorId:
                 description: The operator's ID.
@@ -85,8 +85,8 @@ structs:
                 type: OperatorStatsDoc
 
     CheckpointInfo:
-        strict: true
         description: A CheckpointInfo document is written when a checkpoint is committed. Corresponding OperatorState is considered valid when this document exists.
+        strict: false
         fields:
             _id:
                 description: A string ID in the form checkpoint-{tenantId}-{streamProcessorId}-{timestamp}.
@@ -96,15 +96,15 @@ structs:
                 type: array<CheckpointOperatorInfo>
 
     WindowOperatorStateFastMode:
-        strict: true
         description: WindowOperator state when using fast mode checkpointing.
+        strict: false
         fields:
             minimumWindowStartTime:
                 type: safeInt64
 
     WindowOperatorStartRecord:
-        strict: true
         description: The WindowAwareOperator base class writes this document to mark the start of a new window of data.
+        strict: false
         fields:
             0:
                 type: safeInt64
@@ -121,8 +121,8 @@ structs:
                 description: Source type used in the StreamMeta template for the window.
 
     WindowOperatorEndRecord:
-        strict: true
         description: The WindowAwareOperator base class writes this document to mark the end of a window of data.
+        strict: false
         fields:
             0:
                 type: safeInt64
@@ -130,8 +130,8 @@ structs:
                 description: Start time of the window corresponding to this window end marker.
 
     WindowOperatorLimitRecord:
-        strict: true
         description: The WindowLimitAwareOperator class checkpoint state.
+        strict: false
         fields:
             0:
                 type: safeInt64
@@ -139,8 +139,8 @@ structs:
                 description: Number of documents sent so far in the limit operator.
 
     WindowAwareGroupRecord:
-        strict: true
         description: The WindowAwareGroupOperator checkpoint state format.
+        strict: false
         fields:
             0:
                 type: bindata_generic
@@ -155,8 +155,8 @@ structs:
     # we limit the size of the field name in the checkpoint data to be a single byte and avoid
     # wasting space in the case where we have many open windows.
     WindowOperatorCheckpointRecord:
-        strict: true
         description: A variant type used for all WindowAwareOperator and derived class checkpoint state. Only one field will be set.
+        strict: false
         fields:
             0:
                 type: safeInt64
@@ -199,8 +199,8 @@ structs:
     # The following types are required by the manifest file format in the LocalDiskCheckpointStorage implementation
     # TODO(SERVER-83755) Consider generating all types in mongo::streams namespace
     CheckpointFileInfo:
-        strict: true
         description: Name and checksum of a checkpoint file
+        strict: false
         fields:
             name: 
                 description: name of the checkpoint file            
@@ -210,8 +210,8 @@ structs:
                 type: safeInt64
 
     CheckpointFiles:
-        strict: true
         description: Info about all the checkpoint files
+        strict: false
         fields:
             checksumAlgo: 
                 description: checksum algo used to compute the checksum of the file contents            
@@ -221,8 +221,8 @@ structs:
                 type: array<CheckpointFileInfo>
 
     CheckpointMetadata:
-        strict: true
         description: Metadata info about a checkpoint
+        strict: false
         fields:
             tenantId:
                 type: string
@@ -251,8 +251,8 @@ structs:
                 optional: true
 
     CheckpointFileRange:
-        strict: true
         description: A close-open range of bytes within one file
+        strict: false
         fields:
             file: 
                 type: string
@@ -262,8 +262,8 @@ structs:
                 type: int
 
     OperatorCheckpointFileRanges:
-        strict: true
         description: All the locations for one operator
+        strict: false
         fields:
             opid:
                 type: int
@@ -271,8 +271,8 @@ structs:
                 type: array<CheckpointFileRange>
 
     Manifest:
-        strict: true
         description: This is the on-disk data format of the checkpoint manifest (v1)
+        strict: false
         fields:
             version:
                 type: int
