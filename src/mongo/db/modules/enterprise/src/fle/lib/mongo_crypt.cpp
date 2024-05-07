@@ -365,10 +365,11 @@ struct mongo_crypt_v1_lib {
     void free() noexcept {
         if (nullptr != serviceContext) {
             serviceContext = nullptr;
-            mongo::setGlobalServiceContext(nullptr);
 
             auto status = mongo::runGlobalDeinitializers();
             uassertStatusOKWithContext(status, "Global deinitilization failed");
+
+            mongo::setGlobalServiceContext(nullptr);
         }
     }
 
