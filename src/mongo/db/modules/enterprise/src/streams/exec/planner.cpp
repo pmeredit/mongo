@@ -165,12 +165,12 @@ void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
     if (isMainPipeline) {
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << name
-                              << " stage is not permitted in the inner pipeline of a window stage",
+                              << " stage is only permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInMainPipeline);
     } else {
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << name
-                              << " stage is only permitted in the inner pipeline of a window stage",
+                              << " stage is not permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInWindowPipeline);
     }
 }

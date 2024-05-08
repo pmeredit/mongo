@@ -43,7 +43,9 @@ BSONObj PipelineRewriter::rewriteLookUp(const BSONObj& stageObj) {
 
     auto lookupObj = stageObj.firstElement().Obj();
     auto fromField = lookupObj[kFromFieldName];
-    uassert(ErrorCodes::FailedToParse, "must specify 'from' field for a $lookup", !fromField.eoo());
+    uassert(ErrorCodes::InvalidOptions,
+            "The $lookup.from field must be an object",
+            fromField.isABSONObj());
 
     // Rewrite the 'from' object in $lookup to be just a string containing the collection name.
     BSONObjBuilder newStageObjBuilder;

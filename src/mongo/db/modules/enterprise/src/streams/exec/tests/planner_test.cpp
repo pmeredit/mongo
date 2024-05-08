@@ -1312,5 +1312,74 @@ TEST_F(PlannerTest, OperatorId) {
     ASSERT_EQ(5, dag->operators()[5]->getOperatorId());
 }
 
+TEST_F(PlannerTest, NotAllowedInMainPipelineErrorMessage) {
+    _context->isEphemeral = true;
+    auto pipeline = R"(
+[
+    {
+        $source: {
+            connectionName: "kafka1",
+            topic: "topic1",
+            testOnlyPartitionCount: 5
+        }
+    },
+    {
+        $sort: {
+            a: 1
+        }
+    }
+]
+    )";
+    auto bson = parsePipeline(pipeline);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+    Planner planner(_context.get(), Planner::Options{});
+    try {
+        auto dag = planner.plan(bson);
+        ASSERT(false);
+    } catch (const DBException& e) {
+        ASSERT_EQ(ErrorCodes::InvalidOptions, e.code());
+        ASSERT_EQ("$sort stage is only permitted in the inner pipeline of a window stage",
+                  e.reason());
+    }
+}
+
+TEST_F(PlannerTest, LookupFromIsNotObject) {
+    _context->isEphemeral = true;
+    auto pipeline = R"(
+[
+    {
+        $source: {
+            connectionName: "kafka1",
+            topic: "topic1",
+            testOnlyPartitionCount: 5
+        }
+    },
+    {
+        $lookup: {
+            from: "foo"
+        }
+    }
+]
+    )";
+    auto bson = parsePipeline(pipeline);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+    Planner planner(_context.get(), Planner::Options{});
+    try {
+        auto dag = planner.plan(bson);
+        ASSERT(false);
+    } catch (const DBException& e) {
+        ASSERT_EQ(ErrorCodes::InvalidOptions, e.code());
+        ASSERT_EQ("The $lookup.from field must be an object", e.reason());
+    }
+}
+
 }  // namespace
 }  // namespace streams
