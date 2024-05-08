@@ -79,6 +79,14 @@ Executor::Executor(Context* context, Options options)
         "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
     _runOnceCounter = _metricManager->registerCounter(
         "runonce_count", "Number of runOnce iterations in the stream processor", labels);
+    _memoryUsageGauge = _metricManager->registerIntGauge(
+        "memory_usage_bytes",
+        "Current memory usage based on the internal memory usage tracking",
+        labels);
+    _startDurationGauge = _metricManager->registerIntGauge(
+        "start_duration_ms", "Time taken to start the stream processor in milliseconds", labels);
+    _stopDurationGauge = _metricManager->registerIntGauge(
+        "stop_duration_ms", "Time taken to stop the stream processor in milliseconds", labels);
 }
 
 Executor::~Executor() {
@@ -95,6 +103,7 @@ Future<void> Executor::start() {
     // Start the executor thread.
     dassert(!_executorThread.joinable());
     _executorThread = stdx::thread([this] {
+        _executorTimer.reset();
         bool started{false};
         bool promiseFulfilled{false};
         Date_t deadline = Date_t::now() + _options.connectTimeout;
@@ -116,6 +125,8 @@ Future<void> Executor::start() {
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
             started = true;
+            _startDurationGauge->set(_executorTimer.millis());
+            _executorTimer.reset();
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
 
             if (auto fp = streamProcessorStartSleepSeconds.scoped(); fp.isActive()) {
@@ -329,6 +340,7 @@ Executor::RunStatus Executor::runOnce() {
                    "context"_attr = _context,
                    "stopReason"_attr = stopReasonToString(stopReason));
 
+        _executorTimer.reset();
         if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {
             auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
                 CheckpointCoordinator::CheckpointRequest{
@@ -340,6 +352,8 @@ Executor::RunStatus Executor::runOnce() {
                 sendCheckpointControlMsg(std::move(*checkpointControlMsg));
             }
         }
+        _stopDurationGauge->set(_executorTimer.millis());
+        _executorTimer.reset();
         return RunStatus::kShutdown;
     }
 
@@ -389,6 +403,7 @@ void Executor::updateStats(StreamStats newStats) {
     _numInputBytesCounter->increment(delta.numInputBytes);
     _numOutputDocumentsCounter->increment(delta.numOutputDocs);
     _numOutputBytesCounter->increment(delta.numOutputBytes);
+    _memoryUsageGauge->set(_context->memoryAggregator->getCurrentMemoryUsageBytes());
 
     if (delta.numOutputDocs || delta.numDlqDocs) {
         // no need to check thru all the individual operators

@@ -12,6 +12,7 @@
 #include "mongo/stdx/thread.h"
 #include "mongo/util/future.h"
 #include "mongo/util/producer_consumer_queue.h"
+#include "mongo/util/timer.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/common_gen.h"
@@ -179,6 +180,7 @@ private:
     // Context of the streamProcessor, used for logging purposes.
     Context* _context{nullptr};
     Options _options;
+    mongo::Timer _executorTimer;
     mongo::Promise<void> _promise;
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
@@ -214,6 +216,9 @@ private:
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
     std::shared_ptr<Counter> _runOnceCounter;
+    std::shared_ptr<IntGauge> _memoryUsageGauge;
+    std::shared_ptr<IntGauge> _startDurationGauge;
+    std::shared_ptr<IntGauge> _stopDurationGauge;
     std::unique_ptr<MetricManager> _metricManager;
 
     // Have some new outputdocs been emitted by _any_ operator since we last checked.

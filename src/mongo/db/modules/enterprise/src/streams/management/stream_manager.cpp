@@ -330,12 +330,6 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
 void StreamManager::registerTenantMetrics(mongo::WithLock, const std::string& tenantId) {
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
-    _memoryUsage = _metricManager->registerCallbackGauge(
-        /* name */ "memory_usage_bytes",
-        /* description */ "Current memory usage based on the internal memory usage tracking",
-        labels,
-        [this]() { return _memoryAggregator->getCurrentMemoryUsageBytes(); });
-
     for (size_t i = 0; i < idlEnumCount<StreamStatusEnum>; ++i) {
         labels.push_back(std::make_pair(kStatusLabelKey,
                                         std::string(StreamStatus_serializer(StreamStatusEnum(i)))));
@@ -354,23 +348,6 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     invariant(_options.memoryLimitBytes > 0);
     _memoryUsageMonitor = std::make_shared<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes);
     _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(_memoryUsageMonitor);
-
-    _streamProcessorStartRequestSuccessCounter = _metricManager->registerCounter(
-        "stream_processor_requests_total",
-        /* description */ "Total number of times start stream processor has succeeded",
-        /* labels */ {{"request", "start"}, {"success", "true"}});
-    _streamProcessorTotalStartLatencyCounter = _metricManager->registerCounter(
-        "stream_processor_start_latency_ms_total",
-        /* description */ "Total latency of all start stream processor commands",
-        /* labels */ {});
-    _streamProcessorStopRequestSuccessCounter = _metricManager->registerCounter(
-        "stream_processor_requests_total",
-        /* description */ "Total number of times stop stream processor has succeeded",
-        /* labels */ {{"request", "stop"}, {"success", "true"}});
-    _streamProcessorTotalStopLatencyCounter = _metricManager->registerCounter(
-        "stream_processor_stop_latency_ms_total",
-        /* description */ "Total latency of all stop stream processor commands",
-        /* labels */ {});
 
     _streamProcessorActiveGauges[kStartCommand] =
         _metricManager->registerIntGauge("stream_processor_active_requests",
@@ -393,23 +370,32 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
                                          /* description */ "Number of active sample requests",
                                          /* labels */ {{"request", "sample"}});
 
-    _streamProcessorFailedCounters[kStartCommand] = _metricManager->registerCounter(
+    _streamProcessorRequestSuccessCounters[kStartCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times start stream processor has succeeded",
+        /* labels */ {{"request", "start"}, {"success", "true"}});
+    _streamProcessorRequestSuccessCounters[kStopCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times stop stream processor has succeeded",
+        /* labels */ {{"request", "stop"}, {"success", "true"}});
+
+    _streamProcessorRequestFailureCounters[kStartCommand] = _metricManager->registerCounter(
         "stream_processor_requests_total",
         /* description */ "Total number of times start stream processor has failed",
         /* labels */ {{"request", "start"}, {"success", "false"}});
-    _streamProcessorFailedCounters[kStopCommand] = _metricManager->registerCounter(
+    _streamProcessorRequestFailureCounters[kStopCommand] = _metricManager->registerCounter(
         "stream_processor_requests_total",
         /* description */ "Total number of times stop stream processor has failed",
         /* labels */ {{"request", "stop"}, {"success", "false"}});
-    _streamProcessorFailedCounters[kListCommand] = _metricManager->registerCounter(
+    _streamProcessorRequestFailureCounters[kListCommand] = _metricManager->registerCounter(
         "stream_processor_requests_total",
         /* description */ "Total number of times list stream processor has failed",
         /* labels */ {{"request", "list"}, {"success", "false"}});
-    _streamProcessorFailedCounters[kSampleCommand] = _metricManager->registerCounter(
+    _streamProcessorRequestFailureCounters[kSampleCommand] = _metricManager->registerCounter(
         "stream_processor_requests_total",
         /* description */ "Total number of times sample stream processor has failed",
         /* labels */ {{"request", "sample"}, {"success", "false"}});
-    _streamProcessorFailedCounters[kStatsCommand] = _metricManager->registerCounter(
+    _streamProcessorRequestFailureCounters[kStatsCommand] = _metricManager->registerCounter(
         "stream_processor_requests_total",
         /* description */ "Total number of times stats for a stream processor has failed",
         /* labels */ {{"request", "stats"}, {"success", "false"}});
@@ -505,12 +491,11 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
     Timer executionTimer;
     auto activeGauge = _streamProcessorActiveGauges[kStartCommand];
     ScopeGuard guard([&] {
-        _streamProcessorTotalStartLatencyCounter->increment(executionTimer.millis());
         activeGauge->incBy(-1);
         if (std::uncaught_exceptions()) {
-            _streamProcessorFailedCounters[kStartCommand]->increment(1);
+            _streamProcessorRequestFailureCounters[kStartCommand]->increment(1);
         } else {
-            _streamProcessorStartRequestSuccessCounter->increment(1);
+            _streamProcessorRequestSuccessCounters[kStartCommand]->increment(1);
         }
     });
     activeGauge->incBy(1);
@@ -874,11 +859,10 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
     auto activeGauge = _streamProcessorActiveGauges[kStopCommand];
     ScopeGuard guard([&] {
         activeGauge->incBy(-1);
-        _streamProcessorTotalStopLatencyCounter->increment(executionTimer.millis());
         if (std::uncaught_exceptions()) {
-            _streamProcessorFailedCounters[kStopCommand]->increment(1);
+            _streamProcessorRequestFailureCounters[kStopCommand]->increment(1);
         } else {
-            _streamProcessorStopRequestSuccessCounter->increment(1);
+            _streamProcessorRequestSuccessCounters[kStopCommand]->increment(1);
         }
     });
     activeGauge->incBy(1);
@@ -996,7 +980,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     ScopeGuard guard([&] {
         activeGauge->incBy(-1);
         if (std::uncaught_exceptions()) {
-            _streamProcessorFailedCounters[kSampleCommand]->increment(1);
+            _streamProcessorRequestFailureCounters[kSampleCommand]->increment(1);
         }
     });
     activeGauge->incBy(1);
@@ -1152,7 +1136,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     ScopeGuard guard([&] {
         activeGauge->incBy(-1);
         if (std::uncaught_exceptions()) {
-            _streamProcessorFailedCounters[kStatsCommand]->increment(1);
+            _streamProcessorRequestFailureCounters[kStatsCommand]->increment(1);
         }
     });
     activeGauge->incBy(1);
@@ -1255,7 +1239,7 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
     ScopeGuard guard([&] {
         activeGauge->incBy(-1);
         if (std::uncaught_exceptions()) {
-            _streamProcessorFailedCounters[kListCommand]->increment(1);
+            _streamProcessorRequestFailureCounters[kListCommand]->increment(1);
         }
     });
     activeGauge->incBy(1);
