@@ -414,8 +414,42 @@ void updateShardNameMetadata(OperationContext* opCtx,
                         {BSON("$set" << BSON("donorShards.$[src]" << dstShardName)), Timestamp(0)},
                         std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
 
-            // TODO SERVER-82568: (Shard) Update system.sharding_ddl_coordinators
-            // (kShardingDDLCoordinatorsNamespace)
+            // Update the shardIds array in config.system.sharding_ddl_coordinators for
+            // createCollection_V4 operations.
+            // Note: shardIds is optional in create_collection_coordinator_document.idl so the
+            // $exists below is to avoid "The path 'shardIds' must exist in the document in order to
+            // apply array updates" errors.
+            fassert(8256801,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kShardingDDLCoordinatorsNamespace,
+                        BSON("_id.operationType"
+                             << "createCollection_V4"
+                             << "shardIds" << BSON("$exists" << true)) /* query */,
+                        {BSON("$set" << BSON("shardIds.$[src]" << dstShardName)), Timestamp(0)},
+                        std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+
+            // Update the originalDataShard in config.system.sharding_ddl_coordinators for
+            // createCollection_V4 operations.
+            fassert(8256802,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kShardingDDLCoordinatorsNamespace,
+                        BSON("_id.operationType"
+                             << "createCollection_V4"
+                             << "originalDataShard" << srcShardName) /* query */,
+                        {BSON("$set" << BSON("originalDataShard" << dstShardName)), Timestamp(0)}));
+
+            // Update toShardId in config.system.sharding_ddl_coordinators for movePrimary
+            // operations.
+            fassert(8256803,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kShardingDDLCoordinatorsNamespace,
+                        BSON("_id.operationType"
+                             << "movePrimary"
+                             << "toShardId" << srcShardName),
+                        {BSON("$set" << BSON("toShardId" << dstShardName)), Timestamp(0)}));
         }
     }
 }

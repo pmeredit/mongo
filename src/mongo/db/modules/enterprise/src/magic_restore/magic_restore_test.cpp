@@ -961,7 +961,25 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
          InsertStatement{
              BSON("_id" << 1 << "donorShards" << BSON_ARRAY(backupShard2 << backupShard1))}}));
 
-    // TODO SERVER-82568: insert document for kShardingDDLCoordinatorsNamespace
+    // Code handles createCollection_V4 and movePrimary only so otherCommand should not be affected.
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kShardingDDLCoordinatorsNamespace,
+        {InsertStatement{BSON(
+             "_id" << BSON("namespace"
+                           << "test"  // To avoid duplicated _id with the other createCollection_V4.
+                           << "operationType"
+                           << "createCollection_V4")
+                   << "shardIds" << BSON_ARRAY(backupShard0 << backupShard1 << backupShard2))},
+         InsertStatement{BSON("_id" << BSON("operationType"
+                                            << "createCollection_V4")
+                                    << "originalDataShard" << backupShard1)},
+         InsertStatement{BSON("_id" << BSON("operationType"
+                                            << "otherCommand")
+                                    << "shardIds" << BSON_ARRAY(backupShard0 << backupShard2))},
+         InsertStatement{BSON("_id" << BSON("operationType"
+                                            << "movePrimary")
+                                    << "toShardId" << backupShard1)}}));
 
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kShard);
@@ -1008,7 +1026,13 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
     ASSERT_BSONOBJ_EQ(docs[1].getObjectField("donorShards"),
                       BSON_ARRAY(backupShard2 << restoreShard1));
 
-    // TODO SERVER-82568: check documents in kShardingDDLCoordinatorsNamespace.
+    docs = getDocuments(opCtx, storage, NamespaceString::kShardingDDLCoordinatorsNamespace);
+    ASSERT_EQ(4, docs.size());
+    ASSERT_BSONOBJ_EQ(docs[0].getObjectField("shardIds"),
+                      BSON_ARRAY(restoreShard0 << restoreShard1 << backupShard2));
+    ASSERT_EQ(docs[1].getStringField("originalDataShard"), restoreShard1);
+    ASSERT_BSONOBJ_EQ(docs[2].getObjectField("shardIds"), BSON_ARRAY(backupShard0 << backupShard2));
+    ASSERT_EQ(docs[3].getStringField("toShardId"), restoreShard1);
 }
 
 void checkNoOpOplogEntry(std::vector<BSONObj>& docs,
@@ -1032,8 +1056,8 @@ TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryHighTerm) {
     auto now = Date_t::now();
     auto highTerm = 100;
     auto termInEntry = 1;
-    // Since the 'highTerm' parameter is greater than the entry's term, we'll use 'highTerm' in the
-    // no-op.
+    // Since the 'highTerm' parameter is greater than the entry's term, we'll use 'highTerm' in
+    // the no-op.
     BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "t" << termInEntry << "wall" << now);
 
     const auto noopEntryTs =
@@ -1067,8 +1091,8 @@ TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryNoTerm) {
 
     auto now = Date_t::now();
     auto highTerm = 10;
-    // There is no 't' field in the oplog entry. This only happens in an oplog entry that signals a
-    // replica set initiation. In this case, the 'highTerm' should always be used.
+    // There is no 't' field in the oplog entry. This only happens in an oplog entry that
+    // signals a replica set initiation. In this case, the 'highTerm' should always be used.
     BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "wall" << now);
 
     const auto noopEntryTs =
@@ -1187,8 +1211,8 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
 
         magic_restore::upsertAutomationCredentials(opCtx, autoCreds, storage);
 
-        // Insert the role and user docs into the mock authorization manager state. This will ensure
-        // the update code path can succeed.
+        // Insert the role and user docs into the mock authorization manager state. This will
+        // ensure the update code path can succeed.
         auto roleDoc = BSON("_id"
                             << "admin.testRole"
                             << "role"
