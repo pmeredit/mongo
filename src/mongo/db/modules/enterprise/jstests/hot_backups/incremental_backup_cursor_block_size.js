@@ -19,7 +19,8 @@ const rst = new ReplSetTest({
                 votes: 0,
             },
         },
-    ]
+    ],
+    oplogSize: 100,
 });
 rst.startSet();
 rst.initiate();
