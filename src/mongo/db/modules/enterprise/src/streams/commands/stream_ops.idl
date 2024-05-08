@@ -409,6 +409,10 @@ structs:
             featureFlags:
                 description: "Bson object containing all feature flags for this stream processor. These options are supplied by service components."
                 type: object
+            checkpointOnStart:
+                description: "By default, a checkpoint is written at start only when the SP is not being restored from a checkpoint. If this option is set to true, a checkpoint is always written upon starting and before any data processing happens."
+                type: bool
+                default: false
 
     CheckpointFlushedEvent:
         description: "The streams Agent sends this after it uploads a checkpoint to remote storage."

@@ -749,6 +749,32 @@ function testBoth(useNewCheckpointing) {
         assert.eq(2, ids.length);
     }
 
+    // Validate that when SP is started with checkpointOnStart option, it always writes a checkpoint
+    function smokeTestCheckpointOnStart() {
+        const input = generateInput(3333);
+        // Use a long checkpoint interval so they don't automatically happen.
+        let test = new TestHelper(
+            input, [], 1000000000 /* interval */, "kafka" /* sourceType */, useNewCheckpointing);
+        // Run the streamProcessor the streamProcessor.
+        test.run();
+        // Wait until some output appears in the output collection.
+        waitForCount(test.outputColl, 1, /* maxWaitSeconds */ 60);
+        test.stop();
+        // Get the checkpoint IDs from the run.
+        let ids = test.getCheckpointIds();
+        // There should be 1 checkpoint for the start of a fresh streamProcessor,
+        // 1 checkpoint from the stop.
+        assert.eq(2, ids.length);
+
+        // Start the processor with checkpointOnStart=true
+        test.startFromLatestCheckpoint(false /* assertWorked */, true /* checkpointOnStart */);
+        assert.soon(() => {
+            ids = test.getCheckpointIds();
+            return ids.length == 3;
+        });
+        test.stop();
+    }
+
     function smokeTestCorrectnessChangestream() {
         const input = generateInput(503);
         let test = new TestHelper(input, [], 0, 'changestream', useNewCheckpointing);
@@ -1036,6 +1062,7 @@ function testBoth(useNewCheckpointing) {
     hoppingWindowGroupTest();
     hoppingWindowSortTest();
     smokeTestCheckpointOnStop();
+    smokeTestCheckpointOnStart();
     smokeTestCorrectnessChangestream();
     failPointTestAfterFirstOutput();
     smokeTestStatsInCheckpoint();

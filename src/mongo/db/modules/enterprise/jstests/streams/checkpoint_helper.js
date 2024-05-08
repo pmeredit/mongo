@@ -179,6 +179,7 @@ export class TestHelper {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
             checkpointOptions: checkpointOptions,
             featureFlags: {},
+            checkpointOnStart: false
         };
         this.connectionRegistry = [
             {name: this.dbConnectionName, type: 'atlas', options: {uri: this.uri}},
@@ -261,7 +262,7 @@ export class TestHelper {
         }
     }
 
-    startFromLatestCheckpoint(assertWorked = true) {
+    startFromLatestCheckpoint(assertWorked = true, checkpointOnStart = false) {
         // Set the restore directory to the latest committed checkpoint on disk.
         let idsOnDisk = this.getCheckpointIds();
         if (idsOnDisk.length > 0) {
@@ -270,6 +271,8 @@ export class TestHelper {
         } else {
             this.startOptions.checkpointOptions.localDisk.restoreDirectory = null;
         }
+
+        this.startOptions.checkpointOnStart = checkpointOnStart;
 
         this.sp.createStreamProcessor(this.spName, this.pipeline);
         jsTestLog(`Starting ${this.spName} with pipeline ${this.pipeline}, options ${

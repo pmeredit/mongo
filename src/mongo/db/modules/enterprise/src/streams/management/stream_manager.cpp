@@ -806,10 +806,12 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
                 .processorId = processorInfo->context->streamProcessorId,
                 .enableDataFlow = request.getOptions().getEnableDataFlow(),
-                .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
+                .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
+                    !processorInfo->context->restoreCheckpointId,
                 .checkpointIntervalMs = processorInfo->context->checkpointInterval,
                 .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo,
-                .storage = processorInfo->context->checkpointStorage.get()});
+                .storage = processorInfo->context->checkpointStorage.get(),
+            });
     }
 
     // Create the Executor.
