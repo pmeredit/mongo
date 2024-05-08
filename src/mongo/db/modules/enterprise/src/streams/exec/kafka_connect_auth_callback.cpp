@@ -170,14 +170,15 @@ std::vector<char> KafkaConnectAuthCallback::readSocketData(const int socketFile,
 
     // Read and block until we receive all expected bytes, or receive a signal/error
     size_t bytesStored{0};
-    size_t bytesReceived{0};
+    ssize_t bytesReceived{0};
     int retryCounter{0};
 
     while (retryCounter++ < maxRetries) {
         // Increment readBuffer pointer, decrement remaining buffer size for reads.
         bytesReceived =
             recv(socketFile, readBuffer.data() + bytesStored, readBuffer.size() - bytesStored, 0);
-        if (bytesReceived <= 0) {
+        if (bytesReceived < 0) {
+            // Error condition - assert and let rdkafka attempt retries.
             LOGV2_ERROR(780022,
                         "KafkaConnectAuthCallback error occurred reading data",
                         "error"_attr = bytesReceived,
@@ -186,12 +187,13 @@ std::vector<char> KafkaConnectAuthCallback::readSocketData(const int socketFile,
             uasserted(ErrorCodes::InternalError,
                       "Failed while waiting for data in socket recv during readSocketData");
         } else if (bytesReceived == 0) {
+            // No errors, but no data received in this cycle, continue looping.
             LOGV2_ERROR(780023,
                         "KafkaConnectAuthCallback received 0 bytes, retrying read",
                         "context"_attr = _context);
         } else {
-            // Good response.  Loop will check to see if we filled the buffer, or if we need
-            // to iterate to read more data before proceeding.
+            // Good response, data received. Loop will check to see if we filled the buffer,
+            // or if we need to iterate to read more data before proceeding.
             bytesStored += bytesReceived;
             LOGV2_DEBUG(780024,
                         1, /* debug level */
