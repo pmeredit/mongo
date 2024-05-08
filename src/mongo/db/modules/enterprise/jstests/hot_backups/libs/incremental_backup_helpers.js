@@ -8,7 +8,7 @@ export const kSeparator = _isWindows() ? "\\" : "/";
  * Opens a new backup cursor on the given connection with 'options'. Returns the backup name and
  * cursor.
  */
-export const beginBackup = function(conn, options) {
+export const openIncrementalBackupCursor = function(conn, options) {
     let ret = {
         thisBackupName: options.thisBackupName,
     };

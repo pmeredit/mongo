@@ -18,7 +18,7 @@ TestData.skipEnforceFastCountOnValidate = true;
 import {validateCollections} from "jstests/hooks/validate_collections.js";
 import {
     kSeparator,
-    beginBackup,
+    openIncrementalBackupCursor,
     consumeBackupCursor,
     endBackup,
     copyDataFiles,
@@ -53,10 +53,10 @@ mkdir(backupPath + kSeparator + "journal");
 
 // An initial full backup is needed that will be used as a basis for future incremental backups.
 let thisBackupName = "initialIncBackup-0";
-let beginBackupRet = beginBackup(
+let ret = openIncrementalBackupCursor(
     primary, {incrementalBackup: true, thisBackupName: thisBackupName, blockSize: blockSize});
-let backupCursor = beginBackupRet.backupCursor;
-thisBackupName = beginBackupRet.thisBackupName;
+let backupCursor = ret.backupCursor;
+thisBackupName = ret.thisBackupName;
 
 consumeBackupCursor(backupCursor, backupPath);
 endBackup(backupCursor);
@@ -74,14 +74,14 @@ for (let backupNum = 0; backupNum < kNumBackups; backupNum++) {
         blockSize: blockSize
     });
 
-    beginBackupRet = beginBackup(primary, {
+    ret = openIncrementalBackupCursor(primary, {
         incrementalBackup: true,
         thisBackupName: nextBackupName,
         srcBackupName: thisBackupName,
         blockSize: blockSize
     });
-    backupCursor = beginBackupRet.backupCursor;
-    thisBackupName = beginBackupRet.thisBackupName;
+    backupCursor = ret.backupCursor;
+    thisBackupName = ret.thisBackupName;
 
     consumeBackupCursor(backupCursor, backupPath);
     endBackup(backupCursor);

@@ -67,7 +67,7 @@ while (backupCursor.hasNext()) {
     let doc = backupCursor.next();
 
     jsTestLog("Copying for backup: " + tojson(doc));
-    _copyFileHelper(doc.filename, primary.dbpath, backupDbPath);
+    _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, backupDbPath);
 }
 
 backupCursor.close();

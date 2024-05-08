@@ -24,7 +24,7 @@ TestData.skipEnforceFastCountOnValidate = true;
 
 import {
     kSeparator,
-    beginBackup,
+    openIncrementalBackupCursor,
     consumeBackupCursor,
     endBackup
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
@@ -56,8 +56,8 @@ primary.getDB("admin").createUser(
 assert.commandWorked(db.adminCommand({fsync: 1}));
 
 // Take a backup.
-let beginBackupRet = beginBackup(primary, {});
-let backupCursor = beginBackupRet.backupCursor;
+let ret = openIncrementalBackupCursor(primary, {});
+let backupCursor = ret.backupCursor;
 consumeBackupCursor(backupCursor, backupPath);
 endBackup(backupCursor);
 

@@ -46,6 +46,9 @@ import {
     startHeartbeatThread,
 } from "jstests/libs/backup_utils.js";
 import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
+import {
+    openIncrementalBackupCursor
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
 
 export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                                isDirectoryPerDb = false,
@@ -181,12 +184,15 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             let docId = 100;
 
             // Run indefinitely.
+            const largeStr = "a".repeat(
+                1 * 1024 * 256);  // 256KB, give incremental backups more incremental work.
             while (1) {
                 for (const sessionColl of sessionColls) {
                     assert.commandWorked(sessionColl.insert({
                         shardId: docId % numShards,
                         numForPartition: numFallsIntoShard[docId % numShards],
-                        docId: docId
+                        docId: docId,
+                        str: largeStr
                     }));
                 }
                 docId++;
@@ -242,7 +248,8 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
 
     // lastDocID is the largest docID inserted in the restored oplog entries. This ensures that the
     // data reflects the point in time the user requested (if PIT restore is specified).
-    function _checkDataConsistency(restoredNodePorts, lastDocID, backupBinaryVersion) {
+    function _checkDataConsistency(
+        restoredNodePorts, lastDocID, backupBinaryVersion, isIncrementalBackup) {
         jsTestLog("Checking data consistency");
 
         const configRS = new ReplSetTest({
@@ -286,6 +293,22 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             restoredShards[i].startSet({shardsvr: ""});
 
             checkFCV(restoredShards[i].getPrimary().getDB('admin'), expectedFCV);
+
+            const indexes = restoredShards[i]
+                                .getPrimary()
+                                .getDB(dbName)
+                                .getCollection(collNameRestored)
+                                .getIndexes();
+            if (isIncrementalBackup) {
+                assert.eq(3, indexes.length);
+                assert.eq({_id: 1}, indexes[0].key);
+                assert.eq({numForPartition: 1}, indexes[1].key);
+                assert.eq({str: 1}, indexes[2].key);
+            } else {
+                assert.eq(2, indexes.length);
+                assert.eq({_id: 1}, indexes[0].key);
+                assert.eq({numForPartition: 1}, indexes[1].key);
+            }
         }
 
         const mongos = MongoRunner.runMongos({configdb: configRS.getURL()});
@@ -505,8 +528,9 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
     //////////////////////////////// Backup Specification ////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
-    function _createBackup(st, isSelectiveRestore) {
-        jsTestLog("Creating " + (isSelectiveRestore ? "selective" : "full") + " backup");
+    function _createBackup(st, isSelectiveRestore, isIncrementalBackup, backupNames) {
+        jsTestLog("Creating backup with options: " +
+                  tojson({selective: isSelectiveRestore, incremental: isIncrementalBackup}));
 
         /**
          *  1. Take note of the topology configuration of the entire cluster.
@@ -514,7 +538,11 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         const startTime = Timestamp(1, 1);  // This time is definitely before the backup starts.
         const initialTopology = _getTopologyInfo(st.config1, startTime);
         const nodesToBackup = _getNodesToBackup(initialTopology, st.s);
-        jsTestLog("Backing up nodes: " + tojson(nodesToBackup));
+
+        const isFullBackup =
+            !isIncrementalBackup || (isIncrementalBackup && backupNames.length == 0);
+        jsTestLog("Backing up nodes: " + tojson(nodesToBackup) +
+                  ", is full backup: " + isFullBackup);
 
         let copyWorkers = [];
         let heartbeaters = [];
@@ -537,7 +565,27 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
              *  2. Open up a $backupCursor on a node (primary or secondary) of each shard and one
              *     config server node.
              */
-            backupCursors[i] = openBackupCursor(nodesToBackup[i].getDB("admin"));
+            if (isIncrementalBackup) {
+                // 1 MB is the smallest block size we can use.
+                let backupOptions = {incrementalBackup: true, blockSize: NumberInt(1)};
+                if (!backupNames[i]) {
+                    backupOptions.thisBackupName = "a";
+                } else {
+                    backupOptions.thisBackupName = backupNames[i] + "a";
+                    backupOptions.srcBackupName = backupNames[i];
+
+                    // Take a checkpoint against the node we're going to open a incremental
+                    // $backupCursor against. This is to give an opportunity to the backup cursor to
+                    // report blocks that changed between backups.
+                    assert.commandWorked(nodesToBackup[i].getDB("admin").runCommand({fsync: 1}));
+                }
+
+                let ret = openIncrementalBackupCursor(nodesToBackup[i], backupOptions);
+                backupCursors[i] = ret.backupCursor;
+                backupNames[i] = ret.thisBackupName;
+            } else {
+                backupCursors[i] = openBackupCursor(nodesToBackup[i].getDB("admin"));
+            }
             metadata = getBackupCursorMetadata(backupCursors[i]);
             assert("checkpointTimestamp" in metadata);
 
@@ -549,12 +597,22 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                 namespacesToSkip.push(dbName + "." + collNameUnrestored);
             }
 
-            const copyThread = copyBackupCursorFiles(backupCursors[i],
-                                                     namespacesToSkip,
-                                                     metadata["dbpath"],
-                                                     restorePaths[i],
-                                                     /*async=*/ true,
-                                                     fileCopiedCallback);
+            let copyThread;
+            if (isFullBackup) {
+                copyThread = copyBackupCursorFiles(backupCursors[i],
+                                                   namespacesToSkip,
+                                                   metadata["dbpath"],
+                                                   restorePaths[i],
+                                                   /*async=*/ true,
+                                                   fileCopiedCallback);
+            } else {
+                copyThread = copyBackupCursorExtendFiles(backupCursors[i],
+                                                         namespacesToSkip,
+                                                         metadata["dbpath"],
+                                                         restorePaths[i],
+                                                         /*async=*/ true);
+            }
+
             jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " + tojson(metadata));
             dbpaths[i] = metadata.dbpath;
             backupIds[i] = metadata.backupId;
@@ -623,7 +681,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             restorePaths: restorePaths,
             filesCopied: filesCopied
         });
-        return {checkpointTimestamps, maxCheckpointTimestamp, initialTopology, filesCopied};
+        return {
+            checkpointTimestamps,
+            maxCheckpointTimestamp,
+            initialTopology,
+            backupNames,
+            filesCopied
+        };
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -1174,8 +1238,12 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
 
     // If 'isPitRestore' is specified, does a PIT restore to an arbitrary PIT and checks that the
     // data is consistent.
-    this.run = function(
-        {isPitRestore = false, isSelectiveRestore = false, backupBinaryVersion = "latest"} = {}) {
+    this.run = function({
+        isPitRestore = false,
+        isSelectiveRestore = false,
+        isIncrementalBackup = false,
+        backupBinaryVersion = "latest"
+    } = {}) {
         // pitRestore needs larger oplog to prevent test failures due to oplog truncation.
         const oplogSize = isPitRestore ? 1024 : 1;
 
@@ -1238,38 +1306,62 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         let restoreOplogEntries;
         let lastDocID;
         let filesCopied;
+        let backupNames = [];
+
+        const kNumBackups = isIncrementalBackup ? 5 : 1;
         try {
-            const result = _createBackup(st, isSelectiveRestore);
-            const initialTopology = result.initialTopology;
-            const checkpointTimestamps = result.checkpointTimestamps;
-            backupPointInTime = result.maxCheckpointTimestamp;
-            filesCopied = result.filesCopied;
+            for (let i = 1; i <= kNumBackups; i++) {
+                jsTestLog("Taking backup " + i + " of " + kNumBackups);
 
-            if (isPitRestore) {
-                // The common reason for a retry is for the config server to generate an oplog entry
-                // after the test client's inserts have begun. The noop writer ensures this will
-                // occur.
-                assert.soonNoExcept(function() {
-                    jsTestLog("Attempting to prepare for PIT restore");
-                    restorePointInTime = _getEarliestTopOfOplog(st, backupPointInTime);
-                    restoreOplogEntries =
-                        _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime);
-                    lastDocID = _getLastDocID(restoreOplogEntries);
+                const result =
+                    _createBackup(st, isSelectiveRestore, isIncrementalBackup, backupNames);
+                const initialTopology = result.initialTopology;
+                const checkpointTimestamps = result.checkpointTimestamps;
+                backupPointInTime = result.maxCheckpointTimestamp;
 
-                    return lastDocID !== undefined;
-                }, "PIT restore prepare failed", ReplSetTest.kDefaultTimeoutMS, 1000);
+                if (i == 1) {
+                    // Keep track of files copied from the initial backup only. This test does not
+                    // create any additional collections/indexes after this point, except for
+                    // incremental backups which creates an additional index.
+                    filesCopied = result.filesCopied;
 
-                if (_oplogTruncated(st, checkpointTimestamps)) {
-                    throw new Error(
-                        "Oplog has been truncated while getting PIT restore oplog entries.");
+                    // After the initial backup, create an index. The next incremental backup will
+                    // be responsible for backing it up.
+                    if (isIncrementalBackup) {
+                        assert.commandWorked(
+                            st.s.getDB(dbName).getCollection(collNameRestored).createIndex({
+                                str: 1
+                            }));
+                    }
                 }
 
-                if (_isTopologyChanged(st.config1, initialTopology, restorePointInTime)) {
-                    throw "Sharding topology has been changed while getting PIT restore oplog " +
-                        "entries.";
+                backupNames = result.backupNames;
+
+                if (isPitRestore) {
+                    // The common reason for a retry is for the config server to generate an oplog
+                    // entry after the test client's inserts have begun. The noop writer ensures
+                    // this will occur.
+                    assert.soonNoExcept(function() {
+                        jsTestLog("Attempting to prepare for PIT restore");
+                        restorePointInTime = _getEarliestTopOfOplog(st, backupPointInTime);
+                        restoreOplogEntries =
+                            _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime);
+                        lastDocID = _getLastDocID(restoreOplogEntries);
+
+                        return lastDocID !== undefined;
+                    }, "PIT restore prepare failed", ReplSetTest.kDefaultTimeoutMS, 1000);
+
+                    if (_oplogTruncated(st, checkpointTimestamps)) {
+                        throw new Error(
+                            "Oplog has been truncated while getting PIT restore oplog entries.");
+                    }
+
+                    if (_isTopologyChanged(st.config1, initialTopology, restorePointInTime)) {
+                        throw "Sharding topology has been changed while getting PIT restore oplog " +
+                            "entries.";
+                    }
                 }
             }
-
         } catch (e) {
             failureMessage = "Failed to backup: " + e;
             jsTestLog(failureMessage + "\n\n" + e.stack);
@@ -1299,7 +1391,8 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         /**
          *  Check data consistency
          */
-        _checkDataConsistency(restoredNodePorts, lastDocID, backupBinaryVersion);
+        _checkDataConsistency(
+            restoredNodePorts, lastDocID, backupBinaryVersion, isIncrementalBackup);
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";

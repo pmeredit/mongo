@@ -82,11 +82,14 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
         // Copy all the files for the full backup.
         jsTestLog("Copying for full backup: " + tojson(doc));
-        _copyFileHelper(doc.filename, primary.dbpath, fullBackupPath);
+        _copyFileHelper(
+            {filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, fullBackupPath);
 
         if (doc.required) {
             jsTestLog("Copying required file for selective backup: " + tojson(doc));
-            _copyFileHelper(doc.filename, primary.dbpath, selectiveBackupPath);
+            _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
+                            primary.dbpath,
+                            selectiveBackupPath);
             continue;
         }
 
@@ -114,7 +117,9 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
             }
 
             jsTestLog("Copying for selective backup: " + tojson(doc));
-            _copyFileHelper(doc.filename, primary.dbpath, selectiveBackupPath);
+            _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
+                            primary.dbpath,
+                            selectiveBackupPath);
             continue;
         }
 
@@ -149,7 +154,8 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
         optionalFilesCopied[doc.uuid] = entry;
 
         jsTestLog("Copying for selective backup: " + tojson(doc));
-        _copyFileHelper(doc.filename, primary.dbpath, selectiveBackupPath);
+        _copyFileHelper(
+            {filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, selectiveBackupPath);
     }
 
     backupCursor.close();
