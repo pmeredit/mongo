@@ -114,6 +114,11 @@ structs:
                 type: long
                 stability: stable
                 optional: true
+            connectionNames:
+                description: "The connection names from the supplied pipeline if the 'parseOnly' flag is set."
+                type: array<string>
+                stability: stable
+                optional: true
 
     StopStreamProcessorReply:
         description: "Response message for streams_stopStreamProcessor command"
@@ -411,6 +416,10 @@ structs:
                 type: object
             checkpointOnStart:
                 description: "By default, a checkpoint is written at start only when the SP is not being restored from a checkpoint. If this option is set to true, a checkpoint is always written upon starting and before any data processing happens."
+                type: bool
+                default: false
+            parseOnly:
+                description: If true, the command will parse the incoming command, but not validate nor start it. It returns a list of connection names.
                 type: bool
                 default: false
 

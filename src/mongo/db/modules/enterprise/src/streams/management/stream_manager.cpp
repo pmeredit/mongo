@@ -87,6 +87,10 @@ bool isValidateOnlyRequest(const StartStreamProcessorCommand& request) {
     return request.getOptions().getValidateOnly();
 }
 
+bool isParseOnlyRequest(const StartStreamProcessorCommand& request) {
+    return request.getOptions().getParseOnly();
+}
+
 bool isCheckpointingAllowedForSource(OperatorDag* dag) {
     auto* source = dag->source();
     if (dynamic_cast<ChangeStreamSourceOperator*>(source)) {
@@ -499,6 +503,15 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         }
     });
     activeGauge->incBy(1);
+
+    if (isParseOnlyRequest(request)) {
+        auto connectionNames = Planner::parseConnectionNames(request.getPipeline());
+        auto dlqOptions = request.getOptions().getDlq();
+        if (dlqOptions) {
+            connectionNames.insert(dlqOptions->getConnectionName().toString());
+        }
+        return {.connectionNames = std::move(connectionNames)};
+    }
 
     auto startResult = startStreamProcessorAsync(request);
     if (isValidateOnlyRequest(request)) {

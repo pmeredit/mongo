@@ -1434,4 +1434,62 @@ void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
     }
 }
 
+mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipeline) {
+    mongo::StringSet connectionNames;
+    for (auto& stage : pipeline) {
+        uassert(mongo::ErrorCodes::InvalidOptions,
+                str::stream() << "Stage must contain a single object spec: " << stage,
+                stage.nFields() == 1 && stage.firstElement().isABSONObj());
+        auto stageName = stage.firstElementFieldNameStringData();
+        auto specBson = stage.firstElement().Obj();
+        auto spec = Document(specBson);
+
+        auto addConnectionName = [&](Document doc, FieldPath fp) {
+            auto connectionField = doc.getNestedField(fp);
+            uassert(
+                mongo::ErrorCodes::InvalidOptions,
+                str::stream() << "Stage spec must contain a 'connectionName' string field in it: "
+                              << stage,
+                connectionField.getType() == String);
+            connectionNames.insert(connectionField.getString());
+        };
+
+        if (isSourceStage(stageName)) {
+            addConnectionName(spec, FieldPath(kConnectionNameField));
+        } else if (isEmitStage(stageName)) {
+            addConnectionName(spec, FieldPath(kConnectionNameField));
+        } else if (isMergeStage(stageName)) {
+            addConnectionName(spec,
+                              FieldPath((str::stream() << MergeOperatorSpec::kIntoFieldName << "."
+                                                       << kConnectionNameField)
+                                            .ss.str()));
+        } else if (isLookUpStage(stageName)) {
+            addConnectionName(
+                spec,
+                FieldPath(
+                    (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
+        } else if (isWindowStage(stageName)) {
+            auto pipeline = stageName == kTumblingWindowStageName
+                ? TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), specBson)
+                      .getPipeline()
+                : HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), specBson)
+                      .getPipeline();
+            for (const auto& windowStage : pipeline) {
+                uassert(mongo::ErrorCodes::InvalidOptions,
+                        str::stream() << "Stage must contain a single object spec: " << windowStage,
+                        windowStage.nFields() == 1 && windowStage.firstElement().isABSONObj());
+                auto windowStageName = windowStage.firstElementFieldNameStringData();
+                auto windowStageSpec = Document(windowStage.firstElement().Obj());
+                if (isLookUpStage(windowStageName)) {
+                    addConnectionName(
+                        windowStageSpec,
+                        FieldPath((str::stream() << kFromFieldName << "." << kConnectionNameField)
+                                      .ss.str()));
+                }
+            }
+        }
+    }
+    return connectionNames;
+}
+
 };  // namespace streams

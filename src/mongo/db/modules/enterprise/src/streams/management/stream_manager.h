@@ -64,6 +64,8 @@ public:
     struct StartResult {
         // Only set when startRequest.options.shouldStartSample is true.
         boost::optional<int64_t> startSampleCursorId;
+        // Only set when startRequest.options.parseOnly is true.
+        boost::optional<mongo::StringSet> connectionNames;
     };
 
     // Encapsulates a batch of sampled output records.

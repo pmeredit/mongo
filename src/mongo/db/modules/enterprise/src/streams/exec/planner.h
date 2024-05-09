@@ -4,6 +4,7 @@
 
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/util/string_map.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/operator.h"
@@ -48,6 +49,11 @@ public:
      * Creates an OperatorDag from a user supplied BSON array.
      */
     std::unique_ptr<OperatorDag> plan(const std::vector<mongo::BSONObj>& bsonPipeline);
+
+    /**
+     * Get the list of connection names from the user supplied pipeline.
+     */
+    static mongo::StringSet parseConnectionNames(const std::vector<mongo::BSONObj>& pipeline);
 
 private:
     // Encapsulates state for a $window stage being planned.
