@@ -26,15 +26,13 @@ enums:
             kDedicatedConfigServer: "configServer"
 
 structs:
-    CollectionToRestore:
+    NamespaceUUIDPair:
         description: >
-            Structure for describing an allow-list collection that should be preserved.
+            Structure to represent a collection's namespace and UUID. Used for collectionsToRestore and systemUuids parameters.
         fields:
             ns:
-                description: Namespace of the collection to preserve.
                 type: namespacestring
             uuid:
-                description: UUID of the collection to preserve.
                 type: uuid
 
     ShardRenameMapping:
@@ -122,7 +120,7 @@ structs:
             collectionsToRestore:
                 description: >
                     A list of collections to selectively restore.
-                type: array<CollectionToRestore>
+                type: array<NamespaceUUIDPair>
                 optional: true
             shardingRename:
                 description: >
@@ -145,4 +143,10 @@ structs:
                 optional: true
             automationCredentials:
                 type: AutomationCredentials
+                optional: true
+            systemUuids:
+                description: >
+                    A list of namespace UUID pairs, used to create internal collections that need
+                    to have the same UUID across nodes.
+                type: array<NamespaceUUIDPair>
                 optional: true

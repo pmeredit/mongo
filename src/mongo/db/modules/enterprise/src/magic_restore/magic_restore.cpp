@@ -2,9 +2,6 @@
  * Copyright (C) 2023 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/bson/bsonobj.h"
-#include "mongo/db/repl/optime.h"
-#include "mongo/platform/basic.h"
 
 #include "magic_restore.h"
 
@@ -16,14 +13,13 @@
 
 #include "magic_restore/magic_restore_structs_gen.h"
 #include "mongo/bson/bsonelement.h"
-#include "mongo/bson/json.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/collection.h"
-#include "mongo/db/catalog/collection_impl.h"
 #include "mongo/db/catalog/collection_write_path.h"
-#include "mongo/db/catalog/database_holder_impl.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/commands/user_management_commands_gen.h"
 #include "mongo/db/concurrency/exception_util.h"
+#include "mongo/db/db_raii.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/mongod_options.h"
@@ -31,13 +27,13 @@
 #include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/db/repl/oplog_entry_gen.h"
+#include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/grid.h"
 #include "mongo/util/exit.h"
-#include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include <vector>
@@ -188,9 +184,10 @@ void executeCredentialsCommand(OperationContext* opCtx,
 void upsertAutomationCredentials(OperationContext* opCtx,
                                  const AutomationCredentials& autoCreds,
                                  repl::StorageInterface* storageInterface) {
-    // TODO SERVER-88169: Add a check to ensure the roles and users collections exist before
-    // performing inserts or updates.
     LOGV2(8291700, "Creating roles and users in magic restore for automation agent");
+    // Check the auth collections exist prior to performing the upsert.
+    checkInternalCollectionExists(opCtx, NamespaceString::kAdminRolesNamespace);
+    checkInternalCollectionExists(opCtx, NamespaceString::kAdminUsersNamespace);
     // Note that for both the createRole and createUser commands below, we need
     // to ensure they can successfully parse into the corresponding IDL commands. In the magic
     // restore IDL specification, we needed to mark the arrays as containing BSONObjs rather than
@@ -255,6 +252,43 @@ void setInvalidMinValid(OperationContext* opCtx, repl::StorageInterface* storage
                 opCtx,
                 NamespaceString::kDefaultMinValidNamespace,
                 {BSON("_id" << OID() << "t" << -1 << "ts" << timestamp), timestamp}));
+}
+
+void checkInternalCollectionExists(OperationContext* opCtx, const NamespaceString& nss) {
+    AutoGetCollectionForRead autoColl(opCtx, nss);
+    if (!autoColl.getCollection()) {
+        LOGV2_FATAL_NOTRACE(8816900,
+                            "Internal replicated collection {nss} does not exist on node. Create "
+                            "the internal collection with a specified UUID by using the "
+                            "systemUuids field in magic restore configuration.",
+                            "nss"_attr = nss);
+    }
+}
+
+void createInternalCollectionsWithUuid(
+    OperationContext* opCtx,
+    repl::StorageInterface* storageInterface,
+    const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids) {
+    for (const auto& nsAndUuid : nsAndUuids) {
+        const auto& ns = nsAndUuid.getNs();
+        const auto& uuid = nsAndUuid.getUuid();
+
+        LOGV2(8816901,
+              "Creating internal collection {ns} with UUID: {uuid}",
+              "ns"_attr = ns,
+              "uuid"_attr = uuid);
+        CollectionOptions collOptions;
+        collOptions.uuid = uuid;
+        auto res = storageInterface->createCollection(opCtx, ns, collOptions);
+
+        if (res.code() == ErrorCodes::NamespaceExists) {
+            LOGV2(8816902,
+                  "Internal collection {ns} already exists, skipping collection creation",
+                  "ns"_attr = ns);
+        } else {
+            uassertStatusOK(res);
+        }
+    }
 }
 
 bool isConfig(const RestoreConfiguration& restoreConfig) {
@@ -484,7 +518,7 @@ void setBalancerMode(OperationContext* opCtx, BalancerConfiguration* balancerCon
 // Create local.system.collections_to_restore.
 void createCollectionsToRestore(
     OperationContext* opCtx,
-    const std::vector<mongo::magic_restore::CollectionToRestore>& collectionsToRestore,
+    const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids,
     repl::StorageInterface* storageInterface) {
     fassert(8756805,
             storageInterface->createCollection(
@@ -493,13 +527,13 @@ void createCollectionsToRestore(
     // Insert all the names and UUIDs of the collections that were restored.
     // TODO SERVER-87581: confirm that this does not create an oplog entry.
     std::vector<InsertStatement> docs;
-    docs.reserve(collectionsToRestore.size());
-    for (const auto& collectionToRestore : collectionsToRestore) {
+    docs.reserve(nsAndUuids.size());
+    for (const auto& nsAndUuid : nsAndUuids) {
         docs.push_back(InsertStatement(
             BSON("_id" << OID::gen() << "ns"
-                       << NamespaceStringUtil::serialize(collectionToRestore.getNs(),
+                       << NamespaceStringUtil::serialize(nsAndUuid.getNs(),
                                                          SerializationContext::stateDefault())
-                       << "uuid" << collectionToRestore.getUuid()),
+                       << "uuid" << nsAndUuid.getUuid()),
             Timestamp(0),
             repl::OpTime::kUninitializedTerm));
     }
@@ -516,6 +550,7 @@ void updateShardingMetadata(OperationContext* opCtx,
     if (isConfig(restoreConfig)) {
         // Set the balancer state.
         if (restoreConfig.getBalancerSettings()) {
+            checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);
             auto balancerConfig = Grid::get(opCtx)->getBalancerConfiguration();
             setBalancerMode(
                 opCtx, balancerConfig, restoreConfig.getBalancerSettings()->getStopped());
@@ -697,6 +732,11 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
                                                                         pointInTimeTimestamp.get());
         replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(opCtx.get(),
                                                                            recoveryTimestamp.get());
+    }
+
+    if (restoreConfig.getSystemUuids()) {
+        createInternalCollectionsWithUuid(
+            opCtx.get(), storageInterface, restoreConfig.getSystemUuids().get());
     }
 
     if (restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet) {

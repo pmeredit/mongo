@@ -88,10 +88,10 @@ void updateShardNameMetadata(OperationContext* opCtx,
  * selective restore that filters on namespaces. The restore procedure must remove config metadata
  * for unrestored collections.
  */
-class CollectionToRestore;
+class NamespaceUUIDPair;
 void createCollectionsToRestore(
     OperationContext* opCtx,
-    const std::vector<mongo::magic_restore::CollectionToRestore>& collectionsToRestore,
+    const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids,
     repl::StorageInterface* storageInterface);
 
 /**
@@ -107,6 +107,22 @@ void updateShardingMetadata(OperationContext* opCtx,
  */
 void writeOplogEntriesToOplog(ServiceContext* svcCtx, const BSONStreamReader& reader);
 
+
+/**
+ * Helper function to check if the collection with the given namespace exists. If it doesn't, the
+ * function will fatally assert.
+ */
+void checkInternalCollectionExists(OperationContext* opCtx, const NamespaceString& nss);
+
+/**
+ * Creates collections on the node with the given namespace and UUIDs. Ensures the collections have
+ * the the same UUID across restored nodes in the same replica set.
+ *
+ */
+void createInternalCollectionsWithUuid(
+    OperationContext* opCtx,
+    repl::StorageInterface* storageInterface,
+    const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids);
 
 /**
  * Helper function to execute the automation agent credentials upsert. If a create command fails

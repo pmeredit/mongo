@@ -28,11 +28,6 @@ function runTest(updateAutoCreds) {
     const dbName = "db";
     const coll = "coll";
 
-    // TODO SERVER-88169: Use systemUuids parameter in restore configuration to create auth
-    // collections.
-    assert.commandWorked(primary.getDB("admin").createCollection("system.roles"));
-    assert.commandWorked(primary.getDB("admin").createCollection("system.users"));
-
     const db = primary.getDB(dbName);
     // Insert some data to restore. This data will be reflected in the restored node.
     ['a', 'b', 'c'].forEach(
@@ -42,9 +37,18 @@ function runTest(updateAutoCreds) {
     // If the auth credentials exist in the snapshotted data files, the 'createRole' and
     // 'createUser' commands will be converted to upserts. If we're testing the update code path,
     // create the credentials before the backup is taken.
+    let rolesCollUuid = UUID();
+    let userCollUuid = UUID();
     if (updateAutoCreds) {
         primary.getDB("admin").createRole({role: 'testRole', privileges: [], roles: []});
         primary.getDB("admin").createUser({user: 'testUser', pwd: 'password', roles: []});
+        // The collections are implicitly created outside of restore, so we should overwrite the
+        // UUIDs with their new randomly generated values. We'll check the UUIDs after a restore to
+        // ensure that systemUuids does not overwrite existing collections.
+        rolesCollUuid =
+            primary.getDB("admin").getCollectionInfos({name: "system.roles"})[0].info.uuid;
+        userCollUuid =
+            primary.getDB("admin").getCollectionInfos({name: "system.users"})[0].info.uuid;
     }
 
     const magicRestoreUtils = new MagicRestoreUtils({
@@ -85,7 +89,10 @@ function runTest(updateAutoCreds) {
         "replicaSetConfig": expectedConfig,
         "maxCheckpointTs": magicRestoreUtils.getCheckpointTimestamp(),
         "automationCredentials": autoCreds,
-
+        "systemUuids": [
+            {"ns": "admin.system.roles", "uuid": rolesCollUuid},
+            {"ns": "admin.system.users", "uuid": userCollUuid}
+        ],
     };
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
@@ -110,6 +117,8 @@ function runTest(updateAutoCreds) {
     magicRestoreUtils.assertMinValidIsCorrect(primary);
     magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
     magicRestoreUtils.assertCannotDoSnapshotRead(primary, 3 /* expectedNumDocs */);
+    assert.eq(rolesCollUuid, magicRestoreUtils.getCollUuid(primary, "admin", "system.roles"));
+    assert.eq(userCollUuid, magicRestoreUtils.getCollUuid(primary, "admin", "system.users"));
 
     let expectedRoleDoc =
         {"_id": "admin.testRole", "role": "testRole", "db": "admin", "privileges": [], "roles": []};

@@ -1,5 +1,5 @@
 /*
- * Tests a non-PIT replica set magic restore with the optional automationCredentials field in the
+ * Tests a PIT replica set magic restore with the optional automationCredentials field in the
  * restoreConfiguration. This field upserts automation agent roles and users into auth collections.
  *
  * @tags: [
@@ -32,11 +32,6 @@ function runTest(updateAutoCreds) {
     const dbName = "db";
     const coll = "coll";
 
-    // TODO SERVER-88169: Use systemUuids parameter in restore configuration to create auth
-    // collections.
-    assert.commandWorked(sourcePrimary.getDB("admin").createCollection("system.roles"));
-    assert.commandWorked(sourcePrimary.getDB("admin").createCollection("system.users"));
-
     const sourceDb = sourcePrimary.getDB(dbName);
     // Insert some data to restore. This data will be reflected in the restored node.
     ['a', 'b', 'c'].forEach(
@@ -63,17 +58,28 @@ function runTest(updateAutoCreds) {
     // 'createUser' commands will be converted to update operations. If we're testing the update
     // code path, create the credentials before the backup is taken. We create these preliminary
     // credentials after the backup, so the oplog entries are streamed to the restore node.
+    let rolesCollUuid = UUID();
+    let userCollUuid = UUID();
     if (updateAutoCreds) {
         sourcePrimary.getDB("admin").createRole({role: 'testRole', privileges: [], roles: []});
         sourcePrimary.getDB("admin").createUser({user: 'testUser', pwd: 'password', roles: []});
+        // The collections are implicitly created outside of restore, so we should overwrite the
+        // UUIDs with their new randomly generated values. We'll check the UUIDs after a restore to
+        // ensure that systemUuids does not overwrite existing collections.
+        rolesCollUuid =
+            sourcePrimary.getDB("admin").getCollectionInfos({name: "system.roles"})[0].info.uuid;
+        userCollUuid =
+            sourcePrimary.getDB("admin").getCollectionInfos({name: "system.users"})[0].info.uuid;
     }
 
     const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
     let {lastOplogEntryTs, entriesAfterBackup} =
         magicRestoreUtils.getEntriesAfterBackup(sourcePrimary);
-    // When testing restore with credentials already inserted, there are three extra oplog entries:
-    // the role write, user write, and a write to admin.system.version to update the authSchema.
-    assert.eq(entriesAfterBackup.length, updateAutoCreds ? 7 : 4);
+    // When testing restore with credentials already inserted, there are seven extra oplog entries.
+    // The first four are the role and user auth collection and index creation entries. The
+    // following three are the role write, user write, and a write to admin.system.version to update
+    // the authSchema. These oplog entries are generated on the source before restore begins.
+    assert.eq(entriesAfterBackup.length, updateAutoCreds ? 11 : 4);
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
@@ -99,6 +105,10 @@ function runTest(updateAutoCreds) {
         // Restore to the timestamp of the last oplog entry on the source cluster.
         "pointInTimeTimestamp": lastOplogEntryTs,
         "automationCredentials": autoCreds,
+        "systemUuids": [
+            {"ns": "admin.system.roles", "uuid": rolesCollUuid},
+            {"ns": "admin.system.users", "uuid": userCollUuid}
+        ],
     };
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
@@ -120,6 +130,8 @@ function runTest(updateAutoCreds) {
         sourcePrimary, dbName + "." + coll, 7, "i" /* op filter*/);
 
     magicRestoreUtils.assertMinValidIsCorrect(destPrimary);
+    assert.eq(rolesCollUuid, magicRestoreUtils.getCollUuid(destPrimary, "admin", "system.roles"));
+    assert.eq(userCollUuid, magicRestoreUtils.getCollUuid(destPrimary, "admin", "system.users"));
 
     // The original node still maintains the history store, so point-in-time reads will succeed.
     let res = sourcePrimary.getDB("db").runCommand(

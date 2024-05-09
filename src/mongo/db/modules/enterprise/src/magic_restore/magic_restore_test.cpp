@@ -465,7 +465,7 @@ protected:
 
     void tearDown() override {
         _opCtx.reset();
-
+        _storage.reset();
         // Tear down mongod.
         ServiceContextMongoDTest::tearDown();
         storageGlobalParams.magicRestore = false;
@@ -546,9 +546,9 @@ TEST_F(MagicRestoreFixture, CreateCollectionsToRestore) {
     auto uuid0 = mongo::UUID::gen();
     auto uuid1 = mongo::UUID::gen();
 
-    std::vector<mongo::magic_restore::CollectionToRestore> collectionsToRestore{
-        mongo::magic_restore::CollectionToRestore{ns0, uuid0},
-        mongo::magic_restore::CollectionToRestore{ns1, uuid1}};
+    std::vector<mongo::magic_restore::NamespaceUUIDPair> collectionsToRestore{
+        mongo::magic_restore::NamespaceUUIDPair{ns0, uuid0},
+        mongo::magic_restore::NamespaceUUIDPair{ns1, uuid1}};
 
     ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
                   storage->getCollectionUUID(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
@@ -1108,13 +1108,14 @@ TEST_F(MagicRestoreFixture, CreateNewAutomationCredentials) {
     auto opCtx = operationContext();
     auto storage = storageInterface();
 
-    // TODO SERVER-88169: Ensure the roles and users collections are created before running
-    // 'upsertAutomationCredentials()'.
-    // The user and roles collections will be created when we perform the inserts.
-    auto res = storage->findSingleton(opCtx, NamespaceString::kAdminRolesNamespace);
-    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
-    res = storage->findSingleton(opCtx, NamespaceString::kAdminUsersNamespace);
-    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
+    createInternalCollectionsWithUuid(
+        opCtx,
+        storage,
+        std::vector<mongo::magic_restore::NamespaceUUIDPair>{
+            mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace,
+                                                    mongo::UUID::gen()},
+            mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace,
+                                                    mongo::UUID::gen()}});
 
     auto testRole = BSON("createRole"
                          << "testRole"
@@ -1182,13 +1183,14 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
         auto opCtx = op.get();
         opCtx->getClient()->setIsInternalClient(true);
 
-        // TODO SERVER-88169: Ensure the roles and users collections are created before running
-        // 'upsertAutomationCredentials()'.
-        // The user and roles collections will be created when we perform the inserts.
-        auto res = storage->findSingleton(opCtx, NamespaceString::kAdminRolesNamespace);
-        ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
-        res = storage->findSingleton(opCtx, NamespaceString::kAdminUsersNamespace);
-        ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
+        createInternalCollectionsWithUuid(
+            opCtx,
+            storage,
+            std::vector<mongo::magic_restore::NamespaceUUIDPair>{
+                mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace,
+                                                        mongo::UUID::gen()},
+                mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace,
+                                                        mongo::UUID::gen()}});
 
         auto testRole = BSON("createRole"
                              << "testRole"
@@ -1284,6 +1286,126 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
     // Restore the original client.
     Client::releaseCurrent();
     Client::setCurrent(std::move(oldClient));
+}
+
+
+TEST_F(MagicRestoreFixture, CreateInternalCollectionsWithUuid) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    auto ns0 = NamespaceString::createNamespaceString_forTest("config", "settings");
+    auto ns1 = NamespaceString::createNamespaceString_forTest("admin", "system.roles");
+    auto ns2 = NamespaceString::createNamespaceString_forTest("admin", "system.users");
+    auto uuid0 = mongo::UUID::gen();
+    auto uuid1 = mongo::UUID::gen();
+    auto uuid2 = mongo::UUID::gen();
+
+    std::vector<mongo::magic_restore::NamespaceUUIDPair> colls{
+        mongo::magic_restore::NamespaceUUIDPair{ns0, uuid0},
+        mongo::magic_restore::NamespaceUUIDPair{ns1, uuid1},
+        mongo::magic_restore::NamespaceUUIDPair{ns2, uuid2}};
+
+    for (const auto& nsAndUuid : colls) {
+        ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                      storage->findSingleton(opCtx, nsAndUuid.getNs()).getStatus());
+    }
+
+    magic_restore::createInternalCollectionsWithUuid(opCtx, storage, colls);
+
+    for (const auto& nsAndUuid : colls) {
+        const auto& ns = nsAndUuid.getNs();
+        const auto& uuid = nsAndUuid.getUuid();
+        AutoGetCollectionForRead autoColl(opCtx, ns);
+        ASSERT_TRUE(autoColl.getCollection());
+        ASSERT_EQ(autoColl->getCollectionOptions().uuid, uuid);
+    }
+}
+
+DEATH_TEST_REGEX_F(MagicRestoreFixture,
+                   CreateNewAutomationCredentialsMissingInternalCollections,
+                   "8816900.*Internal replicated collection {nss} does not exist on node") {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+    auto testRole = BSON("createRole"
+                         << "testRole"
+                         << "$db"
+                         << "admin"
+                         << "privileges" << BSONArray() << "roles" << BSONArray());
+
+    auto testUser = BSON("createUser"
+                         << "testUser"
+                         << "$db"
+                         << "admin"
+                         << "pwd"
+                         << "password"
+                         << "roles" << BSONArray());
+
+    auto autoCreds = magic_restore::AutomationCredentials::parse(
+        IDLParserContext("AutomationCredentials"),
+        BSON("createRoleCommands" << BSON_ARRAY(testRole) << "createUserCommands"
+                                  << BSON_ARRAY(testUser)));
+
+    magic_restore::upsertAutomationCredentials(opCtx, autoCreds, storage);
+}
+
+TEST_F(MagicRestoreFixture, CreateInternalCollectionsWithUuidCollectionsAlreadyExist) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    ASSERT_OK(storageInterface()->createCollection(
+        opCtx, NamespaceString::kConfigSettingsNamespace, CollectionOptions{}));
+    ASSERT_OK(storageInterface()->createCollection(
+        opCtx, NamespaceString::kAdminRolesNamespace, CollectionOptions{}));
+    ASSERT_OK(storageInterface()->createCollection(
+        opCtx, NamespaceString::kAdminUsersNamespace, CollectionOptions{}));
+
+    auto ns0 = NamespaceString::createNamespaceString_forTest("config", "settings");
+    auto ns1 = NamespaceString::createNamespaceString_forTest("admin", "system.roles");
+    auto ns2 = NamespaceString::createNamespaceString_forTest("admin", "system.users");
+    auto uuid0 = mongo::UUID::gen();
+    auto uuid1 = mongo::UUID::gen();
+    auto uuid2 = mongo::UUID::gen();
+
+    std::vector<mongo::magic_restore::NamespaceUUIDPair> colls{
+        mongo::magic_restore::NamespaceUUIDPair{ns0, uuid0},
+        mongo::magic_restore::NamespaceUUIDPair{ns1, uuid1},
+        mongo::magic_restore::NamespaceUUIDPair{ns2, uuid2}};
+
+    for (const auto& nsAndUuid : colls) {
+        ASSERT_EQUALS(ErrorCodes::CollectionIsEmpty,
+                      storage->findSingleton(opCtx, nsAndUuid.getNs()).getStatus());
+    }
+
+    // Though the collections already exist, this function should not throw.
+    magic_restore::createInternalCollectionsWithUuid(opCtx, storage, colls);
+
+    for (const auto& nsAndUuid : colls) {
+        const auto& ns = nsAndUuid.getNs();
+        const auto& uuid = nsAndUuid.getUuid();
+        AutoGetCollectionForRead autoColl(opCtx, ns);
+        ASSERT_TRUE(autoColl.getCollection());
+        // Since the collections were created prior to the call to
+        // 'createInternalCollectionsWithUuid', their UUID values should be different than the ones
+        // specified in the NamespaceUUIDPair list.
+        ASSERT_NE(autoColl->getCollectionOptions().uuid, uuid);
+    }
+}
+
+TEST_F(MagicRestoreFixture, CheckInternalCollectionExists) {
+    auto opCtx = operationContext();
+    ASSERT_OK(storageInterface()->createCollection(
+        opCtx, NamespaceString::kConfigSettingsNamespace, CollectionOptions{}));
+
+    // Collection exists, so this should return successfully.
+    magic_restore::checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);
+}
+
+DEATH_TEST_REGEX_F(MagicRestoreFixture,
+                   CheckInternalCollectionExistsFails,
+                   "8816900.*Internal replicated collection {nss} does not exist on node") {
+    auto opCtx = operationContext();
+    // The collection does not exist, so this should fatally assert.
+    magic_restore::checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);
 }
 
 }  // namespace repl
