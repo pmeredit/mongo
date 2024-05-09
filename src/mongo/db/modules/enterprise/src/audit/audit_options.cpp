@@ -13,6 +13,9 @@
 
 namespace mongo {
 namespace audit {
+namespace {
+static constexpr StringData kAuditConfigParameter = "auditConfig"_sd;
+}
 
 Status validateAuditLogDestination(const std::string& strDest) {
     StringData dest(strDest);
@@ -82,6 +85,7 @@ void AuditConfigParameter::append(OperationContext*,
                                   BSONObjBuilder* b,
                                   StringData name,
                                   const boost::optional<TenantId>&) {
+    b->append("_id"_sd, kAuditConfigParameter);
     b->append(name, getGlobalAuditManager()->getAuditConfig().toBSON());
 }
 
