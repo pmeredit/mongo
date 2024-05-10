@@ -114,12 +114,12 @@ struct SetAuditConfigCmd {
                 ConfigsvrSetClusterParameter setClusterParameter(
                     BSON(kAuditConfigParameter << doc.toBSON()));
                 setClusterParameter.setDbName(DatabaseName::kAdmin);
-                setClusterParameterObj = setClusterParameter.toBSON({});
+                setClusterParameterObj = setClusterParameter.toBSON();
             } else {
                 SetClusterParameter setClusterParameter(
                     BSON(kAuditConfigParameter << doc.toBSON()));
                 setClusterParameter.setDbName(DatabaseName::kAdmin);
-                setClusterParameterObj = setClusterParameter.toBSON({});
+                setClusterParameterObj = setClusterParameter.toBSON();
             }
 
             // We need to create a separate client and opCtx with internal authorization to

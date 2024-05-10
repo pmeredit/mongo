@@ -21,7 +21,7 @@ boost::optional<RWConcernDefault> readWriteConcernDefaultsCacheLookupMongoQD(
         opCtx,
         ReadPreferenceSetting(ReadPreference::Nearest),
         DatabaseName::kAdmin,
-        configsvrRequest.toBSON({}),
+        configsvrRequest.toBSON(),
         Shard::RetryPolicy::kIdempotent));
 
     uassertStatusOK(cmdResponse.commandStatus);

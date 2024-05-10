@@ -61,7 +61,7 @@ void deleteConfig() {
                     entry.setMulti(true);
                     return entry;
                 }()});
-                return deleteOp.toBSON({});
+                return deleteOp.toBSON();
             }(),
             res);
 
