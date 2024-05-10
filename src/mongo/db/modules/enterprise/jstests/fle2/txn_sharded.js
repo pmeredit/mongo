@@ -9,11 +9,37 @@
  * assumes_balancer_off,
  * ]
  */
+import {
+    shouldRetryEntireTxnOnError,
+    withTxnAndAutoRetry
+} from "jstests/concurrency/fsm_workload_helpers/auto_retry_transaction.js";
 import {isMongos} from "jstests/concurrency/fsm_workload_helpers/server_types.js";
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 if (!isMongos(db)) {
     quit();
+}
+
+Random.setRandomSeed();  // Necessary for withTxnAndAutoRetry to function.
+
+function withTxnAndAutoRetryThenAbort(session, fn) {
+    let isTransient = true;
+    while (isTransient) {
+        try {
+            session.startTransaction();
+
+            fn();
+            break;
+        } catch (ex) {
+            isTransient = shouldRetryEntireTxnOnError(
+                ex, /*hasCommitTxnError*/ false, /*retryOnKilledSession*/ false);
+            if (!isTransient) {
+                throw ex;
+            }
+        } finally {
+            session.abortTransaction_forTesting();
+        }
+    }
 }
 
 const dbName = 'txn_sharded';
@@ -37,17 +63,15 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection("basic");
 
 // Insert 10 documents in a transaction and commit.
-session.startTransaction();
-
-for (let i = 0; i < 10; i++) {
-    assert.commandWorked(sessionColl.einsert({
-        _id: i,
-        a: i.toString(),
-        b: ((i + 1) % 10).toString(),
-    }));
-}
-
-session.commitTransaction();
+withTxnAndAutoRetry(session, () => {
+    for (let i = 0; i < 10; i++) {
+        assert.commandWorked(sessionColl.einsert({
+            _id: i,
+            a: i.toString(),
+            b: ((i + 1) % 10).toString(),
+        }));
+    }
+});
 
 client.assertEncryptedCollectionCounts("basic", 10, 10, 10);
 client.assertEncryptedCollectionDocuments("basic", [
@@ -64,13 +88,11 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Update 10 documents in a transaction and abort.
-session.startTransaction();
-
-for (let i = 0; i < 10; i++) {
-    assert.commandWorked(sessionColl.eupdateOne({b: i.toString()}, {$set: {a: i.toString()}}));
-}
-
-assert.commandWorked(session.abortTransaction_forTesting());
+withTxnAndAutoRetryThenAbort(session, () => {
+    for (let i = 0; i < 10; i++) {
+        assert.commandWorked(sessionColl.eupdateOne({b: i.toString()}, {$set: {a: i.toString()}}));
+    }
+});
 
 client.assertEncryptedCollectionCounts("basic", 10, 10, 10);
 client.assertEncryptedCollectionDocuments("basic", [
@@ -87,17 +109,15 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Modify all 10 documents in a transaction and commit.
-session.startTransaction();
-
-for (let i = 0; i < 10; i++) {
-    assert.commandWorked(sessionColl.erunCommand({
-        findAndModify: "basic",
-        query: {b: i.toString()},
-        update: {$set: {a: i.toString()}},
-    }));
-}
-
-session.commitTransaction();
+withTxnAndAutoRetry(session, () => {
+    for (let i = 0; i < 10; i++) {
+        assert.commandWorked(sessionColl.erunCommand({
+            findAndModify: "basic",
+            query: {b: i.toString()},
+            update: {$set: {a: i.toString()}},
+        }));
+    }
+});
 
 client.assertEncryptedCollectionCounts("basic", 10, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
@@ -114,13 +134,11 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Delete 5 documents in a transaction and abort.
-session.startTransaction();
-
-for (let i = 0; i < 10; i += 2) {
-    assert.commandWorked(sessionColl.edeleteOne({b: i.toString()}));
-}
-
-assert.commandWorked(session.abortTransaction_forTesting());
+withTxnAndAutoRetryThenAbort(session, () => {
+    for (let i = 0; i < 10; i += 2) {
+        assert.commandWorked(sessionColl.edeleteOne({b: i.toString()}));
+    }
+});
 
 client.assertEncryptedCollectionCounts("basic", 10, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
@@ -137,13 +155,11 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Delete 5 documents in a transaction and commit.
-session.startTransaction();
-
-for (let i = 0; i < 10; i += 2) {
-    assert.commandWorked(sessionColl.edeleteOne({b: i.toString()}));
-}
-
-session.commitTransaction();
+withTxnAndAutoRetry(session, () => {
+    for (let i = 0; i < 10; i += 2) {
+        assert.commandWorked(sessionColl.edeleteOne({b: i.toString()}));
+    }
+});
 
 client.assertEncryptedCollectionCounts("basic", 5, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
