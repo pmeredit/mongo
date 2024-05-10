@@ -9,7 +9,12 @@ import {TEST_TENANT_ID} from "src/mongo/db/modules/enterprise/jstests/streams/ut
 // client javascript look like the syntax spec.
 // See kafkaExample below for usage instructions.
 export class StreamProcessor {
-    constructor(tenantId, name, pipeline, connectionRegistry, dbForTest) {
+    constructor(tenantId,
+                name,
+                pipeline,
+                connectionRegistry,
+                dbForTest,
+                isRunningOnAtlasStreamProcessing = false) {
         this._tenantId = tenantId;
         this._name = name;
         this._pipeline = pipeline;
@@ -18,6 +23,7 @@ export class StreamProcessor {
         if (dbForTest != null) {
             this._db = dbForTest;
         }
+        this._isUsingAtlas = isRunningOnAtlasStreamProcessing;
     }
 
     // Utilities to make test streams comamnds.
@@ -46,6 +52,10 @@ export class StreamProcessor {
     }
 
     makeStopCmd() {
+        if (this._isUsingAtlas) {
+            return {stopStreamProcessor: this._name};
+        }
+
         return {streams_stopStreamProcessor: '', tenantId: this._tenantId, name: this._name};
     }
 
@@ -58,8 +68,22 @@ export class StreamProcessor {
         return result;
     }
 
+    // Drop the streamProcessor.
+    drop(assertWorked = true) {
+        if (this._isUsingAtlas) {
+            const result = this._db.runCommand({"dropStreamProcessor": this._name});
+            if (assertWorked) {
+                assert.commandWorked(result);
+            }
+        } else {
+            this.stop(assertWorked);
+        }
+    }
+
     // Gets more sample results with the supplied cursor ID.
     getMoreSample(dbConn, cursorId, maxLoops = 10) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         for (let loop = 0; loop < maxLoops; loop++) {
             let cmd = {
                 streams_getMoreStreamSample: cursorId,
@@ -90,6 +114,8 @@ export class StreamProcessor {
 
     // Utility to sample a stream processor with a custom connection.
     runGetMoreSample(dbConn, maxLoops = 10) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         let cmd = {
             streams_startStreamSample: '',
             tenantId: this._tenantId,
@@ -103,10 +129,14 @@ export class StreamProcessor {
 
     // Sample the streamProcessor.
     sample(maxLoops = 10) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         return this.runGetMoreSample(db, maxLoops);
     }
 
     startSample() {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         let cmd = {
             streams_startStreamSample: '',
             tenantId: this._tenantId,
@@ -118,6 +148,8 @@ export class StreamProcessor {
     }
 
     getNextSample(cursorId) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         let cmd = {
             streams_getMoreStreamSample: cursorId,
             tenantId: this._tenantId,
@@ -130,6 +162,8 @@ export class StreamProcessor {
 
     // `stats` returns the stats corresponding to this stream processor.
     stats(verbose = true) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         const res = this._db.runCommand(
             {streams_getStats: '', tenantId: this._tenantId, name: this._name, verbose});
         assert.commandWorked(res);
@@ -138,6 +172,8 @@ export class StreamProcessor {
     }
 
     checkpoint(force) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         const res = this._db.runCommand({
             streams_writeCheckpoint: '',
             tenantId: this._tenantId,
@@ -150,6 +186,8 @@ export class StreamProcessor {
     }
 
     testInsert(...documents) {
+        assert(!this._isUsingAtlas, "Not supported against real Atlas");
+
         const res = this._db.runCommand({
             streams_testOnlyInsert: '',
             tenantId: this._tenantId,
@@ -162,18 +200,25 @@ export class StreamProcessor {
 }
 
 export class Streams {
-    constructor(tenantId, connectionRegistry, dbForTest = null) {
+    constructor(tenantId, connectionRegistry, dbForTest = null, isUsingAtlas = false) {
         this._tenantId = tenantId;
         this._connectionRegistry = connectionRegistry;
         this._db = db;
+        this._isUsingAtlas = isUsingAtlas;
         if (dbForTest != null) {
             this._db = dbForTest;
         }
     }
 
     createStreamProcessor(name, pipeline) {
-        const sp =
-            new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
+        if (this._isUsingAtlas) {
+            let cmd = {"createStreamProcessor": name, "pipeline": pipeline};
+            let result = this._db.runCommand(cmd);
+            assert.commandWorked(result);
+        }
+
+        const sp = new StreamProcessor(
+            this._tenantId, name, pipeline, this._connectionRegistry, this._db, this._isUsingAtlas);
         this[name] = sp;
         return sp;
     }
@@ -224,6 +269,13 @@ export function getDefaultSp() {
             options: {uri: uri},
         },
     ]);
+}
+
+export function getAtlasStreamProcessingHandle(uri) {
+    const m = new Mongo(uri);
+    const dbForTest = m.getDB("admin");
+    return new Streams(
+        [] /*connectionRegistry*/, dbForTest, /*isRunningOnAtlasStreamProcessing*/ true);
 }
 
 export function kafkaExample(
