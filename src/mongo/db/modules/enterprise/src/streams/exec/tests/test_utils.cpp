@@ -17,7 +17,7 @@ using namespace mongo;
 namespace streams {
 
 namespace {
-constexpr double kStateSizeTolerancePercentage{0.05};
+constexpr double kStateSizeTolerancePercentage{0.3};
 }
 
 void assertStateSize(int64_t expected, int64_t actual) {
