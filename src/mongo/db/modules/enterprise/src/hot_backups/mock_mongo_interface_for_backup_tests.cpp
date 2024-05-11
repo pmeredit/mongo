@@ -11,7 +11,8 @@ boost::intrusive_ptr<ExpressionContext> createMockBackupExpressionContext(
     auto expCtx = make_intrusive<ExpressionContext>(
         opCtx.get(),
         nullptr,
-        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin));
+        NamespaceString::makeCollectionlessAggregateNSS(
+            DatabaseName::createDatabaseName_forTest(boost::none, "unittest")));
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterfaceForBackupTests>();
     return expCtx;
 }

@@ -15,39 +15,9 @@
 
 
 namespace mongo {
-class LiteParsedDocumentSourceBackupFile : public LiteParsedDocumentSource {
-public:
-    static std::unique_ptr<LiteParsedDocumentSourceBackupFile> parse(const NamespaceString& nss,
-                                                                     const BSONElement& spec) {
-        return std::make_unique<LiteParsedDocumentSourceBackupFile>(spec.fieldName());
-    }
-
-    // Backup files should only be available to authenticated cluster members.
-    LiteParsedDocumentSourceBackupFile(std::string parseTimeName)
-        : LiteParsedDocumentSource(std::move(parseTimeName)),
-          _privileges({Privilege(ResourcePattern::forClusterResource(boost::none),
-                                 ActionSet{ActionType::internal})}) {}
-
-    stdx::unordered_set<NamespaceString> getInvolvedNamespaces() const final {
-        return stdx::unordered_set<NamespaceString>();
-    }
-
-    PrivilegeVector requiredPrivileges(bool isMongos, bool bypassDocumentValidation) const final {
-        return _privileges;
-    }
-
-    // Declaring the document source as "isInitialSource" means the db it is called with does
-    // not figure into the authorization.
-    bool isInitialSource() const final {
-        return true;
-    }
-
-private:
-    const PrivilegeVector _privileges;
-};
 
 REGISTER_INTERNAL_DOCUMENT_SOURCE(_backupFile,
-                                  LiteParsedDocumentSourceBackupFile::parse,
+                                  LiteParsedDocumentSourceDefault::parse,
                                   DocumentSourceBackupFile::createFromBson,
                                   true);
 
@@ -59,15 +29,11 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::create(
 boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
 
-    const NamespaceString& nss = expCtx->ns;
-    uassert(ErrorCodes::InvalidNamespace,
-            "$_backupFile must be run against the 'admin' database with {aggregate: 1}",
-            nss.isAdminDB() && nss.isCollectionlessAggregateNS());
-
     uassert(ErrorCodes::FailedToParse,
             str::stream() << kStageName
                           << " value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
+
 
     auto spec =
         DocumentSourceBackupFileSpec::parse(IDLParserContext(kStageName), elem.embeddedObject());
