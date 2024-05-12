@@ -1267,7 +1267,9 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
 
     std::vector<mongo::ListStreamProcessorsReplyItem> streamProcessors;
     for (auto& tenantIter : _tenantProcessors) {
-        streamProcessors.reserve(streamProcessors.size() + tenantIter.second->processors.size());
+        if (streamProcessors.empty()) {
+            streamProcessors.reserve(tenantIter.second->processors.size());
+        }
         for (auto& [name, processorInfo] : tenantIter.second->processors) {
             ListStreamProcessorsReplyItem replyItem;
             replyItem.setNs(processorInfo->context->expCtx->ns);
@@ -1424,7 +1426,9 @@ void StreamManager::stopAllStreamProcessors() {
     {
         stdx::lock_guard<Latch> lock(_mutex);
         for (auto& tenantIter : _tenantProcessors) {
-            stopCommands.reserve(stopCommands.size() + tenantIter.second->processors.size());
+            if (stopCommands.empty()) {
+                stopCommands.reserve(tenantIter.second->processors.size());
+            }
             for (const auto& [name, sp] : tenantIter.second->processors) {
                 StopStreamProcessorCommand stopCommand;
                 stopCommand.setTenantId(sp->context->tenantId);
