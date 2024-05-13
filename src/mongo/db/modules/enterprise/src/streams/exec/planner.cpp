@@ -1444,7 +1444,7 @@ mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipel
         auto specBson = stage.firstElement().Obj();
         auto spec = Document(specBson);
 
-        auto addConnectionName = [&](Document doc, FieldPath fp) {
+        auto addConnectionName = [&](const Document& doc, const FieldPath& fp) {
             auto connectionField = doc.getNestedField(fp);
             uassert(
                 mongo::ErrorCodes::InvalidOptions,
@@ -1469,12 +1469,12 @@ mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipel
                 FieldPath(
                     (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
         } else if (isWindowStage(stageName)) {
-            auto pipeline = stageName == kTumblingWindowStageName
+            auto windowPipeline = stageName == kTumblingWindowStageName
                 ? TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), specBson)
                       .getPipeline()
                 : HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), specBson)
                       .getPipeline();
-            for (const auto& windowStage : pipeline) {
+            for (const auto& windowStage : windowPipeline) {
                 uassert(mongo::ErrorCodes::InvalidOptions,
                         str::stream() << "Stage must contain a single object spec: " << windowStage,
                         windowStage.nFields() == 1 && windowStage.firstElement().isABSONObj());
