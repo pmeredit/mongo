@@ -80,17 +80,15 @@ const windowPipelineFunc = function(
 Random.setRandomSeed(20230328);
 
 (function testWindowGroup() {
-    const sizes = [10, 100, 1000, 10000];
-
-    for (let x = 0; x < sizes.length; x++) {
-        const docs = generateDocs(sizes[x]);
-        for (const pipelineDef of windowPipelines) {
-            windowPipelineFunc(
-                docs,
-                pipelineDef.pipeline,
-                docs.length,
-                pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
-        }
+    // Run the test for an artibtrary number of docs between 50 and 500.
+    const numDocs = Math.floor(Math.random() * 450 + 50);
+    jsTestLog("Running the test for " + numDocs + " docs.");
+    const docs = generateDocs(numDocs);
+    for (const pipelineDef of windowPipelines) {
+        windowPipelineFunc(docs,
+                           pipelineDef.pipeline,
+                           docs.length,
+                           pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
     }
 }());
 

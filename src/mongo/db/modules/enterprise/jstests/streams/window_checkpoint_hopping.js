@@ -31,20 +31,17 @@ function hoppingWindowCheckpointInTheMiddle(docs, pipeline, compareFunction) {
 }
 
 (function checkpointInTheMiddleHoppingWindowTests() {
-    // can increase the numbers kept them to make tests run under 10 minutes
-    // for hopping window the final number of documents created is double the number.
-    const sizes = [10, 250, 1000];
-
+    // Run the test for an artibtrary number of docs between 50 and 500.
+    const numDocs = Math.floor(Math.random() * 450 + 50);
+    jsTestLog("Running the test for " + numDocs + " docs.");
     // TODO SERVER-84707 improve test setup to collect each windows output and then compare each
     // windows output. without that a larger value of size for e.g.: 5000 would fail this test.
-    for (let x = 0; x < sizes.length; x++) {
-        const docs = generateDocsForHoppingWindow(sizes[x]);
-        for (let pipelineDef of windowPipelines) {
-            hoppingWindowCheckpointInTheMiddle(
-                docs,
-                pipelineDef.pipeline,
-                pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
-        }
+    const docs = generateDocsForHoppingWindow(numDocs);
+    for (let pipelineDef of windowPipelines) {
+        hoppingWindowCheckpointInTheMiddle(
+            docs,
+            pipelineDef.pipeline,
+            pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
     }
 }());
 

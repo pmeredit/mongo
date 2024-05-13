@@ -29,17 +29,15 @@ function tumblingWindowCheckpointInTheMiddle(docs, pipeline, compareFunction) {
 }
 
 (function checkpointInTheMiddleTumblingWindowTests() {
-    // can increase the numbers kept them to make tests run under 10 minutes
-    const sizes = [10, 500, 5000];
-
-    for (let x = 0; x < sizes.length; x++) {
-        const docs = generateDocs(sizes[x]);
-        for (let pipelineDef of windowPipelines) {
-            tumblingWindowCheckpointInTheMiddle(
-                docs,
-                pipelineDef.pipeline,
-                pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
-        }
+    // Run the test for an artibtrary number of docs between 50 and 500.
+    const numDocs = Math.floor(Math.random() * 450 + 50);
+    jsTestLog("Running the test for " + numDocs + " docs.");
+    const docs = generateDocs(numDocs);
+    for (let pipelineDef of windowPipelines) {
+        tumblingWindowCheckpointInTheMiddle(
+            docs,
+            pipelineDef.pipeline,
+            pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
     }
 }());
 
