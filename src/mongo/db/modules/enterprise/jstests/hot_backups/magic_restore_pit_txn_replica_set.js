@@ -106,7 +106,8 @@ function runTest(insertHigherTermOplogEntry) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration, entriesAfterBackup);
+    magicRestoreUtils.writeObjsAndRunMagicRestore(
+        restoreConfiguration, entriesAfterBackup, {"replSet": jsTestName()});
 
     // Restart the destination replica set.
     rst = new ReplSetTest({nodes: 1});
