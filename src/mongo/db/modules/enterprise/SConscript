@@ -36,10 +36,9 @@ if get_option('lint-scope') == 'changed':
 
     env.AlwaysBuild(patch_file)
 
-    pylinters = env.Command(target="#lint-pylinters-enteprise", source=[
-        "#buildscripts/pylinters.py",
-        patch_file,
-    ], action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}")
+    pylinters = env.Command(target="#lint-pylinters-enterprise", source=[
+        "#buildscripts/pylinters.py"
+    ], action="$PYTHON ${SOURCES[0]} lint")
 
     clang_format = env.Command(target="#lint-clang-format-enterprise", source=[
         "#buildscripts/clang_format.py",
