@@ -142,6 +142,10 @@ function runTest(conn, admin, spooler) {
 
     const {conn, audit, admin} =
         standaloneFixture.startProcess({auditRuntimeConfiguration: true}, 'JSON', 'ocsf');
+
+    // Wait for the FTDC periodic metadata collector to audit its getClusterParameter invocation
+    audit.assertEntry(kApplicationActivity, kAPIActivity, kAPIActivityRead);
+
     runTest(conn, admin, audit);
     standaloneFixture.stopProcess();
 }
