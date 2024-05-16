@@ -352,13 +352,8 @@ function testBoth(useNewCheckpointing) {
         shouldHeapProfile = false,
         extraLogKeys = null,
         interval = null,
-        waitTime = 60 * 1000,
-        dbForTest = null
+        waitTime = 60 * 1000
     }) {
-        if (dbForTest == null) {
-            // Use the global default db.
-            dbForTest = db;
-        }
         let test = new TestHelper(inputBeforeStop,
                                   pipeline,
                                   interval,
@@ -366,7 +361,7 @@ function testBoth(useNewCheckpointing) {
                                   useNewCheckpointing,
                                   null /* writeDir */,
                                   null /* restoreDir */,
-                                  dbForTest /* dbForTest */);
+                                  db /* dbForTest */);
         const getResults = () => {
             let query = test.outputColl.find({});
             if (resultsSortDoc != null) {
@@ -386,7 +381,10 @@ function testBoth(useNewCheckpointing) {
         assert.gt(stats["stateSize"], minimiumExpectedStateSize, "expected more state size");
         let heapProfile = null;
         if (shouldHeapProfile) {
-            heapProfile = dbForTest.runCommand({serverStatus: 1})["heapProfile"];
+            let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
+            assert.commandWorked(result);
+            jsTestLog(JSON.stringify(result));
+            heapProfile = result["heapProfile"];
         }
         // Stop the stream processor and verify there is no output yet.
         test.stop();
@@ -400,7 +398,10 @@ function testBoth(useNewCheckpointing) {
 
         let heapProfileAfterCheckpoint = null;
         if (shouldHeapProfile) {
-            heapProfileAfterCheckpoint = dbForTest.runCommand({serverStatus: 1})["heapProfile"];
+            let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
+            assert.commandWorked(result);
+            jsTestLog(JSON.stringify(result));
+            heapProfile = result["heapProfile"];
         }
         let statsAfterCheckpoint = test.stats();
 
@@ -520,7 +521,7 @@ function testBoth(useNewCheckpointing) {
 
     // Tests a large $tumblingWindow with inputStateSizeMB.
     // This test also enables heap profiling information.
-    function largeTumblingWindow(inputStateSizeMB, dbForTest) {
+    function largeTumblingWindow(inputStateSizeMB) {
         const state = inputStateSizeMB * 1000000;
         // The pipeline includes an $unwind stage to duplicate every input doc this many times.
         const multiplierPerInputDoc = 2000;
@@ -604,8 +605,7 @@ function testBoth(useNewCheckpointing) {
             },
             waitTime: 60 * 60 * 1000,
             // Use a large interval so only a stop request will write a checkpoint.
-            interval: 3600000,
-            dbForTest: dbForTest
+            interval: 3600000
         });
     }
 
@@ -1070,32 +1070,22 @@ function testBoth(useNewCheckpointing) {
     emptyChangestreamResumeTokenAdvances();
     mismatchedCheckpointOperators();
 
-    const buildInfo = getBuildInfo();
-    if (!buildInfo.debug) {
-        // Start a new replset that has heap profiling enabled.
-        const rst = new ReplSetTest({
-            name: "large_tumbling_window",
-            nodes: 1,
-            waitForKeys: false,
-            nodeOptions: {
-                setParameter: {
-                    featureFlagStreams: true,
-                    heapProfilingEnabled: true,
-                },
-            }
-        });
-        rst.startSet();
-        rst.initiateWithAnyNodeAsPrimary(
-            Object.extend(rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
-        const conn = rst.getPrimary();
-        let heapProfilingDb = conn.getDB('admin');
-        heapProfilingDb.setProfilingLevel(2);
+    const buildInfo = db.runCommand("buildInfo");
+    assert(buildInfo.hasOwnProperty("allocator"));
+
+    if (buildInfo.allocator === "tcmalloc-google") {
+        assert.commandWorked(
+            db.adminCommand({setParameter: 1, heapProfilingSampleIntervalBytes: 1}));
+        assert.soon(() => {
+            let result = db.serverStatus();
+            assert.commandWorked(result);
+            return result.hasOwnProperty("heapProfile");
+        }, "Heap profile serverStatus section is not present");
 
         // Uncomment these to test 1GB and 4GB windows locally.
         // largeTumblingWindow(1000);
         // largeTumblingWindow(4000);
-        largeTumblingWindow(10, heapProfilingDb);
-        rst.stopSet();
+        largeTumblingWindow(10);
     }
 }
 
