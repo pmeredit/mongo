@@ -41,12 +41,17 @@ public:
         bool planMainPipeline{true};
         // The minimum OperatorId to use for the created Operator instances.
         OperatorId minOperatorId{0};
+        // If true, the pipelines are optimized. Currently this is always true except in some unit
+        // tests. Once SERVER-78464 is completed, this will be set to false when restoring from
+        // a checkpoint and supplying Planner the optimized execution plan.
+        bool shouldOptimize{true};
     };
 
     Planner(Context* context, Options options);
 
     /**
      * Creates an OperatorDag from a user supplied BSON array.
+     * TODO(SERVER-90425): Return the executionPlan here as well.
      */
     std::unique_ptr<OperatorDag> plan(const std::vector<mongo::BSONObj>& bsonPipeline);
 
@@ -56,6 +61,8 @@ public:
     static mongo::StringSet parseConnectionNames(const std::vector<mongo::BSONObj>& pipeline);
 
 private:
+    friend class PlannerTest;
+
     // Encapsulates state for a $window stage being planned.
     struct WindowPlanningInfo {
         mongo::DocumentSource* stubDocumentSource{nullptr};
@@ -72,6 +79,14 @@ private:
         size_t numLookupStagesPlanned{0};
         // Tracks the $lookup stages that were rewritten.
         std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
+    };
+
+    struct PlanResult {
+        // The OperatorDag for execution.
+        std::unique_ptr<OperatorDag> dag;
+
+        // The serialized representation of the optimized execution plan.
+        std::vector<mongo::BSONObj> executionPlan;
     };
 
     // Adds the given Operator to '_operators'.
@@ -102,8 +117,14 @@ private:
     void planEmitSink(const mongo::BSONObj& spec);
 
     // Methods that are used to plan a window stage.
-    void planTumblingWindow(mongo::DocumentSource* source);
-    void planHoppingWindow(mongo::DocumentSource* source);
+    // Both return a BSONObj that represents the optimized window stage.
+    mongo::BSONObj planTumblingWindow(mongo::DocumentSource* source);
+    mongo::BSONObj planHoppingWindow(mongo::DocumentSource* source);
+    // Helper method to create a serialized representation of a window stage with an optimized inner
+    // pipeline.
+    mongo::BSONObj serializedWindowStage(const std::string& stageName,
+                                         mongo::BSONObj spec,
+                                         std::vector<mongo::BSONObj> innerPipelineExecutionPlan);
 
     // Plans a $group stage.
     void planGroup(mongo::DocumentSource* source);
@@ -114,8 +135,8 @@ private:
     // Plans a $limit stage.
     void planLimit(mongo::DocumentSource* source);
 
-    // Plans a $lookup stage.
-    void planLookUp(mongo::DocumentSourceLookUp* documentSource);
+    // Plans a $lookup stage. Returns a BSONObj that represents the optimized lookup stage.
+    mongo::BSONObj planLookUp(mongo::DocumentSourceLookUp* documentSource);
 
     // Helper function to prepare the pipeline before sending it to planning. This step includes
     // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the
@@ -125,11 +146,11 @@ private:
     preparePipeline(std::vector<mongo::BSONObj> stages);
 
     // Plans the stages in the given Pipeline instance.
-    void planPipeline(mongo::Pipeline& pipeline,
-                      std::unique_ptr<PipelineRewriter> pipelineRewriter);
+    std::vector<mongo::BSONObj> planPipeline(mongo::Pipeline& pipeline,
+                                             std::unique_ptr<PipelineRewriter> pipelineRewriter);
 
     // Helper function of plan() that does all the work.
-    void planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
+    PlanResult planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
 
     Context* _context{nullptr};
     Options _options;

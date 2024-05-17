@@ -119,6 +119,13 @@ public:
         return kafkaConsumerOperator->_consumers[idx];
     }
 
+    // TODO(SERVER-90425): Remove this once the main plan API is changed.
+    std::pair<std::unique_ptr<OperatorDag>, std::vector<mongo::BSONObj>> planInner(
+        Planner* planner, const std::vector<mongo::BSONObj>& bsonPipeline) {
+        auto result = planner->planInner(bsonPipeline);
+        return std::make_pair(std::move(result.dag), std::move(result.executionPlan));
+    }
+
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
@@ -1379,6 +1386,170 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
         ASSERT_EQ(ErrorCodes::InvalidOptions, e.code());
         ASSERT_EQ("The $lookup.from field must be an object", e.reason());
     }
+}
+
+// Test the Planner's ability to return the serialied, optimized execution plan.
+TEST_F(PlannerTest, ExecutionPlan) {
+    _context->isEphemeral = false;
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+    // The test parses and optimies the user pipeline, which returns an OperatorDag and
+    // executionPlan. Then the test supplies the executionPlan to another Planner instance with
+    // optimization turned off, and verifies the resulting OperatorDag matches the first one.
+    auto innerTest = [&](std::string userPipeline, std::vector<std::string> expectedOperators) {
+        Planner planner(_context.get(), Planner::Options{});
+        auto bson = parsePipeline(userPipeline);
+        auto [dag, plan] = planInner(&planner, bson);
+        ASSERT_EQ(expectedOperators.size(), dag->operators().size());
+        for (size_t i = 0; i < expectedOperators.size(); ++i) {
+            ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
+        }
+
+        fmt::print("User pipeline\n{}", userPipeline);
+        fmt::print("Plan\n{}", Value(plan).toString());
+
+        Planner plannerAfterRestore(_context.get(), Planner::Options{.shouldOptimize = false});
+        auto [dag2, shouldBeSamePlan] = planInner(&plannerAfterRestore, plan);
+        // Assert the operators produced from plan with no optimization are equal to the operators
+        // produced from the user's BSON pipeline with optimization
+        ASSERT_EQ(expectedOperators.size(), dag2->operators().size());
+        for (size_t i = 0; i < expectedOperators.size(); ++i) {
+            ASSERT_EQ(expectedOperators[i], dag2->operators()[i]->getName());
+        }
+        // Assert the execution plan equals plan
+        ASSERT_EQ(shouldBeSamePlan.size(), plan.size());
+        for (size_t i = 0; i < plan.size(); ++i) {
+            ASSERT_BSONOBJ_EQ(plan[i], shouldBeSamePlan[i]);
+        }
+    };
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $match: {
+                a: 1
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+              {"KafkaConsumerOperator", "MatchOperator", "KafkaEmitOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $set: {
+                c: "foo"
+            }
+        },
+        {
+            $match: {
+                c: "foo"
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+              {"KafkaConsumerOperator", "SetOperator", "MatchOperator", "KafkaEmitOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $match: {
+                a: 1
+            }
+        },
+        {
+            $match: {
+                b: {$gt: 100}
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+              {"KafkaConsumerOperator", "MatchOperator", "KafkaEmitOperator"});
+
+    return;
+
+    // TODO(SERVER-90425): Enable this and below once $sort changes are in.
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $set: {
+                c: "foo"
+            }
+        },
+        {
+            $match: {
+                c: "foo"
+            }
+        },
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "hour" },
+            pipeline: [
+                { $limit: 50000 },
+                { $group: { _id: "$customerId", sum: { $sum: "$value" }, all: { $push: "$value" } } },
+                { $sort: { sum: 1 } },
+                { $limit: 10 }
+            ]
+        }},
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+              {"KafkaConsumerOperator",
+               "SetOperator",
+               "MatchOperator",
+               "LimitOperator",
+               "GroupOperator",
+               "SortOperator",
+               "KafkaEmitOperator"});
 }
 
 }  // namespace

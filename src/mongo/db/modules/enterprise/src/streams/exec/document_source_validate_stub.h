@@ -48,7 +48,7 @@ protected:
 
     mongo::Value serialize(
         const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const override {
-        MONGO_UNREACHABLE;
+        return mongo::Value(_bsonOptions);
     }
 
 private:
