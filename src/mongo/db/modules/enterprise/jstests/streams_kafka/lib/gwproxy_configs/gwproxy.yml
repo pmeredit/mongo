@@ -1,0 +1,9 @@
+---
+proxy:
+  listen_addr: ":30000"
+  target_port: 9093
+  use_default_target_port: true
+  hello_timeout_seconds: 3
+  dial_timeout_seconds: 10
+  authentication_key: "abcdefghijklmnopABCDEFGHIJKLMNOP"
+metrics_listen_address: ":19096"

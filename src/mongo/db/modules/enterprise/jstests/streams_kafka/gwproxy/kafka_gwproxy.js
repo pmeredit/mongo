@@ -1,0 +1,397 @@
+import {
+    LocalDiskCheckpointUtil,
+} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {
+    getStats,
+    listStreamProcessors,
+    sanitizeDoc,
+    startSample,
+    stopStreamProcessor,
+    TEST_TENANT_ID,
+    waitForCount,
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    LocalGWProxyServer
+} from "src/mongo/db/modules/enterprise/jstests/streams_kafka/gwproxy/gwproxy_utils.js";
+import {
+    LocalKafkaCluster
+} from "src/mongo/db/modules/enterprise/jstests/streams_kafka/kafka_utils.js";
+
+const kafkaPlaintextName = "kafka1";
+const kafkaSASLSSLName = "kafkaSSL1";
+const kafkaSASLSSLNameBad = "kafkaSSLBad";
+const dbConnName = "db1";
+const uri = 'mongodb://' + db.getMongo().host;
+const kafkaUri = 'localhost:9092';
+const kafkaUriSASLSSL = 'localhost:9093';
+const topicName1 = 'outputTopic1';
+const topicName2 = 'outputTopic2';
+// Dynamic topic name expression for the $emit operator.
+const topicNameExpr = {
+    $cond: {if: {$eq: ["$gid", 0]}, then: topicName1, else: topicName2}
+};
+const dbName = 'test';
+const sourceCollName1 = 'sourceColl1';
+const sourceCollName2 = 'sourceColl2';
+const sinkCollName1 = 'sinkColl1';
+const sinkCollName2 = 'sinkColl2';
+const dlqCollName = 'dlq';
+const sourceColl1 = db.getSiblingDB(dbName)[sourceCollName1];
+const sourceColl2 = db.getSiblingDB(dbName)[sourceCollName2];
+const sinkColl1 = db.getSiblingDB(dbName)[sinkCollName1];
+const sinkColl2 = db.getSiblingDB(dbName)[sinkCollName2];
+const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
+const checkpointBaseDir = "/tmp/checkpointskafka";
+const startOptions = {
+    checkpointOptions: {
+        localDisk: {
+            writeDirectory: checkpointBaseDir,
+        },
+        // Checkpoint every five seconds.
+        debugOnlyIntervalMs: 5000,
+    },
+    featureFlags: {},
+};
+
+const connectionRegistry = [
+    {name: dbConnName, type: 'atlas', options: {uri: uri}},
+    {
+        name: kafkaPlaintextName,
+        type: 'kafka',
+        options: {bootstrapServers: kafkaUri},
+    },
+    {
+        name: kafkaSASLSSLName,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSASLSSL,
+            gwproxyEndpoint:
+                "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
+            gwproxyKey: "abcdefghijklmnopABCDEFGHIJKLMNOP",
+            auth: {
+                saslMechanism: "PLAIN",
+                saslUsername: "kafka",
+                saslPassword: "kafka",
+                securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSASLSSLNameBad,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSASLSSL,
+            gwproxyEndpoint:
+                "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
+            gwproxyKey: "INCORRECTjklmnopABCDEFGHIJKLMNOP",  // Incorrect proxy key
+            auth: {
+                saslMechanism: "PLAIN",
+                saslUsername: "kafka",
+                saslPassword: "kafka",
+                securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    }
+];
+
+const mongoToKafkaName = "mongoToKafka";
+const kafkaToMongoNamePrefix = "kafkaToMongo";
+
+function getRestoreDirectory(processorId) {
+    // Return the directory of the latest committed checkpoint ID.
+    let util = new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, processorId);
+    if (!util.hasCheckpoint) {
+        return null;
+    }
+    return util.getRestoreDirectory(util.latestCheckpointId);
+}
+
+// Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
+function makeMongoToKafkaStartCmd({
+    collName,
+    topicName,
+    connName,
+    sinkKey = undefined,
+    sinkKeyFormat = undefined,
+    sinkHeaders = undefined,
+    jsonType = undefined,
+    parseOnly = false
+}) {
+    const processorId = `processor-coll_${collName}-to-topic`;
+    const emitOptions = {
+        connectionName: connName,
+        topic: topicName,
+        config: {outputFormat: 'canonicalJson'}
+    };
+    if (sinkKey !== undefined) {
+        emitOptions.config.key = sinkKey;
+    }
+    if (sinkKey !== undefined) {
+        emitOptions.config.keyFormat = sinkKeyFormat;
+    }
+    if (sinkHeaders !== undefined) {
+        emitOptions.config.headers = sinkHeaders;
+    }
+    if (jsonType != undefined) {
+        emitOptions.config.outputFormat = jsonType;
+    }
+    let options = {
+        checkpointOptions: {
+            localDisk: {
+                writeDirectory: checkpointBaseDir,
+                restoreDirectory: getRestoreDirectory(processorId)
+            },
+            // Checkpoint every five seconds.
+            debugOnlyIntervalMs: 5000,
+        },
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
+        featureFlags: {},
+    };
+    if (parseOnly) {
+        options.parseOnly = true;
+    }
+    return {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: mongoToKafkaName,
+        pipeline: [
+            {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
+            {$match: {operationType: "insert"}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            {$project: {_stream_meta: 0}},
+            {$emit: emitOptions}
+        ],
+        connections: connectionRegistry,
+        options: options,
+        processorId: processorId,
+    };
+}
+
+// Makes kafkaToMongoStartCmd for a specific topic name & collection name pair.
+function makeKafkaToMongoStartCmd({
+    topicName,
+    collName,
+    pipeline = [],
+    sourceKeyFormat = 'binData',
+    sourceKeyFormatError = 'dlq',
+    parseOnly = false
+}) {
+    const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
+    let options = {
+        checkpointOptions: {
+            localDisk: {
+                writeDirectory: checkpointBaseDir,
+                restoreDirectory: getRestoreDirectory(processorId)
+            },
+            // Checkpoint every five seconds.
+            debugOnlyIntervalMs: 5000,
+        },
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
+        featureFlags: {},
+    };
+    if (parseOnly) {
+        options.parseOnly = true;
+    }
+    return {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: `${kafkaToMongoNamePrefix}-${topicName}`,
+        pipeline: pipeline.length ? pipeline : [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName,
+                    config: {
+                        keyFormat: sourceKeyFormat,
+                        keyFormatError: sourceKeyFormatError,
+                    }
+                }
+            },
+            {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
+        ],
+        connections: connectionRegistry,
+        options: options,
+        processorId: processorId,
+    };
+}
+
+// Makes sure that the Kafka topic is created by waiting for sample to return a result. While
+// waiting for it, the $emit output makes it to the Kafka topic.
+function makeSureKafkaTopicCreated(coll, topicName, connName, count = 1) {
+    coll.drop();
+
+    // Start mongoToKafka, which will read from 'coll' and write to the Kafka topic.
+    const startCmd = makeMongoToKafkaStartCmd({collName: coll.getName(), topicName, connName});
+    jsTestLog(startCmd);
+    assert.commandWorked(db.runCommand(startCmd));
+    for (let i = 0; i < count; i++) {
+        coll.insert({a: i - 1});
+    }
+
+    // Start a sample on the stream processor.
+    let result = startSample(mongoToKafkaName);
+    assert.commandWorked(result);
+    const cursorId = result["id"];
+    // Insert events and wait for an event to be output, using sample.
+    const getMoreCmd = {
+        streams_getMoreStreamSample: cursorId,
+        tenantId: TEST_TENANT_ID,
+        name: mongoToKafkaName
+    };
+    let sampledDocs = [];
+    while (sampledDocs.length < 1) {
+        result = db.runCommand(getMoreCmd);
+        assert.commandWorked(result);
+        assert.eq(result["cursor"]["id"], cursorId);
+        sampledDocs = sampledDocs.concat(result["cursor"]["nextBatch"]);
+    }
+
+    // Stop mongoToKafka to flush the Kafka $emit output.
+    stopStreamProcessor(mongoToKafkaName);
+}
+
+function dropCollections() {
+    removeFile(checkpointBaseDir);
+    sourceColl1.drop();
+    sourceColl2.drop();
+    sinkColl1.drop();
+    sinkColl2.drop();
+    dlqColl.drop();
+}
+
+let numDocumentsToInsert = 10000;
+function insertData(coll) {
+    let input = [];
+    for (let i = 0; i < numDocumentsToInsert; i += 1) {
+        const binData = new BinData(0, (i % 1000).toString().padStart(4, "0"));
+        input.push({
+            a: i,
+            gid: i % 2,
+            headers: [
+                {k: "h1", v: binData},
+                {k: "h2", v: binData},
+            ],
+            headersObj: {h1: binData, h2: binData},
+            keyBinData: binData,
+            keyInt: NumberInt(i),
+            keyJson: {a: 1},
+            keyLong: NumberLong(i),
+            keyString: "s" + i.toString(),
+        });
+    }
+    sourceColl1.insertMany(input);
+
+    return input;
+}
+
+// Run a test with invalid GWProxy credentials, and expect a failure.
+function mongoToKafkaSASLSSLFailure() {
+    // Prepare a topic 'topicName1'.  Use a good/valid GWProxy connection object for
+    // this as we want it to succeed here, but fail later.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLName);
+
+    // Now the Kafka topic exists, and it has at least 1 event in it.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const kafkaToMongoStartCmd =
+        makeKafkaToMongoStartCmd({topicName: topicName1, collName: sinkColl1.getName()});
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.getCheckpointIds());
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => {
+        return checkpointUtils.getCheckpointIds(TEST_TENANT_ID, kafkaToMongoProcessorId).length > 0;
+    });
+
+    // Start the mongoToKafka streamProcessor.
+    // Note: This should fail during connect.  GWProxy will return a TLS ACCESS DENIED in this
+    // case, but rdkafka doesn't propagate that error up, so it'll just look like an
+    // "Unknown error -1" in the driver.
+    assert.commandFailed(db.runCommand(makeMongoToKafkaStartCmd(
+        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaSASLSSLNameBad})));
+
+    // Stop the streamProcessors.
+    stopStreamProcessor(kafkaToMongoName);
+}
+
+// This test uses the same logic as the mongoToKafka test, but uses the connection
+// registry entry for the SASL_SSL authenticated listener + SSL validation.
+function mongoToKafkaSASLSSL() {
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLName);
+
+    // Now the Kafka topic exists, and it has at least 1 event in it.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const kafkaToMongoStartCmd =
+        makeKafkaToMongoStartCmd({topicName: topicName1, collName: sinkColl1.getName()});
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.getCheckpointIds());
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => {
+        return checkpointUtils.getCheckpointIds(TEST_TENANT_ID, kafkaToMongoProcessorId).length > 0;
+    });
+
+    // Start the mongoToKafka streamProcessor.
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
+        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaSASLSSLName})));
+
+    // Write input to the 'sourceColl'.
+    // mongoToKafka reads the source collection and writes to Kafka.
+    // kafkaToMongo reads Kafka and writes to the sink collection.
+    let input = insertData(sourceColl1);
+
+    // Verify output shows up in the sink collection as expected.
+    waitForCount(sinkColl1, input.length, 60 /* timeout */);
+    let results = sinkColl1.find({}).sort({a: 1}).toArray();
+    let output = [];
+    for (let doc of results) {
+        doc = sanitizeDoc(doc);
+        delete doc._id;
+        output.push(doc);
+    }
+    assert.eq(input, output);
+
+    // Stop the streamProcessors.
+    stopStreamProcessor(kafkaToMongoName);
+    stopStreamProcessor(mongoToKafkaName);
+}
+
+// Runs a test function with a fresh state including a fresh Kafka cluster.
+function runKafkaTest(kafka, testFn, partitionCount = 1) {
+    kafka.start(partitionCount);
+    gwproxy.start();
+    try {
+        // Clear any previous persistent state so that the test starts with a clean slate.
+        dropCollections();
+        testFn();
+    } finally {
+        kafka.stop();
+        gwproxy.stop();
+    }
+}
+
+let kafka = new LocalKafkaCluster();
+let gwproxy = new LocalGWProxyServer();
+
+runKafkaTest(kafka, mongoToKafkaSASLSSL);
+runKafkaTest(kafka, mongoToKafkaSASLSSLFailure);
