@@ -681,8 +681,6 @@ std::unique_ptr<AuthzManagerExternalState> createAuthzManagerExternalStateMongos
 }
 
 ExitCode main(ServiceContext* serviceContext) {
-    serviceContext->setFastClockSource(FastClockSourceFactory::create(Milliseconds{10}));
-
     // We either have a setting where all processes are in localhost or none are
     const auto& configServers = mongoqdGlobalParams.configdbs.getServers();
     invariant(!configServers.empty());
@@ -754,6 +752,8 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
         return ExitCode::abrupt;
     }
 
+    startSignalProcessingThread();
+
     try {
         setGlobalServiceContext(ServiceContext::make());
     } catch (...) {
@@ -767,6 +767,9 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
     }
 
     const auto service = getGlobalServiceContext();
+    // This FastClockSourceFactory creates a background thread ClockSource. It must be set
+    // on ServiceContext before any other threads can get and use it.
+    service->setFastClockSource(FastClockSourceFactory::create(Milliseconds{10}));
 
     audit::rotateAuditLog();
     registerShutdownTask(cleanupTask);
@@ -781,8 +784,6 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
     try {
         if (!initialize_server_global_state::checkSocketPath())
             return ExitCode::abrupt;
-
-        startSignalProcessingThread();
 
         startAllocatorThread();
 
