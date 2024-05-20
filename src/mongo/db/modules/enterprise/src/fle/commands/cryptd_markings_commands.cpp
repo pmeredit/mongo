@@ -543,10 +543,9 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     auto cleanedCmdObj = cmdObj.removeFields(StringDataSet{query_analysis::kJsonSchema,
                                                            query_analysis::kIsRemoteSchema,
                                                            query_analysis::kEncryptionInformation});
-    auto explainCmd = ExplainCommandRequest::parse(
-        IDLParserContext(ExplainCommandRequest::kCommandName,
-                         APIParameters::get(opCtx).getAPIStrict().value_or(false)),
-        cleanedCmdObj);
+    const bool apiStrict = APIParameters::get(opCtx).getAPIStrict().value_or(false);
+    auto explainCmd = idl::parseCommandDocument<ExplainCommandRequest>(
+        IDLParserContext(ExplainCommandRequest::kCommandName), apiStrict, cleanedCmdObj);
 
     // We must remove the FLE meta-data fields before attempting to parse the explain command.
     ExplainOptions::Verbosity verbosity = explainCmd.getVerbosity();

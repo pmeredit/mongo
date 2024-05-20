@@ -529,7 +529,6 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
 
     auto countCmd =
         CountCommandRequest::parse(IDLParserContext("count",
-                                                    false /*apiStrict*/,
                                                     auth::ValidatedTenancyScope::get(expCtx->opCtx),
                                                     dbName.tenantId(),
                                                     SerializationContext::stateCommandRequest()),
@@ -552,7 +551,6 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto parsedDistinct = DistinctCommandRequest::parse(
         IDLParserContext("distinct",
-                         false /*apiStrict*/,
                          auth::ValidatedTenancyScope::get(expCtx->opCtx),
                          dbName.tenantId(),
                          SerializationContext::stateCommandRequest()),
@@ -636,7 +634,6 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
     auto request(write_ops::FindAndModifyCommandRequest::parse(
         IDLParserContext("findAndModify",
-                         false /*apiStrict*/,
                          auth::ValidatedTenancyScope::get(expCtx->opCtx),
                          dbName.tenantId(),
                          SerializationContext::stateCommandRequest()),
@@ -1125,7 +1122,6 @@ PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<Expression
 
     auto cmd =
         CreateCommand::parse(IDLParserContext("create",
-                                              false /*apiStrict*/,
                                               auth::ValidatedTenancyScope::get(expCtx->opCtx),
                                               dbName.tenantId(),
                                               SerializationContext::stateCommandRequest()),
@@ -1145,7 +1141,6 @@ PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<Expressio
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
     auto cmd = CollMod::parse(IDLParserContext("collMod",
-                                               false /*apiStrict*/,
                                                auth::ValidatedTenancyScope::get(expCtx->opCtx),
                                                dbName.tenantId(),
                                                SerializationContext::stateCommandRequest()),
@@ -1165,7 +1160,6 @@ PlaceHolderResult addPlaceHoldersForCreateIndexes(
 
     auto cmd = CreateIndexesCommand::parse(
         IDLParserContext("createIndexes",
-                         false /*apiStrict*/,
                          auth::ValidatedTenancyScope::get(expCtx->opCtx),
                          dbName.tenantId(),
                          SerializationContext::stateCommandRequest()),
