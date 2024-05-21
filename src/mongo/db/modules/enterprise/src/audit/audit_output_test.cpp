@@ -855,7 +855,8 @@ TEST_F(AuditMongoTest, basicLogStartupOptionsMongo) {
     auto expectedOutputMongo =
         "{ atype: 'startup', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
         "param: { startupOptions: {}, initialClusterServerParameters: [ { _id: "
-        "'changeStreamOptions', clusterParameterTime: Timestamp(0, 0), preAndPostImages: { "
+        "'addOrRemoveShardInProgress', clusterParameterTime: Timestamp(0, 0), inProgress: false }, "
+        "{ _id: 'changeStreamOptions', clusterParameterTime: Timestamp(0, 0), preAndPostImages: { "
         "expireAfterSeconds: 'off' } }, { _id: 'changeStreams', clusterParameterTime: Timestamp(0, "
         "0), expireAfterSeconds: 3600 }, { _id: 'cwspTestNeedsFeatureFlagBlender', "
         "clusterParameterTime: Timestamp(0, 0), intData: 0 }, { _id: 'cwspTestNeedsLatestFCV', "
@@ -886,8 +887,9 @@ TEST_F(AuditOCSFTest, basicLogStartupOptionsOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 1, class_uid: 1007, severity_id: 1, type_uid: 100701, "
         "actor: {}, type_id: 0, status_id: 1, unmapped: { atype: 'startup', startup_options: {}, "
-        "cluster_parameters: [ { _id: 'changeStreamOptions', clusterParameterTime: Timestamp(0, "
-        "0), preAndPostImages: { expireAfterSeconds: 'off' } }, { _id: 'changeStreams', "
+        "cluster_parameters: [ { _id: 'addOrRemoveShardInProgress', clusterParameterTime: "
+        "Timestamp(0, 0), inProgress: false }, { _id: 'changeStreamOptions', clusterParameterTime: "
+        "Timestamp(0, 0), preAndPostImages: { expireAfterSeconds: 'off' } },{ _id: 'changeStreams',"
         "clusterParameterTime: Timestamp(0, 0), expireAfterSeconds: 3600 }, { _id: "
         "'cwspTestNeedsFeatureFlagBlender', clusterParameterTime: Timestamp(0, 0), intData: 0 }, { "
         "_id: 'cwspTestNeedsLatestFCV', clusterParameterTime: Timestamp(0, 0), intData: 0 }, {_id: "
