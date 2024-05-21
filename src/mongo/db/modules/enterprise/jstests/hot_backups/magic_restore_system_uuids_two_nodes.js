@@ -33,11 +33,13 @@ const db = primary.getDB(dbName);
 
 const magicRestoreUtils = [];
 const expectedConfigs = [];
+const ports = [];
 nodes.forEach((node, idx) => {
     magicRestoreUtils.push(new MagicRestoreUtils(
         {backupSource: node, pipeDir: MongoRunner.dataDir, backupDbPathSuffix: `_${idx}`}));
     magicRestoreUtils[idx].takeCheckpointAndOpenBackup();
     expectedConfigs.push(assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config);
+    ports.push(node.port);
 });
 
 ['e', 'f', 'g'].forEach(
@@ -69,8 +71,8 @@ nodes.forEach((_, idx) => {
 // Restart the destination replica set.
 rst = new ReplSetTest({
     nodes: [
-        {dbpath: magicRestoreUtils[0].getBackupDbPath(), port: 20040},
-        {dbpath: magicRestoreUtils[1].getBackupDbPath(), port: 20041}
+        {dbpath: magicRestoreUtils[0].getBackupDbPath(), port: ports[0]},
+        {dbpath: magicRestoreUtils[1].getBackupDbPath(), port: ports[1]}
     ]
 });
 nodes = rst.startSet(
