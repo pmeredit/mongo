@@ -5,6 +5,7 @@
  * @tags: [
  *   requires_persistence,
  *   requires_wiredtiger,
+ *   resource_intensive,
  * ]
  */
 
