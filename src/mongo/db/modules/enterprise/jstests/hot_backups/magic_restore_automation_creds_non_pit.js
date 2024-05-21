@@ -97,7 +97,8 @@ function runTest(updateAutoCreds) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration);
+    magicRestoreUtils.writeObjsAndRunMagicRestore(
+        restoreConfiguration, [], {"replSet": jsTestName()});
 
     // Restart the destination replica set.
     rst = new ReplSetTest({nodes: 1});

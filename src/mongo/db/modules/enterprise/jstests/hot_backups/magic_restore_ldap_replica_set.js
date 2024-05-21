@@ -119,7 +119,8 @@ function testLDAP(insertHigherTermOplogEntry) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration);
+    magicRestoreUtils.writeObjsAndRunMagicRestore(
+        restoreConfiguration, [], {"replSet": jsTestName()});
 
     // Restart the original replica set. We need to skip stepup on restart because that will call
     // serverStatus which requires auth.

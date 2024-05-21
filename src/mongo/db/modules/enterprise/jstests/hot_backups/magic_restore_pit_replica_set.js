@@ -113,7 +113,8 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration, entriesAfterBackup);
+    magicRestoreUtils.writeObjsAndRunMagicRestore(
+        restoreConfiguration, entriesAfterBackup, {"replSet": jsTestName()});
 
     // Start a new replica set fixture on the dbpath.
     const destinationCluster = new ReplSetTest({nodes: 1});

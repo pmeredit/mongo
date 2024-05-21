@@ -62,7 +62,8 @@ nodes.forEach((_, idx) => {
     restoreConfiguration =
         magicRestoreUtils[idx].appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils[idx].writeObjsAndRunMagicRestore(restoreConfiguration);
+    magicRestoreUtils[idx].writeObjsAndRunMagicRestore(
+        restoreConfiguration, [], {"replSet": jsTestName()});
 });
 
 // Restart the destination replica set.

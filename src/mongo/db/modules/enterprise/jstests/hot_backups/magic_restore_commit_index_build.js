@@ -90,11 +90,8 @@ function runTest(pit) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    if (pit) {
-        magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration, entriesAfterBackup);
-    } else {
-        magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration);
-    }
+    magicRestoreUtils.writeObjsAndRunMagicRestore(
+        restoreConfiguration, pit ? entriesAfterBackup : [], {"replSet": jsTestName()});
 
     rst = new ReplSetTest({nodes: 1});
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
