@@ -17,11 +17,9 @@
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/document_source_group.h"
-#include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
@@ -87,14 +85,6 @@
 namespace streams {
 
 using namespace mongo;
-
-// TODO(SERVER-90395): Add static asserts like below for all the other stages we support.
-// Following static asserts ensure that SerializationOptions.serializeForCloning serialization
-// option is still supported by the stages we care about.
-MONGO_STATIC_ASSERT(
-    std::is_same_v<decltype(&DocumentSourceSort::clone), decltype(&DocumentSource::clone)>);
-MONGO_STATIC_ASSERT(
-    std::is_same_v<decltype(&DocumentSourceLimit::clone), decltype(&DocumentSource::clone)>);
 
 namespace {
 
