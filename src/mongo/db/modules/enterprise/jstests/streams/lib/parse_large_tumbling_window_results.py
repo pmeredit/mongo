@@ -6,6 +6,7 @@ import sys
 import re
 import json
 
+
 # Sorts a dictionary of stacks by activeBytes.
 def sort_stacks(stacks):
     def compare_stack(s):
@@ -15,11 +16,12 @@ def sort_stacks(stacks):
         elif type(b) == dict:
             return int(b["$numberLong"])
         else:
-            raise RuntimeError(f'Unexpected {s}')
+            raise RuntimeError(f"Unexpected {s}")
 
     l = list(stacks.items())
     l.sort(key=compare_stack, reverse=True)
     return l
+
 
 # Finds the stack traces from logs based on the stack_name.
 def find_stack_trace(stack_name, stack_traces):
@@ -28,6 +30,7 @@ def find_stack_trace(stack_name, stack_traces):
         if num == stack_name:
             return trace["stackObj"]
     raise RuntimeError(f"trace was none for {stack_name}")
+
 
 # Puts together the stack information from runCommand({serverStatus: 1}).heapProfile and the stack traces printed in the log.
 def join_stack_information(heap_stacks, stack_traces):
@@ -40,26 +43,32 @@ def join_stack_information(heap_stacks, stack_traces):
         results.append(result)
     return results
 
+
 # Parse the input log file. The input file should be the output of checkpoint.js
 input_file = sys.argv[1]
 results = []
 stack_traces = []
 with open(input_file) as file:
     for line in file:
-        if 'opName' in line and 'innerStopStartHoppingWindowTest' in line:
-            result = json.loads(re.sub(r'.*\[jsTest\] ', "", line))
-            result["heapProfileBeforeCheckpoint"]["stacks"] = sort_stacks(result["heapProfileBeforeCheckpoint"]["stacks"])
-            result["heapProfileAfterCheckpoint"]["stacks"] = sort_stacks(result["heapProfileAfterCheckpoint"]["stacks"])
-            result["heapProfileAfterWindowClose"]["stacks"] = sort_stacks(result["heapProfileAfterWindowClose"]["stacks"])
+        if "opName" in line and "innerStopStartHoppingWindowTest" in line:
+            result = json.loads(re.sub(r".*\[jsTest\] ", "", line))
+            result["heapProfileBeforeCheckpoint"]["stacks"] = sort_stacks(
+                result["heapProfileBeforeCheckpoint"]["stacks"]
+            )
+            result["heapProfileAfterCheckpoint"]["stacks"] = sort_stacks(
+                result["heapProfileAfterCheckpoint"]["stacks"]
+            )
+            result["heapProfileAfterWindowClose"]["stacks"] = sort_stacks(
+                result["heapProfileAfterWindowClose"]["stacks"]
+            )
             results.append(result)
 
-        if 'heapProfile stack' in line:
-            line = line[line.index("{"):]
+        if "heapProfile stack" in line:
+            line = line[line.index("{") :]
             stack = json.loads(line)
-            stack_traces.append({
-                "stackNum": stack['attr']['stackNum'],
-                "stackObj": stack['attr']['stackObj']
-            })
+            stack_traces.append(
+                {"stackNum": stack["attr"]["stackNum"], "stackObj": stack["attr"]["stackObj"]}
+            )
 
 for idx, result in enumerate(results):
     result["heapProfileBeforeCheckpoint"]["stacks"] = join_stack_information(

@@ -1,16 +1,16 @@
 # -*- mode: python -*-
 
-Import('env')
+Import("env")
 
 env = env.Clone()
 
 env.CppUnitTest(
-    target='metric_manager_test',
+    target="metric_manager_test",
     source=[
-        'metric_manager_test.cpp',
+        "metric_manager_test.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '../streams_util',
+        "$BUILD_DIR/mongo/base",
+        "../streams_util",
     ],
 )

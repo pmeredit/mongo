@@ -1,221 +1,224 @@
 # -*- mode: python -*-
 
-Import('env')
+Import("env")
 
 env = env.Clone()
-env.InjectThirdParty(libraries=['librdkafka', 'bson', 'snappy'])
+env.InjectThirdParty(libraries=["librdkafka", "bson", "snappy"])
 
 # TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
 platform_name = "linux_" + env["TARGET_ARCH"]
-if env.ToolchainIs('clang'):
+if env.ToolchainIs("clang"):
     # This section force includes third_party/mongocxx as a clang "isystem" include.
     # We do this to avoid the headers being scanned with clang-tidy, becuase the clang-tidy
     # HeaderFilterRegex does not support exclusions.
     # TODO(SERVER-76494): Remove this workaround once clang-tidy support exclusion of header paths
     env.AppendUnique(
         CXXFLAGS=(
-            '-isystem',
-            env.Dir('$MONGOCXX_DIR').srcnode().abspath,
-            '-isystem',
-            env.Dir(f'$MONGOCXX_DIR/platform/{platform_name}').srcnode().abspath,
-        ))
+            "-isystem",
+            env.Dir("$MONGOCXX_DIR").srcnode().abspath,
+            "-isystem",
+            env.Dir(f"$MONGOCXX_DIR/platform/{platform_name}").srcnode().abspath,
+        )
+    )
 else:
-    env.Append(CPPPATH=[
-        '$MONGOCXX_DIR',
-        f'$MONGOCXX_DIR/platform/{platform_name}',
-    ])
+    env.Append(
+        CPPPATH=[
+            "$MONGOCXX_DIR",
+            f"$MONGOCXX_DIR/platform/{platform_name}",
+        ]
+    )
 
-env.SConscript(dirs=['tests'], exports=['env'])
+env.SConscript(dirs=["tests"], exports=["env"])
 
 env.Library(
-    target='streams_stages_idl',
+    target="streams_stages_idl",
     source=[
-        'stages.idl',
+        "stages.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/client/clientdriver_minimal',
-        '$BUILD_DIR/mongo/db/pipeline/aggregation_request_helper',
-        '$BUILD_DIR/mongo/db/pipeline/document_sources_idl',
-        '$BUILD_DIR/mongo/idl/idl_parser',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/client/clientdriver_minimal",
+        "$BUILD_DIR/mongo/db/pipeline/aggregation_request_helper",
+        "$BUILD_DIR/mongo/db/pipeline/document_sources_idl",
+        "$BUILD_DIR/mongo/idl/idl_parser",
     ],
 )
 
 env.Library(
-    target='streams_exec_internal_idl',
+    target="streams_exec_internal_idl",
     source=[
-        'exec_internal.idl',
-        'checkpoint_data.idl',
+        "exec_internal.idl",
+        "checkpoint_data.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/client/clientdriver_minimal',
-        '$BUILD_DIR/mongo/idl/idl_parser',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/client/clientdriver_minimal",
+        "$BUILD_DIR/mongo/idl/idl_parser",
     ],
 )
 
 env.Library(
-    target='streams_exec_common_idl',
+    target="streams_exec_common_idl",
     source=[
-        'common.idl',
+        "common.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/client/clientdriver_minimal',
-        '$BUILD_DIR/mongo/idl/idl_parser',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/client/clientdriver_minimal",
+        "$BUILD_DIR/mongo/idl/idl_parser",
     ],
 )
 
 env.Library(
-    target='streams_config_idl',
+    target="streams_config_idl",
     source=[
-        'config.idl',
+        "config.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_base',
+        "$BUILD_DIR/mongo/db/server_base",
     ],
 )
 
 env.Library(
-    target='streams_exec_util',
+    target="streams_exec_util",
     source=[
-        'document_timestamp_extractor.cpp',
-        'event_deserializer.cpp',
-        'json_event_deserializer.cpp',
+        "document_timestamp_extractor.cpp",
+        "event_deserializer.cpp",
+        "json_event_deserializer.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
-        '$BUILD_DIR/mongo/db/query_expressions',
-        '$BUILD_DIR/third_party/shim_libbson',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx",
+        "$BUILD_DIR/mongo/db/query_expressions",
+        "$BUILD_DIR/third_party/shim_libbson",
     ],
 )
 
 env.Library(
-    target='streams_operators',
+    target="streams_operators",
     source=[
-        'change_stream_source_operator.cpp',
-        'checkpoint_storage.cpp',
-        'checkpoint/file_util.cpp',
-        'checkpoint/local_disk_checkpoint_storage.cpp',
-        'checkpoint/manifest_builder.cpp',
-        'checkpoint/restorer.cpp',
-        'checkpoint_coordinator.cpp',
-        'collect_operator.cpp',
-        'context.cpp',
-        'connection_status.cpp',
-        'dead_letter_queue.cpp',
-        'delayed_watermark_generator.cpp',
-        'document_source_feeder.cpp',
-        'document_source_remote_db_cursor.cpp',
-        'document_source_validate_stub.cpp',
-        'document_source_window_stub.cpp',
-        'documents_data_source_operator.cpp',
-        'executor.cpp',
-        'fake_kafka_partition_consumer.cpp',
-        'generated_data_source_operator.cpp',
-        'group_processor.cpp',
-        'in_memory_dead_letter_queue.cpp',
-        'in_memory_sink_operator.cpp',
-        'in_memory_source_operator.cpp',
-        'kafka_consumer_operator.cpp',
-        'kafka_emit_operator.cpp',
-        'kafka_resolve_callback.cpp',
-        'kafka_connect_auth_callback.cpp',
-        'kafka_event_callback.cpp',
-        'kafka_partition_consumer.cpp',
-        'log_dead_letter_queue.cpp',
-        'log_sink_operator.cpp',
-        'log_util.cpp',
-        'lookup_operator.cpp',
-        'match_operator.cpp',
-        'memory_usage_monitor.cpp',
-        'merge_operator.cpp',
-        'message.cpp',
-        'mongocxx_utils.cpp',
-        'mongodb_dead_letter_queue.cpp',
-        'mongodb_process_interface.cpp',
-        'operator.cpp',
-        'operator_dag.cpp',
-        'output_sampler.cpp',
-        'pipeline_rewriter.cpp',
-        'planner.cpp',
-        'queued_sink_operator.cpp',
-        'redact_operator.cpp',
-        'sample_data_source_operator.cpp',
-        'single_document_transformation_operator.cpp',
-        'sink_operator.cpp',
-        'source_operator.cpp',
-        'stats_utils.cpp',
-        'stream_processor_feature_flags.cpp',
-        'stream_stats.cpp',
-        'tenant_feature_flags.cpp',
-        'unflushed_state_container.cpp',
-        'unwind_operator.cpp',
-        'util.cpp',
-        'validate_operator.cpp',
-        'watermark_combiner.cpp',
-        'watermark_generator.cpp',
-        'window_assigner.cpp',
-        'window_aware_group_operator.cpp',
-        'window_aware_limit_operator.cpp',
-        'window_aware_operator.cpp',
-        'window_aware_sort_operator.cpp',
-        'timeseries_emit_operator.cpp',
-        'feature_flag.cpp',
+        "change_stream_source_operator.cpp",
+        "checkpoint_storage.cpp",
+        "checkpoint/file_util.cpp",
+        "checkpoint/local_disk_checkpoint_storage.cpp",
+        "checkpoint/manifest_builder.cpp",
+        "checkpoint/restorer.cpp",
+        "checkpoint_coordinator.cpp",
+        "collect_operator.cpp",
+        "context.cpp",
+        "connection_status.cpp",
+        "dead_letter_queue.cpp",
+        "delayed_watermark_generator.cpp",
+        "document_source_feeder.cpp",
+        "document_source_remote_db_cursor.cpp",
+        "document_source_validate_stub.cpp",
+        "document_source_window_stub.cpp",
+        "documents_data_source_operator.cpp",
+        "executor.cpp",
+        "fake_kafka_partition_consumer.cpp",
+        "generated_data_source_operator.cpp",
+        "group_processor.cpp",
+        "in_memory_dead_letter_queue.cpp",
+        "in_memory_sink_operator.cpp",
+        "in_memory_source_operator.cpp",
+        "kafka_consumer_operator.cpp",
+        "kafka_emit_operator.cpp",
+        "kafka_resolve_callback.cpp",
+        "kafka_connect_auth_callback.cpp",
+        "kafka_event_callback.cpp",
+        "kafka_partition_consumer.cpp",
+        "log_dead_letter_queue.cpp",
+        "log_sink_operator.cpp",
+        "log_util.cpp",
+        "lookup_operator.cpp",
+        "match_operator.cpp",
+        "memory_usage_monitor.cpp",
+        "merge_operator.cpp",
+        "message.cpp",
+        "mongocxx_utils.cpp",
+        "mongodb_dead_letter_queue.cpp",
+        "mongodb_process_interface.cpp",
+        "operator.cpp",
+        "operator_dag.cpp",
+        "output_sampler.cpp",
+        "pipeline_rewriter.cpp",
+        "planner.cpp",
+        "queued_sink_operator.cpp",
+        "redact_operator.cpp",
+        "sample_data_source_operator.cpp",
+        "single_document_transformation_operator.cpp",
+        "sink_operator.cpp",
+        "source_operator.cpp",
+        "stats_utils.cpp",
+        "stream_processor_feature_flags.cpp",
+        "stream_stats.cpp",
+        "tenant_feature_flags.cpp",
+        "unflushed_state_container.cpp",
+        "unwind_operator.cpp",
+        "util.cpp",
+        "validate_operator.cpp",
+        "watermark_combiner.cpp",
+        "watermark_generator.cpp",
+        "window_assigner.cpp",
+        "window_aware_group_operator.cpp",
+        "window_aware_limit_operator.cpp",
+        "window_aware_operator.cpp",
+        "window_aware_sort_operator.cpp",
+        "timeseries_emit_operator.cpp",
+        "feature_flag.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        '$BUILD_DIR/mongo/db/pipeline/process_interface/common_process_interface',
-        '$BUILD_DIR/mongo/db/query_exec',
-        '$BUILD_DIR/third_party/librdkafka/rdkafka',
-        '$BUILD_DIR/third_party/librdkafka/rdkafka++',
-        '../../streams/third_party/mongocxx/mongocxx',
-        '../util/streams_util',
-        'streams_config_idl',
-        'streams_exec_common_idl',
-        'streams_exec_internal_idl',
-        'streams_exec_util',
-        'streams_stages_idl',
+        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+        "$BUILD_DIR/mongo/db/pipeline/process_interface/common_process_interface",
+        "$BUILD_DIR/mongo/db/query_exec",
+        "$BUILD_DIR/third_party/librdkafka/rdkafka",
+        "$BUILD_DIR/third_party/librdkafka/rdkafka++",
+        "../../streams/third_party/mongocxx/mongocxx",
+        "../util/streams_util",
+        "streams_config_idl",
+        "streams_exec_common_idl",
+        "streams_exec_internal_idl",
+        "streams_exec_util",
+        "streams_stages_idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_base',
+        "$BUILD_DIR/mongo/db/server_base",
     ],
 )
 
 env.Benchmark(
-    target='streams_operator_dag_bm',
+    target="streams_operator_dag_bm",
     source=[
-        'operator_dag_bm.cpp',
+        "operator_dag_bm.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/exec/sbe/sbe_abt_test_util',
-        '$BUILD_DIR/mongo/db/pipeline/abt_translation',
-        '$BUILD_DIR/mongo/db/query/optimizer/optimizer',
-        '$BUILD_DIR/mongo/db/query/optimizer/unit_test_utils',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/service_context_non_d',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'streams_operators',
-        'tests/streams_test_utils',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/exec/sbe/sbe_abt_test_util",
+        "$BUILD_DIR/mongo/db/pipeline/abt_translation",
+        "$BUILD_DIR/mongo/db/query/optimizer/optimizer",
+        "$BUILD_DIR/mongo/db/query/optimizer/unit_test_utils",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context_non_d",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "streams_operators",
+        "tests/streams_test_utils",
     ],
 )
 
 env.Benchmark(
-    target='streams_window_operator_bm',
+    target="streams_window_operator_bm",
     source=[
-        'window_operator_bm.cpp',
+        "window_operator_bm.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/service_context_non_d',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'streams_operators',
-        'tests/streams_test_utils',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/service_context_non_d",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "streams_operators",
+        "tests/streams_test_utils",
     ],
 )

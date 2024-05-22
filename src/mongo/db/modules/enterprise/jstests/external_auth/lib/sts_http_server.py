@@ -46,11 +46,12 @@ SUPPORTED_FAULT_TYPES = [
     FAULT_500_ONCE,
     FAULT_CLOSE_ONCE,
     FAULT_CLOSE_TEN,
-    FAULT_UNRESPONSIVE
+    FAULT_UNRESPONSIVE,
 ]
 
 
 global_counter = 0
+
 
 def get_dict_subset(headers, subset):
     ret = {}
@@ -59,10 +60,12 @@ def get_dict_subset(headers, subset):
             ret[header] = headers[header]
     return ret
 
+
 class AwsStsHandler(http.server.BaseHTTPRequestHandler):
     """
     Handle requests from AWS STS Monitoring and test commands
     """
+
     protocol_version = "HTTP/1.1"
 
     def do_POST(self):
@@ -78,7 +81,7 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         else:
             msg = "Unknown URL".encode()
             self.send_response(http.HTTPStatus.NOT_FOUND)
-            self.send_header("Content-Type", "text/plain");
+            self.send_header("Content-Type", "text/plain")
             self.send_header("Content-Length", str(len(msg)))
             self.end_headers()
             self.wfile.write(msg)
@@ -107,7 +110,7 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _do_post(self):
-        clen = int(self.headers.get('content-length'))
+        clen = int(self.headers.get("content-length"))
 
         raw_input = self.rfile.read(clen)
 
@@ -123,39 +126,40 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # X-Amz-Target: TrentService.Encrypt
-        if raw_input.decode("utf-8")  == "Action=GetCallerIdentity&Version=2011-06-15":
+        if raw_input.decode("utf-8") == "Action=GetCallerIdentity&Version=2011-06-15":
             self._do_get_caller_identity(self.headers["Authorization"])
         else:
             print("UNKNOWN AWS OPERATION: |%s|" % (str(raw_input)))
             data = "Unknown AWS Operation"
             self._send_reply(data.encode("utf-8"))
 
-
     def _validate_signature(self, headers, raw_input):
         auth_header = headers["Authorization"]
         signed_headers_start = auth_header.find("SignedHeaders")
-        signed_headers = auth_header[signed_headers_start:auth_header.find(",", signed_headers_start)]
+        signed_headers = auth_header[
+            signed_headers_start : auth_header.find(",", signed_headers_start)
+        ]
         signed_headers_dict = get_dict_subset(headers, signed_headers)
         print("HEADERS: " + str(headers))
         print("DIC: " + str(signed_headers_dict))
 
         request = AWSRequest(method="POST", url="/", data=raw_input, headers=signed_headers_dict)
         # SigV4Auth assumes this header exists even though it is not required by the algorithm
-        request.context['timestamp'] = headers['X-Amz-Date']
+        request.context["timestamp"] = headers["X-Amz-Date"]
 
         account = None
         secret = None
         is_temporary = False
         for _, details in aws_common.get_users().items():
-            if details['id'] not in auth_header:
+            if details["id"] not in auth_header:
                 continue
-            account = details['id']
-            secret = details['secretKey']
-            is_temporary = 'sessionToken' in details
+            account = details["id"]
+            secret = details["secretKey"]
+            is_temporary = "sessionToken" in details
             break
 
         if account is None:
-            print(f"BAD SIGNATURE - unknown user in auth header: {auth_header}");
+            print(f"BAD SIGNATURE - unknown user in auth header: {auth_header}")
             return False
         elif is_temporary and "x-amz-security-token" not in auth_header:
             print("BAD SIGNATURE - missing x-amz-security-token")
@@ -168,7 +172,7 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
 
         credential_prefix = "Credential=%s/" % (account)
         region_start = auth_header.find(credential_prefix) + len(credential_prefix + "YYYYMMDD/")
-        region = auth_header[region_start:auth_header.find("/", region_start)]
+        region = auth_header[region_start : auth_header.find("/", region_start)]
 
         auth = SigV4Auth(credentials, "sts", region)
         print("CANN: %s" % (str(auth.canonical_request(request))))
@@ -186,12 +190,11 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         return True
 
     def _do_get_caller_identity(self, auth_header):
-
         arn = None
         for _, details in aws_common.get_users().items():
-            if details['id'] not in auth_header:
+            if details["id"] not in auth_header:
                 continue
-            arn = details['arn']
+            arn = details["arn"]
 
         if arn is None:
             self._send_reply("Go away.".encode(), http.HTTPStatus.UNAUTHORIZED)
@@ -206,9 +209,9 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
             global requests_seen
 
             # Remove signature from the end as it has a time component which may change
-            stripped_header=auth_header
-            if stripped_header.find(', Signature='):
-                stripped_header=stripped_header[:stripped_header.find(', Signature')]
+            stripped_header = auth_header
+            if stripped_header.find(", Signature="):
+                stripped_header = stripped_header[: stripped_header.find(", Signature")]
 
             if auth_header not in requests_seen:
                 requests_seen.append(auth_header)
@@ -236,7 +239,9 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
             self._send_reply("Not allowed.".encode(), http.HTTPStatus.FORBIDDEN)
             return
         if fault == FAULT_500:
-            self._send_reply("Something went wrong.".encode(), http.HTTPStatus.INTERNAL_SERVER_ERROR)
+            self._send_reply(
+                "Something went wrong.".encode(), http.HTTPStatus.INTERNAL_SERVER_ERROR
+            )
             return
 
         raise ValueError("Unknown Fault Type: %s" % (fault))
@@ -246,9 +251,10 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("content-type", "application/octet-stream")
         self.end_headers()
 
+
 def run(port, server_class=http.server.HTTPServer, handler_class=AwsStsHandler):
     """Run web server."""
-    server_address = ('', port)
+    server_address = ("", port)
 
     httpd = server_class(server_address, handler_class)
 
@@ -261,13 +267,13 @@ def main():
     """Main Method."""
     global fault_type
 
-    parser = argparse.ArgumentParser(description='MongoDB Mock AWS STS Endpoint.')
+    parser = argparse.ArgumentParser(description="MongoDB Mock AWS STS Endpoint.")
 
-    parser.add_argument('-p', '--port', type=int, default=8000, help="Port to listen on")
+    parser.add_argument("-p", "--port", type=int, default=8000, help="Port to listen on")
 
-    parser.add_argument('-v', '--verbose', action='count', help="Enable verbose tracing")
+    parser.add_argument("-v", "--verbose", action="count", help="Enable verbose tracing")
 
-    parser.add_argument('--fault', type=str, help="Type of fault to inject")
+    parser.add_argument("--fault", type=str, help="Type of fault to inject")
 
     args = parser.parse_args()
     if args.verbose:
@@ -275,7 +281,10 @@ def main():
 
     if args.fault:
         if args.fault not in SUPPORTED_FAULT_TYPES:
-            print("Unsupported fault type %s, supports types are %s" % (args.fault, SUPPORTED_FAULT_TYPES))
+            print(
+                "Unsupported fault type %s, supports types are %s"
+                % (args.fault, SUPPORTED_FAULT_TYPES)
+            )
             sys.exit(1)
 
         fault_type = args.fault
@@ -283,6 +292,5 @@ def main():
     run(args.port)
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     main()

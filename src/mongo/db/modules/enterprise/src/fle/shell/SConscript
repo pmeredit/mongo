@@ -1,49 +1,54 @@
 # -*- mode: python -*-
 
-Import([
-    'env',
-    'get_option',
-])
+Import(
+    [
+        "env",
+        "get_option",
+    ]
+)
 
-if get_option('js-engine') != 'none':
+if get_option("js-engine") != "none":
     scriptingEnv = env.Clone()
     # TODO(SERVER-77205): Review and Possibly Remove '-Wno-deprecated' After Mozjs Update
     scriptingEnv.Append(
         CXXFLAGS=[
             # See the /Zc:preprocessor comment in third_party/mozjs/SConscript
-            '/Zc:preprocessor',
-            '/wd5104',
-            '/wd5105',
-        ] if scriptingEnv.TargetOSIs('windows') else [
-            '-Wno-deprecated',
-        ], )
+            "/Zc:preprocessor",
+            "/wd5104",
+            "/wd5105",
+        ]
+        if scriptingEnv.TargetOSIs("windows")
+        else [
+            "-Wno-deprecated",
+        ],
+    )
     scriptingEnv.InjectMozJS()
 
     scriptingEnv.Library(
-        target='implicit_encrypted_dbclient',
+        target="implicit_encrypted_dbclient",
         source=[
-            'implicit_encrypted_dbclient.cpp',
+            "implicit_encrypted_dbclient.cpp",
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/crypto/fle_crypto',
-            '$BUILD_DIR/mongo/crypto/fle_fields',
+            "$BUILD_DIR/mongo/crypto/fle_crypto",
+            "$BUILD_DIR/mongo/crypto/fle_fields",
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/client/clientdriver_minimal',
-            '$BUILD_DIR/mongo/crypto/aead_encryption',
-            '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-            '$BUILD_DIR/mongo/db/auth/security_token_auth',
-            '$BUILD_DIR/mongo/scripting/scripting',
-            '$BUILD_DIR/mongo/shell/encrypted_dbclient',
-            '$BUILD_DIR/third_party/mozjs/mozjs',
-            '../query_analysis/query_analysis',
+            "$BUILD_DIR/mongo/client/clientdriver_minimal",
+            "$BUILD_DIR/mongo/crypto/aead_encryption",
+            "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+            "$BUILD_DIR/mongo/db/auth/security_token_auth",
+            "$BUILD_DIR/mongo/scripting/scripting",
+            "$BUILD_DIR/mongo/shell/encrypted_dbclient",
+            "$BUILD_DIR/third_party/mozjs/mozjs",
+            "../query_analysis/query_analysis",
         ],
         LIBDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/shell/mongo_initializers',
+            "$BUILD_DIR/mongo/shell/mongo_initializers",
         ],
         # TODO: this tag must be used because the tcmalloc library is added
         # as public dependency for each Library: https://jira.mongodb.org/browse/SERVER-49788
         LIBDEPS_TAGS=[
-            'lint-allow-nonprivate-on-deps-dependents',
+            "lint-allow-nonprivate-on-deps-dependents",
         ],
     )

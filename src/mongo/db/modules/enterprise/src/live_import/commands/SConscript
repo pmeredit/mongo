@@ -2,70 +2,70 @@
 
 Import("env")
 env.Library(
-    target='import_collection_command',
+    target="import_collection_command",
     source=[
-        'import_collection_command.cpp',
-        'import_collection.idl',
+        "import_collection_command.cpp",
+        "import_collection.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/commands',
-        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '../collection_properties',
-        '../import_collection',
+        "$BUILD_DIR/mongo/db/auth/auth",
+        "$BUILD_DIR/mongo/db/commands",
+        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "../collection_properties",
+        "../import_collection",
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/commands/mongod',
+        "$BUILD_DIR/mongo/db/commands/mongod",
     ],
     LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
+        "lint-allow-nonprivate-on-deps-dependents",
     ],
 )
 
 env.Library(
-    target='export_collection_command',
+    target="export_collection_command",
     source=[
-        'export_collection_command.cpp',
-        'export_collection.idl',
+        "export_collection_command.cpp",
+        "export_collection.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/commands',
-        '$BUILD_DIR/mongo/db/global_settings',
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '../export_collection',
+        "$BUILD_DIR/mongo/db/auth/auth",
+        "$BUILD_DIR/mongo/db/commands",
+        "$BUILD_DIR/mongo/db/global_settings",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "../export_collection",
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/commands/mongod',
+        "$BUILD_DIR/mongo/db/commands/mongod",
     ],
     LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
+        "lint-allow-nonprivate-on-deps-dependents",
     ],
 )
 
 env.Library(
-    target='vote_commit_import_collection_command',
+    target="vote_commit_import_collection_command",
     source=[
-        'vote_commit_import_collection_command.cpp',
-        'vote_commit_import_collection.idl',
+        "vote_commit_import_collection_command.cpp",
+        "vote_commit_import_collection.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/commands',
-        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/util/fail_point',
-        '../import_collection_coordinator',
+        "$BUILD_DIR/mongo/db/auth/auth",
+        "$BUILD_DIR/mongo/db/commands",
+        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/util/fail_point",
+        "../import_collection_coordinator",
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/commands/mongod',
+        "$BUILD_DIR/mongo/db/commands/mongod",
     ],
     LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
+        "lint-allow-nonprivate-on-deps-dependents",
     ],
 )

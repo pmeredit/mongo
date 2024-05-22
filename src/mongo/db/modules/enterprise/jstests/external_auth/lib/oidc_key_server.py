@@ -25,12 +25,14 @@ import urllib
 
 import oidc_vars_gen
 
-jwk_map={}
+jwk_map = {}
+
 
 class KeyServerHandler(http.server.BaseHTTPRequestHandler):
     """
     Handle requests for OIDC keys.
     """
+
     protocol_version = "HTTP/1.1"
 
     # /rotateKeys endpoint allows for key rotation.
@@ -38,16 +40,16 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
         global jwk_map
 
         query_dict = urllib.parse.parse_qs(parts.query)
-        new_jwk_map_str = query_dict.get('map', None)
+        new_jwk_map_str = query_dict.get("map", None)
         if new_jwk_map_str is None:
             msg = "Map query parameter not provided"
             return self.reply(msg, "text/plain", http.HTTPStatus.BAD_REQUEST)
-    
+
         print("New JWK map: " + new_jwk_map_str[0])
         jwk_map = json.loads(new_jwk_map_str[0])
         self.send_response(http.HTTPStatus.OK)
-        self.send_header('Content-Type', 'text/json')
-        self.send_header('Connection', 'close')
+        self.send_header("Content-Type", "text/json")
+        self.send_header("Connection", "close")
         self.end_headers()
         return None
 
@@ -58,9 +60,9 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
             "issuer": f"http://localhost:{port}/{issuer}",
             "authorization_endpoint": f"http://localhost:{port}/{issuer}/authorize",
             "token_endpoint": f"http://localhost:{port}/{issuer}/token",
-            "jwks_uri":  f"http://localhost:{port}/{issuer}/jwks",
+            "jwks_uri": f"http://localhost:{port}/{issuer}/jwks",
         }
-        return self.reply(json.dumps(metadata), "text/json", http.HTTPStatus.OK) 
+        return self.reply(json.dumps(metadata), "text/json", http.HTTPStatus.OK)
 
     # Emit an issuer's JWKS
     def doJWKS(self, issuer):
@@ -71,7 +73,7 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
             msg = "Unknown URL".encode()
             return self.reply(msg, "text/plain", http.HTTPStatus.NOT_FOUND)
 
-        jwk = open(jwk_file, 'rb').read()
+        jwk = open(jwk_file, "rb").read()
         self.reply(jwk, "text/json", http.HTTPStatus.OK)
 
     def do_GET(self):
@@ -80,8 +82,8 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
         parts = urllib.parse.urlsplit(self.path)
         path = parts.path
 
-        match path.split('/')[1:]:
-            case ['rotateKeys']:
+        match path.split("/")[1:]:
+            case ["rotateKeys"]:
                 return self.doRotateKeys(parts)
             case [issuer, ".well-known", "openid-configuration"]:
                 return self.doOpenIdConfiguration(issuer)
@@ -93,7 +95,7 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
 
     def reply(self, msg, contentType, err):
         self.send_response(err)
-        self.send_header("Content-Type", contentType);
+        self.send_header("Content-Type", contentType)
         self.send_header("Content-Length", str(len(msg)))
         self.end_headers()
         if not isinstance(msg, bytes):
@@ -101,15 +103,16 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(msg)
         return None
 
+
 def main():
     """Main Method."""
     global jwk_map
 
-    parser = argparse.ArgumentParser(description='MongoDB OIDC Key Server.')
+    parser = argparse.ArgumentParser(description="MongoDB OIDC Key Server.")
 
-    parser.add_argument('-p', '--port', type=int, default=8000, help="Port to listen on")
-    parser.add_argument('-v', '--verbose', action='count', help="Enable verbose tracing")
-    parser.add_argument('jwk', type=str, help="Map of keyfiles to return")
+    parser.add_argument("-p", "--port", type=int, default=8000, help="Port to listen on")
+    parser.add_argument("-v", "--verbose", action="count", help="Enable verbose tracing")
+    parser.add_argument("jwk", type=str, help="Map of keyfiles to return")
 
     args = parser.parse_args()
     if args.verbose:
@@ -117,10 +120,11 @@ def main():
 
     jwk_map = json.loads(args.jwk)
 
-    server_address = ('', args.port)
+    server_address = ("", args.port)
     httpd = http.server.HTTPServer(server_address, KeyServerHandler)
     print("OIDC Key Server Listening on %s" % (str(server_address)))
     httpd.serve_forever()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

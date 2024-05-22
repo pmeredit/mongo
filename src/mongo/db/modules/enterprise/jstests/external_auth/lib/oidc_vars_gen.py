@@ -35,16 +35,18 @@ import sys
 from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
-ENTERPRISE='src/mongo/db/modules/enterprise/'
+ENTERPRISE = "src/mongo/db/modules/enterprise/"
 # Default config file to use if one is not specified.
-CONFIGFILE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.yml'
+CONFIGFILE = ENTERPRISE + "jstests/external_auth/lib/oidc_vars.yml"
 
 # Default Cheetah template to use if one is not specified.
-OUTPUT_TEMPLATE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.js.tpl'
+OUTPUT_TEMPLATE = ENTERPRISE + "jstests/external_auth/lib/oidc_vars.js.tpl"
 
-def base64url_decode(s :str) -> bytes:
+
+def base64url_decode(s: str) -> bytes:
     """Wrap base64.urlsafe_b64decode() to account for python being strict about padding."""
-    return base64.urlsafe_b64decode(s + '===='[0:4 - (len(s) % 4)])
+    return base64.urlsafe_b64decode(s + "===="[0 : 4 - (len(s) % 4)])
+
 
 def assert_required_str_field(mapping: Dict, fieldName: str) -> None:
     """Raise an error if the mapping field does not exist or is not a string."""
@@ -53,7 +55,10 @@ def assert_required_str_field(mapping: Dict, fieldName: str) -> None:
 
     value = mapping[fieldName]
     if type(value) is not str:
-        raise ValueError("Invalid type for string field '%s', got '%s' ': %r" % (fieldName, type(value), value))
+        raise ValueError(
+            "Invalid type for string field '%s', got '%s' ': %r" % (fieldName, type(value), value)
+        )
+
 
 def get_nonempty_str_field(mapping: Dict, fieldName: str) -> str:
     """Extract a string field and assert it contains a value."""
@@ -62,74 +67,94 @@ def get_nonempty_str_field(mapping: Dict, fieldName: str) -> str:
         raise ValueError("Field '%s' value must be a non-empty string in %r" % (fieldName, mapping))
     return mapping[fieldName]
 
-def get_varname_field(mapping :Dict, fieldName :str, optional :bool =False) -> Optional[str]:
+
+def get_varname_field(mapping: Dict, fieldName: str, optional: bool = False) -> Optional[str]:
     """Extract a string field and validate it can be used as a varname."""
     if optional and (fieldName not in mapping):
         return None
     label = get_nonempty_str_field(mapping, fieldName)
     if re.match(r"^[a-zA-Z_]([a-zA-Z0-9_])*$", label) is None:
-        raise ValueError("%s must be a valid label using only alpha or underscore characters, or a digit not in the first position, got: %r" % (fieldName, label))
+        raise ValueError(
+            "%s must be a valid label using only alpha or underscore characters, or a digit not in the first position, got: %r"
+            % (fieldName, label)
+        )
     return label
 
-class Global():
-    def __init__(self, spec :Dict):
+
+class Global:
+    def __init__(self, spec: Dict):
         """Construct an instance of Global."""
-        self.tokens_varname = get_varname_field(spec, 'tokens_varname', optional=True) or 'kOIDCTokens'
-        self.payloads_varname = get_varname_field(spec, 'payloads_varname', optional=True) or 'kOIDCPayloads'
+        self.tokens_varname = (
+            get_varname_field(spec, "tokens_varname", optional=True) or "kOIDCTokens"
+        )
+        self.payloads_varname = (
+            get_varname_field(spec, "payloads_varname", optional=True) or "kOIDCPayloads"
+        )
 
-class Token():
-    def formatBody(self, spec :Any) -> str:
-      if isinstance(spec, str):
-        return f"`{spec}`"
-      elif isinstance(spec, Dict):
-        result = "{"
-        for (k,v) in spec.items():
-          result += f'"{k}": {self.formatBody(v)},'
-        result += "}"
-        return result
-      else:
-        return str(spec)
 
-    def __init__(self, spec :Dict):
+class Token:
+    def formatBody(self, spec: Any) -> str:
+        if isinstance(spec, str):
+            return f"`{spec}`"
+        elif isinstance(spec, Dict):
+            result = "{"
+            for k, v in spec.items():
+                result += f'"{k}": {self.formatBody(v)},'
+            result += "}"
+            return result
+        else:
+            return str(spec)
+
+    def __init__(self, spec: Dict):
         """Construct an instance of Token."""
-        self.name :str = get_nonempty_str_field(spec, 'name')
-        self.kid :str = get_nonempty_str_field(spec, 'kid')
-        self.key :str = get_nonempty_str_field(spec, 'key')
-        self.alg :str = get_nonempty_str_field(spec, 'alg')
+        self.name: str = get_nonempty_str_field(spec, "name")
+        self.kid: str = get_nonempty_str_field(spec, "kid")
+        self.key: str = get_nonempty_str_field(spec, "key")
+        self.alg: str = get_nonempty_str_field(spec, "alg")
         if not os.path.exists(self.key):
             raise ValueError("Token %s: 'key' field must point to an extant file")
-        if self.alg not in ['RS256', 'RS384', 'RS512']:
-            raise ValueError("Token %s: Only RS256/384/512 algorithms supported, got '%s'" % (self.name, self.alg))
+        if self.alg not in ["RS256", "RS384", "RS512"]:
+            raise ValueError(
+                "Token %s: Only RS256/384/512 algorithms supported, got '%s'"
+                % (self.name, self.alg)
+            )
 
-        self.body :Dict = spec.get('body', {})
+        self.body: Dict = spec.get("body", {})
         if not isinstance(self.body, Dict):
-            raise ValueError("Token %s: Body must be a dictionary of key/value pairs, got: %r" % (self.name, self.body))
+            raise ValueError(
+                "Token %s: Body must be a dictionary of key/value pairs, got: %r"
+                % (self.name, self.body)
+            )
         for k, v in self.body.copy().items():
             if v is None:
                 del self.body[k]
 
-        self.token :str = f'''OIDCsignJWT({{kid: "{self.kid}"}},{self.formatBody(self.body)}, "{self.key}", "{self.alg}")'''
-        self.header :Dict = {
+        self.token: str = f"""OIDCsignJWT({{kid: "{self.kid}"}},{self.formatBody(self.body)}, "{self.key}", "{self.alg}")"""
+        self.header: Dict = {
             "typ": "JWT",
             "kid": self.kid,
             "alg": self.alg,
         }
 
-class Payload():
+
+class Payload:
     def __init__(self, spec, tokens_by_name):
         """Construct an instance of Payload."""
-        self.referenced_tokens :List[str] = []
-        self.name :str = get_nonempty_str_field(spec, 'name')
-        self.spec :Dict = spec.get('data', {});
+        self.referenced_tokens: List[str] = []
+        self.name: str = get_nonempty_str_field(spec, "name")
+        self.spec: Dict = spec.get("data", {})
         if not isinstance(self.spec, Dict):
-            raise ValueError("Payload %s: Data must be a dictionary of key/value pairs, got: %r" %(self.name, self.spec))
+            raise ValueError(
+                "Payload %s: Data must be a dictionary of key/value pairs, got: %r"
+                % (self.name, self.spec)
+            )
         self.data = self.interpolate(self.spec, tokens_by_name)
-        self.bson :str = f'OIDCgenerateBSON({self.data})'
+        self.bson: str = f"OIDCgenerateBSON({self.data})"
 
-    def interpolate(self, spec :Any, tokens_by_name :Dict[str, Token]) -> str:
+    def interpolate(self, spec: Any, tokens_by_name: Dict[str, Token]) -> str:
         """Substitute computed tokens for any string formatted as "token:name"."""
         if type(spec) is str:
-            if spec.startswith('token:'):
+            if spec.startswith("token:"):
                 token_name = spec[6:]
                 token = tokens_by_name.get(token_name)
                 if token is None:
@@ -139,37 +164,54 @@ class Payload():
             return f'"{spec}"'
         if isinstance(spec, Dict):
             result = "{"
-            for (k,v) in spec.items():
-              result += f'"{k}": {self.interpolate(v, tokens_by_name)},'
+            for k, v in spec.items():
+                result += f'"{k}": {self.interpolate(v, tokens_by_name)},'
             result += "}"
             return result
         return str(spec)
 
+
 def parse_command_line() -> argparse.Namespace:
     """Accept a named config file."""
-    parser = argparse.ArgumentParser(description='OIDCVars generator')
-    parser.add_argument('--config', help='OIDC vars defintion file', type=str, default=CONFIGFILE)
-    parser.add_argument('--template', help='Cheetah template to render', type=str, default=OUTPUT_TEMPLATE)
-    parser.add_argument('--output', help='Destination file for generated vars (default: stdout)', type=str, default='-')
+    parser = argparse.ArgumentParser(description="OIDCVars generator")
+    parser.add_argument("--config", help="OIDC vars defintion file", type=str, default=CONFIGFILE)
+    parser.add_argument(
+        "--template", help="Cheetah template to render", type=str, default=OUTPUT_TEMPLATE
+    )
+    parser.add_argument(
+        "--output",
+        help="Destination file for generated vars (default: stdout)",
+        type=str,
+        default="-",
+    )
     return parser.parse_args()
+
 
 def main():
     """Go go go."""
     args = parse_command_line()
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.FullLoader)
+    config = yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
 
-    tokens = [Token(spec) for spec in config['tokens']]
-    tokens_by_name = {token.name:token for token in tokens}
+    tokens = [Token(spec) for spec in config["tokens"]]
+    tokens_by_name = {token.name: token for token in tokens}
 
     template_args = {
-        'tokens': tokens,
-        'payloads': [Payload(spec, tokens_by_name) for spec in config['payloads']],
-        'global': Global(config.get('global', {})),
+        "tokens": tokens,
+        "payloads": [Payload(spec, tokens_by_name) for spec in config["payloads"]],
+        "global": Global(config.get("global", {})),
     }
 
-    dest = sys.stdout if args.output == '-' else open(args.output, 'w')
-    template = Template.compile(file=args.template, compilerSettings=dict(directiveStartToken="//#", directiveEndToken="//#", commentStartToken="//##"), baseclass=dict, useCache=False)
+    dest = sys.stdout if args.output == "-" else open(args.output, "w")
+    template = Template.compile(
+        file=args.template,
+        compilerSettings=dict(
+            directiveStartToken="//#", directiveEndToken="//#", commentStartToken="//##"
+        ),
+        baseclass=dict,
+        useCache=False,
+    )
     dest.write(str(template(**template_args)))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

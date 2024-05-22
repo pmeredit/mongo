@@ -15,12 +15,13 @@ from ldaptor.protocols import pureber, pureldap
 
 class Options(usage.Options):
     optParameters = [
-        [ "targetHost", "t", "localhost", "The hostname of the local LDAP server", str ],
-        [ "targetPort", "P", "10389", "The port to proxy connections to", int ],
-        [ "group", "g", "", "The DN of group to modify", str ],
-        [ "user", "u", "", "The DN of the user to add or delete to group", str ],
-        [ "modifyAction", "m", "add", "If changetype is modify, set this to add or delete", str ],
+        ["targetHost", "t", "localhost", "The hostname of the local LDAP server", str],
+        ["targetPort", "P", "10389", "The port to proxy connections to", int],
+        ["group", "g", "", "The DN of group to modify", str],
+        ["user", "u", "", "The DN of the user to add or delete to group", str],
+        ["modifyAction", "m", "add", "If changetype is modify, set this to add or delete", str],
     ]
+
 
 def options_to_modify_op(group, user, modify_action):
     """
@@ -48,42 +49,34 @@ def options_to_modify_op(group, user, modify_action):
 
     return modifications
 
+
 @defer.inlineCallbacks
 def onConnect(client, group, user, modify_action):
     modifications = options_to_modify_op(group, user, modify_action)
-    
+
     # Modify memberOf attribute in user entry.
     op = pureldap.LDAPModifyRequest(user, modification=[modifications[0]])
     response = yield client.send(op)
     if response.resultCode != 0:
-        log.err(
-            "DIT reported error code {}: {}".format(
-                response.resultCode, response.errorMessage
-            )
-        )
+        log.err("DIT reported error code {}: {}".format(response.resultCode, response.errorMessage))
         raise Exception("Failed to modify memberOf attribute in user entry")
-    
+
     # Modify member attribute in group entry.
     op = pureldap.LDAPModifyRequest(group, modification=[modifications[1]])
     response = yield client.send(op)
     if response.resultCode != 0:
-        log.err(
-            "DIT reported error code {}: {}".format(
-                response.resultCode, response.errorMessage
-            )
-        )
+        log.err("DIT reported error code {}: {}".format(response.resultCode, response.errorMessage))
         raise Exception("Failed to modify member attribute in group entry")
 
     # Print new user and group.
     searchReq = LDAPEntry(client, "dc=10gen,dc=cc")
-    user_cn = user.split(',')[0][3:]
-    print('user_cn', user_cn)
-    group_cn = group.split(',')[0][3:]
-    print('group_cn', group_cn)
+    user_cn = user.split(",")[0][3:]
+    print("user_cn", user_cn)
+    group_cn = group.split(",")[0][3:]
+    print("group_cn", group_cn)
     results = yield searchReq.search(filterText="(|(cn={})(cn={}))".format(user_cn, group_cn))
     data = "".join([result.getLDIF() for result in results])
-    print('User and group after modification:', data)
-    
+    print("User and group after modification:", data)
 
 
 def onError(err, reactor):
@@ -98,14 +91,14 @@ def main(reactor):
     try:
         config.parseOptions()
     except usage.UsageError as errortext:
-        print('{}: {}'.format(sys.argv[0], errortext))
-        print('{}: Try --help for usage details'.format(sys.argv[0]))
+        print("{}: {}".format(sys.argv[0], errortext))
+        print("{}: Try --help for usage details".format(sys.argv[0]))
         sys.exit(1)
 
     endpoint_str = "tcp:host={}:port={}".format(config["targetHost"], config["targetPort"])
     e = clientFromString(reactor, endpoint_str)
     d = connectProtocol(e, LDAPClient())
-    d.addCallback(onConnect, config['group'], config['user'], config['modifyAction'])
+    d.addCallback(onConnect, config["group"], config["user"], config["modifyAction"])
     d.addErrback(onError, reactor)
     return d
 

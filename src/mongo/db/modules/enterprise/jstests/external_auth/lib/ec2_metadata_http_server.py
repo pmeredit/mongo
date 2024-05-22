@@ -27,6 +27,7 @@ SUPPORTED_FAULT_TYPES = [
 IMDS_API_TOKEN = "SECRET_API_TOKEN"
 IMDS_METADATA_TOKEN_HEADER = "x-aws-ec2-metadata-token"
 
+
 class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
     """
     Handle requests from AWS EC2 Metadata Monitoring and test commands
@@ -73,7 +74,6 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write("Unknown URL".encode())
 
-
     def _send_reply(self, data, status=http.HTTPStatus.OK):
         print("Sending Response: " + data.decode())
 
@@ -84,7 +84,6 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
 
         self.wfile.write(data)
 
-
     def _send_header(self):
         self.send_response(http.HTTPStatus.OK)
         self.send_header("content-type", "application/octet-stream")
@@ -93,12 +92,12 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
     def _do_api_token(self):
         self._send_header()
 
-        self.wfile.write(IMDS_API_TOKEN.encode('utf-8'))
+        self.wfile.write(IMDS_API_TOKEN.encode("utf-8"))
 
     def _do_security_credentials(self):
         self._send_header()
 
-        self.wfile.write(str("mock_role").encode('utf-8'))
+        self.wfile.write(str("mock_role").encode("utf-8"))
 
     def _do_security_credentials_mock_role(self):
         if fault_type == FAULT_500:
@@ -106,7 +105,7 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
 
         self._send_header()
 
-        user = aws_common.get_users()['tempUser']
+        user = aws_common.get_users()["tempUser"]
         str1 = f"""{{
   "Code" : "Success",
   "LastUpdated" : "2019-11-20T17:19:19Z",
@@ -117,7 +116,7 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
   "Expiration" : "2019-11-20T23:37:45Z"
 }}"""
 
-        self.wfile.write(str1.encode('utf-8'))
+        self.wfile.write(str1.encode("utf-8"))
 
     def _do_security_credentials_mock_role_faults(self):
         if fault_type == FAULT_500:
@@ -129,7 +128,7 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
 
 def run(port, server_class=http.server.HTTPServer, handler_class=AwsEC2MetadataHandler):
     """Run web server."""
-    server_address = ('', port)
+    server_address = ("", port)
 
     httpd = server_class(server_address, handler_class)
 
@@ -143,13 +142,13 @@ def main():
     global fault_type
     global disable_faults
 
-    parser = argparse.ArgumentParser(description='MongoDB Mock AWS EC2 Metadata Endpoint.')
+    parser = argparse.ArgumentParser(description="MongoDB Mock AWS EC2 Metadata Endpoint.")
 
-    parser.add_argument('-p', '--port', type=int, default=8000, help="Port to listen on")
+    parser.add_argument("-p", "--port", type=int, default=8000, help="Port to listen on")
 
-    parser.add_argument('-v', '--verbose', action='count', help="Enable verbose tracing")
+    parser.add_argument("-v", "--verbose", action="count", help="Enable verbose tracing")
 
-    parser.add_argument('--fault', type=str, help="Type of fault to inject")
+    parser.add_argument("--fault", type=str, help="Type of fault to inject")
 
     args = parser.parse_args()
     if args.verbose:
@@ -157,7 +156,10 @@ def main():
 
     if args.fault:
         if args.fault not in SUPPORTED_FAULT_TYPES:
-            print("Unsupported fault type %s, supports types are %s" % (args.fault, SUPPORTED_FAULT_TYPES))
+            print(
+                "Unsupported fault type %s, supports types are %s"
+                % (args.fault, SUPPORTED_FAULT_TYPES)
+            )
             sys.exit(1)
 
         fault_type = args.fault
@@ -165,6 +167,5 @@ def main():
     run(args.port)
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     main()

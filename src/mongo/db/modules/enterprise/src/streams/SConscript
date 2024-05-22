@@ -1,12 +1,12 @@
 # -*- mode: python -*-
 
-Import('env')
+Import("env")
 
 env = env.Clone()
 
-dirs = ['commands', 'exec', 'management', 'tools', 'third_party', 'util']
+dirs = ["commands", "exec", "management", "tools", "third_party", "util"]
 
 # TODO(SERVER-74961): add something like InjectStreamsThirdParty('mongocxx') to make this easier.
-env['MONGOCXX_DIR'] = '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist'
+env["MONGOCXX_DIR"] = "$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist"
 
-env.SConscript(dirs=dirs, exports=['env'])
+env.SConscript(dirs=dirs, exports=["env"])

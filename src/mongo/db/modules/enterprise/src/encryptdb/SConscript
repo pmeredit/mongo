@@ -1,187 +1,188 @@
 # -*- mode: python -*-
-Import('env')
-Import('wiredtiger')
-Import('get_option')
+Import("env")
+Import("wiredtiger")
+Import("get_option")
 
 env = env.Clone()
 
 using_ubsan = False
-sanitizer_list = get_option('sanitize')
+sanitizer_list = get_option("sanitize")
 if sanitizer_list:
-    using_ubsan = 'undefined' in sanitizer_list.split(',')
+    using_ubsan = "undefined" in sanitizer_list.split(",")
 
 if not wiredtiger:
-    env.FatalError('EncryptedStorage requires WiredTiger')
+    env.FatalError("EncryptedStorage requires WiredTiger")
 
 wtEnv = env.Clone()
-wtEnv.InjectThirdParty(libraries=['wiredtiger'])
-if env.TargetOSIs('darwin', 'macOS'):
-    wtEnv.Append(CPPDEFINES=['DISABLE_GCM_TESTVECTORS'])
+wtEnv.InjectThirdParty(libraries=["wiredtiger"])
+if env.TargetOSIs("darwin", "macOS"):
+    wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"])
 
 wtEnv.Library(
-    target='encryption_key_manager_aux',
+    target="encryption_key_manager_aux",
     source=[
-        'encryption_key_manager_init.cpp',
-        'encryption_server_status.cpp',
+        "encryption_key_manager_init.cpp",
+        "encryption_server_status.cpp",
     ],
     LIBDEPS=[
-        '../../symmetric_crypto_enterprise',
-        'encryptdb',
+        "../../symmetric_crypto_enterprise",
+        "encryptdb",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/commands/server_status_core',
-        '$BUILD_DIR/mongo/db/shard_role_api',
+        "$BUILD_DIR/mongo/db/commands/server_status_core",
+        "$BUILD_DIR/mongo/db/shard_role_api",
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/mongod_initializers',
+        "$BUILD_DIR/mongo/db/mongod_initializers",
     ],
     LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
+        "lint-allow-nonprivate-on-deps-dependents",
     ],
 )
 
 env.Library(
-    target='keystore_metadata',
+    target="keystore_metadata",
     source=[
-        'keystore_metadata.idl',
-        'keystore_metadata.cpp',
+        "keystore_metadata.idl",
+        "keystore_metadata.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        '../../symmetric_crypto_enterprise',
+        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+        "../../symmetric_crypto_enterprise",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/storage/storage_engine_metadata",
     ],
 )
 
 wtEnv.Library(
-    target='encryptdb',
+    target="encryptdb",
     source=[
-        'keystore_data_store.cpp',
-        'keystore.cpp',
-        'encrypted_data_protector.cpp',
-        'encryption_key_manager.cpp',
-        'wiredtiger_encryption_callbacks.cpp',
-        'encryption_key_manager.idl',
+        "keystore_data_store.cpp",
+        "keystore.cpp",
+        "encrypted_data_protector.cpp",
+        "encryption_key_manager.cpp",
+        "wiredtiger_encryption_callbacks.cpp",
+        "encryption_key_manager.idl",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        '$BUILD_DIR/mongo/db/storage/encryption_hooks',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
-        '$BUILD_DIR/third_party/shim_wiredtiger',
+        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+        "$BUILD_DIR/mongo/db/storage/encryption_hooks",
+        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
+        "$BUILD_DIR/third_party/shim_wiredtiger",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/catalog/catalog_impl',
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '../../symmetric_crypto_enterprise',
-        'key_acquisition',
-        'keystore_metadata',
+        "$BUILD_DIR/mongo/db/catalog/catalog_impl",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "../../symmetric_crypto_enterprise",
+        "key_acquisition",
+        "keystore_metadata",
     ],
     EXPORT_SYMBOLS=[
-        'mongo_addWiredTigerEncryptors',
+        "mongo_addWiredTigerEncryptors",
     ],
 )
 
 env.Library(
-    target='log_redact_options',
+    target="log_redact_options",
     source=[
-        'log_redact_options.cpp',
-        'log_redact_options.idl',
+        "log_redact_options.cpp",
+        "log_redact_options.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser",
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/s/mongos_initializers',
+        "$BUILD_DIR/mongo/s/mongos_initializers",
     ],
     LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
-        'lint-allow-bidirectional-edges',
+        "lint-allow-nonprivate-on-deps-dependents",
+        "lint-allow-bidirectional-edges",
     ],
 )
 
 env.Library(
-    target='key_acquisition',
+    target="key_acquisition",
     source=[
-        'encryption_key_acquisition.cpp',
+        "encryption_key_acquisition.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/security_file',
-        '$BUILD_DIR/mongo/db/modules/enterprise/kmip',
+        "$BUILD_DIR/mongo/db/auth/security_file",
+        "$BUILD_DIR/mongo/db/modules/enterprise/kmip",
     ],
 )
 
 wtEnv.CppUnitTest(
-    target='enterprise_encryptdb_test',
+    target="enterprise_encryptdb_test",
     source=[
-        'keystore_metadata_test.cpp',
-        'keystore_test.cpp',
-        'encryption_layout_test.cpp',
-        'remove_saver_test.cpp',
+        "keystore_metadata_test.cpp",
+        "keystore_test.cpp",
+        "encryption_layout_test.cpp",
+        "remove_saver_test.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/db/storage/remove_saver',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
-        '$BUILD_DIR/mongo/rpc/rpc',
-        '$BUILD_DIR/mongo/util/net/network',
-        '../../kmip',
-        '../../kmip_configuration',
-        '../../symmetric_crypto_enterprise',
-        'encryptdb',
-        'keystore_metadata',
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/db/storage/remove_saver",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
+        "$BUILD_DIR/mongo/rpc/rpc",
+        "$BUILD_DIR/mongo/util/net/network",
+        "../../kmip",
+        "../../kmip_configuration",
+        "../../symmetric_crypto_enterprise",
+        "encryptdb",
+        "keystore_metadata",
     ],
 )
 
 if not using_ubsan:
     wtEnv.CppUnitTest(
-        target='enterprise_encryptdb_noubsan_test',
+        target="enterprise_encryptdb_noubsan_test",
         source=[
-            'wiredtiger_encryption_test.cpp',
+            "wiredtiger_encryption_test.cpp",
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/db/auth/authmocks',
-            '$BUILD_DIR/mongo/db/auth/security_file',
-            '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-            '$BUILD_DIR/mongo/db/shard_role_api',
-            '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
-            '$BUILD_DIR/mongo/util/net/network',
-            '../../symmetric_crypto_enterprise',
-            'encryptdb',
+            "$BUILD_DIR/mongo/db/auth/authmocks",
+            "$BUILD_DIR/mongo/db/auth/security_file",
+            "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+            "$BUILD_DIR/mongo/db/shard_role_api",
+            "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
+            "$BUILD_DIR/mongo/util/net/network",
+            "../../symmetric_crypto_enterprise",
+            "encryptdb",
         ],
     )
 
 env.Program(
-    target='mongodecrypt',
+    target="mongodecrypt",
     source=[
-        'decrypt_tool.cpp',
-        'decrypt_tool_options.cpp',
-        'decrypt_tool_options.idl',
-    ] + env.WindowsResourceFile('decrypt_tool.rc'),
-    AIB_COMPONENT='mongodecrypt',
+        "decrypt_tool.cpp",
+        "decrypt_tool_options.cpp",
+        "decrypt_tool_options.idl",
+    ]
+    + env.WindowsResourceFile("decrypt_tool.rc"),
+    AIB_COMPONENT="mongodecrypt",
     AIB_COMPONENTS_EXTRA=[
-        'dist',
-        'dist-test',
-        'tools',
+        "dist",
+        "dist-test",
+        "tools",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
-        '$BUILD_DIR/mongo/db/log_process_details',
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
-        '$BUILD_DIR/mongo/util/signal_handlers',
-        '$BUILD_DIR/mongo/util/version_impl',
-        '../../kmip',
-        '../../symmetric_crypto_enterprise',
-        'key_acquisition',
+        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
+        "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
+        "../../kmip",
+        "../../symmetric_crypto_enterprise",
+        "key_acquisition",
     ],
 )

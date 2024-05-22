@@ -28,32 +28,43 @@ env = env.Clone()
 if env.ShouldBuildStreams():
     feature_dirs.append("streams")
 
-if get_option('lint-scope') == 'changed':
+if get_option("lint-scope") == "changed":
     patch_file = env.Command(
         target="$BUILD_DIR/current.enterprise.git.patch",
         source=[env.WhereIs("git"), env.Dir(".").srcnode().get_abspath()],
-        action="cd ${SOURCES[1]} && ${SOURCES[0]} diff $GITDIFFFLAGS > ${TARGET.abspath}")
+        action="cd ${SOURCES[1]} && ${SOURCES[0]} diff $GITDIFFFLAGS > ${TARGET.abspath}",
+    )
 
     env.AlwaysBuild(patch_file)
 
-    pylinters = env.Command(target="#lint-pylinters-enterprise", source=[
-        "#buildscripts/pylinters.py"
-    ], action="$PYTHON ${SOURCES[0]} lint")
+    pylinters = env.Command(
+        target="#lint-pylinters-enterprise",
+        source=["#buildscripts/pylinters.py"],
+        action="$PYTHON ${SOURCES[0]} lint",
+    )
 
-    clang_format = env.Command(target="#lint-clang-format-enterprise", source=[
-        "#buildscripts/clang_format.py",
-        patch_file,
-    ], action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}")
+    clang_format = env.Command(
+        target="#lint-clang-format-enterprise",
+        source=[
+            "#buildscripts/clang_format.py",
+            patch_file,
+        ],
+        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}",
+    )
 
-    eslint = env.Command(target="#lint-eslint-enterprise", source=[
-        "#buildscripts/eslint.py",
-        patch_file,
-    ], action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}")
+    eslint = env.Command(
+        target="#lint-eslint-enterprise",
+        source=[
+            "#buildscripts/eslint.py",
+            patch_file,
+        ],
+        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}",
+    )
 
     env.Alias("lint-fast", [eslint, clang_format, pylinters])
     env.Alias("lint", [eslint, clang_format, pylinters])
 
-if set(['fle']).issubset(set(env['MONGO_ENTERPRISE_FEATURES'])):
+if set(["fle"]).issubset(set(env["MONGO_ENTERPRISE_FEATURES"])):
     print(
         "This is an Mongo Crypt Shared only build. Allowing to build with no http client and SSL libs."
     )
@@ -68,118 +79,132 @@ env.InjectMongoIncludePaths()
 env.InjectModule("enterprise", builder=True, consumer=False)
 
 # Code in the enterprise module follows the basic.h practices of the community repo.
-env.AppendUnique(FORCEINCLUDES=[
-    'mongo/platform/basic.h',
-], )
-
-env.SConscript(
-    dirs=['src/util'] + [
-        "src/%s" % feature
-        for feature in env.Flatten(feature_dirs) if feature in env['MONGO_ENTERPRISE_FEATURES']
-    ],
-    exports=[
-        'env',
+env.AppendUnique(
+    FORCEINCLUDES=[
+        "mongo/platform/basic.h",
     ],
 )
 
-if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTERPRISE_FEATURES']:
+env.SConscript(
+    dirs=["src/util"]
+    + [
+        "src/%s" % feature
+        for feature in env.Flatten(feature_dirs)
+        if feature in env["MONGO_ENTERPRISE_FEATURES"]
+    ],
+    exports=[
+        "env",
+    ],
+)
+
+if "encryptdb" in env["MONGO_ENTERPRISE_FEATURES"] or "audit" in env["MONGO_ENTERPRISE_FEATURES"]:
     env.Library(
-        target='kmip_configuration',
+        target="kmip_configuration",
         source=[
-            'src/kmip/kmip_options.idl',
+            "src/kmip/kmip_options.idl",
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            "$BUILD_DIR/mongo/util/options_parser/options_parser",
         ],
         LIBDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/db/mongod_initializers',
-            '$BUILD_DIR/mongo/s/mongos_initializers',
+            "$BUILD_DIR/mongo/db/mongod_initializers",
+            "$BUILD_DIR/mongo/s/mongos_initializers",
         ],
         LIBDEPS_TAGS=[
-            'lint-allow-nonprivate-on-deps-dependents',
-            'lint-allow-bidirectional-edges',
+            "lint-allow-nonprivate-on-deps-dependents",
+            "lint-allow-bidirectional-edges",
         ],
     )
 
     env.Library(
-        target='symmetric_crypto_enterprise',
+        target="symmetric_crypto_enterprise",
         source=[
-            'src/kmip/kmip_options.cpp',
-            'src/encryptdb/symmetric_crypto.cpp',
-            'src/encryptdb/symmetric_crypto_smoke.cpp',
-            'src/encryptdb/encryption_options.cpp',
-            'src/encryptdb/encryption_options.idl',
+            "src/kmip/kmip_options.cpp",
+            "src/encryptdb/symmetric_crypto.cpp",
+            "src/encryptdb/symmetric_crypto_smoke.cpp",
+            "src/encryptdb/encryption_options.cpp",
+            "src/encryptdb/encryption_options.idl",
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/base/secure_allocator',
-            '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-            '$BUILD_DIR/mongo/util/net/ssl_manager',
-            '$BUILD_DIR/mongo/util/secure_zero_memory',
-            'kmip_configuration',
+            "$BUILD_DIR/mongo/base/secure_allocator",
+            "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+            "$BUILD_DIR/mongo/util/net/ssl_manager",
+            "$BUILD_DIR/mongo/util/secure_zero_memory",
+            "kmip_configuration",
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/util/options_parser/options_parser',
-            'src/encryptdb/log_redact_options',
+            "$BUILD_DIR/mongo/util/options_parser/options_parser",
+            "src/encryptdb/log_redact_options",
         ],
     )
 
     env.Library(
-        target='kmip',
+        target="kmip",
         source=[
-            'src/kmip/kmip_key_active_periodic_job.cpp',
-            'src/kmip/kmip_request.cpp',
-            'src/kmip/kmip_response.cpp',
-            'src/kmip/kmip_service.cpp',
+            "src/kmip/kmip_key_active_periodic_job.cpp",
+            "src/kmip/kmip_request.cpp",
+            "src/kmip/kmip_response.cpp",
+            "src/kmip/kmip_service.cpp",
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-            '$BUILD_DIR/mongo/db/service_context',
-            '$BUILD_DIR/mongo/util/net/network',
-            'kmip_configuration',
-            'symmetric_crypto_enterprise',
+            "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+            "$BUILD_DIR/mongo/db/service_context",
+            "$BUILD_DIR/mongo/util/net/network",
+            "kmip_configuration",
+            "symmetric_crypto_enterprise",
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/db/server_base',
+            "$BUILD_DIR/mongo/db/server_base",
         ],
     )
 
     env.CppUnitTest(
-        target='kmip_test',
+        target="kmip_test",
         source=[
-            'src/kmip/kmip_request_test.cpp',
-            'src/kmip/kmip_response_test.cpp',
+            "src/kmip/kmip_request_test.cpp",
+            "src/kmip/kmip_response_test.cpp",
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/db/concurrency/lock_manager',
-            '$BUILD_DIR/mongo/db/server_base',
-            '$BUILD_DIR/mongo/transport/transport_layer_common',
-            'kmip',
-            'kmip_configuration',
+            "$BUILD_DIR/mongo/db/concurrency/lock_manager",
+            "$BUILD_DIR/mongo/db/server_base",
+            "$BUILD_DIR/mongo/transport/transport_layer_common",
+            "kmip",
+            "kmip_configuration",
         ],
     )
 
 if env.TargetOSIs("windows"):
     libs = []
 
-    if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
-        libs += [{
-            'files': ['libsasl.dll', 'libsasl.pdb'], 'component':
-                'windows-sasl-lib', 'components_extra': [
-                    'mongo', 'shell', 'mongod', 'mongos', 'core', 'servers', 'dist', 'dist-test'
-                ]
-        }]
+    if "sasl" in env["MONGO_ENTERPRISE_FEATURES"]:
+        libs += [
+            {
+                "files": ["libsasl.dll", "libsasl.pdb"],
+                "component": "windows-sasl-lib",
+                "components_extra": [
+                    "mongo",
+                    "shell",
+                    "mongod",
+                    "mongos",
+                    "core",
+                    "servers",
+                    "dist",
+                    "dist-test",
+                ],
+            }
+        ]
 
-    paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
+    paths = [str(env.Dir(libpath).Dir("..").Dir("bin")) for libpath in env.get("LIBPATH", [])]
 
     for lib in libs:
-        for lib_file in lib['files']:
+        for lib_file in lib["files"]:
             for path in paths:
                 full_file_name = os.path.join(os.path.normpath(path.lower()), lib_file)
                 if os.path.exists(full_file_name):
                     env.AutoInstall(
-                        target='$PREFIX_BINDIR',
+                        target="$PREFIX_BINDIR",
                         source=[full_file_name],
-                        AIB_COMPONENT=lib['component'],
-                        AIB_COMPONENTS_EXTRA=lib['components_extra'],
+                        AIB_COMPONENT=lib["component"],
+                        AIB_COMPONENTS_EXTRA=lib["components_extra"],
                         AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
                     )

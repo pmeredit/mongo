@@ -1,51 +1,51 @@
 # -*- mode: python -*-
 
-Import('env')
+Import("env")
 
 env = env.Clone()
 
 env.SConscript(
     dirs=[
-        'lib',
-        'query_analysis',
-        'shell',
+        "lib",
+        "query_analysis",
+        "shell",
     ],
     exports=[
-        'env',
+        "env",
     ],
 )
 
 env.Library(
-    target='cryptd_commands',
+    target="cryptd_commands",
     source=[
-        'commands/cryptd_buildinfo.cpp',
-        'commands/cryptd_ismaster.cpp',
-        'commands/cryptd_shutdown.cpp',
-        'commands/cryptd_markings_commands.cpp',
+        "commands/cryptd_buildinfo.cpp",
+        "commands/cryptd_ismaster.cpp",
+        "commands/cryptd_shutdown.cpp",
+        "commands/cryptd_markings_commands.cpp",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/commands',
-        '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
-        '$BUILD_DIR/mongo/db/query/common_query_enums_and_helpers',
-        '$BUILD_DIR/mongo/db/wire_version',
-        '$BUILD_DIR/mongo/util/version_impl',
-        'query_analysis/query_analysis',
+        "$BUILD_DIR/mongo/db/commands",
+        "$BUILD_DIR/mongo/db/commands/test_commands_enabled",
+        "$BUILD_DIR/mongo/db/query/common_query_enums_and_helpers",
+        "$BUILD_DIR/mongo/db/wire_version",
+        "$BUILD_DIR/mongo/util/version_impl",
+        "query_analysis/query_analysis",
     ],
 )
 
 env.Program(
-    target='mongocryptd',
+    target="mongocryptd",
     source=[
-        'commands/cryptd_main_shim.cpp',
+        "commands/cryptd_main_shim.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/util/cryptd/mongocryptd_core',
-        'cryptd_commands',
+        "$BUILD_DIR/mongo/util/cryptd/mongocryptd_core",
+        "cryptd_commands",
     ],
-    AIB_COMPONENT='mongocryptd',
+    AIB_COMPONENT="mongocryptd",
     AIB_COMPONENTS_EXTRA=[
-        'dist',
-        'dist-test',
-        'tools',
+        "dist",
+        "dist-test",
+        "tools",
     ],
 )

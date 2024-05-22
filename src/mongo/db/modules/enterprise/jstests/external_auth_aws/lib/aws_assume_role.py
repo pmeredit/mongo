@@ -17,6 +17,7 @@ LOGGER = logging.getLogger(__name__)
 
 STS_DEFAULT_ROLE_NAME = "arn:aws:iam::579766882180:role/mark.benvenuto"
 
+
 def _assume_role(role_name):
     if sys.platform == "win32" or sys.platform == "cygwin":
         # These overriden values can be found here
@@ -24,27 +25,29 @@ def _assume_role(role_name):
         # This is due to the backwards breaking changed python introduced https://bugs.python.org/issue36264
         botocore_session = botocore.session.Session(
             session_vars={
-                'config_file': (
+                "config_file": (
                     None,
-                    'AWS_CONFIG_FILE',
-                    os.path.join(os.environ['HOME'], '.aws', 'config'),
-                    None,
-                ),
-                'credentials_file': (
-                    None,
-                    'AWS_SHARED_CREDENTIALS_FILE',
-                    os.path.join(os.environ['HOME'], '.aws', 'credentials'),
+                    "AWS_CONFIG_FILE",
+                    os.path.join(os.environ["HOME"], ".aws", "config"),
                     None,
                 ),
-            })
+                "credentials_file": (
+                    None,
+                    "AWS_SHARED_CREDENTIALS_FILE",
+                    os.path.join(os.environ["HOME"], ".aws", "credentials"),
+                    None,
+                ),
+            }
+        )
         boto3.setup_default_session(botocore_session=botocore_session)
 
     sts_client = boto3.client("sts")
 
-    response = sts_client.assume_role(RoleArn=role_name, RoleSessionName=str(uuid.uuid4()), DurationSeconds=900)
+    response = sts_client.assume_role(
+        RoleArn=role_name, RoleSessionName=str(uuid.uuid4()), DurationSeconds=900
+    )
 
     creds = response["Credentials"]
-
 
     print(f"""{{
   "AccessKeyId" : "{creds["AccessKeyId"]}",
@@ -57,12 +60,14 @@ def _assume_role(role_name):
 def main() -> None:
     """Execute Main entry point."""
 
-    parser = argparse.ArgumentParser(description='Assume Role frontend.')
+    parser = argparse.ArgumentParser(description="Assume Role frontend.")
 
-    parser.add_argument('-v', "--verbose", action='store_true', help="Enable verbose logging")
-    parser.add_argument('-d', "--debug", action='store_true', help="Enable debug logging")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
 
-    parser.add_argument('--role_name', type=str, default=STS_DEFAULT_ROLE_NAME, help="Role to assume")
+    parser.add_argument(
+        "--role_name", type=str, default=STS_DEFAULT_ROLE_NAME, help="Role to assume"
+    )
 
     args = parser.parse_args()
 

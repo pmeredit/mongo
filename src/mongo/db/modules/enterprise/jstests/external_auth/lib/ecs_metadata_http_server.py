@@ -25,12 +25,14 @@ SUPPORTED_FAULT_TYPES = [
     FAULT_500,
 ]
 
+
 class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
     """
     Handle requests from AWS ECS Metadata Monitoring and test commands
     """
+
     # HTTP 1.1 requires us to always send the length back
-    #protocol_version = "HTTP/1.1"
+    # protocol_version = "HTTP/1.1"
 
     def do_GET(self):
         """Serve a Test GET request."""
@@ -44,7 +46,6 @@ class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write("Unknown URL".encode())
 
-
     def _send_reply(self, data, status=http.HTTPStatus.OK):
         print("Sending Response: " + data.decode())
 
@@ -54,7 +55,6 @@ class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
         self.wfile.write(data)
-
 
     def _send_header(self):
         self.send_response(http.HTTPStatus.OK)
@@ -67,7 +67,7 @@ class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
 
         self._send_header()
 
-        user = aws_common.get_users()['tempUser']
+        user = aws_common.get_users()["tempUser"]
         str1 = f"""{{
   "RoleArn" : "arn:aws:iam::1234567890:role/ecsTaskExecutionRole",
   "AccessKeyId" : "{user['id']}",
@@ -76,7 +76,7 @@ class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
   "Expiration" : "2019-11-20T23:37:45Z"
 }}"""
 
-        self.wfile.write(str1.encode('utf-8'))
+        self.wfile.write(str1.encode("utf-8"))
 
     def _do_security_credentials_mock_role_faults(self):
         if fault_type == FAULT_500:
@@ -88,7 +88,7 @@ class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
 
 def run(port, server_class=http.server.HTTPServer, handler_class=AwsECSMetadataHandler):
     """Run web server."""
-    server_address = ('', port)
+    server_address = ("", port)
 
     httpd = server_class(server_address, handler_class)
 
@@ -101,13 +101,13 @@ def main():
     """Main Method."""
     global fault_type
 
-    parser = argparse.ArgumentParser(description='MongoDB Mock AWS ECS Metadata Endpoint.')
+    parser = argparse.ArgumentParser(description="MongoDB Mock AWS ECS Metadata Endpoint.")
 
-    parser.add_argument('-p', '--port', type=int, default=8000, help="Port to listen on")
+    parser.add_argument("-p", "--port", type=int, default=8000, help="Port to listen on")
 
-    parser.add_argument('-v', '--verbose', action='count', help="Enable verbose tracing")
+    parser.add_argument("-v", "--verbose", action="count", help="Enable verbose tracing")
 
-    parser.add_argument('--fault', type=str, help="Type of fault to inject")
+    parser.add_argument("--fault", type=str, help="Type of fault to inject")
 
     args = parser.parse_args()
     if args.verbose:
@@ -115,7 +115,10 @@ def main():
 
     if args.fault:
         if args.fault not in SUPPORTED_FAULT_TYPES:
-            print("Unsupported fault type %s, supports types are %s" % (args.fault, SUPPORTED_FAULT_TYPES))
+            print(
+                "Unsupported fault type %s, supports types are %s"
+                % (args.fault, SUPPORTED_FAULT_TYPES)
+            )
             sys.exit(1)
 
         fault_type = args.fault
@@ -123,6 +126,5 @@ def main():
     run(args.port)
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     main()

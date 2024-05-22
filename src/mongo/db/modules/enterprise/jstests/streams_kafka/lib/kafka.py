@@ -24,13 +24,15 @@ if os.path.exists("/etc/fedora-release") or os.path.exists("/etc/redhat-release"
     DOCKER = "podman"
 
 # Build path to the directory storing certificates to map into docker containers
-CERT_DIRECTORY_PATH = os.path.join(os.getcwd(), "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs")
+CERT_DIRECTORY_PATH = os.path.join(
+    os.getcwd(), "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs"
+)
 
 # If we can't locate the certs, Kafka won't start, so identify this early.
 if os.path.exists(CERT_DIRECTORY_PATH):
-    print(f'Using certificate directory: {CERT_DIRECTORY_PATH}')
+    print(f"Using certificate directory: {CERT_DIRECTORY_PATH}")
 else:
-    raise RuntimeError(f'Failed to locate certificate directory: {CERT_DIRECTORY_PATH}')
+    raise RuntimeError(f"Failed to locate certificate directory: {CERT_DIRECTORY_PATH}")
 
 KAFKA_CONTAINER_NAME = "streamskafkabroker"
 KAFKA_CONTAINER_IMAGE = "confluentinc/cp-kafka:7.0.1"
@@ -74,12 +76,8 @@ ZOOKEEPER_RM_ARGS = [
     "rm",
     ZOOKEEPER_CONTAINER_NAME,
 ]
-KAFKA_UTILITY_ARGS = [
-    DOCKER,
-    "run",
-    "--network=host",
-    BITNAMI_KAFKA_CONTAINER_IMAGE
-]
+KAFKA_UTILITY_ARGS = [DOCKER, "run", "--network=host", BITNAMI_KAFKA_CONTAINER_IMAGE]
+
 
 def _get_kafka_start_args(partition_count):
     return [
@@ -135,7 +133,7 @@ def _get_kafka_ready(port):
         "kafka-cluster",
         "cluster-id",
         "--bootstrap-server",
-        "localhost:" + str(port)
+        "localhost:" + str(port),
     ]
 
 
@@ -159,32 +157,32 @@ def _wait_for_port(port: int, timeout_secs: int = 10):
     start = time.time()
     while time.time() - start <= timeout_secs:
         try:
-            serv = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             serv.bind(("localhost", port))
             return
         except Exception as exception:
-            print(f'Error connecting to port {port}: {exception}')
+            print(f"Error connecting to port {port}: {exception}")
             time.sleep(1)
         finally:
             serv.close()
     if start - time.time() > timeout_secs:
-        raise f'Timeout elapsed while waiting for port {port}'
+        raise f"Timeout elapsed while waiting for port {port}"
 
 
 def _wait_for_kafka_ready(port, timeout_secs=30):
     start = time.time()
-    print(f'Waiting for Kafka to become ready to service queries')
+    print(f"Waiting for Kafka to become ready to service queries")
 
     while time.time() - start <= timeout_secs:
         ret = _run_process(_get_kafka_ready(port))
         if ret == 0:
-            print(f'Kafka is ready!')
+            print(f"Kafka is ready!")
             return
         else:
-            print(f'Kafka is still not ready')
+            print(f"Kafka is still not ready")
 
         if start - time.time() > timeout_secs:
-            raise 'Timeout elapsed while waiting for kafka to become ready'
+            raise "Timeout elapsed while waiting for kafka to become ready"
 
         time.sleep(1)
 
@@ -193,12 +191,12 @@ def start(args) -> int:
     # Start zookeeper
     ret = _run_process(ZOOKEEPER_START_ARGS)
     if ret != 0:
-        raise RuntimeError('Failed to start zookeeper with error code: {ret}')
+        raise RuntimeError("Failed to start zookeeper with error code: {ret}")
     _wait_for_port(ZOOKEEPER_PORT)
     # Start kafka
     ret = _run_process(_get_kafka_start_args(args.partitions))
     if ret != 0:
-        raise RuntimeError('Failed to start kafka with error code: {ret}')
+        raise RuntimeError("Failed to start kafka with error code: {ret}")
     _wait_for_port(KAFKA_PORT)
     _wait_for_kafka_ready(KAFKA_PORT)
 
@@ -206,16 +204,17 @@ def start(args) -> int:
 def stop(args) -> int:
     ret = _run_process(KAFKA_STOP_ARGS)
     if ret != 0:
-        print(f'Failed to stop kafka with error code: {ret}')
+        print(f"Failed to stop kafka with error code: {ret}")
     ret = _run_process(ZOOKEEPER_STOP_ARGS)
     if ret != 0:
-        print(f'Failed to stop zookeeper with error code: {ret}')
+        print(f"Failed to stop zookeeper with error code: {ret}")
     ret = _run_process(KAFKA_RM_ARGS)
     if ret != 0:
-        print(f'Failed to rm kafka with error code: {ret}')
-    ret= _run_process(ZOOKEEPER_RM_ARGS)
+        print(f"Failed to rm kafka with error code: {ret}")
+    ret = _run_process(ZOOKEEPER_RM_ARGS)
     if ret != 0:
-        print(f'Failed to rm zookeeper with error code: {ret}')
+        print(f"Failed to rm zookeeper with error code: {ret}")
+
 
 def _kafka_utility_output_to_json(out) -> str:
     # Transform fixed width table from stdout into JSON.
@@ -236,20 +235,43 @@ def _kafka_utility_output_to_json(out) -> str:
 
     return rows
 
+
 def list_consumer_group_members(args):
     cmd: List[str] = KAFKA_UTILITY_ARGS.copy()
-    cmd.extend(["--", "kafka-consumer-groups.sh", "--bootstrap-server", f"localhost:{KAFKA_PORT}", "--describe", "--members", "--group", args.group_id])
+    cmd.extend(
+        [
+            "--",
+            "kafka-consumer-groups.sh",
+            "--bootstrap-server",
+            f"localhost:{KAFKA_PORT}",
+            "--describe",
+            "--members",
+            "--group",
+            args.group_id,
+        ]
+    )
     ret = _run_process_capture(cmd)
     if ret != 0:
-        print(f'Failed to run kafka-consumer-groups.sh with error code: {ret}')
+        print(f"Failed to run kafka-consumer-groups.sh with error code: {ret}")
     print(json.dumps(_kafka_utility_output_to_json(ret.stdout)))
+
 
 def get_consumer_group(args) -> List[Any]:
     cmd: List[str] = KAFKA_UTILITY_ARGS.copy()
-    cmd.extend(["--", "kafka-consumer-groups.sh", "--bootstrap-server", f"localhost:{KAFKA_PORT}", "--describe", "--group", args.group_id])
+    cmd.extend(
+        [
+            "--",
+            "kafka-consumer-groups.sh",
+            "--bootstrap-server",
+            f"localhost:{KAFKA_PORT}",
+            "--describe",
+            "--group",
+            args.group_id,
+        ]
+    )
     ret = _run_process_capture(cmd)
     if ret != 0:
-        print(f'Failed to run kafka-consumer-groups.sh with error code: {ret}')
+        print(f"Failed to run kafka-consumer-groups.sh with error code: {ret}")
 
     # Transform fixed width table from stdout into JSON.
     out: str = re.sub("[^\S\r\n]+", " ", ret.stdout)
@@ -267,41 +289,41 @@ def get_consumer_group(args) -> List[Any]:
 
     print(json.dumps(rows))
 
+
 def main() -> None:
     """Execute Main entry point."""
 
     path = Path(__file__)
     os.chdir(path.parent.absolute())
 
-    parser = argparse.ArgumentParser(description='Kafka container tester.')
+    parser = argparse.ArgumentParser(description="Kafka container tester.")
 
-    parser.add_argument('-v', "--verbose", action='store_true', help="Enable verbose logging")
-    parser.add_argument('-d', "--debug", action='store_true', help="Enable debug logging")
-    parser.add_argument('-p', "--partitions", help="Partition count used by the broker.", default=1)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("-p", "--partitions", help="Partition count used by the broker.", default=1)
 
     sub = parser.add_subparsers(title="Kafka container subcommands", help="sub-command help")
 
-    start_cmd = sub.add_parser('start', help='Start the Kafka broker')
+    start_cmd = sub.add_parser("start", help="Start the Kafka broker")
     start_cmd.set_defaults(func=start)
 
-    stop_cmd = sub.add_parser('stop', help='Stop the Kafka broker')
+    stop_cmd = sub.add_parser("stop", help="Stop the Kafka broker")
     stop_cmd.set_defaults(func=stop)
 
-    get_consumer_group_cmd = sub.add_parser('get-consumer-group', help='Gets the state for the input consumer group from the kafka broker')
+    get_consumer_group_cmd = sub.add_parser(
+        "get-consumer-group",
+        help="Gets the state for the input consumer group from the kafka broker",
+    )
     get_consumer_group_cmd.add_argument(
-        "--group-id",
-        required=True,
-        type=str,
-        help="Consumer group ID to fetch"
+        "--group-id", required=True, type=str, help="Consumer group ID to fetch"
     )
     get_consumer_group_cmd.set_defaults(func=get_consumer_group)
 
-    list_consumer_group_members_cmd = sub.add_parser('list-consumer-group-members', help='Prints a list of active members of a consumer group.')
+    list_consumer_group_members_cmd = sub.add_parser(
+        "list-consumer-group-members", help="Prints a list of active members of a consumer group."
+    )
     list_consumer_group_members_cmd.add_argument(
-        "--group-id",
-        required=True,
-        type=str,
-        help="Consumer group ID to fetch members"
+        "--group-id", required=True, type=str, help="Consumer group ID to fetch members"
     )
     list_consumer_group_members_cmd.set_defaults(func=list_consumer_group_members)
 
@@ -316,6 +338,7 @@ def main() -> None:
         args.func(args)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

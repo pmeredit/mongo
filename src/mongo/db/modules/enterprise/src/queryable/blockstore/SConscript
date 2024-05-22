@@ -1,31 +1,31 @@
-Import('env')
+Import("env")
 
 env = env.Clone()
 
 env.Library(
-    target='blockstore',
+    target="blockstore",
     source=[
-        'blockstore_http.cpp',
-        'list_dir.cpp',
-        'reader_writer.cpp',
+        "blockstore_http.cpp",
+        "list_dir.cpp",
+        "reader_writer.cpp",
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/bson/util/bson_extract',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/bson/util/bson_extract",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/util/net/http_client',
+        "$BUILD_DIR/mongo/util/net/http_client",
     ],
 )
 
 env.CppIntegrationTest(
-    target='enterprise_blockstore_test',
+    target="enterprise_blockstore_test",
     source=[
-        'create_file_test.cpp',
-        'list_dir_test.cpp',
-        'reader_writer_test.cpp',
+        "create_file_test.cpp",
+        "list_dir_test.cpp",
+        "reader_writer_test.cpp",
     ],
     LIBDEPS=[
-        'blockstore',
+        "blockstore",
     ],
 )

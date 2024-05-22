@@ -9,81 +9,81 @@ if not wiredtiger:
     env.FatalError("Live import/export requires WiredTiger")
 
 wtEnv = env.Clone()
-wtEnv.InjectThirdParty(libraries=['wiredtiger'])
+wtEnv.InjectThirdParty(libraries=["wiredtiger"])
 
 env.SConscript(
     dirs=[
-        'commands',
+        "commands",
     ],
     exports=[
-        'env',
+        "env",
     ],
 )
 
 env.Library(
-    target='collection_properties',
+    target="collection_properties",
     source=[
-        'collection_properties.idl',
+        "collection_properties.idl",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_base',
+        "$BUILD_DIR/mongo/db/server_base",
     ],
 )
 
 wtEnv.Library(
-    target='export_collection',
+    target="export_collection",
     source=[
-        'export_collection.cpp',
+        "export_collection.cpp",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/catalog/index_catalog',
-        '$BUILD_DIR/mongo/db/server_base',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/shard_role',
-        '$BUILD_DIR/mongo/db/storage/durable_catalog',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
-        'collection_properties',
+        "$BUILD_DIR/mongo/db/catalog/index_catalog",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/shard_role",
+        "$BUILD_DIR/mongo/db/storage/durable_catalog",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
+        "collection_properties",
     ],
 )
 
 wtEnv.Library(
-    target='import_collection',
+    target="import_collection",
     source=[
-        'import_collection.cpp',
+        "import_collection.cpp",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/audit',
-        '$BUILD_DIR/mongo/db/catalog/collection_options',
-        '$BUILD_DIR/mongo/db/concurrency/exception_util',
-        '$BUILD_DIR/mongo/db/modules/enterprise/src/audit/audit_enterprise',
-        '$BUILD_DIR/mongo/db/multitenancy',
-        '$BUILD_DIR/mongo/db/op_observer/op_observer',
-        '$BUILD_DIR/mongo/db/repl/oplog',
-        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/shard_role',
-        '$BUILD_DIR/mongo/db/stats/top',
-        '$BUILD_DIR/mongo/db/storage/durable_catalog',
-        '$BUILD_DIR/mongo/db/storage/storage_engine_impl',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
-        '$BUILD_DIR/mongo/idl/cluster_parameter_synchronization_helpers',
-        'collection_properties',
-        'import_collection_coordinator',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/audit",
+        "$BUILD_DIR/mongo/db/catalog/collection_options",
+        "$BUILD_DIR/mongo/db/concurrency/exception_util",
+        "$BUILD_DIR/mongo/db/modules/enterprise/src/audit/audit_enterprise",
+        "$BUILD_DIR/mongo/db/multitenancy",
+        "$BUILD_DIR/mongo/db/op_observer/op_observer",
+        "$BUILD_DIR/mongo/db/repl/oplog",
+        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/shard_role",
+        "$BUILD_DIR/mongo/db/stats/top",
+        "$BUILD_DIR/mongo/db/storage/durable_catalog",
+        "$BUILD_DIR/mongo/db/storage/storage_engine_impl",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
+        "$BUILD_DIR/mongo/idl/cluster_parameter_synchronization_helpers",
+        "collection_properties",
+        "import_collection_coordinator",
     ],
 )
 
 env.Library(
-    target='import_collection_coordinator',
+    target="import_collection_coordinator",
     source=[
-        'import_collection_coordinator.cpp',
+        "import_collection_coordinator.cpp",
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/catalog/commit_quorum_options',
-        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
-        '$BUILD_DIR/mongo/db/service_context',
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/catalog/commit_quorum_options",
+        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
+        "$BUILD_DIR/mongo/db/service_context",
     ],
 )

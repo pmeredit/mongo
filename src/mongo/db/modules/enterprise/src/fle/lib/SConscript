@@ -9,98 +9,106 @@ Import("get_option")
 env = env.Clone()
 
 cryptEnv = env.Clone()
-cryptEnv.AppendUnique(CPPDEFINES=[
-    'MONGO_CRYPT_SUPPORT_COMPILING',
-], )
+cryptEnv.AppendUnique(
+    CPPDEFINES=[
+        "MONGO_CRYPT_SUPPORT_COMPILING",
+    ],
+)
 
 
 def mongo_export_file_generator(target, source, env, for_signature):
-    if env.ToolchainIs('msvc'):
+    if env.ToolchainIs("msvc"):
         pass
-    elif env.TargetOSIs('darwin'):
+    elif env.TargetOSIs("darwin"):
         script = env.File(env.subst("${TARGET.base}.exported_symbols_list", target=target))
         return script.get_csig() if for_signature else "-Wl,-exported_symbols_list," + str(script)
-    elif env.TargetOSIs('posix'):
+    elif env.TargetOSIs("posix"):
         script = env.File(env.subst("${TARGET.base}.version_script", target=target))
         return script.get_csig() if for_signature else "-Wl,--version-script," + str(script)
     else:
         pass
 
 
-if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'windows'):
-    cryptEnv['LIBDEPS_SHLIBEMITTER'] = partial(
+if get_option("link-model") == "dynamic-sdk" and env.TargetOSIs("posix", "windows"):
+    cryptEnv["LIBDEPS_SHLIBEMITTER"] = partial(
         libdeps.libdeps_emitter,
-        builder='SharedArchive',
+        builder="SharedArchive",
         visibility_map=libdeps.dependency_visibility_honored,
     )
 
-    cryptEnv['MONGO_EXPORT_FILE_SHLINKFLAGS'] = mongo_export_file_generator
-    cryptEnv.AppendUnique(SHLINKFLAGS=[
-        '$MONGO_EXPORT_FILE_SHLINKFLAGS',
-    ])
+    cryptEnv["MONGO_EXPORT_FILE_SHLINKFLAGS"] = mongo_export_file_generator
+    cryptEnv.AppendUnique(
+        SHLINKFLAGS=[
+            "$MONGO_EXPORT_FILE_SHLINKFLAGS",
+        ]
+    )
 
     cryptSupportTargets = cryptEnv.SharedLibrary(
-        target='mongo_crypt_v1',
+        target="mongo_crypt_v1",
         source=[
-            'mongo_crypt.cpp',
+            "mongo_crypt.cpp",
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/db/service_context_non_d',
-            '$BUILD_DIR/mongo/util/options_parser/options_parser',
-            '../query_analysis/query_analysis',
+            "$BUILD_DIR/mongo/base",
+            "$BUILD_DIR/mongo/db/service_context_non_d",
+            "$BUILD_DIR/mongo/util/options_parser/options_parser",
+            "../query_analysis/query_analysis",
         ],
-        AIB_COMPONENT='mongo-crypt',
+        AIB_COMPONENT="mongo-crypt",
         SHLIBPREFIX="",
     )
 
     env.AutoInstall(
-        '$PREFIX_INCLUDEDIR/mongo_crypt/v1/mongo_crypt',
-        source=['mongo_crypt.h'],
-        AIB_COMPONENT='mongo-crypt',
-        AIB_ROLE='dev',
+        "$PREFIX_INCLUDEDIR/mongo_crypt/v1/mongo_crypt",
+        source=["mongo_crypt.h"],
+        AIB_COMPONENT="mongo-crypt",
+        AIB_ROLE="dev",
     )
 
-if get_option('link-model') != 'dynamic-sdk':
+if get_option("link-model") != "dynamic-sdk":
     cryptTestEnv = env.Clone()
-    cryptTestEnv.AppendUnique(CPPDEFINES=[
-        'MONGO_CRYPT_SUPPORT_STATIC',
-    ])
+    cryptTestEnv.AppendUnique(
+        CPPDEFINES=[
+            "MONGO_CRYPT_SUPPORT_STATIC",
+        ]
+    )
 
     unitTest = cryptTestEnv.CppUnitTest(
-        target='mongo_crypt_test',
+        target="mongo_crypt_test",
         source=[
-            'mongo_crypt.cpp',
-            'mongo_crypt_test.cpp',
+            "mongo_crypt.cpp",
+            "mongo_crypt_test.cpp",
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/db/auth/authmocks',
-            '$BUILD_DIR/mongo/db/service_context_test_fixture',
-            '../query_analysis/query_analysis',
+            "$BUILD_DIR/mongo/db/auth/authmocks",
+            "$BUILD_DIR/mongo/db/service_context_test_fixture",
+            "../query_analysis/query_analysis",
         ],
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
-        AIB_COMPONENT='mongo-crypt-test',
+        AIB_COMPONENT="mongo-crypt-test",
     )
 
-if get_option('link-model') != 'dynamic-sdk':
+if get_option("link-model") != "dynamic-sdk":
     cryptShlibTestEnv = env.Clone()
-    cryptShlibTestEnv.AppendUnique(CPPDEFINES=[
-        'MONGO_CRYPT_UNITTEST_DYNAMIC',
-    ])
+    cryptShlibTestEnv.AppendUnique(
+        CPPDEFINES=[
+            "MONGO_CRYPT_UNITTEST_DYNAMIC",
+        ]
+    )
 
-    obj = cryptShlibTestEnv.Object('mongo_crypt_shlib_test', 'mongo_crypt_test.cpp')
+    obj = cryptShlibTestEnv.Object("mongo_crypt_shlib_test", "mongo_crypt_test.cpp")
     unitTest = cryptShlibTestEnv.Program(
-        target='mongo_crypt_shlib_test',
+        target="mongo_crypt_shlib_test",
         source=obj[0],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/db/service_context_test_fixture',
+            "$BUILD_DIR/mongo/db/service_context_test_fixture",
         ],
-        AIB_COMPONENT='mongo-crypt-shlib-test',
+        AIB_COMPONENT="mongo-crypt-shlib-test",
     )
 
     cryptShlibTestEnv.AutoInstall(
-        '$PREFIX/',
-        source=['crypt_debuggability_test.py'],
-        AIB_COMPONENT='mongo-crypt-shlib-test',
-        AIB_ROLE='base',
+        "$PREFIX/",
+        source=["crypt_debuggability_test.py"],
+        AIB_COMPONENT="mongo-crypt-shlib-test",
+        AIB_ROLE="base",
     )

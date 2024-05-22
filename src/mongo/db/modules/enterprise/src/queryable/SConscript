@@ -6,10 +6,10 @@ env = env.Clone()
 
 env.SConscript(
     dirs=[
-        'blockstore',
-        'queryable_wt',
+        "blockstore",
+        "queryable_wt",
     ],
     exports=[
-        'env',
+        "env",
     ],
 )
