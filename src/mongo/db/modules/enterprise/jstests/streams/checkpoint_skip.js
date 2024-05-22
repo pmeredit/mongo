@@ -78,8 +78,15 @@ function checkpointCoordinatorTakeCheckpointTest() {
     // So set force and ensure that a new checkpoint was indeed taken
     test.checkpoint(true);
     assert.soon(() => {
-        sleep(2000);
-        return test.getCheckpointIds().length == numChkpts + 2;
+        let expectedNum = numChkpts + 2;
+        let num = test.getCheckpointIds().length;
+        if (num == expectedNum) {
+            return true;
+        } else {
+            assert.lte(num, expectedNum);
+            jsTestLog(`Still waiting for ${expectedNum} checkpoints, only have ${num}`);
+            return false;
+        }
     });
 
     // Send an input doc that is dlq'd by the ChangeStreamSourceOperator. It should still be
