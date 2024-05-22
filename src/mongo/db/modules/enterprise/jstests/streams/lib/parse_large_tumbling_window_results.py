@@ -50,6 +50,7 @@ with open(input_file) as file:
             result = json.loads(re.sub(r'.*\[jsTest\] ', "", line))
             result["heapProfileBeforeCheckpoint"]["stacks"] = sort_stacks(result["heapProfileBeforeCheckpoint"]["stacks"])
             result["heapProfileAfterCheckpoint"]["stacks"] = sort_stacks(result["heapProfileAfterCheckpoint"]["stacks"])
+            result["heapProfileAfterWindowClose"]["stacks"] = sort_stacks(result["heapProfileAfterWindowClose"]["stacks"])
             results.append(result)
 
         if 'heapProfile stack' in line:
@@ -67,6 +68,10 @@ for idx, result in enumerate(results):
     )
     result["heapProfileAfterCheckpoint"]["stacks"] = join_stack_information(
         result["heapProfileAfterCheckpoint"]["stacks"],
+        stack_traces,
+    )
+    result["heapProfileAfterWindowClose"]["stacks"] = join_stack_information(
+        result["heapProfileAfterWindowClose"]["stacks"],
         stack_traces,
     )
 

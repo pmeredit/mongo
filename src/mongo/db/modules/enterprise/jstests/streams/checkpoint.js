@@ -401,7 +401,7 @@ function testBoth(useNewCheckpointing) {
             let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
             assert.commandWorked(result);
             jsTestLog(JSON.stringify(result));
-            heapProfile = result["heapProfile"];
+            heapProfileAfterCheckpoint = result["heapProfile"];
         }
         let statsAfterCheckpoint = test.stats();
 
@@ -423,6 +423,17 @@ function testBoth(useNewCheckpointing) {
             delete results[i]._id;
             verifyDocsEqual(expectedOutput[i], results[i]);
         }
+
+        let heapProfileAfterWindowClose = null;
+        if (shouldHeapProfile) {
+            sleep(5000);
+            let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
+            assert.commandWorked(result);
+            jsTestLog(JSON.stringify(result));
+            heapProfileAfterWindowClose = result["heapProfile"];
+        }
+        let statsAfterWindowClose = test.stats();
+
         // Stop the stream processor.
         test.stop();
 
@@ -436,6 +447,8 @@ function testBoth(useNewCheckpointing) {
                 statsBeforeCheckpoint: stats,
                 heapProfileAfterCheckpoint: heapProfileAfterCheckpoint,
                 statsAfterCheckpoint: statsAfterCheckpoint,
+                heapProfileAfterWindowClose: heapProfileAfterWindowClose,
+                statsAfterWindowClose: statsAfterWindowClose,
             }));
         }
     }
@@ -1075,7 +1088,7 @@ function testBoth(useNewCheckpointing) {
 
     if (buildInfo.allocator === "tcmalloc-google") {
         assert.commandWorked(
-            db.adminCommand({setParameter: 1, heapProfilingSampleIntervalBytes: 1}));
+            db.adminCommand({setParameter: 1, heapProfilingSampleIntervalBytes: 1024 * 1024}));
         assert.soon(() => {
             let result = db.serverStatus();
             assert.commandWorked(result);
