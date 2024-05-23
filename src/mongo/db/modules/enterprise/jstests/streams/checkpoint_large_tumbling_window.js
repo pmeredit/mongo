@@ -43,6 +43,11 @@ function largeGroupTest() {
     ];
 
     var cnt = 2500000;
+    const debugBuild = db.adminCommand("buildInfo").debug;
+    if (debugBuild) {
+        // Use fewer documents in debug builds so the test runs faster.
+        cnt = cnt / 100;
+    }
     const inputBeforeStop = [{idx: cnt, ts: baseTs}];
 
     let test = new TestHelper(inputBeforeStop,
