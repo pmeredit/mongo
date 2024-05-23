@@ -41,7 +41,6 @@ namespace streams {
 
 using namespace mongo;
 using bsoncxx::builder::basic::kvp;
-using bsoncxx::builder::basic::make_document;
 
 TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options)
     : QueuedSinkOperator(context, 1 /* numInputs */), _options(std::move(options)) {
