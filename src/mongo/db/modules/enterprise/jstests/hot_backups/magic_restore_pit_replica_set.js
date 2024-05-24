@@ -65,7 +65,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
 
-    magicRestoreUtils.takeCheckpointAndOpenBackup(sourcePrimary);
+    magicRestoreUtils.takeCheckpointAndOpenBackup();
 
     if (testAuth) {
         sourceDb.createUser({user: "user2", pwd: "pass2", roles: jsTest.basicUserRoles});

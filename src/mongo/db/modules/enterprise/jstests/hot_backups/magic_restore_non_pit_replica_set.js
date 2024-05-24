@@ -53,7 +53,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         isPit: false,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
-    magicRestoreUtils.takeCheckpointAndOpenBackup(primary);
+    magicRestoreUtils.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened.
@@ -61,7 +61,6 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 6);
 
-    let oplog = primary.getDB("local").getCollection('oplog.rs');
     magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 6, "i");
     let {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
     assert.eq(entriesAfterBackup.length, 3);

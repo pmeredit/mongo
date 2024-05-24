@@ -280,7 +280,7 @@ function testOIDC(insertHigherTermOplogEntry) {
         isPit: false,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
-    magicRestoreUtils.takeCheckpointAndOpenBackup(primary);
+    magicRestoreUtils.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened.
