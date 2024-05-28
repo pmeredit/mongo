@@ -30,7 +30,6 @@
 #include "streams/exec/stream_stats.h"
 
 using namespace std::chrono_literals;
-namespace fs = std::filesystem;
 using fspath = std::filesystem::path;
 using namespace mongo;
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

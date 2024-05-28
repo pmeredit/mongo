@@ -44,8 +44,6 @@
 namespace mongo {
 namespace magic_restore {
 
-namespace moe = mongo::optionenvironment;
-
 
 BSONStreamReader::BSONStreamReader(std::istream& stream) : _stream(stream) {
     _buffer = std::make_unique<char[]>(BSONObjMaxUserSize);

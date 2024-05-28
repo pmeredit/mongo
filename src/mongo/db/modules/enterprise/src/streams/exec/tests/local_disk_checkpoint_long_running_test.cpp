@@ -16,7 +16,6 @@
 using namespace std::chrono_literals;
 
 using namespace mongo;
-namespace mmb = mongo::mutablebson;
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

@@ -15,8 +15,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNetwork
 
 
-namespace moe = mongo::optionenvironment;
-
 namespace mongo {
 namespace {
 

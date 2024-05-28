@@ -10,8 +10,6 @@
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/util/assert_util.h"
 
-namespace crypto = ::mongo::crypto;
-
 namespace mongo {
 namespace audit {
 

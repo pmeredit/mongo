@@ -15,7 +15,6 @@
 #include <vector>
 
 using namespace mongo;
-namespace mmb = mongo::mutablebson;
 using fspath = std::filesystem::path;
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
