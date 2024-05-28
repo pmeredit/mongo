@@ -18,7 +18,10 @@ if (_isWindows()) {
 
 jsTestLog("Running non-PIT magic restore on a two-node replica set, testing that systemUuids " +
           "correctly creates replicated collections");
-let rst = new ReplSetTest({nodes: 2});
+// With 2 nodes, it can happen that both run for election at the same time, vote for themselves,
+// in which case the subsequent successful election will be at a higher term, and
+// assertConfigIsCorrect will mismatch.
+let rst = new ReplSetTest({nodes: [{}, {rsConfig: {priority: 0}}]});
 let nodes = rst.startSet();
 rst.initiate();
 
@@ -77,8 +80,10 @@ rst = new ReplSetTest({
 });
 nodes = rst.startSet(
     {dbpath: magicRestoreUtils[0].getBackupDbPath().slice(0, -1) + "$node", noCleanData: true});
-rst.getPrimary();
+rst.awaitNodesAgreeOnPrimary();
 nodes.forEach((node, idx) => {
+    jsTestLog(`Verifying node ${idx}`);
+    node.getDB(dbName).getMongo().setSecondaryOk();
     const restoredConfig = assert.commandWorked(node.adminCommand({replSetGetConfig: 1})).config;
     magicRestoreUtils[idx].assertConfigIsCorrect(expectedConfigs[idx], restoredConfig);
     magicRestoreUtils[idx].assertOplogCountForNamespace(node, dbName + "." + coll, 3, "i");
