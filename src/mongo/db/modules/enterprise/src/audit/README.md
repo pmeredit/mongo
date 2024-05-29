@@ -4,6 +4,7 @@
 
 - [High Level Overview](#high-level-overview)
   - [Runtime Configuration](#runtime-configuration)
+  - [AuditInterface](#auditinterface)
 - [Encrypted Audit Logs](#encrypted-audit-logs)
 
 ## High Level Overview
@@ -88,6 +89,23 @@ FCV<=7.0, if the audit configuration is set, the downgrade will be blocked until
 configuration is removed. Conversely, when upgrading from FCV<=7.0 to FCV>=7.1, if there is an
 existing audit config, it will be migrated from `config.settings` to the `auditConfig` cluster
 parameter.
+
+### AuditInterface
+
+Callsites within MongoDB invoke auditing via free functions on the `mongo::audit` namespace
+as listed in [`audit.h`](https://github.com/mongodb/mongo/blob/master/src/mongo/db/audit.h).
+These free functions are thin wrappers which call matching methods on an instance
+of [`AuditInterface`](https://github.com/mongodb/mongo/blob/master/src/mongo/db/audit_interface.h)
+which they obtain from a decoration on the `ServiceContext`.
+
+In community builds of MongoDB, the only implementation of `AuditInterface` available is
+[`AuditNoop`](https://github.com/mongodb/mongo/blob/b05c88308318b6ec3f8a383d13e61578c4625549/src/mongo/db/audit_interface.h#L473).
+This implementation performs no actions and returns immediately from any attempt to record an audit event.
+
+Enterprise builds may select between
+[`AuditMongo`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/audit/mongo/README.md) or
+[`AuditOCSF`](https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/src/audit/ocsf/README.md)
+implemenations based on the `auditLog.schema` setting.
 
 ## Encrypted Audit Logs
 
