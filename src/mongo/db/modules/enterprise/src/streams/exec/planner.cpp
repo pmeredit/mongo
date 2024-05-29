@@ -1242,10 +1242,9 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
             // Serialize the stage and add it to the execution plan.
             // Window and lookup stages require some special handling and don't use this block.
             std::vector<Value> serializedStage;
-            // TODO(SERVER-90425): Use serializeForCloning.
-            SerializationOptions opts{};
+            SerializationOptions opts{.serializeForCloning = true};
             stage->serializeToArray(serializedStage, opts);
-            // TODO(SERVER-90425): Assert the serializeToArray returns a single BSONObj once $lookup
+            // TODO(SERVER-90464): Assert the serializeToArray returns a single BSONObj once $lookup
             // and $sort changes are in.
             return serializedStage[0].getDocument().toBson();
         };

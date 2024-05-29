@@ -1505,9 +1505,6 @@ TEST_F(PlannerTest, ExecutionPlan) {
     ])",
               {"KafkaConsumerOperator", "MatchOperator", "KafkaEmitOperator"});
 
-    return;
-
-    // TODO(SERVER-90425): Enable this and below once $sort changes are in.
     innerTest(R"(
     [
         {
