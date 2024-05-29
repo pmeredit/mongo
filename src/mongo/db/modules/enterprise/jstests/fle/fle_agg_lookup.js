@@ -51,9 +51,10 @@ assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 // Test that self-lookup bringing unencrypted fields from a subpipeline succeeds.
 command = Object.assign({
     aggregate: coll.getName(),
-    pipeline: [
-        {$lookup: {from: coll.getName(), as: "docs", let : {}, pipeline: [{$match: {name: "bob"}}]}}
-    ],
+    pipeline: [{
+        $lookup:
+            {from: coll.getName(), as: "docs", let : {}, pipeline: [{$match: {name: {$eq: "bob"}}}]}
+    }],
     cursor: {}
 },
                         emptySchema);
@@ -111,7 +112,7 @@ if (!fle2Enabled()) {
                 localField: "item",
                 foreignField: "sku",
                 let : {},
-                pipeline: [{$match: {bob: 1}}]
+                pipeline: [{$match: {bob: {$eq: 1}}}]
             }
             }
         ],
@@ -136,7 +137,7 @@ if (!fle2Enabled()) {
                 localField: "item",
                 foreignField: "sku",
                 let : {},
-                pipeline: [{$project: {notEncrypted: 1}}]
+                pipeline: [{$project: {_id: true, notEncrypted: true}}]
             }
             },
             {$match: {docs: {$eq: "winterfell"}}}
@@ -158,8 +159,9 @@ const fooEncryptedSchema = generateSchema({foo: encryptedStringSpec()}, coll.get
 // are supported, subsequent references will be possible as well.
 command = Object.assign({
     aggregate: coll.getName(),
-    pipeline:
-        [{$lookup: {from: coll.getName(), as: "docs", let : {}, pipeline: [{$match: {bob: 1}}]}}],
+    pipeline: [{
+        $lookup: {from: coll.getName(), as: "docs", let : {}, pipeline: [{$match: {bob: {$eq: 1}}}]}
+    }],
     cursor: {}
 },
                         fooEncryptedSchema);
@@ -181,7 +183,7 @@ command = Object.assign({
                   from: coll.getName(),
                   as: "docs",
                   let : {},
-                  pipeline: [{$project: {notEncrypted: 1}}]
+                  pipeline: [{$project: {_id: true, notEncrypted: true}}]
               }
             },
             {$match: {docs: {$eq: "winterfell"}}}
@@ -309,7 +311,7 @@ command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
         {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku",
-                    let : {}, pipeline: [{$match: {name: "bob"}}]}}
+                    let : {}, pipeline: [{$match: {name: {$eq: "bob"}}}]}}
     ],
     cursor: {}}, emptySchema);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
@@ -320,8 +322,7 @@ assert.eq(command, cmdRes.result, cmdRes);
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 
-// Show that we are not marking constants for encryption inside $lookup subpipelines.
-// TODO SERVER-65310: Mark constans for encryption inside subpipelines.
+// Ensure that we are marking constants for encryption inside $lookup subpipelines.
 command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
@@ -331,9 +332,8 @@ command = Object.assign({
     cursor: {}
 },
                         fooEncryptedSchema);
-// The first $match has constants marked for encryption, but the second $match is unmodified.
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert(cmdRes.result.pipeline[0].$match.foo.$eq instanceof BinData, cmdRes);
-assert.eq(cmdRes.result.pipeline[1].$lookup.pipeline[0].$match.foo, "1", cmdRes);
+assert(cmdRes.result.pipeline[1].$lookup.pipeline[0].$match.foo.$eq instanceof BinData, cmdRes);
 
 mongocryptd.stop();
