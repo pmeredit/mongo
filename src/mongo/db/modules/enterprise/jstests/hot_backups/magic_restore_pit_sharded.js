@@ -1,12 +1,18 @@
 /*
- * Tests a non-PIT sharded cluster restore with magic restore. The test does the following:
+ * Tests a PIT sharded cluster restore with magic restore. The test does the following:
  *
  * - Starts a sharded cluster, shards the collection, moves chunks, inserts some initial data.
- * - Creates the backup data files, copies data files to the restore dbpath, computes dbHashes.
+ * - Creates the backup data files, copies data files to the restore dbpath.
+ * - Writes additional data that will be truncated by magic restore, since they occur after the
+ * checkpoint timestamp. However, these writes will still be reflected in the final state of the
+ * data due to the PIT restore.
+ * - Computes dbHashes.
  * - Computes maxCheckpointTs, extends the cursors to maxCheckpointTs and closes the backup cursor.
- * - Writes a restore configuration object to a named pipe via the mongo shell.
+ * - Writes a restore configuration object and the source oplog entries from after the checkpoint
+ *   timestamp to a named pipe via the mongo shell.
  * - Stops all nodes.
- * - Starts the nodes with --magicRestore that parses the restore configuration and exits cleanly.
+ * - Starts the nodes with --magicRestore, which parses the restore configuration, inserts and
+ * applies the additional oplog entries, and exits cleanly.
  * - Restarts the nodes in the initial sharded cluster and asserts that the replica set config and
  * data are as expected, and that the dbHashes match.
  *
@@ -25,7 +31,7 @@ if (_isWindows()) {
 }
 
 function runTest(insertHigherTermOplogEntry) {
-    jsTestLog("Running non-PIT magic restore with insertHigherTermOplogEntry: " +
+    jsTestLog("Running PIT magic restore with insertHigherTermOplogEntry: " +
               insertHigherTermOplogEntry);
     const numShards = 2;
     const numNodes = 2;
@@ -58,7 +64,7 @@ function runTest(insertHigherTermOplogEntry) {
     jsTestLog("Inserting data to restore");  // This data will be reflected in the restored node.
     [-150, -50, 50, 150].forEach(
         val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
-    const expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
+    let expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
     assert.eq(expectedDocs.length, 4);
 
     // The last entries in magicRestoreUtilsArray are for the config servers.
@@ -81,34 +87,76 @@ function runTest(insertHigherTermOplogEntry) {
         magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex].takeCheckpointAndOpenBackup();
     }
 
+    // These documents will be truncated by magic restore, since they were written after the backup
+    // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
+    // restore, so they will be reinserted and reflected in the final state of the data.
+    jsTestLog("Inserting data after backup cursor");
+    [-151, -51, 51, 151].forEach(
+        val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
+    expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
+    assert.eq(expectedDocs.length, 8);
+
+    // TODO SERVER-90356: remove this if we decide to allow PIT without oplog entries after
+    // the checkpoint timestamp.
+    assert.commandWorked(db.adminCommand({addShardToZone: st.shard0.shardName, zone: 'x'}));
+
     jsTestLog("Getting backup cluster dbHashes");
     // expected DBs are admin, config and db
     const dbHashes =
         MagicRestoreUtils.getDbHashes(st, numShards, numNodes, 3 /* expectedDBCount */);
 
-    // These documents will be truncated by magic restore, since they were written after the backup
-    // cursor was opened.
-    jsTestLog("Inserting data after backup cursor");
-    [-151, -51, 51, 151].forEach(
-        val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
-    assert.eq(db.getCollection(coll).find().toArray().length, 8);
-
+    // We store all the last oplog entry timestamps for each node so we can compare them to the
+    // stable timestamp for each node later. Even though all nodes are consistent up to a particular
+    // point in time (the maximum value of these oplog entries), each individual node's stable
+    // timestamp will be the latest oplog entry in its oplog.
+    const lastOplogEntryTss = [];
+    let maxLastOplogEntryTs = new Timestamp(0, 0);
+    const entriesAfterBackups = [];
     for (const [rsIndex, nodeIndex] of allNodesExcludingConfig) {
         const node = st["rs" + rsIndex].nodes[nodeIndex];
         const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
+
+        // We inserted 8 documents and have 2 shards, so 4 per shard.
         magicRestoreUtils.assertOplogCountForNamespace(node, dbName + "." + coll, 4, "i");
 
-        let {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(node);
+        let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(node);
+        lastOplogEntryTss.push(lastOplogEntryTs);
+        jsTestLog(`Computed lastOplogEntryTs ${tojson(lastOplogEntryTs)} for node ${
+            nodeIndex} of shard ${rsIndex}`);
+        if (timestampCmp(lastOplogEntryTs, maxLastOplogEntryTs) > 0) {
+            maxLastOplogEntryTs = lastOplogEntryTs;
+        }
 
-        // There might be rangeDeletions ops after the backup, or a
-        // ensureMajorityPrimaryAndScheduleDbTask too, filtering those out.
-        entriesAfterBackup =
+        // There might be operations after the backup from periodic jobs such as rangeDeletions
+        // or ensureMajorityPrimaryAndScheduleDbTask, so we filter those out for the comparison but
+        // still pass them into magic restore as additional oplog entries to apply.
+        const filteredEntriesAfterBackup =
             entriesAfterBackup.filter(elem => (elem.ns != "config.rangeDeletions" &&
                                                elem.o != "ensureMajorityPrimaryAndScheduleDbTask"));
-        assert.eq(entriesAfterBackup.length,
+        assert.eq(filteredEntriesAfterBackup.length,
                   2,
-                  `entriesAfterBackup = ${tojson(entriesAfterBackup)} is not of length 2`);
+                  `filteredEntriesAfterBackup = ${
+                      tojson(filteredEntriesAfterBackup)} is not of length 2`);
+
+        entriesAfterBackups.push(entriesAfterBackup);
     }
+
+    // Update the maxLastOplogEntryTs with the config server nodes lastOplogEntryTs.
+    for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
+        const node = st.configRS.nodes[nodeIndex];
+        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * numShards + nodeIndex];
+
+        let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(node);
+        lastOplogEntryTss.push(lastOplogEntryTs);
+        jsTestLog(
+            `Computed lastOplogEntryTs ${tojson(lastOplogEntryTs)} for config sever ${nodeIndex}`);
+        if (timestampCmp(lastOplogEntryTs, maxLastOplogEntryTs) > 0) {
+            maxLastOplogEntryTs = lastOplogEntryTs;
+        }
+
+        entriesAfterBackups.push(entriesAfterBackup);
+    }
+    jsTestLog("Computed maxLastOplogEntryTs: " + tojson(maxLastOplogEntryTs));
 
     // Compute maxCheckpointTs from the shards and config servers.
     let maxCheckpointTs = magicRestoreUtilsArray[0].getCheckpointTimestamp();
@@ -152,14 +200,18 @@ function runTest(insertHigherTermOplogEntry) {
         let restoreConfiguration = {
             "nodeType": rsIndex < numShards ? "shard" : "configServer",
             "replicaSetConfig": expectedConfigs[rsIndex],
-            "maxCheckpointTs": maxCheckpointTs
+            "maxCheckpointTs": maxCheckpointTs,
+            "pointInTimeTimestamp": maxLastOplogEntryTs  // Restore to the max timestamp of the last
+                                                         // oplog entry of the shards.
         };
+
         const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
         restoreConfiguration =
             magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
-        magicRestoreUtils.writeObjsAndRunMagicRestore(restoreConfiguration, [], {
-            "replSet": jsTestName() + (rsIndex < numShards ? "-rs" + rsIndex : "-configRS")
-        });
+        magicRestoreUtils.writeObjsAndRunMagicRestore(
+            restoreConfiguration,
+            entriesAfterBackups[numNodes * rsIndex + nodeIndex],
+            {"replSet": jsTestName() + (rsIndex < numShards ? "-rs" + rsIndex : "-configRS")});
     }
 
     jsTestLog("Starting restore config server");
@@ -178,12 +230,14 @@ function runTest(insertHigherTermOplogEntry) {
 
     // Check each node in the config server replica set.
     for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
+        jsTestLog(`Checking config server ${nodeIndex}`);
         const node = configsvr.nodes[nodeIndex];
         const magicRestoreUtils = magicRestoreUtilsArray[numNodes * numShards + nodeIndex];
         magicRestoreUtilsArray[numNodes * numShards + nodeIndex].assertConfigIsCorrect(
             expectedConfigs[numShards], restoredConfig);
         magicRestoreUtils.assertMinValidIsCorrect(node);
-        magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(node);
+        magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(
+            node, lastOplogEntryTss[numNodes * numShards + nodeIndex]);
         magicRestoreUtils.assertCannotDoSnapshotRead(node, 0 /* expectedNumDocs */);
     }
 
@@ -207,6 +261,7 @@ function runTest(insertHigherTermOplogEntry) {
     }
 
     for (const [rsIndex, nodeIndex] of allNodesExcludingConfig) {
+        jsTestLog(`Checking node ${nodeIndex} of shard ${rsIndex}`);
         const node = replicaSets[rsIndex].nodes[nodeIndex];
         node.setSecondaryOk();
 
@@ -216,15 +271,14 @@ function runTest(insertHigherTermOplogEntry) {
         magicRestoreUtils.assertConfigIsCorrect(expectedConfigs[rsIndex], restoredConfig);
         const restoredDocs =
             node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
-        // The later 4 writes were truncated during magic restore, so each shard should have
-        // only 2.
-        assert.eq(restoredDocs.length, 2);
-        assert.eq(restoredDocs, [expectedDocs[2 * rsIndex], expectedDocs[2 * rsIndex + 1]]);
+        assert.eq(restoredDocs, expectedDocs.slice(4 * rsIndex, 4 * rsIndex + 4));
 
-        magicRestoreUtils.assertOplogCountForNamespace(node, dbName + "." + coll, 2, "i");
+        // We inserted 8 documents and have 2 shards, so 4 per shard.
+        magicRestoreUtils.assertOplogCountForNamespace(node, dbName + "." + coll, 4, "i");
         magicRestoreUtils.assertMinValidIsCorrect(node);
-        magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(node);
-        magicRestoreUtils.assertCannotDoSnapshotRead(node, 2 /* expectedNumDocs */);
+        magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(
+            node, lastOplogEntryTss[numNodes * rsIndex + nodeIndex]);
+        magicRestoreUtils.assertCannotDoSnapshotRead(node, 4 /* expectedNumDocs */);
     }
 
     jsTestLog("Getting restore cluster dbHashes");
@@ -249,7 +303,7 @@ function runTest(insertHigherTermOplogEntry) {
     configsvr.stopSet();
 }
 
-// Run non-PIT restore twice, with one run performing a no-op oplog entry insert with a higher term.
+// Run PIT restore twice, with one run performing a no-op oplog entry insert with a higher term.
 // This affects the stable timestamp on magic restore node shutdown.
 runTest(false /* insertHigherTermOplogEntry */);
 runTest(true /* insertHigherTermOplogEntry */);
