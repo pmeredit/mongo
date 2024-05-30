@@ -52,15 +52,7 @@ function testBoth(useNewCheckpointing) {
         }
         // Get the checkpoint IDs from the run.
         let ids = test.getCheckpointIds();
-        // Note: this minimum is an implementation detail subject to change.
-        // KafkaConsumerOperator has a maximum docs per run, hardcoded to 500.
-        // Since the checkpoint interval is 0, we should see at least see a checkpoint
-        // after every batch of 500 docs.
-        const maxDocsPerRun = 500;
-        const expectedMinimumCheckpoints = input.length / maxDocsPerRun;
-        assert.gte(ids.length,
-                   expectedMinimumCheckpoints,
-                   `expected at least ${expectedMinimumCheckpoints} checkpoints`);
+        assert.gte(ids.length, 1, `expected at least 1 checkpoint`);
 
         // Replay from each written checkpoint and verify the results are expected.
         let replaysWithData = 0;
