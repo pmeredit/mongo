@@ -80,8 +80,9 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
+    const magicRestoreDebugPath = MongoRunner.dataDir + "/magic_restore_debug.log";
     magicRestoreUtils.writeObjsAndRunMagicRestore(
-        restoreConfiguration, [], {"replSet": jsTestName()});
+        restoreConfiguration, [], {"replSet": jsTestName(), "logpath": magicRestoreDebugPath});
 
     // Restart the destination replica set.
     rst = new ReplSetTest({nodes: 1});
@@ -110,6 +111,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
     magicRestoreUtils.assertCannotDoSnapshotRead(primary, 3 /* expectedNumDocs */);
 
+    magicRestoreUtils.checkRestoreSpecificLogs(magicRestoreDebugPath);
     rst.stopSet();
 }
 

@@ -39,7 +39,7 @@
 #include <vector>
 
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kMagicRestore
 
 namespace mongo {
 namespace magic_restore {
@@ -58,11 +58,11 @@ BSONObj BSONStreamReader::getNext() {
     _stream.read(_buffer.get(), _bsonLengthHeaderSizeBytes);
     auto gcount = _stream.gcount();
     if (!_stream || gcount < _bsonLengthHeaderSizeBytes) {
-        LOGV2_FATAL_NOTRACE(8290500,
-                            "Failed to read BSON length from stream",
-                            "bytesRead"_attr = gcount,
-                            "totalBytesRead"_attr = _totalBytesRead,
-                            "totalObjectsRead"_attr = _totalObjectsRead);
+        LOGV2_FATAL(8290500,
+                    "Failed to read BSON length from stream",
+                    "bytesRead"_attr = gcount,
+                    "totalBytesRead"_attr = _totalBytesRead,
+                    "totalObjectsRead"_attr = _totalObjectsRead);
     }
     _totalBytesRead += gcount;
 
@@ -70,7 +70,7 @@ BSONObj BSONStreamReader::getNext() {
     const std::int32_t bsonLength = ConstDataView(_buffer.get()).read<LittleEndian<std::int32_t>>();
     if (bsonLength < BSONObj::kMinBSONLength || bsonLength > BSONObjMaxUserSize) {
         // Error out on invalid length values. Otherwise let invalid BSON data fail in future steps.
-        LOGV2_FATAL_NOTRACE(
+        LOGV2_FATAL(
             8290501, "Parsed invalid BSON length in stream", "BSONLength"_attr = bsonLength);
     }
     const auto bytesToRead = bsonLength - _bsonLengthHeaderSizeBytes;
@@ -80,12 +80,12 @@ BSONObj BSONStreamReader::getNext() {
     if (!_stream || gcount < bytesToRead) {
         // We read a valid BSON object length, but the stream failed or we failed to read the
         // remainder of the object.
-        LOGV2_FATAL_NOTRACE(8290502,
-                            "Failed to read entire BSON object",
-                            "expectedLength"_attr = bsonLength,
-                            "bytesRead"_attr = gcount + _bsonLengthHeaderSizeBytes,
-                            "totalBytesRead"_attr = _totalBytesRead,
-                            "totalObjectsRead"_attr = _totalObjectsRead);
+        LOGV2_FATAL(8290502,
+                    "Failed to read entire BSON object",
+                    "expectedLength"_attr = bsonLength,
+                    "bytesRead"_attr = gcount + _bsonLengthHeaderSizeBytes,
+                    "totalBytesRead"_attr = _totalBytesRead,
+                    "totalObjectsRead"_attr = _totalObjectsRead);
     }
     _totalObjectsRead++;
     return BSONObj(_buffer.get());
@@ -100,6 +100,7 @@ int64_t BSONStreamReader::getTotalObjectsRead() {
 }
 
 void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader) {
+    LOGV2(8290818, "Writing additional PIT oplog entries into oplog");
     auto restoreConfigBytes = reader.getTotalBytesRead();
     AutoGetOplogFastPath oplog(opCtx, OplogAccessMode::kWrite);
     Timestamp latestOplogTs;
@@ -159,9 +160,9 @@ void executeCredentialsCommand(OperationContext* opCtx,
     // The user management command layer catches duplicate key errors and returns the 51002/51003
     // error codes instead.
     if (replyStatus.code() != 51002 && replyStatus.code() != 51003) {
-        LOGV2_FATAL_NOTRACE(8291701,
-                            "Failed to create new role or user for magic restore",
-                            "replyStatus"_attr = replyStatus);
+        LOGV2_FATAL(8291701,
+                    "Failed to create new role or user for magic restore",
+                    "replyStatus"_attr = replyStatus);
     }
 
     // If there was a duplicate key, we must convert the create operation into an update.
@@ -173,9 +174,9 @@ void executeCredentialsCommand(OperationContext* opCtx,
     request.body = bob.obj();
     replyStatus = getStatusFromWriteCommandReply(dbClient.runCommand(request)->getCommandReply());
     if (!replyStatus.isOK()) {
-        LOGV2_FATAL_NOTRACE(8291702,
-                            "Failed to update role or user for magic restore",
-                            "replyStatus"_attr = replyStatus);
+        LOGV2_FATAL(8291702,
+                    "Failed to update role or user for magic restore",
+                    "replyStatus"_attr = replyStatus);
     }
 }
 
@@ -228,6 +229,7 @@ void validateRestoreConfiguration(const RestoreConfiguration* config) {
 }
 
 void truncateLocalDbCollections(OperationContext* opCtx, repl::StorageInterface* storageInterface) {
+    LOGV2(8290801, "Truncating local replication metadata");
     fassert(7197101,
             storageInterface->truncateCollection(opCtx, NamespaceString::kSystemReplSetNamespace));
     fassert(8291101,
@@ -244,6 +246,7 @@ void truncateLocalDbCollections(OperationContext* opCtx, repl::StorageInterface*
 }
 
 void setInvalidMinValid(OperationContext* opCtx, repl::StorageInterface* storageInterface) {
+    LOGV2(8290803, "Inserting invalid minvalid document");
     Timestamp timestamp(0, 1);
     fassert(8291105,
             storageInterface->putSingleton(
@@ -255,11 +258,11 @@ void setInvalidMinValid(OperationContext* opCtx, repl::StorageInterface* storage
 void checkInternalCollectionExists(OperationContext* opCtx, const NamespaceString& nss) {
     AutoGetCollectionForRead autoColl(opCtx, nss);
     if (!autoColl.getCollection()) {
-        LOGV2_FATAL_NOTRACE(8816900,
-                            "Internal replicated collection {nss} does not exist on node. Create "
-                            "the internal collection with a specified UUID by using the "
-                            "systemUuids field in magic restore configuration.",
-                            "nss"_attr = nss);
+        LOGV2_FATAL(8816900,
+                    "Internal replicated collection does not exist on node. Create "
+                    "the internal collection with a specified UUID by using the "
+                    "systemUuids field in magic restore configuration.",
+                    "nss"_attr = nss);
     }
 }
 
@@ -272,7 +275,7 @@ void createInternalCollectionsWithUuid(
         const auto& uuid = nsAndUuid.getUuid();
 
         LOGV2(8816901,
-              "Creating internal collection {ns} with UUID: {uuid}",
+              "Creating internal collection with specified UUID",
               "ns"_attr = ns,
               "uuid"_attr = uuid);
         CollectionOptions collOptions;
@@ -281,7 +284,7 @@ void createInternalCollectionsWithUuid(
 
         if (res.code() == ErrorCodes::NamespaceExists) {
             LOGV2(8816902,
-                  "Internal collection {ns} already exists, skipping collection creation",
+                  "Internal collection already exists, skipping collection creation",
                   "ns"_attr = ns);
         } else {
             uassertStatusOK(res);
@@ -518,6 +521,7 @@ void createCollectionsToRestore(
     OperationContext* opCtx,
     const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids,
     repl::StorageInterface* storageInterface) {
+    LOGV2(8290804, "Creating collections_to_restore collection for selective restore");
     fassert(8756805,
             storageInterface->createCollection(
                 opCtx, NamespaceString::kConfigsvrRestoreNamespace, CollectionOptions()));
@@ -543,6 +547,7 @@ void createCollectionsToRestore(
 void updateShardingMetadata(OperationContext* opCtx,
                             const RestoreConfiguration& restoreConfig,
                             repl::StorageInterface* storageInterface) {
+    LOGV2(8290805, "Updating sharding metadata");
     invariant(restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet);
 
     if (isConfig(restoreConfig)) {
@@ -567,6 +572,7 @@ void updateShardingMetadata(OperationContext* opCtx,
             DBDirectClient dbClient(opCtx);
             OpMsgRequest request;
             request.body = BSON("_configsvrRunRestore" << 1);
+            LOGV2(8290806, "Running _configsvrRunRestore for selective restore");
             dbClient.runCommand(request);
             const auto commandReply = dbClient.runCommand(request)->getCommandReply();
             fassert(8756807, getStatusFromWriteCommandReply(commandReply));
@@ -636,6 +642,7 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
                                          repl::StorageInterface* storageInterface,
                                          BSONObj& lastOplogEntry,
                                          long long higherTerm) {
+    LOGV2(8290807, "Inserting no-op oplog entry with higher term value");
     const auto msgObj = BSON("msg"
                              << "restore incrementing term");
 
@@ -678,15 +685,17 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
 }
 
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
+    LOGV2(8290800, "Beginning magic restore");
     auto opCtx = cc().makeOperationContext();
 
-    LOGV2(8290600, "Reading magic restore configuration from stdin");
+    LOGV2(8290608, "Reading magic restore configuration from stdin");
     auto reader = BSONStreamReader(std::cin);
     auto restoreConfig =
         RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"), reader.getNext());
 
     // Take unstable checkpoints from here on out. Nothing done as part of a restore is replication
     // rollback safe.
+    LOGV2(8290809, "Setting initial data timestamp to the sentinel value");
     svcCtx->getStorageEngine()->setInitialDataTimestamp(
         Timestamp::kAllowUnstableCheckpointsSentinel);
 
@@ -695,14 +704,19 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     invariant(recoveryTimestamp);
     if (restoreConfig.getNodeType() == NodeTypeEnum::kReplicaSet &&
         recoveryTimestamp != restoreConfig.getMaxCheckpointTs()) {
-        fassert(8290700,
-                "For a replica set, the WiredTiger recovery timestamp from the data files must "
-                "match the maxCheckpointTs passed in via the restoreConfiguration");
+        LOGV2_FATAL(8290700,
+                    "For a replica set, the WiredTiger recovery timestamp from the data files must "
+                    "match the maxCheckpointTs passed in via the restoreConfiguration.",
+                    "recoveryTimestamp"_attr = recoveryTimestamp,
+                    "maxCheckpointTs"_attr = restoreConfig.getMaxCheckpointTs());
     }
 
     // Truncates the oplog to the maxCheckpointTs value from the restore
     // configuration. This discards any journaled writes that exist in the restored data files from
     // beyond the checkpoint timestamp.
+    LOGV2(8290810,
+          "Truncating oplog to max checkpoint timestamp",
+          "maxCheckPointTs"_attr = restoreConfig.getMaxCheckpointTs());
     auto replProcess = repl::ReplicationProcess::get(svcCtx);
     replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
         opCtx.get(), restoreConfig.getMaxCheckpointTs());
@@ -710,6 +724,7 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     auto* storageInterface = repl::StorageInterface::get(svcCtx);
     truncateLocalDbCollections(opCtx.get(), storageInterface);
 
+    LOGV2(8290811, "Inserting new replica set config");
     fassert(7197102,
             storageInterface->putSingleton(opCtx.get(),
                                            NamespaceString::kSystemReplSetNamespace,
@@ -726,8 +741,12 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
         // including the pointInTimeTimestamp. External callers of magic restore should only pass
         // along entries up to the PIT timestamp, but we truncate the oplog after this point to
         // guarantee that we don't restore to a timestamp later than the PIT timestamp.
+        LOGV2(8290812,
+              "Truncating oplog to PIT timestamp",
+              "pointInTimeTimestamp"_attr = pointInTimeTimestamp.get());
         replProcess->getReplicationRecovery()->truncateOplogToTimestamp(opCtx.get(),
                                                                         pointInTimeTimestamp.get());
+        LOGV2(8290813, "Beginning to apply additional PIT oplog entries");
         replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(opCtx.get(),
                                                                            recoveryTimestamp.get());
     }
@@ -757,6 +776,9 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
         // After inserting a new entry into the oplog, we need to update the stable timestamp. We'll
         // update the oldest timestamp again before exiting.
+        LOGV2(8290814,
+              "Setting stable timestamp to timestamp of higher term no-oplog entry",
+              "ts"_attr = lastOplogEntryTs);
         opCtx->getServiceContext()->getStorageEngine()->setStableTimestamp(lastOplogEntryTs,
                                                                            false /*force*/);
     }
@@ -780,7 +802,8 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     // Set the oldest timestamp to the stable timestamp to discard any
     // history from the original snapshot.
     opCtx->getServiceContext()->getStorageEngine()->setOldestTimestamp(stableTimestamp, false);
-
+    LOGV2(8290816, "Set stable and oldest timestamps", "ts"_attr = stableTimestamp);
+    LOGV2(8290817, "Finished magic restore");
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }

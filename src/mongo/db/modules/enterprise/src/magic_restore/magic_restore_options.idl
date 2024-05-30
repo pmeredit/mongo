@@ -40,13 +40,18 @@ configs:
       source: [cli]
     additionalOplogEntriesFile:
       section: 'Restore options'
-      description: 'A BSON file to be used in conjunction with --magicRestore that contains oplog entries to restore which are not necessarily present in the backed up data files.'
+      description:
+        'A BSON file to be used in conjunction with --magicRestore that contains oplog entries
+        to restore which are not necessarily present in the backed up data files.'
       arg_vartype: String
       short_name: additionalOplogEntriesFile
       source: [cli]
     additionalOplogEntriesViaStdIn:
       section: 'Restore options'
-      description: 'Used in conjunction with --magicRestore to add oplog entries not necessarily present in the backed up data files. This is an optimized version of `additionalOplogEntries` that avoids copying oplog entries locally to disk.'
+      description:
+        'Used in conjunction with --magicRestore to add oplog entries not necessarily present
+        in the backed up data files. This is an optimized version of `additionalOplogEntries`
+        that avoids copying oplog entries locally to disk.'
       short_name: additionalOplogEntriesViaStdIn
       arg_vartype: Switch
       source: [cli]

@@ -1323,7 +1323,7 @@ TEST_F(MagicRestoreFixture, CreateInternalCollectionsWithUuid) {
 
 DEATH_TEST_REGEX_F(MagicRestoreFixture,
                    CreateNewAutomationCredentialsMissingInternalCollections,
-                   "8816900.*Internal replicated collection {nss} does not exist on node") {
+                   "8816900.*Internal replicated collection does not exist on node") {
     auto storage = storageInterface();
     auto opCtx = operationContext();
     auto testRole = BSON("createRole"
@@ -1402,7 +1402,7 @@ TEST_F(MagicRestoreFixture, CheckInternalCollectionExists) {
 
 DEATH_TEST_REGEX_F(MagicRestoreFixture,
                    CheckInternalCollectionExistsFails,
-                   "8816900.*Internal replicated collection {nss} does not exist on node") {
+                   "8816900.*Internal replicated collection does not exist on node") {
     auto opCtx = operationContext();
     // The collection does not exist, so this should fatally assert.
     magic_restore::checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);

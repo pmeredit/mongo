@@ -113,8 +113,11 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     restoreConfiguration =
         magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
+    const magicRestoreDebugPath = MongoRunner.dataDir + "/magic_restore_debug.log";
     magicRestoreUtils.writeObjsAndRunMagicRestore(
-        restoreConfiguration, entriesAfterBackup, {"replSet": jsTestName()});
+        restoreConfiguration,
+        entriesAfterBackup,
+        {"replSet": jsTestName(), "logpath": magicRestoreDebugPath});
 
     // Start a new replica set fixture on the dbpath.
     const destinationCluster = new ReplSetTest({nodes: 1});
@@ -158,6 +161,8 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
 
     assert.eq(diff,
               {docsWithDifferentContents: [], docsMissingOnFirst: [], docsMissingOnSecond: []});
+
+    magicRestoreUtils.checkRestoreSpecificLogs(magicRestoreDebugPath);
 
     sourceCluster.stopSet();
     destinationCluster.stopSet();
