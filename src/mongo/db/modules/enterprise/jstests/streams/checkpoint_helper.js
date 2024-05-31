@@ -109,7 +109,8 @@ export class TestHelper {
                 writeDir = null,
                 restoreDir = null,
                 dbForTest = null,
-                targetSourceMergeDb = null) {
+                targetSourceMergeDb = null,
+                useTimeField = true) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.input = input;
@@ -202,30 +203,31 @@ export class TestHelper {
         this.pipeline = [];
         // First, append either a kafka or changestream source.
         if (this.sourceType === 'kafka') {
-            this.pipeline.push({
-                $source: {
-                    connectionName: this.kafkaConnectionName,
-                    topic: this.kafkaTopic,
-                    testOnlyPartitionCount: NumberInt(1),
-                    timeField: {
-                        $toDate: "$ts",
-                    }
-                }
-            });
+            let sourceSpec = {
+                connectionName: this.kafkaConnectionName,
+                topic: this.kafkaTopic,
+                testOnlyPartitionCount: NumberInt(1),
+            };
+            if (useTimeField) {
+                sourceSpec.timeField = {$toDate: "$ts"};
+            }
+            this.pipeline.push({$source: sourceSpec});
         } else if (this.sourceType === 'memory') {
-            this.pipeline.push(
-                {$source: {connectionName: '__testMemory', timeField: {$toDate: "$ts"}}});
+            let sourceSpec = {connectionName: '__testMemory'};
+            if (useTimeField) {
+                sourceSpec.timeField = {$toDate: "$ts"};
+            }
+            this.pipeline.push({$source: sourceSpec});
         } else {
-            this.pipeline.push({
-                $source: {
-                    connectionName: this.dbConnectionName,
-                    db: this.dbName,
-                    coll: this.inputCollName,
-                    timeField: {
-                        $toDate: "$fullDocument.ts",
-                    }
-                }
-            });
+            let sourceSpec = {
+                connectionName: this.dbConnectionName,
+                db: this.dbName,
+                coll: this.inputCollName,
+            };
+            if (useTimeField) {
+                sourceSpec.timeField = {$toDate: "$fullDocument.ts"};
+            }
+            this.pipeline.push({$source: sourceSpec});
         }
         for (let stage of middlePipeline) {
             this.pipeline.push(stage);

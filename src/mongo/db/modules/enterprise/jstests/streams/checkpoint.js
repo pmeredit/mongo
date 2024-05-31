@@ -334,7 +334,16 @@ function testBoth(useNewCheckpointing) {
         test.stop();
     }
 
-    function innerStopStartHoppingWindowTest({
+    // This test helper function does the following:
+    //  1. Starts a stream processor.
+    //  2. Inserts the "inputBeforeStop" into the input collection, which the stream processor
+    //  reads.
+    //  3. Stops the stream processor.
+    //  4. Inserts the "inputAfterStop" into the input collection, while the stream processor is not
+    //  running.
+    //  5. Starts the stream processor again, resuming from the last checkpoint.
+    //  6. Verifies the expected output.
+    function innerStopStartTest({
         pipeline,
         inputBeforeStop,
         inputAfterStop,
@@ -344,8 +353,11 @@ function testBoth(useNewCheckpointing) {
         shouldHeapProfile = false,
         extraLogKeys = null,
         interval = null,
-        waitTime = 60 * 1000
+        waitTime = 60 * 1000,
+        expectedOuptutAfterFirstStop = [],
+        useTimeField = true
     }) {
+        // Create a test helper.
         let test = new TestHelper(inputBeforeStop,
                                   pipeline,
                                   interval,
@@ -353,7 +365,10 @@ function testBoth(useNewCheckpointing) {
                                   useNewCheckpointing,
                                   null /* writeDir */,
                                   null /* restoreDir */,
-                                  db /* dbForTest */);
+                                  db /* dbForTest */,
+                                  null /* targetSourceMergeDb */,
+                                  useTimeField);
+        // Helper function to get the results in the output collection.
         const getResults = () => {
             let query = test.outputColl.find({});
             if (resultsSortDoc != null) {
@@ -361,16 +376,27 @@ function testBoth(useNewCheckpointing) {
             }
             return query.toArray();
         };
+        // Helper function to verify the current output.
+        const verifyOuptut = (expectedOutput) => {
+            const output = getResults();
+            assert.eq(expectedOutput.length, output.length);
+            for (let i = 0; i < output.length; i++) {
+                verifyDocsEqual(
+                    expectedOutput[i], output[i], ["_id", "_ts", "_stream_meta"] /*ignoreFields*/);
+            }
+        };
 
+        // This starts the stream processor and inserts the "inputBeforeStop" into the input
+        // collection.
         test.run();
         // Wait for all the messages to be read.
         assert.soon(() => { return test.stats()["inputMessageCount"] == inputBeforeStop.length; },
                     "waiting for input",
                     waitTime);
-        assert.eq(0, getResults().length, "expected no output");
         let stats = test.stats();
-        // Verify there is at least the state size expected.
-        assert.gt(stats["stateSize"], minimiumExpectedStateSize, "expected more state size");
+
+        // Verify there is at least the state size expected (if any).
+        assert.gte(stats["stateSize"], minimiumExpectedStateSize, "expected more state size");
         let heapProfile = null;
         if (shouldHeapProfile) {
             let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
@@ -378,16 +404,31 @@ function testBoth(useNewCheckpointing) {
             jsTestLog(JSON.stringify(result));
             heapProfile = result["heapProfile"];
         }
-        // Stop the stream processor and verify there is no output yet.
-        test.stop();
-        assert.eq(0, getResults().length, "expected no output");
 
+        // Wait for the expected output to show up (if any).
+        assert.soon(() => {
+            return test.stats().outputMessageCount == expectedOuptutAfterFirstStop.length;
+        });
+
+        // Stop the stream processor.
+        test.stop();
+        // Verify the output so far is expected.
+        verifyOuptut(expectedOuptutAfterFirstStop);
         // Verify some checkpoints were written.
         let ids = test.getCheckpointIds();
         assert.gt(ids.length, 0, `expected some checkpoints`);
-        // Run the streamProcessor, expecting to resume from a checkpoint.
+
+        // Insert the "after stop" input, and wait for the expected output.
+        // Note that this input is inserted while the stream processor is not running.
+        assert.commandWorked(test.inputColl.insertMany(inputAfterStop));
+
+        // Run the streamProcessor, resuming from the last checkpoint.
+        // Since we're restoring a checkpoint, we should resume from a resumeToken
+        // that is before the "inputAfterStop" input above. So the stream processor
+        // should still read the "inputAfterStop".
         test.run(false /* firstStart */);
 
+        // Take a heap profile if asked.
         let heapProfileAfterCheckpoint = null;
         if (shouldHeapProfile) {
             let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
@@ -397,25 +438,16 @@ function testBoth(useNewCheckpointing) {
         }
         let statsAfterCheckpoint = test.stats();
 
-        // Insert the "after stop" input, and wait for the expected output.
-        assert.commandWorked(test.inputColl.insertMany(inputAfterStop));
+        // Wait for all the output.
         assert.neq(expectedOutput, null);
-        assert.soon(() => {
-            let results = getResults();
-            if (results.length == expectedOutput.length) {
-                return true;
-            }
-            return false;
-        }, "waiting for output", waitTime);
+        assert.soon(() => { return getResults().length == expectedOutput.length; },
+                    "waiting for output",
+                    waitTime);
 
-        // Verify the window emits the expected results after restore.
-        let results = getResults();
-        assert.eq(expectedOutput.length, results.length);
-        for (let i = 0; i < results.length; i++) {
-            delete results[i]._id;
-            verifyDocsEqual(expectedOutput[i], results[i]);
-        }
+        // Verify the output.
+        verifyOuptut(expectedOutput);
 
+        // Take a heap profile if asked.
         let heapProfileAfterWindowClose = null;
         if (shouldHeapProfile) {
             sleep(5000);
@@ -429,6 +461,7 @@ function testBoth(useNewCheckpointing) {
         // Stop the stream processor.
         test.stop();
 
+        // Print heap profile information if asked.
         if (shouldHeapProfile) {
             // The parse.py script parses this log line for heapProfile and stats information.
             jsTestLog(JSON.stringify({
@@ -460,7 +493,7 @@ function testBoth(useNewCheckpointing) {
                     ]
                 }
             },
-            {$project: {_id: 0, results: 1}}
+            {$project: {_id: 0, results: 1, _stream_meta: 1}}
         ];
         const docTs = ISODate("2023-12-01T01:00:00.000Z");
         const input = [
@@ -513,7 +546,7 @@ function testBoth(useNewCheckpointing) {
                 results: expectedResultsArray
             },
         ];
-        innerStopStartHoppingWindowTest({
+        innerStopStartTest({
             pipeline: pipeline,
             inputBeforeStop: input,
             inputAfterStop: [{ts: ISODate("2023-12-01T02:00:00.001Z")}],
@@ -521,6 +554,28 @@ function testBoth(useNewCheckpointing) {
             resultsSortDoc: {
                 "_stream_meta.window.start": 1,
             }
+        });
+    }
+
+    function basicMatchStopStartTest() {
+        innerStopStartTest({
+            pipeline: [
+                {$replaceRoot: {newRoot: "$fullDocument"}},
+                {$match: {a: 1}},
+                {$project: {_id: 0, _stream_meta: 0}},
+            ],
+            inputBeforeStop: [{a: 1}, {a: 4}, {a: 2}, {a: 1}],
+            inputAfterStop: [
+                {a: 1},
+                {a: 42},
+            ],
+            expectedOutput: [
+                {a: 1},
+                {a: 1},
+                {a: 1},
+            ],
+            expectedOuptutAfterFirstStop: [{a: 1}, {a: 1}],
+            useTimeField: false
         });
     }
 
@@ -549,7 +604,7 @@ function testBoth(useNewCheckpointing) {
 
         let id =
             `${(numInputDocs - 1).toString()}/${(multiplierPerInputDoc - 1).toString()}/${str}`;
-        innerStopStartHoppingWindowTest({
+        innerStopStartTest({
             pipeline: [
                 // The unwind stage "multiplies" the input docs for faster testing.
                 {$unwind: "$fullDocument.unwindArray"},
@@ -615,7 +670,7 @@ function testBoth(useNewCheckpointing) {
     }
 
     function hoppingWindowGroupTest() {
-        innerStopStartHoppingWindowTest({
+        innerStopStartTest({
             pipeline: [
                 {
                     $hoppingWindow: {
@@ -1061,6 +1116,7 @@ function testBoth(useNewCheckpointing) {
             result.errmsg);
     }
 
+    basicMatchStopStartTest();
     smokeTestCorrectness();
     smokeTestCorrectnessTumblingWindow();
     smokeTestStopStartWindow();

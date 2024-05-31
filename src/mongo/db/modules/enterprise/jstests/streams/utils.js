@@ -16,11 +16,12 @@ export const sink = Object.freeze({
     memory: {$emit: {connectionName: '__testMemory'}},
 });
 
-export function verifyDocsEqual(inputDoc, outputDoc) {
+export function verifyDocsEqual(
+    inputDoc, outputDoc, ignoreFields = ["_id", "_ts", "_stream_meta"]) {
     // TODO(SERVER-84656): This fails because the streams pipeline seems to change the field order.
     // Look into whether this is expected or not. assert.eq(left, removeProjections(right))
 
-    if (!documentEq(inputDoc, outputDoc, false, null, ["_id", "_ts", "_stream_meta"])) {
+    if (!documentEq(inputDoc, outputDoc, false, null, ignoreFields)) {
         assert(false, `${tojson(inputDoc)} does not equal ${tojson(outputDoc)}`);
     }
 }
