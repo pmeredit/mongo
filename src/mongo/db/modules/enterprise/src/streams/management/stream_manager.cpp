@@ -8,6 +8,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/db/db_raii.h"
+#include "mongo/db/error_labels.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
@@ -45,7 +46,6 @@
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/timeseries_emit_operator.h"
 #include "streams/management/stream_manager.h"
-#include "streams/util/error_codes.h"
 
 using namespace mongo;
 
@@ -605,7 +605,7 @@ StreamManager::StartResult StreamManager::startStreamProcessorAsync(
     bool shouldStopStreamProcessor = false;
     {
         stdx::lock_guard<Latch> lk(_mutex);
-        uassert(ErrorCodes::ShuttingDown,
+        uassert(ErrorCodes::StreamProcessorWorkerShuttingDown,
                 "Worker is shutting down, start cannot be called",
                 !_shutdown);
 
@@ -1279,9 +1279,10 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
             replyItem.setStartedAt(processorInfo->startedAt);
             replyItem.setStatus(processorInfo->streamStatus);
             if (processorInfo->executorStatus && !processorInfo->executorStatus->isOK()) {
-                replyItem.setError(StreamError{processorInfo->executorStatus->code(),
-                                               processorInfo->executorStatus->reason(),
-                                               isRetryableStatus(*processorInfo->executorStatus)});
+                replyItem.setError(StreamError{
+                    processorInfo->executorStatus->code(),
+                    processorInfo->executorStatus->reason(),
+                    isStreamProcessorRetryableError(processorInfo->executorStatus->code())});
             }
             replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
 

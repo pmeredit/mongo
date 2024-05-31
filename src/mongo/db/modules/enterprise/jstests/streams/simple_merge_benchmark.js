@@ -1,5 +1,5 @@
 import {
-    getAtlasStreamProcessingHandle,
+    getAtlasStreamProcessorHandle,
     getDefaultSp,
     test
 } from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
@@ -163,7 +163,7 @@ function benchmark() {
     if (runningOnAtlas) {
         let aspUri = _getEnv("ASP_URI");
         if (aspUri != "" && aspUri != null) {
-            sp = getAtlasStreamProcessingHandle(aspUri);
+            sp = getAtlasStreamProcessorHandle(aspUri);
         }
     } else {
         // Running locally.

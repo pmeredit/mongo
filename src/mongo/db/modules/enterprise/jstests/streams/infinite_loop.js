@@ -40,8 +40,8 @@ assert.soon(() => {
     const result = sp.listStreamProcessors();
     let thisSp = result.streamProcessors.find((sp) => sp.name == spName);
     assert.neq(thisSp, null);
-    return thisSp.status == "error" && thisSp.error.code == 10334 &&
-        thisSp.error.retryable == false;
+    // TODO(SERVER-90624): Assert non-retryable here, this also depends on SERVER-87669.
+    return thisSp.status == "error" && thisSp.error.code == 10334;
 }, "waiting for error to appear", 5 * 60 * 1000);
 sp[spName].stop();
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

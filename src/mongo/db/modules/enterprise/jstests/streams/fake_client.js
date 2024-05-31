@@ -14,7 +14,7 @@ export class StreamProcessor {
                 pipeline,
                 connectionRegistry,
                 dbForTest,
-                isRunningOnAtlasStreamProcessing = false) {
+                isRunningOnAtlasStreamProcessor = false) {
         this._tenantId = tenantId;
         this._name = name;
         this._pipeline = pipeline;
@@ -23,7 +23,7 @@ export class StreamProcessor {
         if (dbForTest != null) {
             this._db = dbForTest;
         }
-        this._isUsingAtlas = isRunningOnAtlasStreamProcessing;
+        this._isUsingAtlas = isRunningOnAtlasStreamProcessor;
     }
 
     // Utilities to make test streams comamnds.
@@ -271,11 +271,11 @@ export function getDefaultSp() {
     ]);
 }
 
-export function getAtlasStreamProcessingHandle(uri) {
+export function getAtlasStreamProcessorHandle(uri) {
     const m = new Mongo(uri);
     const dbForTest = m.getDB("admin");
     return new Streams(
-        [] /*connectionRegistry*/, dbForTest, /*isRunningOnAtlasStreamProcessing*/ true);
+        [] /*connectionRegistry*/, dbForTest, /*isRunningOnAtlasStreamProcessor*/ true);
 }
 
 export function kafkaExample(

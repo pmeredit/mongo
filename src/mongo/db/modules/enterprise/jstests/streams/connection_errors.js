@@ -75,7 +75,7 @@ function badKafkaSourceStartError() {
         options: {featureFlags: {}}
     });
     assert.commandFailed(result);
-    assert.eq(77175, result.code);
+    assert.eq(ErrorCodes.StreamProcessorKafkaConnectionError, result.code);
     assert(
         result.errmsg.includes(
             "Could not connect to the Kafka topic with kafka error code: -195, message: Local: Broker transport failure."),

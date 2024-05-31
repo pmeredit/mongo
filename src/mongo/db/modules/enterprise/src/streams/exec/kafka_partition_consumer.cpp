@@ -145,13 +145,15 @@ void KafkaPartitionConsumer::doInit() {
 
     std::string errstr;
     _consumer.reset(RdKafka::Consumer::create(_conf.get(), errstr));
-    uassert(
-        8720705, str::stream() << "Failed to create consumer with error: " << errstr, _consumer);
+    uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+            str::stream() << "Failed to create consumer with error: " << errstr,
+            _consumer);
 
     _topic.reset(
         RdKafka::Topic::create(_consumer.get(), _options.topicName, /*conf*/ nullptr, errstr));
-    uassert(
-        8720706, str::stream() << "Failed to create topic handle with error: " << errstr, _topic);
+    uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+            str::stream() << "Failed to create topic handle with error: " << errstr,
+            _topic);
 }
 
 void KafkaPartitionConsumer::doStart() {
@@ -277,7 +279,7 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(8720708,
+            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
                       str::stream() << "Failed while setting configuration " << confName
                                     << " with error: " << errstr);
         }
@@ -339,7 +341,7 @@ int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
                 fmt::format("query_watermark_offsets failed for partition {} with error {}",
                             partition(),
                             RdKafka::err2str(resp));
-            uasserted(76434, errStr);
+            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, errStr);
         }
 
         if (startOffset == RdKafka::Topic::OFFSET_BEGINNING) {
@@ -376,7 +378,7 @@ void KafkaPartitionConsumer::connectToSource() {
                     "topic"_attr = _options.topicName,
                     "partition"_attr = partition(),
                     "error"_attr = RdKafka::err2str(resp));
-        uasserted(77175,
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
                   fmt::format("Could not connect to the Kafka topic with "
                               "kafka error code: {}, message: {}.",
                               resp,
@@ -387,7 +389,8 @@ void KafkaPartitionConsumer::connectToSource() {
                     "context"_attr = _context,
                     "topic"_attr = _options.topicName,
                     "partition"_attr = partition());
-        uasserted(77176, "No partitions found in topic. Does the topic exist?");
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                  "No partitions found in topic. Does the topic exist?");
     } else {
         numPartitions = metadata->topics()->at(0)->partitions()->size();
     }
@@ -395,7 +398,7 @@ void KafkaPartitionConsumer::connectToSource() {
     auto startOffset = queryWatermarkOffsets();
 
     resp = _consumer->start(_topic.get(), _options.partition, startOffset);
-    uassert(8720709,
+    uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
             str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
             resp == RdKafka::ERR_NO_ERROR);
 
@@ -455,7 +458,7 @@ void KafkaPartitionConsumer::fetchLoop() {
                                                          &consumeCbImpl,
                                                          /*opaque*/ nullptr);
         if (numDocsFetched < 0) {
-            onError(SPStatus{{ErrorCodes::Error{8214900},
+            onError(SPStatus{{ErrorCodes::StreamProcessorKafkaConnectionError,
                               fmt::format("Kafka $source partition {} consume_callback() failed",
                                           partition())}});
             // At this point onError has been called, and the next call to doGetDocuments will error
@@ -473,7 +476,7 @@ void KafkaPartitionConsumer::fetchLoop() {
         // Here we ask the eventCallback if we should error out.
         // Even if the broker is down, the above consume_callback will still work fine.
         // But the eventCallback will receive an ALL_BROKERS_DOWN error, and this will return true.
-        uassert(8214906,
+        uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
                 fmt::format("Kafka $source partition {} encountered error", partition()),
                 !_eventCallback->hasError());
 
@@ -542,7 +545,7 @@ void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
             break;
         }
         default: {
-            uasserted(8720711,
+            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
                       str::stream() << "Failed to consume with error: " << message.errstr());
             break;
         }
