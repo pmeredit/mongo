@@ -54,7 +54,7 @@ const std::string userName = "mockuser@LDAPTEST.10GEN.CC";
 
 std::string getAbsolutePath(const char* path) {
     char* absolutePath = realpath(path, nullptr);
-    fassert(4016, absolutePath);
+    fassert(4016, !!absolutePath);
     std::string result = absolutePath;
     free(absolutePath);
     return result;

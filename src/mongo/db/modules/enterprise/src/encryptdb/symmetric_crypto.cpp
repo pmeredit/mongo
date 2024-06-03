@@ -97,13 +97,8 @@ void aesGenerateIV(const SymmetricKey* key,
         dc.write<uint64_t>(key->getAndIncrementInvocationCount());
     } else {
         const auto ivSize = aesGetIVSize(mode);
-        if (bufferLen < ivSize) {
-            fassert(40683, "IV buffer is too small for selected mode");
-        }
-        auto status = engineRandBytes({buffer, ivSize});
-        if (!status.isOK()) {
-            fassert(4050, status);
-        }
+        fassert(40683, bufferLen >= ivSize);  // IV buffer is too small for selected mode
+        fassert(4050, engineRandBytes({buffer, ivSize}));
     }
 }
 
