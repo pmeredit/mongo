@@ -55,17 +55,12 @@ assert.commandFailedWithCode(
 assert.commandWorked(testDB.runCommand({
     distinct: "test",
     key: "ssn",
-    readConcern: "invalid",
+    readConcern: {level: "majority"},
     jsonSchema: sampleSchema,
     isRemoteSchema: false
 }));
-assert.commandWorked(testDB.runCommand({
-    distinct: "test",
-    key: "ssn",
-    maxTimeMS: -1,
-    jsonSchema: sampleSchema,
-    isRemoteSchema: false
-}));
+assert.commandWorked(testDB.runCommand(
+    {distinct: "test", key: "ssn", maxTimeMS: 0, jsonSchema: sampleSchema, isRemoteSchema: false}));
 
 // Test that a distinct command with unknown fields correctly fails.
 assert.commandFailedWithCode(testDB.runCommand({

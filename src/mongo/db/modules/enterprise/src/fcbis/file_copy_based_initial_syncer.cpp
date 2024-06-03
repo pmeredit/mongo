@@ -796,7 +796,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
             {BSON("$backupCursor" << BSONObj())});
         // We must set a writeConcern on internal commands.
         aggRequest.setWriteConcern(WriteConcernOptions());
-        return aggRequest.toBSON(BSONObj());
+        return aggRequest.toBSON();
     }();
 
     auto fetchStatus = std::make_shared<boost::optional<Status>>();
@@ -928,7 +928,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
         // The command may not return immediately because it may wait for the node to have the full
         // oplog history up to the backup point in time.
         aggRequest.setMaxTimeMS(fileBasedInitialSyncExtendCursorTimeoutMS);
-        return aggRequest.toBSON(BSONObj());
+        return aggRequest.toBSON();
     }();
 
     auto fetchStatus = std::make_shared<boost::optional<Status>>();

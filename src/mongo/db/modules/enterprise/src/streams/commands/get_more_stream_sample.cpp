@@ -81,6 +81,10 @@ public:
             nextBatch.done(cursorId, ns());
         }
 
+        const GenericArguments& getGenericArguments() const override {
+            return _request.getGenericArguments();
+        }
+
     private:
         bool supportsWriteConcern() const override {
             return false;

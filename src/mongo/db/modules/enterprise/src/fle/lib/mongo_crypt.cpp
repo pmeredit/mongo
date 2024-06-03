@@ -208,9 +208,8 @@ BSONObj analyzeExplainQuery(const BSONObj document,
         document.removeFields(StringDataSet{query_analysis::kJsonSchema,
                                             query_analysis::kIsRemoteSchema,
                                             query_analysis::kEncryptionInformation});
-    const bool apiStrict = APIParameters::get(opCtx).getAPIStrict().value_or(false);
     auto explainCmd = idl::parseCommandDocument<ExplainCommandRequest>(
-        IDLParserContext(ExplainCommandRequest::kCommandName), apiStrict, cleanedCmdObj);
+        IDLParserContext(ExplainCommandRequest::kCommandName), cleanedCmdObj);
 
     auto explainedObj = explainCmd.getCommandParameter();
     uassert(6206601,

@@ -69,7 +69,7 @@ public:
     mongo::BSONObj runCommand(const T& request) {
         auto db = getDb(request.getDbName());
         // Lets the operation_exception be thrown if the operation fails.
-        auto cmdObj = request.toBSON(mongo::BSONObj());
+        auto cmdObj = request.toBSON();
         auto reply = db->run_command({toBsoncxxValue(std::move(cmdObj))});
         return fromBsoncxxDocument(reply);
     }

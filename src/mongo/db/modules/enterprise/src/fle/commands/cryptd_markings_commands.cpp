@@ -2,6 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/idl/idl_parser.h"
 #include "mongo/platform/basic.h"
 
 #include "mongo/bson/bsonobjbuilder.h"
@@ -266,7 +267,15 @@ public:
         InvocationBase(const CryptDWriteOp* definition,
                        const OpMsgRequest& request,
                        const DatabaseName& dbName)
-            : CommandInvocation(definition), _request(request), _dbName(dbName) {}
+            : CommandInvocation(definition),
+              _request(request),
+              _dbName(dbName),
+              _genericArgs(
+                  GenericArguments::parse(IDLParserContext("GenericArguments",
+                                                           _request.validatedTenancyScope,
+                                                           _request.getValidatedTenantId(),
+                                                           _request.getSerializationContext()),
+                                          _request.body)) {}
 
     protected:
         NamespaceString ns() const final {
@@ -315,10 +324,14 @@ public:
                                          const OpMsgRequest& request,
                                          BSONObjBuilder* builder) = 0;
 
+        const GenericArguments& getGenericArguments() const override {
+            return _genericArgs;
+        }
 
     private:
         const OpMsgRequest& _request;
         const DatabaseName _dbName;
+        const GenericArguments _genericArgs;
     };
 };
 
@@ -485,6 +498,12 @@ public:
         : CommandInvocation(explainCommand),
           _outerRequest{&request},
           _dbName{_outerRequest->parseDbName()},
+          _genericArgs(
+              GenericArguments::parse(IDLParserContext("GenericArguments",
+                                                       _outerRequest->validatedTenancyScope,
+                                                       _outerRequest->getValidatedTenantId(),
+                                                       _outerRequest->getSerializationContext()),
+                                      _outerRequest->body)),
           _ns{CommandHelpers::parseNsFromCommand(_dbName, _outerRequest->body)},
           _verbosity{std::move(verbosity)},
           _innerRequest{std::move(innerRequest)},
@@ -509,6 +528,10 @@ private:
         return _dbName;
     }
 
+    const GenericArguments& getGenericArguments() const override {
+        return _genericArgs;
+    }
+
     bool supportsWriteConcern() const override {
         return false;
     }
@@ -528,6 +551,7 @@ private:
 
     const OpMsgRequest* _outerRequest;
     const DatabaseName _dbName;
+    const GenericArguments _genericArgs;
     NamespaceString _ns;
     ExplainOptions::Verbosity _verbosity;
     std::unique_ptr<OpMsgRequest> _innerRequest;  // Lifespan must enclose that of _innerInvocation.
@@ -543,9 +567,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     auto cleanedCmdObj = cmdObj.removeFields(StringDataSet{query_analysis::kJsonSchema,
                                                            query_analysis::kIsRemoteSchema,
                                                            query_analysis::kEncryptionInformation});
-    const bool apiStrict = APIParameters::get(opCtx).getAPIStrict().value_or(false);
     auto explainCmd = idl::parseCommandDocument<ExplainCommandRequest>(
-        IDLParserContext(ExplainCommandRequest::kCommandName), apiStrict, cleanedCmdObj);
+        IDLParserContext(ExplainCommandRequest::kCommandName), cleanedCmdObj);
 
     // We must remove the FLE meta-data fields before attempting to parse the explain command.
     ExplainOptions::Verbosity verbosity = explainCmd.getVerbosity();

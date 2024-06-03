@@ -415,12 +415,11 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     // temporary database name however the collection name will be used when serializing back to
     // BSON.
 
-    auto findCommand = query_request_helper::makeFromFindCommand(
-        cmdObj,
-        auth::ValidatedTenancyScope::get(expCtx->opCtx),
-        dbName.tenantId(),
-        expCtx->serializationCtxt,
-        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
+    auto findCommand =
+        query_request_helper::makeFromFindCommand(cmdObj,
+                                                  auth::ValidatedTenancyScope::get(expCtx->opCtx),
+                                                  dbName.tenantId(),
+                                                  expCtx->serializationCtxt);
 
     auto filterPlaceholder =
         replaceEncryptedFieldsInFilter(expCtx, *schemaTree, findCommand->getFilter());
@@ -476,12 +475,11 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
 
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
-    auto request = aggregation_request_helper::parseFromBSON(
-        cmdObj,
-        auth::ValidatedTenancyScope::get(expCtx->opCtx),
-        boost::none,
-        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false),
-        expCtx->serializationCtxt);
+    auto request =
+        aggregation_request_helper::parseFromBSON(cmdObj,
+                                                  auth::ValidatedTenancyScope::get(expCtx->opCtx),
+                                                  boost::none,
+                                                  expCtx->serializationCtxt);
 
     // Add the populated list of involved namespaces to the expression context, needed at parse
     // time by stages such as $lookup and $out.
@@ -542,7 +540,7 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
                              newQueryPlaceholder.schemaRequiresEncryption ||
                                  schemaTree->mayContainEncryptedNode(),
                              nullptr,
-                             countCmd.toBSON(cmdObj)};
+                             countCmd.toBSON()};
 }
 
 PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -594,13 +592,10 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
         parsedDistinct.setQuery(placeholder.result);
     }
 
-    // Serialize the parsed distinct command. Passing the original command object to
-    // 'serialize()' allows the IDL to merge generic fields which the command does not
-    // specifically handle.
     return PlaceHolderResult{placeholder.hasEncryptionPlaceholders,
                              schemaTree->mayContainEncryptedNode(),
                              nullptr,
-                             parsedDistinct.serialize(cmdObj).body};
+                             parsedDistinct.serialize().body};
 }
 
 /**
@@ -674,7 +669,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     }
 
     return PlaceHolderResult{
-        anythingEncrypted, schemaTree->mayContainEncryptedNode(), nullptr, request.toBSON(cmdObj)};
+        anythingEncrypted, schemaTree->mayContainEncryptedNode(), nullptr, request.toBSON()};
 }
 
 /**
@@ -803,7 +798,7 @@ PlaceHolderResult addPlaceHoldersForBulkWrite(
     bulk.setOps(ops);
 
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
-    retPlaceholder.result = removeExtraFields(fieldNames, bulk.toBSON(request.body));
+    retPlaceholder.result = removeExtraFields(fieldNames, bulk.toBSON());
     retPlaceholder.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return retPlaceholder;
 }
@@ -829,7 +824,7 @@ PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
     batch.setDocuments(docVector);
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
     fieldNames.insert("documents"_sd);
-    retPlaceholder.result = removeExtraFields(fieldNames, batch.toBSON(request.body));
+    retPlaceholder.result = removeExtraFields(fieldNames, batch.toBSON());
     retPlaceholder.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return retPlaceholder;
 }
@@ -866,7 +861,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     updateOp.setUpdates(updateVector);
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
     fieldNames.insert("updates"_sd);
-    phr.result = removeExtraFields(fieldNames, updateOp.toBSON(request.body));
+    phr.result = removeExtraFields(fieldNames, updateOp.toBSON());
     phr.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return phr;
 }
@@ -896,7 +891,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
     deleteRequest.setDeletes(std::move(markedDeletes));
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
     fieldNames.insert("deletes"_sd);
-    placeHolderResult.result = removeExtraFields(fieldNames, deleteRequest.toBSON(request.body));
+    placeHolderResult.result = removeExtraFields(fieldNames, deleteRequest.toBSON());
     placeHolderResult.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return placeHolderResult;
 }

@@ -44,7 +44,7 @@ struct SetAuditConfigCmd {
                 opCtx,
                 ReadPreferenceSetting{ReadPreference::PrimaryOnly},
                 cmd.getDbName(),
-                cmd.toBSON(),
+                CommandHelpers::filterCommandRequestForPassthrough(cmd.toBSON()),
                 Milliseconds(defaultConfigCommandTimeoutMS.load()),
                 Shard::RetryPolicy::kIdempotent));
         uassertStatusOK(response.commandStatus);

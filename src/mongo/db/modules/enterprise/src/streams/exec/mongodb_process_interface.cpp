@@ -37,14 +37,13 @@ static constexpr size_t kMaxCollectionCacheSize = 100;
 // failAfterRemoteInsertSucceeds.
 MONGO_FAIL_POINT_DEFINE(failAfterRemoteInsertSucceeds);
 
+
 // Returns the default mongocxx::write_concern we use for all write operations.
-mongocxx::write_concern getWriteConcern() {
-    mongocxx::write_concern writeConcern;
-    writeConcern.journal(true);
-    writeConcern.acknowledge_level(mongocxx::write_concern::level::k_majority);
+WriteConcernOptions getWriteConcern() {
     // TODO: Make the timeout configurable.
-    writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
-    return writeConcern;
+    return WriteConcernOptions(WriteConcernOptions::kMajority,
+                               WriteConcernOptions::SyncMode::JOURNAL,
+                               Milliseconds(60 * 1000));
 }
 
 // The implementation of this function largely matches the implementation of the same function in
@@ -213,10 +212,9 @@ Status MongoDBProcessInterface::insert(
     dassert(!oid);
 
     // We ignore the 'wc' argument and use specific write concern for all write operations.
-    auto commandPassthroughFields = BSON(WriteConcernOptions::kWriteConcernField
-                                         << fromBsoncxxDocument(getWriteConcern().to_document()));
+    insertCommand->setWriteConcern(getWriteConcern());
     insertCommand->getWriteCommandRequestBase().setOrdered(true);
-    auto cmdObj = insertCommand->toBSON(commandPassthroughFields);
+    auto cmdObj = insertCommand->toBSON();
     auto* db = getDb(ns.dbName());
 
     // Lets the operation_exception be thrown if the operation fails.
@@ -243,9 +241,8 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     updateCommand->setLegacyRuntimeConstants(boost::none);
     updateCommand->getWriteCommandRequestBase().setOrdered(true);
     // We ignore the 'wc' argument and use specific write concern for all write operations.
-    auto passthroughFields = BSON(WriteConcernOptions::kWriteConcernField
-                                  << fromBsoncxxDocument(getWriteConcern().to_document()));
-    auto cmdObj = updateCommand->toBSON(passthroughFields);
+    updateCommand->setWriteConcern(getWriteConcern());
+    auto cmdObj = updateCommand->toBSON();
 
     //
     // Executes the command.

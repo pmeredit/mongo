@@ -13,6 +13,7 @@
 #include "mongo/db/commands/set_cluster_parameter_invocation.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
+#include "mongo/db/generic_argument_util.h"
 #include "mongo/db/s/forwardable_operation_metadata.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
@@ -73,7 +74,8 @@ void upsertConfig(OperationContext* opCtx, const AuditConfigDocument& doc) {
                     entry.setUpsert(true);
                     return entry;
                 }()});
-                return updateOp.toBSON(kMajorityWriteConcern);
+                updateOp.setWriteConcern(generic_argument_util::kMajorityWriteConcern);
+                return updateOp.toBSON();
             }(),
             res);
     } catch (const DBException& ex) {

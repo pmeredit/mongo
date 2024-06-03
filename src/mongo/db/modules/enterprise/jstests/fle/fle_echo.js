@@ -29,8 +29,8 @@ const fooEncryptedSchema = generateSchema({
                                           "test.foo");
 
 let cmds = [
-    {cmdName: "find", cmd: {find: "foo", filter: {_id: 1}}},
-    {cmdName: "count", cmd: {count: "foo", query: {_id: 1}}},
+    {cmdName: "find", cmd: {find: "foo", filter: {_id: 1}}, isReadOnly: true},
+    {cmdName: "count", cmd: {count: "foo", query: {_id: 1}}, isReadOnly: true},
     {
         cmdName: "findAndModify",
         cmd: {findAndModify: "foo", query: {foo: NumberLong(1)}, update: {$inc: {score: 1.0}}}
@@ -54,7 +54,11 @@ let cmds = [
 
 // Distinct is only supported with FLE 1.
 if (!fle2Enabled()) {
-    cmds.push({cmdName: "distinct", cmd: {distinct: "foo", query: {_id: 1}, key: "_id"}});
+    cmds.push({
+        cmdName: "distinct",
+        cmd: {distinct: "foo", query: {_id: 1}, key: "_id"},
+        isReadOnly: true
+    });
 }
 
 cmds.forEach(element => {
@@ -73,25 +77,34 @@ cmds.forEach(element => {
     // mongocryptd.
     const passthroughFields = {
         "writeConcern": {w: "majority", wtimeout: 5000},
-        "$audit": "auditString",
-        "$client": "clientString",
-        "$configServerState": 2,
+        "$audit": {
+            $impersonatedUser: {"user": "testUser", "db": "test"},
+            $impersonatedRoles: [{"role": "readWrite", "db": "test"}]
+        },
+        "$client": {},
+        "$configServerState": {},
         "allowImplicitCollectionCreation": true,
-        "$oplogQueryData": false,
+        "$oplogQueryData": NumberInt(0),
         "$readPreference": {"mode": "primary"},
         "$replData": {data: "here"},
-        "$clusterTime": "now",
+        "$clusterTime": {
+            clusterTime: Timestamp(1, 1),
+            signature: {hash: BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAA="), keyId: NumberLong(0)}
+        },
         "maxTimeMS": 500,
         "readConcern": {level: "majority"},
-        "databaseVersion": 2.2,
-        "shardVersion": 4.6,
+        "databaseVersion": {
+            uuid: new UUID("ebee4d32-ef8b-40cb-b75e-b45fbe4042dc"),
+            timestamp: new Timestamp(1691525961, 12),
+            lastMod: NumberInt(5),
+        },
+        "shardVersion": {e: ObjectId(), t: Timestamp(1, 2), v: Timestamp(1, 1)},
         "tracking_info": {"found": "it"},
-        "txnNumber": 7,
+        "txnNumber": NumberLong(7),
         "autocommit": false,
         "coordinator": false,
-        "startTransaction": "now",
-        "stmtId": NumberInt(1),
-        "lsid": 1,
+        "startTransaction": true,
+        "lsid": {id: BinData(4, "QlLfPHTySm6tqfuV+EOsVA==")},
     };
 
     // Switch to the schema containing encrypted fields.
@@ -100,11 +113,22 @@ cmds.forEach(element => {
     // Merge the passthrough fields with the current command object.
     Object.assign(element.cmd, passthroughFields);
 
+    const stmtId = NumberInt(1);
+
+    // stmtId is not automatically passed through for commands that do not use it.
+    if (!element.isReadOnly) {
+        element.cmd.stmtId = stmtId;
+    }
+
     const passthroughResult = assert.commandWorked(testDB.runCommand(element.cmd));
 
     // Verify that each of the passthrough fields is included in the result.
     for (let field in passthroughFields) {
         assert.eq(passthroughResult.result[field], passthroughFields[field], passthroughResult);
+    }
+
+    if (!element.isReadOnly) {
+        assert.eq(passthroughResult.result["stmtId"], stmtId, passthroughResult);
     }
 
     // Verify that the 'schemaRequiresEncryption' bit is correctly set.
