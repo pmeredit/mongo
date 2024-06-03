@@ -25,17 +25,22 @@ function authAsLDAPUser(shouldSucceed, user) {
 function runAdminCommand(conn, command) {
     const adminDB = conn.getDB('admin');
     assert(adminDB.auth("siteRootAdmin", "secret"));
-    assert.commandWorked(adminDB.runCommand(command));
+    const res = assert.commandWorked(adminDB.runCommand(command));
     adminDB.logout();
+
+    return res;
 }
 
-function launchCluster(useConnectionPooling) {
+function launchCluster(useConnectionPooling, configGenerator, delay) {
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
     TestData.skipCheckOrphans = true;
     TestData.skipCheckDBHashes = true;
     TestData.skipCheckShardFilteringMetadata = true;
 
-    const configGenerator = new LDAPTestConfigGenerator();
+    // These tests should only use the mock server, not ldaptest.10gen.cc.
+    configGenerator.ldapServers = [];
+    configGenerator.startMockupServer(delay);
+
     configGenerator.authorizationManagerCacheSize = 0;
     configGenerator.ldapValidateLDAPServerConfig = false;
     configGenerator.ldapUseConnectionPool = useConnectionPooling;
@@ -53,45 +58,62 @@ function launchCluster(useConnectionPooling) {
     return st;
 }
 
-function runTest(fpConn, mainConn, badParam, goodParam) {
+/**
+ * - Server initially has a valid LDAP configuration.
+ * - A client attempts authenticating as an LDAP user, and the server stalls while binding to the
+ * LDAP server.
+ * - A different client changes LDAP configuration to an invalid value that should result in LDAP
+ * auth failures.
+ * - The ongoing authentication attempt should continue using the old configuration and eventually
+ * succeed.
+ * - Subsequent authentication attempts should fail due to the now-invalid LDAP configuration.
+ * - Changing the LDAP configuration back to the original value should allow auth to start working
+ * normally again.
+ */
+function runTest(fpConn, mainConn, parameterName, badParameterValue) {
     // Configure fail point to force the bind operation itself to hang as long as the fail point
     // is active on the fpConn.
-    const bindTimeoutFp = configureFailPoint(fpConn, 'ldapBindTimeoutHangIndefinitely');
+    let bindTimeoutFp = configureFailPoint(fpConn, 'ldapBindTimeoutHangIndefinitely');
+
+    // Retrieve the current value of the parameter that will be changed.
+    const oldParamValue = runAdminCommand(fpConn, {getParameter: 1, [parameterName]: 1});
 
     // Run a parallel shell to auth as ldapz_ldap1 and wait for the failpoint to get hit.
     const waitForSuccessfulAuth = startParallelShell(
         funWithArgs(authAsLDAPUser, true /* shouldSucceed */, 'ldapz_ldap1'), mainConn.port);
     bindTimeoutFp.wait();
-
-    // Change the configured parameter to a value that will cause auth failures.
-    runAdminCommand(fpConn, badParam);
-
-    // Subsequent auth attempts will use the new parameter, resulting in failure.
-    const waitForFailedAuth = startParallelShell(
-        funWithArgs(authAsLDAPUser, false /* shouldSucceed */, 'ldapz_admin'), mainConn.port);
-    bindTimeoutFp.wait();
     sleep(3000);
 
-    // Turn off the failpoint so that auth succeeds before the timeout.
+    // Change the configured parameter to a value that will cause auth failures.
+    jsTestLog('Changing parameter ' + parameterName + ' from ' + oldParamValue[parameterName] +
+              ' to ' + badParameterValue);
+    runAdminCommand(fpConn, {setParameter: 1, [parameterName]: badParameterValue});
+
+    // Turn the failpoint off. Despite the new parameter value, the existing auth attempt
+    // should succeed since it started before the config update.
     bindTimeoutFp.off();
     waitForSuccessfulAuth();
-    waitForFailedAuth();
+
+    // Now, launch another auth attempt. Since the parameter value has been updated this should
+    // fail.
+    startParallelShell(funWithArgs(authAsLDAPUser, false /* shouldSucceed */, 'ldapz_admin'),
+                       mainConn.port)();
 
     // Switch the parameter's value back to one that permits successful auth.
-    runAdminCommand(fpConn, goodParam);
+    jsTestLog('Changing parameter ' + parameterName + ' from ' + badParameterValue + ' to ' +
+              oldParamValue[parameterName]);
+    runAdminCommand(fpConn, {setParameter: 1, [parameterName]: oldParamValue[parameterName]});
     startParallelShell(funWithArgs(authAsLDAPUser, true /* shouldSucceed */, 'ldapz_admin'),
                        mainConn.port)();
 }
 
 function runChangeLDAPServerTest(useConnectionPooling) {
-    const st = launchCluster(useConnectionPooling);
+    const configGenerator = new LDAPTestConfigGenerator();
+    const st = launchCluster(useConnectionPooling, configGenerator, 0);
     const mongos = st.s0;
     const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
 
-    runTest(mongos,
-            mongos,
-            {setParameter: 1, ldapServers: "localhost:20441"},
-            {setParameter: 1, ldapServers: "ldaptest.10gen.cc"});
+    runTest(mongos, mongos, 'ldapServers', 'localhost:12345');
 
     // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
     // on replica set that is fsync locked and has replica set endpoint enabled.
@@ -99,18 +121,17 @@ function runChangeLDAPServerTest(useConnectionPooling) {
         skipCheckDBHashes: isReplicaSetEndpointActive,
         skipValidation: isReplicaSetEndpointActive
     });
+    configGenerator.stopMockupServer();
 }
 
 function runChangeLDAPQueryBindTest(useConnectionPooling) {
-    const st = launchCluster(useConnectionPooling);
+    const configGenerator = new LDAPTestConfigGenerator();
+    const st = launchCluster(useConnectionPooling, configGenerator, 0);
     const mongos = st.s0;
     const configPrimary = st.configRS.getPrimary();
     const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
 
-    runTest(configPrimary,
-            mongos,
-            {setParameter: 1, ldapQueryUser: 'cn=ldapz_ldap2,' + defaultUserDNSuffix},
-            {setParameter: 1, ldapQueryPassword: 'Secret123'});
+    runTest(configPrimary, mongos, 'ldapQueryUser', 'cn=ldapz_ldap2,' + defaultUserDNSuffix);
 
     // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
     // on replica set that is fsync locked and has replica set endpoint enabled.
@@ -118,17 +139,16 @@ function runChangeLDAPQueryBindTest(useConnectionPooling) {
         skipCheckDBHashes: isReplicaSetEndpointActive,
         skipValidation: isReplicaSetEndpointActive
     });
+    configGenerator.stopMockupServer();
 }
 
 function runChangeLDAPTimeoutTest(useConnectionPooling) {
-    const st = launchCluster(useConnectionPooling);
+    const configGenerator = new LDAPTestConfigGenerator();
+    const st = launchCluster(useConnectionPooling, configGenerator, 5);
     const mongos = st.s0;
     const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
 
-    runTest(mongos,
-            mongos,
-            {setParameter: 1, ldapTimeoutMS: 1},
-            {setParameter: 1, ldapTimeoutMS: 10000});
+    runTest(mongos, mongos, 'ldapTimeoutMS', 50);
 
     // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
     // on replica set that is fsync locked and has replica set endpoint enabled.
@@ -136,6 +156,7 @@ function runChangeLDAPTimeoutTest(useConnectionPooling) {
         skipCheckDBHashes: isReplicaSetEndpointActive,
         skipValidation: isReplicaSetEndpointActive
     });
+    configGenerator.stopMockupServer();
 }
 
 runChangeLDAPServerTest(true);

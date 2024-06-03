@@ -8,6 +8,7 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/base/parse_number.h"
+#include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
@@ -24,7 +25,13 @@ void LDAPServersSetting::append(OperationContext* opCtx,
                                 BSONObjBuilder* b,
                                 StringData name,
                                 const boost::optional<TenantId>&) {
-    *b << name << joinLdapHost(LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
+    if (getTestCommandsEnabled()) {
+        *b << name
+           << joinLdapHostAndPortForLocalhost(
+                  LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
+    } else {
+        *b << name << joinLdapHost(LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
+    }
 }
 
 Status LDAPServersSetting::setFromString(StringData str, const boost::optional<TenantId>&) {

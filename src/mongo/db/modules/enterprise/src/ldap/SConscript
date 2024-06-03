@@ -100,6 +100,7 @@ env.Library(
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/db/auth/auth",
+        "$BUILD_DIR/mongo/db/commands/test_commands_enabled",
         "$BUILD_DIR/mongo/db/server_base",
         "ldap_connection",
         "ldap_manager",

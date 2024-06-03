@@ -45,6 +45,13 @@ public:
      */
     void dropRemovedHosts(const stdx::unordered_set<HostAndPort>& newHosts);
 
+    /**
+     * Drops all pooled connections in _pool.
+     */
+    void dropAllConnections() {
+        dropRemovedHosts({});
+    }
+
     /** Generate a BSONObj with descriptive data about this factory, suitable for use in
      * serverStatus. */
     BSONObj generateServerStatusData() const;

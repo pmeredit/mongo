@@ -72,6 +72,27 @@ void LDAPHost::parse(const HostAndPort& host) {
         _port = _isSSL ? 636 : 389;
     }
     _isIpvFour = _isIpvSix ? false : CIDR::parse(_hostName).isOK();
+
+    _isLocalHost = [this]() {
+        if (_hostName == "localhost") {
+            return true;
+        }
+
+        auto swHostNameCIDR = CIDR::parse(_hostName);
+        if (!swHostNameCIDR.isOK()) {
+            return false;
+        }
+
+        if (_isIpvFour) {
+            return CIDR("127.0.0.0/8").contains(swHostNameCIDR.getValue());
+        }
+
+        if (_isIpvSix) {
+            return CIDR("::1/128").contains(swHostNameCIDR.getValue());
+        }
+
+        return false;
+    }();
 }
 
 std::string LDAPHost::toString() const {
@@ -101,5 +122,14 @@ std::string joinLdapHostAndPort(std::vector<LDAPHost> hosts, char joinChar) {
         hosts, joinChar, [](const LDAPHost& host) { return host.getNameAndPort(); });
 }
 
+std::string joinLdapHostAndPortForLocalhost(std::vector<LDAPHost> hosts, char joinChar) {
+    return joinLdapHost(hosts, joinChar, [](const LDAPHost& host) {
+        if (host.isLocalHost()) {
+            return host.getNameAndPort();
+        }
+
+        return host.getName();
+    });
+}
 
 }  // namespace mongo

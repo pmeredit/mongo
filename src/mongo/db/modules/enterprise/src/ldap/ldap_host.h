@@ -43,6 +43,9 @@ public:
     bool isIpvSix() const {
         return _isIpvSix;
     }
+    bool isLocalHost() const {
+        return _isLocalHost;
+    }
 
     Type getType() const {
         return _type;
@@ -75,6 +78,7 @@ private:
     bool _isSSL{false};
     bool _isIpvFour{false};
     bool _isIpvSix{false};
+    bool _isLocalHost{false};
     int _port{0};
     Type _type{Type::kDefault};
 };
@@ -90,4 +94,11 @@ std::string joinLdapHost(std::vector<LDAPHost> hosts, char joinChar);
  * with the joinChar inbetween each host
  */
 std::string joinLdapHostAndPort(std::vector<LDAPHost> hosts, char joinChar);
+
+/**
+ * joinLdapHostAndPortForLocalhost concatenates a vector of LDAPHost objects (using
+ * LDAPHost::getName() for all LDAP hosts except localhost, which uses LDAPHost::getNameAndPort()),
+ * with the joinChar in between each host.
+ */
+std::string joinLdapHostAndPortForLocalhost(std::vector<LDAPHost> hosts, char joinChar);
 }  // namespace mongo

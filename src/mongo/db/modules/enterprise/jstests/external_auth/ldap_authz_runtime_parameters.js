@@ -42,10 +42,30 @@ function runtimeConfigurationCallback({conn, shardingTest}) {
         return result;
     }
 
-    var ldapServers = baseLDAPUrls[0];
+    /**
+     * Locally-running LDAP servers include the port in the getParameter output when
+     * enableTestCommands=true. They must have hostnames meeting one of the following criteria:
+     * 1. Hostname is "localhost"
+     * 2. Hostname is an IPv4 address in the 127.0.0.0/8 range.
+     * 3. Hostname is an IPv6 address in the [::1]/128 range.
+     *
+     * All other hostnames and IP addresses do not include the port in the getParameter output
+     * */
+    let ldapServers =
+        "localhost:20221,192.168.1.0:389,[2001:0000:130F:0000:0000:09C0:876A:130B]:636,127.0.0.1:636,[::1]:389";
+    let expectedLdapServers =
+        "localhost:20221,192.168.1.0,2001:0000:130F:0000:0000:09C0:876A:130B,127.0.0.1:636,[::1]:389";
     executeCommand({setParameter: 1, "ldapServers": ldapServers});
-    var ret = executeCommand({getParameter: 1, "ldapServers": 1});
-    assert.eq(ldapServers,
+    let ret = executeCommand({getParameter: 1, "ldapServers": 1});
+    assert.eq(expectedLdapServers,
+              ret.ldapServers,
+              "Unexpected getParameter return for ldapServers: " + ret.ldapServers);
+
+    ldapServers = baseLDAPUrls[0];
+    expectedLdapServers = baseLDAPUrls[0];
+    executeCommand({setParameter: 1, "ldapServers": ldapServers});
+    ret = executeCommand({getParameter: 1, "ldapServers": 1});
+    assert.eq(expectedLdapServers,
               ret.ldapServers,
               "Unexpected getParameter return for ldapServers: " + ret.ldapServers);
 

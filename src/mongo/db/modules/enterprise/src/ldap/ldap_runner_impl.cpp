@@ -229,6 +229,10 @@ Milliseconds LDAPRunnerImpl::getTimeout() const {
 void LDAPRunnerImpl::setTimeout(Milliseconds timeout) {
     stdx::lock_guard<Latch> lock(_memberAccessMutex);
     _options.timeout = timeout;
+
+    // Drop pooled connections to all hosts so that fresh connections with the
+    // new timeouts are spawned.
+    _factory->dropAllConnections();
 }
 
 int LDAPRunnerImpl::getRetryCount() const {

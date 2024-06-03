@@ -210,9 +210,10 @@ export function LDAPTestConfigGenerator() {
         return config;
     };
 
-    this.startMockupServer = function() {
+    this.startMockupServer = function(delay = 0) {
         this.ldapMockupServer = new MockLDAPServer(
             'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
+        this.ldapMockupServer.delay = delay;
         this.ldapMockupServer.start();
 
         this.ldapMockupServerHost = this.ldapMockupServer.getHostAndPort();

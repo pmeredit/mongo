@@ -367,6 +367,7 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
 
 void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
     auto anchor = shared_from_this();
+    _options.timeout = timeout;
 
     _executor->schedule([this, anchor, cb = std::move(cb)](auto execStatus) {
         if (!execStatus.isOK()) {
