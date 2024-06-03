@@ -50,7 +50,6 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     const magicRestoreUtils = new MagicRestoreUtils({
         backupSource: primary,
         pipeDir: MongoRunner.dataDir,
-        isPit: false,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
     magicRestoreUtils.takeCheckpointAndOpenBackup();
@@ -89,7 +88,6 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
 
     // See if auth we setup before restore is still valid.
     if (testAuth) {
@@ -99,19 +97,22 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         assert(admin.auth("root", "root"), "auth failed with right password");
     }
 
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     // The later 3 writes were truncated during magic restore.
     assert.eq(restoredDocs.length, 3);
     assert.eq(restoredDocs, expectedDocs);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 3, "i");
-    magicRestoreUtils.assertMinValidIsCorrect(primary);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
-    magicRestoreUtils.assertCannotDoSnapshotRead(primary, 3 /* expectedNumDocs */);
+    magicRestoreUtils.postRestoreChecks({
+        node: primary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        expectedOplogCountForNs: 3,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 3,
+        logPath: magicRestoreDebugPath
+    });
 
-    magicRestoreUtils.checkRestoreSpecificLogs(magicRestoreDebugPath);
     rst.stopSet();
 }
 

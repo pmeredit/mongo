@@ -94,7 +94,6 @@ function runTest(insertHigherTermOplogEntry) {
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
     db = primary.getDB(dbName);
 
     const configTxnsPreRetry = primary.getDB("config").getCollection("transactions").findOne();
@@ -107,16 +106,19 @@ function runTest(insertHigherTermOplogEntry) {
     assert.eq(configTxnsPostRetry._id.id, session1ID.id);
     assert.eq(configTxnsPostRetry.txnNum, NumberLong(0));
 
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     assert.eq(restoredDocs.length, 4);
 
-    // Retried retryable writes do not generate additional oplog entries.
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 4, "i");
-    magicRestoreUtils.assertMinValidIsCorrect(primary);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
-    magicRestoreUtils.assertCannotDoSnapshotRead(primary, 4 /* expectedNumDocs */);
+    magicRestoreUtils.postRestoreChecks({
+        node: primary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        // Retried retryable writes do not generate additional oplog entries.
+        expectedOplogCountForNs: 4,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 4,
+    });
 
     rst.stopSet(null /* signal */, false /* forRestart */, {'skipValidation': true});
 }

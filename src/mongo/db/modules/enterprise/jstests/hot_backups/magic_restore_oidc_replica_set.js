@@ -323,19 +323,20 @@ function testOIDC(insertHigherTermOplogEntry) {
     admin = primary.getDB("admin");
     admin.auth("siteRootAdmin", "secret");
 
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
-
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     // The later 3 writes were truncated during magic restore.
     assert.eq(restoredDocs.length, 3);
     assert.eq(restoredDocs, expectedDocs);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 3, "i");
-    magicRestoreUtils.assertMinValidIsCorrect(primary);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
-    magicRestoreUtils.assertCannotDoSnapshotRead(primary, 3 /* expectedNumDocs */);
+    magicRestoreUtils.postRestoreChecks({
+        node: primary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        expectedOplogCountForNs: 3,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 3,
+    });
 
     // Run the auth tests again.
     assert(admin.auth('admin', 'admin'));

@@ -121,26 +121,24 @@ function runTest(updateAutoCreds) {
     destinationCluster.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     const destPrimary = destinationCluster.getPrimary();
-    const restoredConfig =
-        assert.commandWorked(destPrimary.adminCommand({replSetGetConfig: 1})).config;
 
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(destPrimary);
-
-    magicRestoreUtils.assertOplogCountForNamespace(
-        sourcePrimary, dbName + "." + coll, 7, "i" /* op filter*/);
-
-    magicRestoreUtils.assertMinValidIsCorrect(destPrimary);
-    assert.eq(rolesCollUuid, magicRestoreUtils.getCollUuid(destPrimary, "admin", "system.roles"));
-    assert.eq(userCollUuid, magicRestoreUtils.getCollUuid(destPrimary, "admin", "system.users"));
+    magicRestoreUtils.postRestoreChecks({
+        node: destPrimary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        expectedOplogCountForNs: 7,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 7,
+        rolesCollUuid: rolesCollUuid,
+        userCollUuid: userCollUuid,
+    });
 
     // The original node still maintains the history store, so point-in-time reads will succeed.
     let res = sourcePrimary.getDB("db").runCommand(
         {find: "coll", readConcern: {level: "snapshot", atClusterTime: snapshotTs}});
     assert.commandWorked(res);
     assert.eq(res.cursor.firstBatch.length, 3);
-
-    magicRestoreUtils.assertCannotDoSnapshotRead(destPrimary, 7 /* expectedNumDocs */);
 
     let diff = DataConsistencyChecker.getDiff(
         sourcePrimary.getDB("db").getCollection("coll").find().sort({_id: 1}),

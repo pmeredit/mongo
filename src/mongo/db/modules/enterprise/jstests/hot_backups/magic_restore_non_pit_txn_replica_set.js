@@ -116,7 +116,6 @@ function runTest(insertHigherTermOplogEntry) {
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
     db = primary.getDB(dbName);
 
     // Do a majority write to make sure the committed timestamp is up to date on the new node before
@@ -148,8 +147,6 @@ function runTest(insertHigherTermOplogEntry) {
         autocommit: false,
     }));
 
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     // The later 3 writes were truncated during magic restore.
     assert.eq(restoredDocs.length, 4);
@@ -164,11 +161,16 @@ function runTest(insertHigherTermOplogEntry) {
     const committedTransactionDocs = primary.getDB(dbName).getCollection("coll3").find().toArray();
     assert.eq(committedTransactionDocs, [{_id: 1}]);
 
-    // The transaction entries are in an applyOps which does not get counted here.
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 1, "i");
-    magicRestoreUtils.assertMinValidIsCorrect(primary);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
-    magicRestoreUtils.assertCannotDoSnapshotRead(primary, 4 /* expectedNumDocs */);
+    magicRestoreUtils.postRestoreChecks({
+        node: primary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        // The transaction entries are in an applyOps which does not get counted here.
+        expectedOplogCountForNs: 1,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 4,
+    });
 
     rst.stopSet(null /* signal */, false /* forRestart */, {'skipValidation': true});
 }

@@ -225,20 +225,24 @@ function runTest(insertHigherTermOplogEntry) {
         configsvr: ""
     });
 
-    const primary = configsvr.getPrimary();
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
-
+    configsvr.awaitNodesAgreeOnPrimary();
     // Check each node in the config server replica set.
     for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
         jsTestLog(`Checking config server ${nodeIndex}`);
         const node = configsvr.nodes[nodeIndex];
         const magicRestoreUtils = magicRestoreUtilsArray[numNodes * numShards + nodeIndex];
-        magicRestoreUtilsArray[numNodes * numShards + nodeIndex].assertConfigIsCorrect(
-            expectedConfigs[numShards], restoredConfig);
-        magicRestoreUtils.assertMinValidIsCorrect(node);
-        magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(
-            node, lastOplogEntryTss[numNodes * numShards + nodeIndex]);
-        magicRestoreUtils.assertCannotDoSnapshotRead(node, 0 /* expectedNumDocs */);
+
+        magicRestoreUtils.postRestoreChecks({
+            node: node,
+            expectedConfig: expectedConfigs[numShards],
+            dbName: dbName,
+            collName: coll,
+            // We don't expect the config server to have data in db.coll.
+            expectedOplogCountForNs: 0,
+            opFilter: "i",
+            expectedNumDocsSnapshot: 0,
+            shardLastOplogEntryTs: lastOplogEntryTss[numNodes * numShards + nodeIndex],
+        });
     }
 
     const replicaSets = [];
@@ -266,19 +270,21 @@ function runTest(insertHigherTermOplogEntry) {
         node.setSecondaryOk();
 
         const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
-        const restoredConfig =
-            assert.commandWorked(node.adminCommand({replSetGetConfig: 1})).config;
-        magicRestoreUtils.assertConfigIsCorrect(expectedConfigs[rsIndex], restoredConfig);
         const restoredDocs =
             node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
         assert.eq(restoredDocs, expectedDocs.slice(4 * rsIndex, 4 * rsIndex + 4));
 
-        // We inserted 8 documents and have 2 shards, so 4 per shard.
-        magicRestoreUtils.assertOplogCountForNamespace(node, dbName + "." + coll, 4, "i");
-        magicRestoreUtils.assertMinValidIsCorrect(node);
-        magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(
-            node, lastOplogEntryTss[numNodes * rsIndex + nodeIndex]);
-        magicRestoreUtils.assertCannotDoSnapshotRead(node, 4 /* expectedNumDocs */);
+        magicRestoreUtils.postRestoreChecks({
+            node: node,
+            expectedConfig: expectedConfigs[rsIndex],
+            dbName: dbName,
+            collName: coll,
+            // We inserted 8 documents and have 2 shards, so 4 per shard.
+            expectedOplogCountForNs: 4,
+            opFilter: "i",
+            expectedNumDocsSnapshot: 4,
+            shardLastOplogEntryTs: lastOplogEntryTss[numNodes * rsIndex + nodeIndex],
+        });
     }
 
     jsTestLog("Getting restore cluster dbHashes");

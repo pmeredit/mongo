@@ -98,10 +98,6 @@ function runTest(insertHigherTermOplogEntry) {
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
-
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     // 'a', 'b', 'c' were captured by the initial backup cursor.
     // 'e', 'f', 'g' were captured by the second incremental backup cursor.
@@ -109,10 +105,15 @@ function runTest(insertHigherTermOplogEntry) {
     assert.eq(restoredDocs.length, 6);
     assert.eq(restoredDocs, expectedDocs);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 6, "i");
-    magicRestoreUtils.assertMinValidIsCorrect(primary);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(primary);
-    magicRestoreUtils.assertCannotDoSnapshotRead(primary, 6 /* expectedNumDocs */);
+    magicRestoreUtils.postRestoreChecks({
+        node: primary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        expectedOplogCountForNs: 6,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 6,
+    });
 
     rst.stopSet();
 }

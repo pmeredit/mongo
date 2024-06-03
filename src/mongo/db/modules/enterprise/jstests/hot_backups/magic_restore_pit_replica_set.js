@@ -124,16 +124,17 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     destinationCluster.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     const destPrimary = destinationCluster.getPrimary();
-    const restoredConfig =
-        assert.commandWorked(destPrimary.adminCommand({replSetGetConfig: 1})).config;
 
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
-    magicRestoreUtils.assertStableCheckpointIsCorrectAfterRestore(destPrimary);
-
-    magicRestoreUtils.assertOplogCountForNamespace(
-        sourcePrimary, dbName + "." + coll, 7, "i" /* op filter*/);
-
-    magicRestoreUtils.assertMinValidIsCorrect(destPrimary);
+    magicRestoreUtils.postRestoreChecks({
+        node: destPrimary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: coll,
+        expectedOplogCountForNs: 7,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 7,
+        logPath: magicRestoreDebugPath
+    });
 
     // Make sure auth settings we applied after the backup are still valid.
     if (testAuth) {
@@ -153,16 +154,12 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     assert.commandWorked(res);
     assert.eq(res.cursor.firstBatch.length, 3);
 
-    magicRestoreUtils.assertCannotDoSnapshotRead(destPrimary, 7 /* expectedNumDocs */);
-
     let diff = DataConsistencyChecker.getDiff(
         sourcePrimary.getDB("db").getCollection("coll").find().sort({_id: 1}),
         destPrimary.getDB("db").getCollection("coll").find().sort({_id: 1}));
 
     assert.eq(diff,
               {docsWithDifferentContents: [], docsMissingOnFirst: [], docsMissingOnSecond: []});
-
-    magicRestoreUtils.checkRestoreSpecificLogs(magicRestoreDebugPath);
 
     sourceCluster.stopSet();
     destinationCluster.stopSet();

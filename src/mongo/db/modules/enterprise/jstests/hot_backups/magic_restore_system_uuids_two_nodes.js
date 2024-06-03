@@ -84,14 +84,17 @@ rst.awaitNodesAgreeOnPrimary();
 nodes.forEach((node, idx) => {
     jsTestLog(`Verifying node ${idx}`);
     node.getDB(dbName).getMongo().setSecondaryOk();
-    const restoredConfig = assert.commandWorked(node.adminCommand({replSetGetConfig: 1})).config;
-    magicRestoreUtils[idx].assertConfigIsCorrect(expectedConfigs[idx], restoredConfig);
-    magicRestoreUtils[idx].assertOplogCountForNamespace(node, dbName + "." + coll, 3, "i");
-    magicRestoreUtils[idx].assertMinValidIsCorrect(node);
-    magicRestoreUtils[idx].assertStableCheckpointIsCorrectAfterRestore(node);
-    magicRestoreUtils[idx].assertCannotDoSnapshotRead(node, 3 /* expectedNumDocs */);
-    assert.eq(rolesCollUuid, magicRestoreUtils[idx].getCollUuid(node, "admin", "system.roles"));
-    assert.eq(userCollUuid, magicRestoreUtils[idx].getCollUuid(node, "admin", "system.users"));
+    magicRestoreUtils[idx].postRestoreChecks({
+        node: node,
+        expectedConfig: expectedConfigs[idx],
+        dbName: dbName,
+        collName: coll,
+        expectedOplogCountForNs: 3,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 3,
+        rolesCollUuid: rolesCollUuid,
+        userCollUuid: userCollUuid,
+    });
 });
 
 rst.stopSet();

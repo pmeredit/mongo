@@ -53,7 +53,7 @@ function runTest(pit) {
     const magicRestoreUtils = new MagicRestoreUtils(
         {backupSource: primary, pipeDir: MongoRunner.dataDir, insertHigherTermOplogEntry: false});
 
-    magicRestoreUtils.takeCheckpointAndOpenBackup(primary);
+    magicRestoreUtils.takeCheckpointAndOpenBackup();
 
     // Finish the index build, generating a 'commitIndexBuild' oplog entry.
     IndexBuildTest.resumeIndexBuilds(primary);
@@ -97,8 +97,15 @@ function runTest(pit) {
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
-    const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
-    magicRestoreUtils.assertConfigIsCorrect(expectedConfig, restoredConfig);
+    magicRestoreUtils.postRestoreChecks({
+        node: primary,
+        expectedConfig: expectedConfig,
+        dbName: dbName,
+        collName: collName,
+        expectedOplogCountForNs: 5,
+        opFilter: "i",
+        expectedNumDocsSnapshot: 5,
+    });
 
     db = primary.getDB(dbName);
     assert.soonNoExcept(() => {
