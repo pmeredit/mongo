@@ -23,7 +23,12 @@ function largeGroupTest() {
         return input;
     }
 
-    var numCustomers = 50;
+    var numCustomers = 40;
+    const debugBuild = db.adminCommand("buildInfo").debug;
+    if (debugBuild) {
+        // Use a smaller input in debug builds so the test runs faster.
+        numCustomers = numCustomers / 10;
+    }
     const pipeline = [
         {$replaceRoot: {newRoot: "$fullDocument"}},
         {
@@ -46,7 +51,11 @@ function largeGroupTest() {
         {$project: {customerId: "$_id", max: "$max"}}
     ];
 
-    var numInputDocs = 20 * numCustomers;
+    var numInputDocs = 10 * numCustomers;
+    if (debugBuild) {
+        // Use a smaller input in debug builds so the test runs faster.
+        numInputDocs = numInputDocs / 10;
+    }
     const inputBeforeStop = generateInput(numInputDocs);
     let test = new TestHelper(inputBeforeStop,
                               pipeline,

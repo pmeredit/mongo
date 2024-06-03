@@ -32,7 +32,13 @@ function hoppingWindowCheckpointInTheMiddle(docs, pipeline, compareFunction) {
 
 (function checkpointInTheMiddleHoppingWindowTests() {
     // Run the test for an artibtrary number of docs between 50 and 500.
-    const numDocs = Math.floor(Math.random() * 450 + 50);
+    let numDocs = Math.floor(Math.random() * 450 + 50);
+    const debugBuild = db.adminCommand("buildInfo").debug;
+    if (debugBuild) {
+        // Use fewer documents for debug builds so the test runs faster.
+        numDocs = numDocs / 5;
+    }
+
     jsTestLog("Running the test for " + numDocs + " docs.");
     // TODO SERVER-84707 improve test setup to collect each windows output and then compare each
     // windows output. without that a larger value of size for e.g.: 5000 would fail this test.
