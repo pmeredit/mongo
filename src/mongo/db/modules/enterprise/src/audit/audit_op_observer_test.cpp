@@ -148,7 +148,8 @@ public:
     void doDropDatabase(StringData dbname) {
         auto opCtx = cc().makeOperationContext();
         observer.onDropDatabase(opCtx.get(),
-                                DatabaseName::createDatabaseName_forTest(boost::none, dbname));
+                                DatabaseName::createDatabaseName_forTest(boost::none, dbname),
+                                false /*fromMigrate*/);
     }
 
     void doRenameCollection(const NamespaceString& fromColl, const NamespaceString& toColl) {

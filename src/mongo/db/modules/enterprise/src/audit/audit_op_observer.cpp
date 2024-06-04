@@ -192,7 +192,9 @@ void AuditOpObserver::onDelete(OperationContext* opCtx,
     }
 }
 
-void AuditOpObserver::onDropDatabase(OperationContext* opCtx, const DatabaseName& dbName) {
+void AuditOpObserver::onDropDatabase(OperationContext* opCtx,
+                                     const DatabaseName& dbName,
+                                     bool markFromMigrate) {
     if (isFCVUninitializedOrTooHigh()) {
         return;
     }
