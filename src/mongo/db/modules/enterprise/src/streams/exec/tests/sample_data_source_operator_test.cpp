@@ -43,7 +43,7 @@ TEST_F(SampleDataSourceOperatorTest, Basic) {
             SampleDataSourceSolarSpec::parseOwned(IDLParserContext{"test"}, doc.doc.toBson());
         int32_t watts = data.getMax_watts();
         ASSERT_GTE(watts, 0 /* minWatts in sample_data_source_operator.cpp */);
-        ASSERT_LTE(watts, 250 /* maxWatts in sample_data_source_operator.cpp */);
+        ASSERT_LTE(watts, 450 /* maxWatts in sample_data_source_operator.cpp */);
     }
 }
 

@@ -18,7 +18,7 @@ int SampleDataSourceOperator::randomInt(int min, int max) {
 }
 
 Document SampleDataSourceOperator::generateSolarDataDoc(Date_t timestamp) {
-    const int maxWatts = 250;
+    const int maxWatts = 450;
     std::string deviceId(fmt::format("device_{}", randomInt(0, 10)));
     int groupId = randomInt(0, 10);
     int modifier = kDefaultTimeZone.dateParts(timestamp).hour < 12 ? 2 : 1;
