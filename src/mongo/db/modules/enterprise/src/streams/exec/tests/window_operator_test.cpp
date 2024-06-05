@@ -2814,11 +2814,12 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-            ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
-                                            fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
-                                        DBException,
-                                        ErrorCodes::InvalidOptions,
-                                        "Window interval size must be greater than 0.");
+            ASSERT_THROWS_CODE_AND_WHAT(
+                planner.plan(
+                    parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                DBException,
+                ErrorCodes::StreamProcessorInvalidOptions,
+                "InvalidOptions: Window interval size must be greater than 0.");
         }
 
         {
@@ -2840,11 +2841,12 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-            ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
-                                            fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
-                                        DBException,
-                                        ErrorCodes::InvalidOptions,
-                                        "Window interval size must be greater than 0.");
+            ASSERT_THROWS_CODE_AND_WHAT(
+                planner.plan(
+                    parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                DBException,
+                ErrorCodes::StreamProcessorInvalidOptions,
+                "InvalidOptions: Window interval size must be greater than 0.");
         }
 
         {
@@ -2866,11 +2868,12 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-            ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
-                                            fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
-                                        DBException,
-                                        ErrorCodes::InvalidOptions,
-                                        "Window hopSize size must be greater than 0.");
+            ASSERT_THROWS_CODE_AND_WHAT(
+                planner.plan(
+                    parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                DBException,
+                ErrorCodes::StreamProcessorInvalidOptions,
+                "InvalidOptions: Window hopSize size must be greater than 0.");
         }
     });
 }

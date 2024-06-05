@@ -880,7 +880,7 @@ function testCollWithoutDb() {
     const processor = sp[processorName];
     let result = processor.start({featureFlags: {}}, false /* assertWorked */);
     // This is the error the target changestream $source gives us.
-    assert.commandFailedWithCode(result, 72);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
 }
 
 testCollWithoutDb();

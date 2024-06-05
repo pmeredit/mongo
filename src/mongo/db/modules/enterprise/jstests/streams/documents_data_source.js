@@ -88,8 +88,8 @@ function documentsDataSourceInvalidExpr() {
     const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     const testCases = [
-        [{$toUpper: "abc"}, 8243600],
-        [{$concatArrays: [[{}], [0]]}, 8243601],
+        [{$toUpper: "abc"}, ErrorCodes.StreamProcessorInvalidOptions],
+        [{$concatArrays: [[{}], [0]]}, ErrorCodes.StreamProcessorInvalidOptions],
     ];
     testCases.forEach((testCase, i) => {
         const [documents, errorCode] = testCase;

@@ -21,6 +21,6 @@ assert.commandFailedWithCode(db.runCommand({
     connections: [{name: "__testMemory", type: "in_memory", options: {}}],
     options: {featureFlags: {}},
 }),
-                             8661200);
+                             ErrorCodes.StreamProcessorInvalidOptions);
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

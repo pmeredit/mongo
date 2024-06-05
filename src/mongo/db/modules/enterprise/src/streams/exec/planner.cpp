@@ -1389,7 +1389,20 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     } else {
         _context->checkpointInterval = kFastCheckpointInterval;
     }
-    return planInner(bsonPipeline).dag;
+
+    try {
+        return planInner(bsonPipeline).dag;
+    } catch (const DBException& e) {
+        if (e.code() == ErrorCodes::InternalError || e.code() == ErrorCodes::UnknownError) {
+            // We don't expect these errors (even if the user's pipeline is bad), so we throw
+            // them as is.
+            uasserted(e.code(), e.reason());
+        }
+
+        // Other than the error codes above, we treat DBExceptions in plan()
+        // as a user error: StreamProcessorInvalidOptions.
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions, e.toString());
+    }
 }
 
 Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {

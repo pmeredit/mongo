@@ -137,7 +137,9 @@ TEST_F(PlannerTest, RegularParsingErrorsWork) {
     std::vector<BSONObj> invalidBsonPipeline{
         BSON("$addFields" << 1),
     };
-    ASSERT_THROWS_CODE(addSourceSinkAndParse(invalidBsonPipeline), AssertionException, 40272);
+    ASSERT_THROWS_CODE(addSourceSinkAndParse(invalidBsonPipeline),
+                       AssertionException,
+                       ErrorCodes::StreamProcessorInvalidOptions);
 }
 
 TEST_F(PlannerTest, OnlySupportedStages) {
@@ -150,8 +152,9 @@ TEST_F(PlannerTest, OnlySupportedStages) {
     )";
 
     // We don't support $densify.
-    ASSERT_THROWS_CODE(
-        addSourceSinkAndParse(pipeline), AssertionException, ErrorCodes::InvalidOptions);
+    ASSERT_THROWS_CODE(addSourceSinkAndParse(pipeline),
+                       AssertionException,
+                       ErrorCodes::StreamProcessorInvalidOptions);
 }
 
 
@@ -496,8 +499,8 @@ TEST_F(PlannerTest, WindowStageParsing) {
         Planner planner(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
                                     DBException,
-                                    ErrorCodes::InvalidOptions,
-                                    "Unsupported stage: $source");
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "InvalidOptions: Unsupported stage: $source");
     }
 
     {
@@ -516,8 +519,8 @@ TEST_F(PlannerTest, WindowStageParsing) {
         Planner planner(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
                                     DBException,
-                                    ErrorCodes::InvalidOptions,
-                                    "Unsupported stage: $source");
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "InvalidOptions: Unsupported stage: $source");
     }
 }
 
@@ -582,7 +585,8 @@ TEST_F(PlannerTest, InvalidPipelines) {
         std::vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
         Planner planner(_context.get(), /*options*/ {});
-        ASSERT_THROWS_CODE(planner.plan(pipeline), DBException, ErrorCodes::InvalidOptions);
+        ASSERT_THROWS_CODE(
+            planner.plan(pipeline), DBException, ErrorCodes::StreamProcessorInvalidOptions);
     }
 }
 
@@ -944,7 +948,8 @@ TEST_F(PlannerTest, EphemeralSink) {
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
     // For typical non-ephemeral pipelines, we don't allow this.
-    ASSERT_THROWS_CODE(planner.plan(pipeline), DBException, (int)ErrorCodes::InvalidOptions);
+    ASSERT_THROWS_CODE(
+        planner.plan(pipeline), DBException, (int)ErrorCodes::StreamProcessorInvalidOptions);
 
     // If ephemeral=true is supplied in start, we allow a pipeline without a sink.
     _context->isEphemeral = true;
@@ -1348,9 +1353,10 @@ TEST_F(PlannerTest, NotAllowedInMainPipelineErrorMessage) {
         auto dag = planner.plan(bson);
         ASSERT(false);
     } catch (const DBException& e) {
-        ASSERT_EQ(ErrorCodes::InvalidOptions, e.code());
-        ASSERT_EQ("$sort stage is only permitted in the inner pipeline of a window stage",
-                  e.reason());
+        ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
+        ASSERT_EQ(
+            "InvalidOptions: $sort stage is only permitted in the inner pipeline of a window stage",
+            e.reason());
     }
 }
 
@@ -1383,8 +1389,8 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
         auto dag = planner.plan(bson);
         ASSERT(false);
     } catch (const DBException& e) {
-        ASSERT_EQ(ErrorCodes::InvalidOptions, e.code());
-        ASSERT_EQ("The $lookup.from field must be an object", e.reason());
+        ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
+        ASSERT_EQ("InvalidOptions: The $lookup.from field must be an object", e.reason());
     }
 }
 
@@ -1547,6 +1553,41 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "GroupOperator",
                "SortOperator",
                "KafkaEmitOperator"});
+}
+
+// Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying
+// exceptions from agg layer due to invalid syntax.
+TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
+    Planner planner(_context.get(), Planner::Options{});
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->isEphemeral = false;
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    auto bson = parsePipeline(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $match: 1
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])");
+    ASSERT_THROWS_CODE_AND_WHAT(
+        planner.plan(bson),
+        AssertionException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "Location15959: the match filter must be an expression in an object");
 }
 
 }  // namespace

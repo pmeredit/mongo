@@ -68,7 +68,7 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
                 context->connections.contains(connectionName));
         const auto& connection = context->connections.at(connectionName);
-        uassert(mongo::ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "DLQ must be an Atlas collection",
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);
         auto connectionOptions =
@@ -1061,7 +1061,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(
         processorInfo->outputSamplers.begin(),
         processorInfo->outputSamplers.end(),
         [cursorId](OutputSamplerInfo& samplerInfo) { return samplerInfo.cursorId == cursorId; });
-    uassert(mongo::ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "cursor does not exist: " << cursorId,
             samplerIt != processorInfo->outputSamplers.end());
 

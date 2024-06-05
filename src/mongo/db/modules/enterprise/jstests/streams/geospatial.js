@@ -169,7 +169,7 @@ function smoketest_geoNear_notSupportedInStreamProcessing() {
     ]);
     let result =
         sp[geoNearMainPipeline].start(undefined /* startOptions */, false /* assertWorked */);
-    assert.commandFailedWithCode(result, 72);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
     assert(result.errmsg.includes("Unsupported stage: $geoNear"));
 
     const geoNearWindow = "geoNearInWindows";
@@ -198,7 +198,7 @@ function smoketest_geoNear_notSupportedInStreamProcessing() {
         },
     ]);
     result = sp[geoNearWindow].start(undefined /* startOptions */, false /* assertWorked */);
-    assert.commandFailedWithCode(result, 72);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
     assert(result.errmsg.includes("Unsupported stage: $geoNear"));
 }
 
