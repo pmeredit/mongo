@@ -109,7 +109,8 @@ void BackupFileCloner::preStage() {
     _localFile.open(_localFilePath.string(),
                     std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
     uassert(ErrorCodes::FileOpenFailed,
-            str::stream() << "Failed to open file " << _localFilePath.string(),
+            str::stream() << "Failed to open file " << _localFilePath.string()
+                          << " OS Error: " << errno << " msg " << strerror(errno),
             !_localFile.fail());
     _fileOffset = 0;
 }
@@ -250,38 +251,53 @@ void BackupFileCloner::writeDataToFilesystemCallback(
     uassertStatusOK(cbd.status);
     {
         stdx::lock_guard<Latch> lk(_mutex);
+        if (!getStatus(lk).isOK()) {
+            // If we've already failed, must not continue running here, because we'll
+            // probably invariant if we do.
+            return;
+        }
         if (_dataToWrite.size() == 0) {
             LOGV2_WARNING(5781707,
                           "writeDataToFilesystemCallback, but no data to write",
                           "remoteFile"_attr = _remoteFileName);
         }
-        for (const auto& doc : _dataToWrite) {
-            uassert(5781714,
-                    str::stream() << "Saw multiple end-of-file-markers in file " << _remoteFileName,
-                    !_sawEof);
-            // Received file data should always be in sync with the stream and where we think
-            // our next input should be coming from.
-            const auto byteOffset = doc["byteOffset"].safeNumberLong();
-            invariant(byteOffset == _localFile.tellp());
-            invariant(byteOffset == _fileOffset);
-            const auto& dataElem = doc["data"];
-            uassert(5781708,
-                    str::stream() << "Expected file data to be type BinDataGeneral. " << doc,
-                    dataElem.type() == BinData && dataElem.binDataType() == BinDataGeneral);
-            int dataLength;
-            auto data = dataElem.binData(dataLength);
-            _localFile.write(data, dataLength);
-            uassert(ErrorCodes::FileStreamFailed,
-                    str::stream() << "Unable to write file data for file " << _remoteFileName
-                                  << " at offset " << _fileOffset,
-                    !_localFile.fail());
-            _progressMeter.hit(dataLength);
-            _fileOffset += dataLength;
-            _stats.bytesCopied += dataLength;
-            _sawEof = doc["endOfFile"].booleanSafe();
+        try {
+            for (const auto& doc : _dataToWrite) {
+                uassert(5781714,
+                        str::stream()
+                            << "Saw multiple end-of-file-markers in file " << _remoteFileName,
+                        !_sawEof);
+                // Received file data should always be in sync with the stream and where we think
+                // our next input should be coming from.
+                const auto byteOffset = doc["byteOffset"].safeNumberLong();
+                invariant(byteOffset == _localFile.tellp());
+                invariant(byteOffset == _fileOffset);
+                const auto& dataElem = doc["data"];
+                uassert(5781708,
+                        str::stream() << "Expected file data to be type BinDataGeneral. " << doc,
+                        dataElem.type() == BinData && dataElem.binDataType() == BinDataGeneral);
+                int dataLength;
+                auto data = dataElem.binData(dataLength);
+                _localFile.write(data, dataLength);
+                uassert(ErrorCodes::FileStreamFailed,
+                        str::stream() << "Unable to write file data for file " << _remoteFileName
+                                      << " at offset " << _fileOffset << " OS Error: " << errno
+                                      << " msg " << strerror(errno),
+                        !_localFile.fail());
+                _progressMeter.hit(dataLength);
+                _fileOffset += dataLength;
+                _stats.bytesCopied += dataLength;
+                _sawEof = doc["endOfFile"].booleanSafe();
+            }
+            _dataToWrite.clear();
+            _stats.writtenBatches++;
+        } catch (const DBException& e) {
+            // We need to set the status here before we release the lock, otherwise we
+            // might execute the next callback after an error has occurred.
+            LOGV2(9085500, "BackupFileCloner filesystem exception", "error"_attr = e.toStatus());
+            setStatus(lk, e.toStatus());
+            throw;
         }
-        _dataToWrite.clear();
-        _stats.writtenBatches++;
     }
 
     initialSyncHangDuringBackupFileClone.executeIf(
@@ -307,6 +323,9 @@ bool BackupFileCloner::isMyFailPoint(const BSONObj& data) const {
 
 void BackupFileCloner::waitForFilesystemWorkToComplete() {
     _fsWorkTaskRunner.join();
+    // We may have failed in the file system work.
+    stdx::lock_guard<Latch> lk(_mutex);
+    uassertStatusOK(getStatus(lk));
 }
 
 BackupFileCloner::Stats BackupFileCloner::getStats() const {
