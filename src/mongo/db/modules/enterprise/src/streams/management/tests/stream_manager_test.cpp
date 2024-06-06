@@ -154,7 +154,7 @@ public:
             const auto& err = sp.getError();
             ASSERT_TRUE(err);
             ASSERT_EQUALS(ErrorCodes::Error::ExceededMemoryLimit, err->getCode());
-            ASSERT_EQUALS("stream processing instance out of memory", err->getReason());
+            ASSERT_EQUALS("Worker out of memory", err->getReason());
             ASSERT_EQUALS(false, err->getRetryable());
         }
     }
@@ -1022,15 +1022,12 @@ TEST_F(StreamManagerTest, MemoryTracking) {
                BSON("id" << 1 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:00.000Z"),
            });
-    ASSERT_THROWS_WHAT(runOnce(streamManager.get(), kTestTenantId1, sp3),
-                       SPException,
-                       "stream processing instance out of memory");
-    ASSERT_THROWS_WHAT(runOnce(streamManager.get(), kTestTenantId1, sp2),
-                       SPException,
-                       "stream processing instance out of memory");
-    ASSERT_THROWS_WHAT(runOnce(streamManager.get(), kTestTenantId1, sp1),
-                       SPException,
-                       "stream processing instance out of memory");
+    ASSERT_THROWS_WHAT(
+        runOnce(streamManager.get(), kTestTenantId1, sp3), SPException, "Worker out of memory");
+    ASSERT_THROWS_WHAT(
+        runOnce(streamManager.get(), kTestTenantId1, sp2), SPException, "Worker out of memory");
+    ASSERT_THROWS_WHAT(
+        runOnce(streamManager.get(), kTestTenantId1, sp1), SPException, "Worker out of memory");
 
     for (const auto& streamName : {sp1, sp2, sp3}) {
         onExecutorShutdown(streamManager.get(), kTestTenantId1, streamName, Status::OK());
