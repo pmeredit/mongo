@@ -135,7 +135,6 @@ function testOIDCConfig(configs, testCases) {
         authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
         logComponentVerbosity: tojson({accessControl: 3}),
         oidcIdentityProviders: tojson(configs),
-        JWKSMinimumQuiescePeriodSecs: 0,
     };
 
     jsTest.log('BEGIN standalone');

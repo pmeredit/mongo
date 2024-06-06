@@ -130,6 +130,9 @@ function setup(conn) {
 
     // Increase logging verbosity.
     assert.commandWorked(adminDB.setLogLevel(3));
+
+    // Leave conn authenticated as admin so that subsequent tests can perform admin operations on
+    // this connection without reauthenticating.
 }
 
 function compareKeys(actualKeys, expectedKeys) {
@@ -141,7 +144,7 @@ function compareKeys(actualKeys, expectedKeys) {
     }
 }
 
-function testAddKey(hostname) {
+function testAddKey(hostname, quiescePeriodSecs) {
     // Initially, the key server for issuerOne has only custom-key-1. Tokens signed with that should
     // succeed auth but tokens signed with custom-key-2 should fail.
     {
@@ -174,15 +177,28 @@ function testAddKey(hostname) {
     keyMap.issuer1 = multipleKeys1_2;
     rotateKeys(keyMap);
 
-    // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
-    // the JWKManager's refresh when it cannot initially find the key.
+    // Assert that auth with the token signed by custom-key-2 should succeed within the quiesce
+    // period thanks to the JWKManager's just-in-time refresh when it cannot find the key.
     {
-        const conn = new Mongo(hostname);
-        assert(tryTokenAuth(conn, issuerOneKeyTwoToken));
-        assert.commandWorked(conn.adminCommand({listDatabases: 1}));
-        conn.close();
+        assert.soon(
+            () => {
+                try {
+                    const conn = new Mongo(hostname);
+                    assert(tryTokenAuth(conn, issuerOneKeyTwoToken));
+                    assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+                    conn.close();
+
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            },
+            "Auth with issuerOneKeyTwoToken did not succeed within quiesce period",
+            quiescePeriodSecs * 1000);
     }
 
+    // issuerOneKeyTwoAltAudienceToken is also signed with keyTwo, so it should succeed immediately
+    // after issuerOneKeyTwoToken is able to succeed.
     {
         const conn = new Mongo(hostname);
         assert(tryTokenAuth(conn, issuerOneKeyTwoAltAudienceToken));
@@ -191,7 +207,7 @@ function testAddKey(hostname) {
     }
 }
 
-function testRemoveKey(hostname) {
+function testRemoveKey(hostname, quiescePeriodSecs) {
     // Initially, the key server for issuerTwo has both custom-key-1 and custom-key-2.
     // Tokens signed by either token should succeed auth.
     let conn = new Mongo(hostname);
@@ -223,9 +239,9 @@ function testRemoveKey(hostname) {
     rotateKeys(keyMap);
 
     // Assert that the currently authenticated user should start receiving
-    // ErrorCodes.ReauthenticationRequired within JWKSPollSecs + 10 (error margin). Once that
-    // occurs, reauth with the token signed by custom-key-2 should fail but with custom-key-1 should
-    // keep working.
+    // ErrorCodes.ReauthenticationRequired within JWKSPollSecs + JWKSMinimumQuiescePeriodSecs + 10
+    // (error margin). Once that occurs, reauth with the token signed by custom-key-2 should fail
+    // but with custom-key-1 should keep working.
     assert.soon(
         () => {
             try {
@@ -247,13 +263,27 @@ function testRemoveKey(hostname) {
             }
         },
         "Tokens signed by removed key not fully invalidated",
-        (issuerTwoRefreshIntervalSecs + 10) * 1000);
+        (quiescePeriodSecs + issuerTwoRefreshIntervalSecs + 10) * 1000);
 }
 
 // Assert that key rotation is picked up via implicit refreshes.
 function runJWKSetRefreshTest(conn) {
-    testAddKey(conn.host);
-    testRemoveKey(conn.host);
+    const originalQuiescePeriod = assert.commandWorked(conn.adminCommand(
+        {getParameter: 1, "JWKSMinimumQuiescePeriodSecs": 1}))["JWKSMinimumQuiescePeriodSecs"];
+
+    // Resetting the JWKSMinimumQuiescePeriodSecs should cause tokens signed by that key to
+    // successfully auth after the originalQuiescePeriod elapses. Removing keys will take up to
+    // pollingFrequency + originalQuiescePeriod seconds to get flushed.
+    const newQuiescePeriod = 10;
+    assert.commandWorked(
+        conn.adminCommand({setParameter: 1, JWKSMinimumQuiescePeriodSecs: newQuiescePeriod}));
+
+    testAddKey(conn.host, newQuiescePeriod);
+    testRemoveKey(conn.host, newQuiescePeriod);
+
+    // Finally, reset JWKSMinimumQuiesce to originalQuiescePeriodSecs (0) for other tests.
+    assert.commandWorked(
+        conn.adminCommand({setParameter: 1, JWKSMinimumQuiescePeriodSecs: originalQuiescePeriod}));
 }
 
 // Assert that oidcListKeys and oidcRefreshKeys function as expected.
@@ -289,7 +319,7 @@ function runKeyManagementCommandsTest(conn) {
     compareKeys(returnedOIDCKeys[issuer2].keys, expectedSingleKey);
 }
 
-// Assert key modification or deletion during refreshed causes users to become invalidated.
+// Assert key modification or deletion during refreshes causes users to become invalidated.
 function runJWKModifiedKeyRefreshTest(conn) {
     const keyShell = new Mongo(conn.host);
     const keyShell_User2 = new Mongo(conn.host);

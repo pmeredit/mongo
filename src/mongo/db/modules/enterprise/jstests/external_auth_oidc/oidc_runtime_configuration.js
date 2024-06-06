@@ -66,8 +66,7 @@ const issuerOneAltAudienceConfig = {
 };
 
 const startupOptions = {
-    authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
-    JWKSMinimumQuiescePeriodSecs: 0,
+    authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC'
 };
 
 const {
