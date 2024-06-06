@@ -1,3 +1,7 @@
+/**
+ *     Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
+ */
+
 #pragma once
 
 #include "streams/exec/single_document_transformation_operator.h"

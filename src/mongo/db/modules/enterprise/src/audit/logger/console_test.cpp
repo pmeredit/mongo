@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2018 10gen Inc.
+ *    Copyright (C) 2018-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "console.h"

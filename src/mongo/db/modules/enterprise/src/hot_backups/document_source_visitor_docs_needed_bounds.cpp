@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2024 MongoDB Inc.
+ *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "mongo/db/pipeline/visitors/document_source_visitor_docs_needed_bounds.h"

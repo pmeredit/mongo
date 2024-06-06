@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2024 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "sasl/idp_jwks_refresher.h"

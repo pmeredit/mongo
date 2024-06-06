@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2014 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2014-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 

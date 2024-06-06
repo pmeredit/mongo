@@ -1,3 +1,7 @@
+/**
+ *     Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
+ */
+
 #include "streams/exec/context.h"
 
 namespace streams {

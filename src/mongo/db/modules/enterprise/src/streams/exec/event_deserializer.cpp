@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2023-present MongoDB, Inc.
+ *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

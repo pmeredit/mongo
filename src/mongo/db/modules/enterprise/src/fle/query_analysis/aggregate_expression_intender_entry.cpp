@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2022-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "aggregate_expression_intender_entry.h"

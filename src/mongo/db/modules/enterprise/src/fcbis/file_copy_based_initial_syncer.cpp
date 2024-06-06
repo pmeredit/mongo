@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2021-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "file_copy_based_initial_syncer.h"

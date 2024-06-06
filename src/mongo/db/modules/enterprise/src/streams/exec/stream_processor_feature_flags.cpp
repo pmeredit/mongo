@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2023-present MongoDB, Inc.
+ *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "mongo/bson/bsontypes.h"

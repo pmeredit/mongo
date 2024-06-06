@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2023-present MongoDB, Inc.
+ *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/checkpoint_data_gen.h"

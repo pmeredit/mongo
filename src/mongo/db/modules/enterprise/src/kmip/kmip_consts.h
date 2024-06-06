@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2015 MongoDB Inc.
+ *    Copyright (C) 2015-present MongoDB, Inc. and subject to applicable commercial license.
  *    Declaration of a subset of the KMIP constants
  *    in the KMIP 1.2 specification.
  */

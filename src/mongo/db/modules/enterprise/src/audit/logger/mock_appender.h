@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2024 10gen Inc.
+ *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #pragma once

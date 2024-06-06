@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2020-present MongoDB, Inc.
+ *    Copyright (C) 2020-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include <vector>
 

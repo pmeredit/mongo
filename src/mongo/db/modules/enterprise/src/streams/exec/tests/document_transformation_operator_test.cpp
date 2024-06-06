@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2023-present MongoDB, Inc.
+ *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>

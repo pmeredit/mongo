@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2016 MongoDB Inc.
+# Copyright (C) 2016-present MongoDB, Inc. and subject to applicable commercial license.
 
 """
 Saves a snapshot of files in a dbpath on disk into a Backup MongoDB process running on port 27017.

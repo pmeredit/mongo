@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
+ * Copyright (C) 2013-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 

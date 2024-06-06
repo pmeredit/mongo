@@ -1,3 +1,5 @@
+# Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
+
 # Run on gdb with 'gdb ./mongo_crypt_shlib_test --batch -ex "source debuggability_test.py"'
 import os
 import gdb

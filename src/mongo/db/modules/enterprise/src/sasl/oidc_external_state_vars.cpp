@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2023 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "mongo/db/auth/authz_manager_external_state.h"

@@ -1,3 +1,7 @@
+/**
+ *     Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
+ */
+
 #pragma once
 
 #include <absl/container/inlined_vector.h>

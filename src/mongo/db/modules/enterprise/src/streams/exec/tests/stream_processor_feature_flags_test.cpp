@@ -1,3 +1,7 @@
+/**
+ *     Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
+ */
+
 #include <fmt/format.h>
 
 #include "mongo/unittest/assert.h"

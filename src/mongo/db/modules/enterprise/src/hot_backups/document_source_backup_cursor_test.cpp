@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2021-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "document_source_backup_cursor.h"

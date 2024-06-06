@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2019-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "fle_test_fixture.h"

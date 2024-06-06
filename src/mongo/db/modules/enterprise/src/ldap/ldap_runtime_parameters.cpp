@@ -1,7 +1,7 @@
 // ldap_runtime_parameters.cpp
 
 /**
- *    Copyright (C) 2016 MongoDB Inc.
+ *    Copyright (C) 2016-present MongoDB, Inc. and subject to applicable commercial license.
  *
  */
 

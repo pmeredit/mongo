@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2021 MongoDB Inc.
+ *    Copyright (C) 2021-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include <boost/optional.hpp>

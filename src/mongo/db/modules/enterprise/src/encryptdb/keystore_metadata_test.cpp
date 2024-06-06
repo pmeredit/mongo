@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2019 MongoDB, Inc.
+ * Copyright (C) 2019-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include <boost/filesystem.hpp>

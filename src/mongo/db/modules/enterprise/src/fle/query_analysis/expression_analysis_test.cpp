@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2019-present MongoDB, Inc.
+ *    Copyright (C) 2019-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #include "aggregate_expression_intender.h"

@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2023 10gen Inc.
+ *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 

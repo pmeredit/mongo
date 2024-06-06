@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2018 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2018-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
 #pragma once
