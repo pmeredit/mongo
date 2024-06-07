@@ -708,6 +708,10 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->streamName = name;
     context->streamProcessorId = request.getProcessorId().toString();
 
+    if (request.getInstanceName()) {
+        context->instanceName = request.getInstanceName()->toString();
+    }
+
     context->featureFlags =
         StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
     // The streams Agent sets the tenantID and stream processor ID, so this is an InternalError.

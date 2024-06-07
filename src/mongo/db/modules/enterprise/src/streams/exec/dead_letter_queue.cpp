@@ -23,6 +23,9 @@ DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {}
 
 int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
     objBuilder.append("processorName", _context->streamName);
+    if (_context->instanceName) {
+        objBuilder.append("instanceName", *_context->instanceName);
+    }
     auto obj = objBuilder.obj();
     LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj);
     sendOutputToSamplers(obj);

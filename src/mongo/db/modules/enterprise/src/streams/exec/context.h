@@ -29,6 +29,7 @@ class MetricManager;
 struct Context {
     std::string tenantId;
     std::string streamName;
+    boost::optional<std::string> instanceName;
     std::string streamProcessorId;
     mongo::stdx::unordered_map<std::string, mongo::Connection> connections;
     std::string clientName;

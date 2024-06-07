@@ -19,7 +19,8 @@ import {
 const inputColl = db.input_coll;
 const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
-const processorName = "dlqTest";
+const processorName = "testProcessorName";
+const instanceName = "testInstanceName";
 
 outColl.drop();
 dlqColl.drop();
@@ -38,7 +39,8 @@ function startStreamProcessor(pipeline) {
         options: {
             dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()},
             featureFlags: {},
-        }
+        },
+        instanceName: instanceName
     };
 
     let result = db.runCommand(startCmd);
@@ -143,6 +145,7 @@ const dlqDoc =
 const dlqDocErrInfo = dlqDoc.map(doc => sanitizeDoc(doc.errInfo));
 const dlqDocFullDoc = dlqDoc.map(doc => sanitizeDoc(doc.doc));
 assert.eq(processorName, dlqDoc[0].processorName);
+assert.eq(instanceName, dlqDoc[0].instanceName);
 assert.eq(
     [{
         "reason":

@@ -469,6 +469,10 @@ commands:
                 description: Maximum processing time permitted for this command.
                 type: seconds 
                 default: 180
+            instanceName:
+                description: "Instance name."
+                type: string
+                optional: true
 
     streams_stopStreamProcessor:
         description: "Command to stop a stream processor"
