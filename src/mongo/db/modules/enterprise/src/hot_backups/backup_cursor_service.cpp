@@ -399,15 +399,6 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
           "backupId"_attr = backupId,
           "extendTo"_attr = extendTo);
 
-    if (!storageEngine->supportsReadConcernMajority()) {
-        auto currentTerm = replCoord->getTerm();
-        uassert(31055,
-                "Term has been changed since opening backup cursor. This is problematic with "
-                "enableMajorityReadConcern=off because it indicates the checkpoint might be rolled "
-                "back. Restart the sharded backup process please.",
-                currentTerm == _replTermOfActiveBackup);
-    }
-
     // Copy filenames from `filesToBackup` to `returnedFilenames`.
     std::copy(filesToBackup.begin(),
               filesToBackup.end(),
