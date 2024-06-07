@@ -2,6 +2,7 @@
 
 import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {
     aws_common,
     MockSTSServer
@@ -17,6 +18,28 @@ const x509_options = {
 };
 
 const mock_sts = new MockSTSServer();
+
+let unknownMechanismKnownUserStr = "";
+let invalidDbStr = "";
+let invalidDbErrorCode = ErrorCodes.MechanismUnavailable;
+
+const CLIENT_CERT = "jstests/libs/client.pem";
+const CLIENT_USER = "CN=client,OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US";
+
+// TODO SERVER-72648: remove
+function getFeatureFlagValues() {
+    const conn = MongoRunner.runMongod();
+
+    if (!FeatureFlagUtil.isEnabled(conn, "RearchitectUserAcquisition")) {
+        unknownMechanismKnownUserStr = "user1";
+        invalidDbStr = CLIENT_USER;
+        invalidDbErrorCode = ErrorCodes.ProtocolError;
+    }
+
+    MongoRunner.stopMongod(conn);
+}
+
+getFeatureFlagValues();
 
 function runTestMongod({options, func}) {
     const mongod = MongoRunner.runMongodAuditLogger(Object.merge(options, {auth: ''}));
@@ -102,8 +125,8 @@ function checkScram({authmech, conn, audit}) {
     // Negative auditing (unknown mechanism, known user).
     runWithCleanAudit("unknown-mechanism-known-user", function() {
         assert.commandFailed(db.runCommand({authenticate: 1, mechanism: "HAXX", user: "user1"}));
-        const mechFailure =
-            audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: "HAXX"});
+        const mechFailure = audit.assertEntry(
+            "authenticate", {user: unknownMechanismKnownUserStr, db: "test", mechanism: "HAXX"});
         assert.eq(mechFailure.result, ErrorCodes.MechanismUnavailable);
     });
 }
@@ -169,8 +192,8 @@ function checkX509({conn, audit}) {
         });
 
         const auditResult = audit.assertEntry(
-            "authenticate", {user: CLIENT_USER, db: "nowhere", mechanism: "MONGODB-X509"});
-        assert.eq(auditResult.result, ErrorCodes.ProtocolError);
+            "authenticate", {user: invalidDbStr, db: "nowhere", mechanism: "MONGODB-X509"});
+        assert.eq(auditResult.result, invalidDbErrorCode);
     });
 
     runWithCleanAudit('invalid-user', function() {

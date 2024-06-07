@@ -85,7 +85,7 @@ if ssl_provider == "openssl":
         LIBDEPS_PRIVATE=[
             "$BUILD_DIR/mongo/crypto/jwt",
             "$BUILD_DIR/mongo/db/auth/auth_impl_internal",
-            "$BUILD_DIR/mongo/db/auth/oidc_protocol",
+            "$BUILD_DIR/mongo/db/auth/sasl_mechanism_protocol",
             "$BUILD_DIR/mongo/db/auth/sasl_options",
             "$BUILD_DIR/mongo/db/auth/saslauth",
             "$BUILD_DIR/mongo/db/commands",
