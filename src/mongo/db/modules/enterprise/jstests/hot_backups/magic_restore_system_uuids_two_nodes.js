@@ -9,6 +9,7 @@
  */
 
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {
@@ -81,6 +82,11 @@ rst = new ReplSetTest({
 nodes = rst.startSet(
     {dbpath: magicRestoreUtils[0].getBackupDbPath().slice(0, -1) + "$node", noCleanData: true});
 rst.awaitNodesAgreeOnPrimary();
+// Make sure that all nodes have installed the config before moving on.
+primary = rst.getPrimary();
+rst.waitForConfigReplication(primary);
+assert.soonNoExcept(() => isConfigCommitted(primary));
+
 nodes.forEach((node, idx) => {
     jsTestLog(`Verifying node ${idx}`);
     node.getDB(dbName).getMongo().setSecondaryOk();

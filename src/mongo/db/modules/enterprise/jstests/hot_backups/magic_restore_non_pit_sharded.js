@@ -17,6 +17,7 @@
  */
 
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {
@@ -174,6 +175,11 @@ function runTest(insertHigherTermOplogEntry) {
     });
 
     configsvr.awaitNodesAgreeOnPrimary();
+    // Make sure that all nodes have installed the config before moving on.
+    let primary = configsvr.getPrimary();
+    configsvr.waitForConfigReplication(primary);
+    assert.soonNoExcept(() => isConfigCommitted(primary));
+
     // Check each node in the config server replica set.
     for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
         const node = configsvr.nodes[nodeIndex];
@@ -207,6 +213,11 @@ function runTest(insertHigherTermOplogEntry) {
             replSet: jsTestName() + "-rs" + rsIndex
         });
         rst.awaitNodesAgreeOnPrimary();
+        // Make sure that all nodes have installed the config before moving on.
+        let primary = rst.getPrimary();
+        rst.waitForConfigReplication(primary);
+        assert.soonNoExcept(() => isConfigCommitted(primary));
+
         replicaSets.push(rst);
     }
 

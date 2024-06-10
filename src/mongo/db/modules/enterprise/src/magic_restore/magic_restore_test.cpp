@@ -753,9 +753,9 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
         opCtx,
         NamespaceString::kConfigsvrShardsNamespace,
         {
-            InsertStatement{BSON("_id" << backupShard0 << "hosts" << backupConnStr0)},
-            InsertStatement{BSON("_id" << backupShard1 << "hosts" << srcConnStr1)},
-            InsertStatement{BSON("_id" << backupShard2 << "hosts" << backupConnStr0)},
+            InsertStatement{BSON("_id" << backupShard0 << "host" << backupConnStr0)},
+            InsertStatement{BSON("_id" << backupShard1 << "host" << srcConnStr1)},
+            InsertStatement{BSON("_id" << backupShard2 << "host" << backupConnStr0)},
         }));
 
     BSONArray history0 =
@@ -840,9 +840,9 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
     ASSERT_EQ(docs[1].getStringField("_id"), restoreShard0);
     ASSERT_EQ(docs[2].getStringField("_id"), restoreShard1);
 
-    ASSERT_EQ(docs[0].getStringField("hosts"), backupConnStr0);
-    ASSERT_EQ(docs[1].getStringField("hosts"), restoreConnStr0);
-    ASSERT_EQ(docs[2].getStringField("hosts"), restoreConnStr1);
+    ASSERT_EQ(docs[0].getStringField("host"), backupConnStr0);
+    ASSERT_EQ(docs[1].getStringField("host"), restoreConnStr0);
+    ASSERT_EQ(docs[2].getStringField("host"), restoreConnStr1);
 
     docs = getDocuments(opCtx, storage, NamespaceString::kConfigsvrChunksNamespace);
     ASSERT_EQ(4, docs.size());

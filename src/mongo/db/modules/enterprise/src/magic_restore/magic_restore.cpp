@@ -357,7 +357,7 @@ void updateShardNameMetadata(OperationContext* opCtx,
                                                  BSON("_id" << srcShardName).firstElement()));
 
             // See documentation of addFields, this replaces those 2 fields as they exist already.
-            auto doc = docs[0].addFields(BSON("_id" << dstShardName << "hosts" << dstShardConnStr));
+            auto doc = docs[0].addFields(BSON("_id" << dstShardName << "host" << dstShardConnStr));
 
             // TODO SERVER-87581: confirm that this does not create an oplog entry.
             fassert(8291306,
@@ -368,13 +368,15 @@ void updateShardNameMetadata(OperationContext* opCtx,
         }
 
         // Update config.transaction_coordinators.
-        fassert(8291401,
-                storageInterface->updateDocuments(
-                    opCtx,
-                    NamespaceString::kTransactionCoordinatorsNamespace,
-                    {} /* query */,
-                    {BSON("$set" << BSON("participants.$[src]" << dstShardName)), Timestamp(0)},
-                    std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+        auto status = storageInterface->updateDocuments(
+            opCtx,
+            NamespaceString::kTransactionCoordinatorsNamespace,
+            {} /* query */,
+            {BSON("$set" << BSON("participants.$[src]" << dstShardName)), Timestamp(0)},
+            std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */);
+        if (status != ErrorCodes::NamespaceNotFound) {
+            fassert(8291401, status);
+        }
 
         if (isConfig(restoreConfig)) {
             // Update config.reshardingOperations.
@@ -405,21 +407,25 @@ void updateShardNameMetadata(OperationContext* opCtx,
 
         if (isShard(restoreConfig)) {
             // Update "donorShardId" in documents of the config.migrationCoordinators collection.
-            fassert(8291402,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kMigrationCoordinatorsNamespace,
-                        BSON("donorShardId" << srcShardName),
-                        {BSON("$set" << BSON("donorShardId" << dstShardName)), Timestamp(0)}));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kMigrationCoordinatorsNamespace,
+                BSON("donorShardId" << srcShardName),
+                {BSON("$set" << BSON("donorShardId" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8291402, status);
+            }
 
             // Update "recipientShardId" in documents of the config.migrationCoordinators
             // collection.
-            fassert(8291403,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kMigrationCoordinatorsNamespace,
-                        BSON("recipientShardId" << srcShardName),
-                        {BSON("$set" << BSON("recipientShardId" << dstShardName)), Timestamp(0)}));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kMigrationCoordinatorsNamespace,
+                BSON("recipientShardId" << srcShardName),
+                {BSON("$set" << BSON("recipientShardId" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8291403, status);
+            }
 
             // Update "donorShardId" in documents of the config.rangeDeletions
             // collection.
@@ -431,60 +437,69 @@ void updateShardNameMetadata(OperationContext* opCtx,
                         {BSON("$set" << BSON("donorShardId" << dstShardName)), Timestamp(0)}));
 
             // Update the recipientShards array in config.localReshardingOperations.donor.
-            fassert(
-                8291405,
-                storageInterface->updateDocuments(
-                    opCtx,
-                    NamespaceString::kDonorReshardingOperationsNamespace,
-                    {} /* query */,
-                    {BSON("$set" << BSON("recipientShards.$[src]" << dstShardName)), Timestamp(0)},
-                    std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kDonorReshardingOperationsNamespace,
+                {} /* query */,
+                {BSON("$set" << BSON("recipientShards.$[src]" << dstShardName)), Timestamp(0)},
+                std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */);
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8291405, status);
+            }
 
             // Update the donorShards array in config.localReshardingOperations.recipient.
-            fassert(8291406,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kRecipientReshardingOperationsNamespace,
-                        {} /* query */,
-                        {BSON("$set" << BSON("donorShards.$[src]" << dstShardName)), Timestamp(0)},
-                        std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kRecipientReshardingOperationsNamespace,
+                {} /* query */,
+                {BSON("$set" << BSON("donorShards.$[src]" << dstShardName)), Timestamp(0)},
+                std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */);
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8291406, status);
+            }
 
             // Update the shardIds array in config.system.sharding_ddl_coordinators for
             // createCollection_V4 operations.
             // Note: shardIds is optional in create_collection_coordinator_document.idl so the
             // $exists below is to avoid "The path 'shardIds' must exist in the document in order to
             // apply array updates" errors.
-            fassert(8256801,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kShardingDDLCoordinatorsNamespace,
-                        BSON("_id.operationType"
-                             << "createCollection_V4"
-                             << "shardIds" << BSON("$exists" << true)) /* query */,
-                        {BSON("$set" << BSON("shardIds.$[src]" << dstShardName)), Timestamp(0)},
-                        std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kShardingDDLCoordinatorsNamespace,
+                BSON("_id.operationType"
+                     << "createCollection_V4"
+                     << "shardIds" << BSON("$exists" << true)) /* query */,
+                {BSON("$set" << BSON("shardIds.$[src]" << dstShardName)), Timestamp(0)},
+                std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */);
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8256801, status);
+            }
 
             // Update the originalDataShard in config.system.sharding_ddl_coordinators for
             // createCollection_V4 operations.
-            fassert(8256802,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kShardingDDLCoordinatorsNamespace,
-                        BSON("_id.operationType"
-                             << "createCollection_V4"
-                             << "originalDataShard" << srcShardName) /* query */,
-                        {BSON("$set" << BSON("originalDataShard" << dstShardName)), Timestamp(0)}));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kShardingDDLCoordinatorsNamespace,
+                BSON("_id.operationType"
+                     << "createCollection_V4"
+                     << "originalDataShard" << srcShardName) /* query */,
+                {BSON("$set" << BSON("originalDataShard" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8256802, status);
+            }
 
             // Update toShardId in config.system.sharding_ddl_coordinators for movePrimary
             // operations.
-            fassert(8256803,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kShardingDDLCoordinatorsNamespace,
-                        BSON("_id.operationType"
-                             << "movePrimary"
-                             << "toShardId" << srcShardName),
-                        {BSON("$set" << BSON("toShardId" << dstShardName)), Timestamp(0)}));
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kShardingDDLCoordinatorsNamespace,
+                BSON("_id.operationType"
+                     << "movePrimary"
+                     << "toShardId" << srcShardName),
+                {BSON("$set" << BSON("toShardId" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(8256803, status);
+            }
         }
     }
 }

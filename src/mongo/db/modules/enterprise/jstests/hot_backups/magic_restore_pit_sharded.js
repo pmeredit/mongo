@@ -1,5 +1,5 @@
 /*
- * Tests a PIT sharded cluster restore with magic restore. The test does the following:
+ * Tests a PIT sharded cluster magic restore with sharding renames. The test does the following:
  *
  * - Starts a sharded cluster, shards the collection, moves chunks, inserts some initial data.
  * - Creates the backup data files, copies data files to the restore dbpath.
@@ -23,6 +23,7 @@
  */
 
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {
@@ -51,7 +52,7 @@ function runTest(insertHigherTermOplogEntry) {
     const coll = "coll";
     const fullNs = dbName + "." + coll;
     jsTestLog("Setting up sharded collection " + fullNs);
-
+    const clusterId = st.s.getCollection('config.version').findOne().clusterId;
     assert(st.adminCommand({enableSharding: dbName, primaryShard: st.shard0.shardName}));
     assert(st.adminCommand({shardCollection: fullNs, key: {numForPartition: 1}}));
 
@@ -195,14 +196,36 @@ function runTest(insertHigherTermOplogEntry) {
     jsTestLog("Stopping all nodes");
     st.stop({noCleanData: true});
 
-    jsTestLog("Running Magic Restore");
+    const shardingRename = [];
+    const shardIdentityDocuments = [];
+    for (let i = 0; i < numShards; i++) {
+        shardingRename.push({
+            sourceShardName: st["shard" + i].shardName,
+            destinationShardName: st["shard" + i].shardName.replace("-rs", "-dst-rs"),
+            destinationShardConnectionString: st["shard" + i].host.replace("-rs", "-dst-rs")
+        });
+        shardIdentityDocuments.push({
+            clusterId: clusterId,
+            shardName: shardingRename[i].destinationShardName,
+            configsvrConnectionString: st.configRS.getURL()
+        });
+    }
+    shardIdentityDocuments.push({
+        clusterId: clusterId,
+        shardName: "config",
+        configsvrConnectionString: st.configRS.getURL()
+    });
+
+    jsTestLog("Running Magic Restore with shardingRename = " + tojson(shardingRename));
     for (const [rsIndex, nodeIndex] of allNodesIncludingConfig) {
         let restoreConfiguration = {
             "nodeType": rsIndex < numShards ? "shard" : "configServer",
             "replicaSetConfig": expectedConfigs[rsIndex],
             "maxCheckpointTs": maxCheckpointTs,
-            "pointInTimeTimestamp": maxLastOplogEntryTs  // Restore to the max timestamp of the last
-                                                         // oplog entry of the shards.
+            "pointInTimeTimestamp": maxLastOplogEntryTs,  // Restore to the max timestamp of the
+                                                          // last oplog entry of the shards.
+            "shardingRename": shardingRename,
+            "shardIdentityDocument": shardIdentityDocuments[rsIndex]
         };
 
         const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
@@ -226,6 +249,11 @@ function runTest(insertHigherTermOplogEntry) {
     });
 
     configsvr.awaitNodesAgreeOnPrimary();
+    // Make sure that all nodes have installed the config before moving on.
+    let primary = configsvr.getPrimary();
+    configsvr.waitForConfigReplication(primary);
+    assert.soonNoExcept(() => isConfigCommitted(primary));
+
     // Check each node in the config server replica set.
     for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
         jsTestLog(`Checking config server ${nodeIndex}`);
@@ -243,6 +271,28 @@ function runTest(insertHigherTermOplogEntry) {
             expectedNumDocsSnapshot: 0,
             shardLastOplogEntryTs: lastOplogEntryTss[numNodes * numShards + nodeIndex],
         });
+
+        let entries = node.getDB("config").getCollection("databases").find().toArray();
+        assert.eq(entries.length, 1);
+        for (const entry of entries) {
+            assert.eq(entry["primary"], jsTestName() + "-dst-rs0");
+        }
+
+        entries = node.getDB("config").getCollection("shards").find().toArray();
+        assert.eq(entries.length, 2);
+        for (const entry of entries) {
+            assert.includes(entry["_id"], jsTestName() + "-dst");
+            assert.includes(entry["host"], jsTestName() + "-dst");
+        }
+
+        entries = node.getDB("config").getCollection("chunks").find().toArray();
+        assert.eq(entries.length, 3);
+        for (const entry of entries) {
+            assert.includes(entry["shard"], jsTestName() + "-dst");
+            for (const historyEntry of entry["history"]) {
+                assert.includes(historyEntry["shard"], jsTestName() + "-dst");
+            }
+        }
     }
 
     const replicaSets = [];
@@ -261,6 +311,11 @@ function runTest(insertHigherTermOplogEntry) {
             replSet: jsTestName() + "-rs" + rsIndex
         });
         rst.awaitNodesAgreeOnPrimary();
+        // Make sure that all nodes have installed the config before moving on.
+        let primary = rst.getPrimary();
+        rst.waitForConfigReplication(primary);
+        assert.soonNoExcept(() => isConfigCommitted(primary));
+
         replicaSets.push(rst);
     }
 
@@ -297,6 +352,8 @@ function runTest(insertHigherTermOplogEntry) {
         "rangeDeletions",
         "cache.databases",
         "cache.collections",
+        "databases",  // Renaming shards affects the "primary" field of documents in that collection
+        "chunks",     // Renaming shards affects the "shard" field of documents in that collection
         `cache.chunks.${dbName}.${coll}`
     ];
     MagicRestoreUtils.checkDbHashes(
