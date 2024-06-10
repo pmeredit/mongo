@@ -58,7 +58,7 @@ env.Library(
         "document_source_visitor_docs_needed_bounds.cpp",
     ],
     LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/pipeline/docs_needed_bounds",
+        "$BUILD_DIR/mongo/db/pipeline/docs_needed_bounds_visitor",
         "$BUILD_DIR/mongo/db/service_context",
         "hot_backups",
     ],
