@@ -42,7 +42,8 @@ void AuditOCSF::logStartupOptions(Client* client, const BSONObj& startupOptions)
 
                  unmapped.append(kStartupOptions, startupOptions);
 
-                 auto clusterParametersMap = ServerParameterSet::getClusterParameterSet()->getMap();
+                 const auto& clusterParametersMap =
+                     ServerParameterSet::getClusterParameterSet()->getMap();
                  std::vector<BSONObj> clusterParametersBSON;
                  clusterParametersBSON.reserve(clusterParametersMap.size());
 
