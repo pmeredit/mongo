@@ -107,8 +107,7 @@ testLargeAccumulator(
     () => {
         let inputColl = db.getSiblingDB(dbName).inputColl2;
 
-        inputColl.insert(
-            {_id: 1, ts: 1, docCount: 200, docSize: 6000});  // will generate 20 - 1MB documents
+        inputColl.insert({_id: 1, ts: 1, docCount: 240, docSize: 6000});
         inputColl.insert({_id: 3, ts: 3, docCount: 1, docSize: 1});
 
         assert.soon(() => { return dlqColl.count() == 1; });
@@ -121,10 +120,10 @@ testLargeAccumulator(
         });
         assert.eq(mergeOpStats["inputMessageCount"], 1);
         assert.gt(mergeOpStats["dlqMessageSize"], 0);
-        assert.gt(mergeOpStats["inputMessageSize"], 18 * 1024 * 1024);  // > 18MB
+        assert.gt(mergeOpStats["inputMessageSize"], 18 * 1024 * 1024);  // > 16MB
 
         let GroupOpStats = getOperatorStats(spName, "GroupOperator");
-        assert.eq(GroupOpStats["inputMessageCount"], 1200001);
+        assert.eq(GroupOpStats["inputMessageCount"], 1440001);
         assert.eq(GroupOpStats["outputMessageCount"], 1);
 
         let changeStreamOpStats = getOperatorStats(spName, "ChangeStreamConsumerOperator");

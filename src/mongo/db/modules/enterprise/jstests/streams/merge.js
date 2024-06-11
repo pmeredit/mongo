@@ -718,6 +718,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
             {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["_id", "a"]},
     });
 })();
+
 (function testLargeDocumentMerge() {
     jsTestLog("Running testLargeDocumentMerge");
 
@@ -765,7 +766,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
         {_id: 1, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 8, docSize: 8, seed: seed});
     // Accumulate size of >16MB, this should result in dlq.
     inputColl.insert(
-        {_id: 2, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 16, docSize: 64, seed: seed});
+        {_id: 2, ts: ISODate("2024-03-01T01:00:00.000Z"), docCount: 16, docSize: 65, seed: seed});
     // Close the window.
     inputColl.insert(
         {_id: 4, ts: ISODate("2024-03-01T05:00:00.000Z"), docCount: 1, docSize: 1, seed: seed});
@@ -779,6 +780,161 @@ const kExecutorGenericSinkErrorCode = 8143705;
     // Stop the streamProcessor.
     stopStreamProcessor(spName);
 })();
+
+(function testMergeLarge16MBDocument() {
+    jsTestLog("Running testMergeLarge16MBDocument");
+
+    inputColl.drop();
+    outColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {'$source': {'connectionName': 'db1', 'db': 'test', 'coll': inputColl.getName()}},
+        {"$replaceRoot": {"newRoot": "$fullDocument"}},
+        {"$unset": ["_stream_meta", "ts", "_id"]},
+        {$merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}}}
+    ]);
+
+    // Leave space for timeField and _id.
+    const seed = Array(16 * 1024 * 1024 - 44).toString();
+    inputColl.insert({_id: 1, ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed});
+    assert.eq(inputColl.count(), 1);
+    assert.soon(() => { return outColl.find().itcount() == 1; });
+    // Stop the streamProcessor.
+    stopStreamProcessor(spName);
+})();
+
+(function testMergeLarge16MBDocumentDlq() {
+    jsTestLog("Running testMergeLarge16MBDocumentDlq");
+
+    inputColl.drop();
+    outColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {'$source': {'connectionName': 'db1', 'db': 'test', 'coll': inputColl.getName()}},
+        {"$replaceRoot": {"newRoot": "$fullDocument"}},
+        {$merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}}}
+    ]);
+
+    // Leave space for timeField and _id.
+    const seed = Array(16 * 1024 * 1024 - 44).toString();
+    inputColl.insert({_id: 1, ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed});
+    assert.eq(inputColl.count(), 1);
+
+    assert.soon(() => {
+        let result = dlqColl.find({}).toArray();
+        return result.some(doc => {
+            return doc.errInfo.reason.includes(
+                "reason = Document to upsert is larger than 16777216");
+        });
+    });
+    assert.eq(dlqColl.count(), 1);
+    // Stop the streamProcessor.
+    stopStreamProcessor(spName);
+})();
+
+// This test validates the 12MB batch size by inserting batches of documents to input collection.
+(function testMergeDocumentBatchBoundary() {
+    jsTestLog("Running testMergeDocumentBatchBoundary");
+
+    inputColl.drop();
+    outColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {'$source': {'connectionName': 'db1', 'db': 'test', 'coll': inputColl.getName()}},
+        {"$replaceRoot": {"newRoot": "$fullDocument"}},
+        {"$unset": ["_stream_meta", "ts", "_id"]},
+        {$merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}}}
+    ]);
+
+    const seed4 = Array(4 * 1024 * 1024).toString();
+    const seed3 = Array(3 * 1024 * 1024).toString();
+    const seed8 = Array(8 * 1024 * 1024).toString();
+    const seed12 = Array(12 * 1024 * 1024).toString();
+
+    inputColl.insert([
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed4},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed3},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed4},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed8}
+    ]);
+    assert.eq(inputColl.count(), 4);
+    assert.soon(() => { return outColl.find().itcount() == 4; });
+
+    inputColl.insert([
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed8},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed4},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed4},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed8}
+    ]);
+    assert.eq(inputColl.count(), 8);
+    assert.soon(() => { return outColl.count() == 8; });
+
+    inputColl.insert([
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed8},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed12},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed3},
+        {ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed12}
+    ]);
+    assert.eq(inputColl.count(), 12);
+    assert.soon(() => { return outColl.count() == 12; });
+
+    // Stop the streamProcessor.
+    stopStreamProcessor(spName);
+})();
+
+(function testMergeBatchIndexForBadDocuments() {
+    jsTestLog("Running testMergeBatchIndexForBadDocuments");
+
+    inputColl.drop();
+    outColl.drop();
+    dlqColl.drop();
+
+    assert.commandWorked(outColl.createIndex({a: 1}, {unique: true}));
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                connectionName: 'db1',
+                db: 'test',
+                coll: inputColl.getName(),
+                timeField: '$ts',
+                config: {fullDocument: 'required', fullDocumentOnly: true}
+            }
+        },
+        {$merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: 'a'}}
+    ]);
+
+    // Insert a batch of 8 documents, where 2 documents will result in a DBException
+    // during the batch creation and 1 documents will fail during the flush.
+    inputColl.insert([
+        {_id: 1, a: 2, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 2, a: 3, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 3, a: 2, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 4, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 5, a: 5, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 6, a: 7, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 7, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 8, a: 9, ts: ISODate("2024-03-01T01:00:01.000Z")},
+    ]);
+
+    assert.soon(() => { return outColl.find().itcount() == 5; });
+    assert.soon(() => { return dlqColl.find().itcount() == 3; });
+
+    const result = dlqColl.find().toArray();
+    assert.eq(
+        result
+            .filter(doc => doc["errInfo"]["reason"].includes("$merge write error: 'on' field 'a'"))
+            .length,
+        2);
+    stopStreamProcessor(spName);
+})();
+
 // Cleanup the output collection and DLQ.
 outColl.drop();
 dlqColl.drop();

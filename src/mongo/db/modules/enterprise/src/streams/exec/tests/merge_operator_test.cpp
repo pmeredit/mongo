@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "mongo/bson/json.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_merge.h"
@@ -13,11 +14,11 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/merge_operator.h"
+#include "streams/exec/message.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
-
 namespace streams {
 
 using namespace mongo;
@@ -535,9 +536,12 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
-    int64_t maxDocumentSize = BSONObjMaxUserSize;
-    StreamDataMsg dataMsg{{Document(
-        fromjson(fmt::format("{{value: \"{}\"}}", std::string(maxDocumentSize + 1, 'a'))))}};
+    const auto documentSize1MB = 1024 * 1024;
+    MutableDocument mutDoc;
+    for (int i = 0; i < 17; i++) {
+        mutDoc.addField("value" + std::to_string(i), Value{std::string(documentSize1MB, 'a' + i)});
+    }
+    StreamDataMsg dataMsg{{mutDoc.freeze()}};
     mergeOperator->onDataMsg(0, dataMsg);
     mergeOperator->flush();
 
@@ -545,8 +549,85 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());
-    ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
-                           "Output document is too large (16384KB)");
+    ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(), "BSONObjectTooLarge");
+
+    mergeOperator->stop();
+}
+
+TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
+    // The 'into' field is not used and just a placeholder.
+    auto spec = BSON("$merge" << BSON("into"
+                                      << "target_collection"
+                                      << "whenMatched"
+                                      << "replace"
+                                      << "whenNotMatched"
+                                      << "insert"));
+    auto mergeStage = createMergeStage(std::move(spec));
+    ASSERT(mergeStage);
+
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
+    start(mergeOperator.get());
+
+    const auto documentSize4MB = 4 * 1024 * 1024;
+    const auto documentSize3MB = 3 * 1024 * 1024;
+    const auto documentSize8MB = 8 * 1024 * 1024;
+    const auto documentSize12MB = 8 * 1024 * 1024;
+
+    StreamDataMsg dataMsg;
+    dataMsg.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize4MB, 'a')))));
+    dataMsg.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize3MB, 'b')))));
+    dataMsg.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize4MB, 'c')))));
+    dataMsg.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'd')))));
+
+    mergeOperator->onDataMsg(0, dataMsg);
+    mergeOperator->flush();
+
+    auto processInterface =
+        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto objsUpdated = processInterface->getObjsUpdated();
+    auto objsInserted = processInterface->getObjsInserted();
+    ASSERT_EQ(objsUpdated.size(), 4);
+
+    StreamDataMsg dataMsg2;
+    dataMsg2.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'a')))));
+    dataMsg2.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize4MB, 'b')))));
+    dataMsg2.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize4MB, 'c')))));
+    dataMsg2.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'd')))));
+
+    mergeOperator->onDataMsg(0, dataMsg2);
+    mergeOperator->flush();
+    objsUpdated = processInterface->getObjsUpdated();
+    objsInserted = processInterface->getObjsInserted();
+    ASSERT_EQ(objsUpdated.size(), 8);
+
+    StreamDataMsg dataMsg3;
+    dataMsg3.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'a')))));
+    dataMsg3.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize12MB, 'b')))));
+    dataMsg3.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize3MB, 'c')))));
+    dataMsg3.docs.emplace_back(
+        Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'd')))));
+
+    mergeOperator->onDataMsg(0, dataMsg3);
+    mergeOperator->flush();
+    objsUpdated = processInterface->getObjsUpdated();
+    objsInserted = processInterface->getObjsInserted();
+    ASSERT_EQ(objsUpdated.size(), 12);
 
     mergeOperator->stop();
 }

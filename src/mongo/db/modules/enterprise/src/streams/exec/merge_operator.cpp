@@ -190,9 +190,9 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
     auto& mergeOnFieldPaths =
         _literalMergeOnFieldPaths ? *_literalMergeOnFieldPaths : dynamicMergeOnFieldPaths;
     bool mergeOnFieldPathsIncludeId{mergeOnFieldPaths.contains(kIdFieldName)};
-    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize;
+    const auto maxBatchSizeBytes = (3 * BSONObjMaxUserSize) / 4;
     int32_t curBatchByteSize{0};
-    // Create batches honoring the maxBatchDocSize and kDataMsgMaxByteSize size limits.
+    // Create batches honoring the maxBatchSizeBytes and kDataMsgMaxByteSize size limits.
     size_t startIdx = 0;
     bool samplersPresent = samplersExist();
     while (startIdx < docIndices.size()) {
@@ -201,28 +201,28 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
         // [startIdx, curIdx) range determines the current batch.
         size_t curIdx{startIdx};
         stdx::unordered_set<size_t> badDocIndexes;
-        while (curIdx < docIndices.size()) {
-            const auto& streamDoc = dataMsg.docs[docIndices[curIdx++]];
+        for (; curIdx < docIndices.size(); curIdx++) {
+            const auto& streamDoc = dataMsg.docs[docIndices[curIdx]];
             try {
                 auto docSize =
                     streamDoc.doc.memUsageForSorter();  // looks like getApproximateCurrentSize
                                                         // can be incorrect for documents unwound
-                uassert(ErrorCodes::BSONObjectTooLarge,
-                        str::stream()
-                            << "Output document is too large (" << (docSize / 1024) << "KB)",
-                        docSize <= maxBatchObjectSizeBytes);
+                // Check if there is any space left in the batch for the current document.
+                if (curBatch.size() == maxBatchDocSize ||
+                    ((docSize + curBatchByteSize) > maxBatchSizeBytes && curBatchByteSize > 0)) {
+                    break;
+                }
 
+                // MergeProcessor::makeBatchObject validates the size of document.
+                // Any document which is larger than the BSONObj max size limit,
+                // will throw an exception.
                 auto batchObject = _processor->makeBatchObject(
                     streamDoc.doc, mergeOnFieldPaths, mergeOnFieldPathsIncludeId);
                 curBatch.push_back(std::move(batchObject));
                 curBatchByteSize += docSize;
-                if (curBatch.size() == maxBatchDocSize || curBatchByteSize >= kDataMsgMaxByteSize) {
-                    // Current batch is ready to flush.
-                    break;
-                }
             } catch (const DBException& e) {
                 invariant(curIdx >= startIdx);
-                badDocIndexes.insert(docIndices[curIdx - 1]);
+                badDocIndexes.insert(docIndices[curIdx]);
                 std::string error = str::stream()
                     << "Failed to process input document in " << getName()
                     << " with error: code = " << e.codeString() << ", reason = " << e.reason();

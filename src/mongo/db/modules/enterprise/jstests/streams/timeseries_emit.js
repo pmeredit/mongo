@@ -527,6 +527,60 @@ function testLargeDocumentEmitToTimeSeries() {
     stopStreamProcessor('timeseriesTest');
 }
 
+function testEmitToTimeSeriesLargeDocumentBatch() {
+    jsTestLog("Running testEmitToTimeSeriesLargeDocumentBatch");
+
+    inputColl.drop();
+    timeseriesColl.drop();
+    dlqColl.drop();
+    assert.commandWorked(db.createCollection("timeseries_coll", {timeseries: {timeField: 'ts'}}));
+    const pipeline = [
+        // Read from input_coll collection.
+        {
+            '$source': {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': 'input_coll',
+                'timeField': {$toDate: '$ts'},
+                'config': {'fullDocument': 'required', 'fullDocumentOnly': true}
+            }
+        },
+        // emit to the timeseries_coll collection
+        {
+            $emit: {
+                connectionName: 'db1',
+                db: 'test',
+                coll: timeseriesColl.getName(),
+                timeseries: {timeField: 'ts'}
+            }
+        }
+    ];
+
+    let result = startStreamProcessor(pipeline);
+    assert.eq(result["ok"], 1);
+
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
+
+    const seed4 = Array(4 * 1024 * 1024 - 1000).toString();
+
+    inputColl.insert(Array.from(
+        {length: 5}, (_, i) => ({ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed4})));
+    assert.eq(inputColl.count(), 5);
+    assert.soon(() => { return timeseriesColl.count() == 5; });
+
+    inputColl.insert(Array.from(
+        {length: 5}, (_, i) => ({ts: ISODate("2024-03-01T01:00:02.000Z"), seed: seed4})));
+    assert.eq(inputColl.count(), 10);
+    assert.soon(() => { return timeseriesColl.count() == 10; });
+
+    inputColl.insert(Array.from(
+        {length: 5}, (_, i) => ({ts: ISODate("2024-03-01T01:00:03.000Z"), seed: seed4})));
+    assert.eq(inputColl.count(), 15);
+    assert.soon(() => { return timeseriesColl.count() == 15; });
+
+    stopStreamProcessor('timeseriesTest');
+}
+
 testEmitToTimeSeriesCollection();
 testEmitToTimeSeriesMissingTimeField();
 testMissingTimeseries();
@@ -538,6 +592,7 @@ testMissingTimeField();
 testNoTimeFieldNoCollection();
 testNoTimeFieldNoTimeSeriesCollection();
 testLargeDocumentEmitToTimeSeries();
+testEmitToTimeSeriesLargeDocumentBatch();
 inputColl.drop();
 timeseriesColl.drop();
 dlqColl.drop();
