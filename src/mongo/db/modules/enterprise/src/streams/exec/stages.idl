@@ -379,7 +379,8 @@ structs:
                              should be specified.
             startAtOperationTime:
                 cpp_name: startAtOperationTime
-                type: timestamp
+                type:
+                    variant: [timestamp, date]
                 optional: true
                 description: The operation time after which we should start reporting changes.
                              Only one of startAfter or startAtOperationTime should

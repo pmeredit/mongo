@@ -620,7 +620,15 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         }
 
         if (auto startAtOperationTime = config->getStartAtOperationTime()) {
-            internalOptions.userSpecifiedStartingPoint = *startAtOperationTime;
+            if (std::holds_alternative<mongo::Date_t>(*startAtOperationTime)) {
+                internalOptions.userSpecifiedStartingPoint = Timestamp(
+                    duration_cast<mongo::Seconds>(
+                        std::get<mongo::Date_t>(*startAtOperationTime).toDurationSinceEpoch()),
+                    0);
+            } else {
+                internalOptions.userSpecifiedStartingPoint =
+                    std::get<mongo::Timestamp>(*startAtOperationTime);
+            }
         }
 
         if (auto fullDocument = config->getFullDocument(); fullDocument) {
