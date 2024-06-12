@@ -107,21 +107,6 @@ void validateOperatorsInCheckpoint(const std::vector<CheckpointOperatorInfo>& ch
     auto numCheckpointOps = checkpointOperators.size();
     auto numOperatorDagOps = dagOperators.size();
 
-    if (numOperatorDagOps == numCheckpointOps + 1) {
-        auto lastOpIsTimeseriesEmit = dagOperators.rbegin() != dagOperators.rend() &&
-            bool(dynamic_cast<TimeseriesEmitOperator*>(dagOperators.rbegin()->get()));
-        if (lastOpIsTimeseriesEmit) {
-            // Workaround for a bug in operatorID assignment for timeseries $emit operators.
-            // We added this workaround in case someone creates a timeseries $emit processor before
-            // we deploy the bug fix in in https://github.com/10gen/mongo/pull/21769.
-            // Without the fix checkpoints might get saved without a CheckpointOperatorInfo entry
-            // for the timeseries $emit operator. Thus there is one less numCheckpointOps than
-            // expected and restore validation fails.
-            // TODO(SERVER-90119): Get rid of this after the next deployment goes out.
-            return;
-        }
-    }
-
     uassert(mongo::ErrorCodes::InternalError,
             fmt::format("Invalid checkpoint. Checkpoint has {} operators, OperatorDag has {}",
                         numCheckpointOps,
