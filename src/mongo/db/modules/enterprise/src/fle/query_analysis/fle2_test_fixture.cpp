@@ -93,6 +93,18 @@ void FLE2TestFixture::setUp() {
                 ]
             }
         )");
+    kDateFields = fromjson(R"(
+            {
+                "fields": [
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "date",
+                        "bsonType": "date",
+                        "queries": {"queryType": "range"}
+                    }
+                ]
+            }
+        )");
 
     limitsBackingBSON = BSON("minDouble" << -std::numeric_limits<double>::infinity() << "maxDouble"
                                          << std::numeric_limits<double>::infinity());

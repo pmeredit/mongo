@@ -25,11 +25,13 @@ protected:
 
     // Encrypted SSN field with equality index.
     BSONObj kSsnFields;
-    // Encrypted age field with range index.
+    // Encrypted age field with bounded range index.
     BSONObj kAgeFields;
     BSONObj kAgeAndSalaryFields;
     BSONObj kAllFields;
     BSONObj kNestedAge;
+    // Encrypted date field with default-bounded range index
+    BSONObj kDateFields;
 
     BSONObj limitsBackingBSON;
     BSONElement kMaxDouble;

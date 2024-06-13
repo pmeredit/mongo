@@ -66,7 +66,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                 "path": "weight",
                 "bsonType": "double",
                 "queries": {"queryType": "range", "sparsity": 4}
-            }
+            },
+            {"path": "rating", "bsonType": "long", "queries": {"queryType": "range"}}
         ]
     }
 }));
@@ -77,6 +78,7 @@ const kExpectEdgesEyes = 1;
 const kExpectEdgesHeightFt = 4;
 const kExpectEdgesHeightIn = 3;
 const kExpectEdgesWeight = 17;
+const kExpectEdgesRating = 65;
 
 let edb = client.getDB();
 
@@ -92,7 +94,8 @@ let res = assert.commandWorked(edb.erunCommand({
         "hair": "yes",
         "eyes": "yes",
         "height": {"ft": NumberLong(6), "in": NumberInt(0)},
-        "weight": 178.0
+        "weight": 178.0,
+        "rating": NumberLong(-9223372036854775808),
     }]
 }));
 print(tojson(res));
@@ -100,7 +103,7 @@ assert.eq(res.n, 1);
 client.assertWriteCommandReplyFields(res);
 
 const kExpectEdges = kExpectEdgesIssueDate + kExpectEdgesHair + kExpectEdgesEyes +
-    kExpectEdgesHeightFt + kExpectEdgesHeightIn + kExpectEdgesWeight;
+    kExpectEdgesHeightFt + kExpectEdgesHeightIn + kExpectEdgesWeight + kExpectEdgesRating;
 
 client.assertEncryptedCollectionCounts("basic", 1, kExpectEdges, kExpectEdges);
 // Verify it is encrypted with an unencrypted client
@@ -113,6 +116,7 @@ assertIsEqualityIndexedEncryptedField(rawDoc["eyes"]);
 assertIsRangeIndexedEncryptedField(rawDoc["height"]["ft"]);
 assertIsRangeIndexedEncryptedField(rawDoc["height"]["in"]);
 assertIsRangeIndexedEncryptedField(rawDoc["weight"]);
+assertIsRangeIndexedEncryptedField(rawDoc["rating"]);
 assert(rawDoc[kSafeContentField] !== undefined);
 
 // Verify we decrypt it clean with an encrypted client.
@@ -127,6 +131,7 @@ assert.eq(doc["eyes"], "yes");
 assert.eq(doc["height"]["ft"], 6);
 assert.eq(doc["height"]["in"], 0);
 assert.eq(doc["weight"], 178.0);
+assert.eq(doc["rating"], NumberLong(-9223372036854775808));
 
 assert(doc[kSafeContentField] !== undefined);
 

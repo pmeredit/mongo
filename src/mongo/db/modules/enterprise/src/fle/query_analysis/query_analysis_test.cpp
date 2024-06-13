@@ -1246,6 +1246,29 @@ TEST_F(RangeInsertTest, BasicInsertMarking) {
     ASSERT_EQ(rangeSpec.getMaxBound().value().getElement().Int(), 200);
 }
 
+TEST_F(RangeInsertTest, BasicInsertMarkingDefaultBounds) {
+    auto schemaTree = buildSchema(kDateFields);
+    auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"date"});
+    auto doc = BSON("date" << Date_t::fromMillisSinceEpoch(1717757217678));
+
+    auto replaceRes = replaceEncryptedFields(
+        doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
+    BSONElement encryptedElem = replaceRes.result["date"];
+    assertEncryptedCorrectly(metadata.get(),
+                             std::move(replaceRes),
+                             encryptedElem,
+                             doc["date"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    auto placeholder = parseRangePlaceholder(encryptedElem);
+    ASSERT(placeholder.getSparsity().has_value());
+    ASSERT_EQ(placeholder.getSparsity().value(), 1);
+    auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
+                                                placeholder.getValue().getElement().Obj());
+    ASSERT_EQ(rangeSpec.getValue().getElement().Date(), doc["date"].Date());
+    ASSERT_EQ(rangeSpec.getMinBound().value().getElement().Date(), Date_t::min());
+    ASSERT_EQ(rangeSpec.getMaxBound().value().getElement().Date(), Date_t::max());
+}
+
 TEST_F(RangeInsertTest, NestedInsertMarking) {
     auto schemaTree = buildSchema(kNestedAge);
     auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"user.age"});

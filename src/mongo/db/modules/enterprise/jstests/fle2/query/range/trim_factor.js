@@ -36,7 +36,7 @@ function createClientWithEncryptedCollectionOrFail(type, tf, min, max, precision
     const dbName = "edb" + UUID().toString().split('"')[1];
     counter = counter + 1;
     const client = new EncryptedClient(db.getMongo(), dbName);
-    const query = {queryType: "range", sparsity: 1, trimFactor: tf};
+    const query = {queryType: "range", trimFactor: tf};
     if (precision !== undefined) {
         query.precision = precision;
     }
@@ -125,13 +125,19 @@ const DATEMIN = new Date(INTMIN * 2);
 const DATEMAX = new Date(INTMAX * 2);
 
 runCreateCollectionTest(true, "int", 31, INTMIN, INTMAX);
+runCreateCollectionTest(true, "int", 31);
 runCreateCollectionTest(false, "int", 32, INTMIN, INTMAX);
+runCreateCollectionTest(false, "int", 32);
 
 runCreateCollectionTest(true, "long", 63, LONGMIN, LONGMAX);
+runCreateCollectionTest(true, "long", 63);
 runCreateCollectionTest(false, "long", 64, LONGMIN, LONGMAX);
+runCreateCollectionTest(false, "long", 64);
 
 runCreateCollectionTest(true, "date", 32, DATEMIN, DATEMAX);
+runCreateCollectionTest(true, "date", 63);
 runCreateCollectionTest(false, "date", 33, DATEMIN, DATEMAX);
+runCreateCollectionTest(false, "date", 64);
 
 runCreateCollectionTest(true, "double", 63);
 runCreateCollectionTest(false, "double", 64);
@@ -144,7 +150,9 @@ runCRUDTest(NumberInt, "int", 2, 3, NumberInt(0), NumberInt(15));
 runCRUDTest(NumberInt, "int", 3, 2, NumberInt(0), NumberInt(15));
 runCRUDTest(NumberInt, "int", 2, 4, NumberInt(-5), NumberInt(16));
 runCRUDTest(NumberInt, "int", 4, 2, NumberInt(-5), NumberInt(16));
-runCRUDTest(NumberLong, "long", 5, 60, LONGMIN, LONGMAX);
+runCRUDTest(NumberInt, "int", 4, 29);
+runCRUDTest(NumberLong, "long", 5, 60);
 runCRUDTest((x) => new Date(NumberLong(x)), "date", 6, 28, DATEMIN, DATEMAX);
+runCRUDTest((x) => new Date(NumberLong(x)), "date", 6, 59);
 runCRUDTest((x) => x, "double", 7, 58);
 runCRUDTest(NumberDecimal, "decimal", 8, 121);

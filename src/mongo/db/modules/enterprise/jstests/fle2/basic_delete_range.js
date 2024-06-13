@@ -25,6 +25,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                 "queries":
                     {"queryType": "range", "min": NumberInt(1), "max": NumberInt(16), "sparsity": 1}
             },
+            {"path": "rating", "bsonType": "int", "queries": {"queryType": "range"}},
             {
                 path: "name",
                 bsonType: "string",
@@ -33,12 +34,15 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     }
 }));
 
-assert.commandWorked(edb.basic.einsert({"name": "Bob", "age": NumberInt(12), "last": "Belcher"}));
+const kAgeHypergraphHeight = 5;
+const kRatingHypergraphHeight = 33;
+let totalEdges = 0;
 
-const kHypergraphHeight = 5;
-
-client.assertEncryptedCollectionCounts("basic", 1, kHypergraphHeight, kHypergraphHeight);
+assert.commandWorked(edb.basic.einsert(
+    {"name": "Bob", "age": NumberInt(12), "rating": NumberInt(-2147483648), "last": "Belcher"}));
+totalEdges += kAgeHypergraphHeight + kRatingHypergraphHeight;
+client.assertEncryptedCollectionCounts("basic", 1, totalEdges, totalEdges);
 
 assert.commandWorked(edb.basic.deleteOne({"last": "Belcher"}));
 
-client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 0, totalEdges, totalEdges);

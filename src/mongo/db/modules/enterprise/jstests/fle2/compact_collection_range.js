@@ -34,6 +34,15 @@ const kSampleEncryptedFields = {
         },
     ],
 };
+const kUnboundedRangeEncryptedFields = {
+    fields: [
+        {path: "int", bsonType: "int", queries: {queryType: kRangeQuery}},
+        {path: "long", bsonType: "long", queries: {queryType: kRangeQuery}},
+        {path: "date", bsonType: "date", queries: {queryType: kRangeQuery}},
+        {path: "double", bsonType: "double", queries: {queryType: kRangeQuery}},
+        {path: "decimal", bsonType: "decimal", queries: {queryType: kRangeQuery}},
+    ],
+};
 
 function getEncryptionInformation(edb) {
     const infos = edb.getCollectionInfos({name: kCollName});
@@ -193,4 +202,28 @@ runEncryptedTest(db, kDBName, kCollName, kSampleEncryptedFields, (edb, client) =
     assert.eq(
         errmsg,
         "BSON field 'compactStructuredEncryptionData.encryptionInformation.schema' is missing but a required field");
+});
+
+jsTest.log("Test compaction of unbounded range fields");
+runEncryptedTest(db, kDBName, kCollName, kUnboundedRangeEncryptedFields, (edb, client) => {
+    const coll = edb[kCollName];
+    const intEdges = 33;
+    const longEdges = 65;
+    const dateEdges = 65;
+    const doubleEdges = 65;
+    const decimalEdges = 129;
+    let totalEdges = 0;
+    const doc = {
+        int: NumberInt(20),
+        long: NumberLong(30),
+        date: ISODate("2022-01-01T07:30:10.957Z"),
+        double: 3.14,
+        decimal: NumberDecimal(100.43)
+    };
+    assert.commandWorked(coll.insert(doc));
+    totalEdges = intEdges + longEdges + dateEdges + doubleEdges + decimalEdges;
+    client.assertEncryptedCollectionCounts(coll.getName(), 1, totalEdges, totalEdges);
+
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(coll.getName(), 1, totalEdges, 0);
 });

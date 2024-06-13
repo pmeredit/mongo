@@ -28,20 +28,11 @@ jsTest.log("createEncryptionCollection");
 assert.commandWorked(client.createEncryptionCollection(collName, {
     encryptedFields: {
         "fields": [
-            {
-                path: "age",
-                bsonType: "int",
-                queries: {queryType: "range", min: NumberInt(0), max: NumberInt(255), sparsity: 1}
-            },
+            {path: "age", bsonType: "int", queries: {queryType: "range"}},
             {
                 path: "savings",
                 bsonType: "long",
-                queries: {
-                    queryType: "range",
-                    min: NumberLong(0),
-                    max: NumberLong(2147483647),
-                    sparsity: 1
-                }
+                queries: {queryType: "range", min: NumberLong(0), sparsity: 1}
             },
             {path: "zipcode", bsonType: "string", "queries": {"queryType": "equality"}},
             {path: "debt", bsonType: "decimal", "queries": {"queryType": "range", sparsity: 1}},
@@ -49,12 +40,7 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
             {
                 path: "birthdate",
                 bsonType: "date",
-                queries: {
-                    queryType: "range",
-                    min: ISODate("1980-01-01T07:30:10.957Z"),
-                    max: ISODate("2022-01-01T07:30:10.957Z"),
-                    sparsity: 1
-                }
+                queries: {queryType: "range", max: ISODate("2022-01-01T07:30:10.957Z")}
             }
         ]
     }
@@ -62,6 +48,10 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
 
 let edb = client.getDB();
 const coll = edb[collName];
+
+const INTMIN = NumberInt("-2147483648");
+const INTMAX = NumberInt("2147483647");
+const LONGMAX = NumberLong("9223372036854775807");
 
 const docs = [
     {
@@ -104,6 +94,18 @@ const docs = [
         zipcode: "098765",
         karma: 250
     },
+    {
+        _id: 4,
+        age: INTMAX,
+        savings: LONGMAX,
+        birthdate: ISODate("2022-01-01T07:30:10.957Z"),
+    },
+    {
+        _id: 5,
+        age: INTMIN,
+        savings: NumberLong(0),
+        birthdate: ISODate("1245-07-30T10:45:10.957Z"),
+    },
 ];
 
 // Bulk inserts aren't supported in FLE2, so insert each one-by-one.
@@ -122,34 +124,46 @@ function assertQueryResults(q, expected) {
 }
 
 let res = coll.find({}).toArray();
-assert.eq(res.length, 4);
+assert.eq(res.length, 6);
 
 /* ---------------------- Basic Ranges: ----------------------------------------------- */
 // NumberInt
-assertQueryResults({$gte: ["$age", NumberInt(24)]}, [0, 2]);
-assertQueryResults({$gt: ["$age", NumberInt(39)]}, []);
-assertQueryResults({$not: [{$gt: ["$age", NumberInt(39)]}]}, [0, 1, 2, 3]);
-assertQueryResults({$not: [{$gt: ["$age", NumberInt(24)]}]}, [1, 3]);
+assertQueryResults({$gte: ["$age", NumberInt(24)]}, [0, 2, 4]);
+assertQueryResults({$gt: ["$age", NumberInt(39)]}, [4]);
+assertQueryResults({$not: [{$gt: ["$age", NumberInt(39)]}]}, [0, 1, 2, 3, 5]);
+assertQueryResults({$not: [{$gt: ["$age", NumberInt(24)]}]}, [1, 3, 5]);
+assertQueryResults({$gt: ["$age", INTMIN]}, [0, 1, 2, 3, 4]);
+assertQueryResults({$gte: ["$age", INTMIN]}, [0, 1, 2, 3, 4, 5]);
+assertQueryResults({$lte: ["$age", INTMIN]}, [5]);
+assertQueryResults({$lt: ["$age", INTMAX]}, [0, 1, 2, 3, 5]);
+assertQueryResults({$lte: ["$age", INTMAX]}, [0, 1, 2, 3, 4, 5]);
+assertQueryResults({$gte: ["$age", INTMAX]}, [4]);
 
 // NumberLong
-assertQueryResults({$lte: ["$savings", NumberLong(10000)]}, [1, 3]);
-assertQueryResults({$gt: ["$savings", NumberLong(2147483600)]}, []);
+assertQueryResults({$lte: ["$savings", NumberLong(10000)]}, [1, 3, 5]);
+assertQueryResults({$gt: ["$savings", NumberLong(2147483600)]}, [4]);
+assertQueryResults({$gt: ["$savings", NumberLong(0)]}, [0, 1, 2, 3, 4]);
+assertQueryResults({$gte: ["$savings", NumberLong(0)]}, [0, 1, 2, 3, 4, 5]);
+assertQueryResults({$lte: ["$savings", NumberLong(0)]}, [5]);
+assertQueryResults({$lt: ["$savings", LONGMAX]}, [0, 1, 2, 3, 5]);
+assertQueryResults({$lte: ["$savings", LONGMAX]}, [0, 1, 2, 3, 4, 5]);
+assertQueryResults({$gte: ["$savings", LONGMAX]}, [4]);
 
 // Double
 assertQueryResults({$gte: ["$salary", Number(10000.00)]}, [0, 2, 3]);
 assertQueryResults({$lt: ["$salary", Number(1000.00)]}, []);
-assertQueryResults({$not: [{$gte: ["$salary", Number(10000.00)]}]}, [1]);
+assertQueryResults({$not: [{$gte: ["$salary", Number(10000.00)]}]}, [1, 4, 5]);
 
 // Decimal128
 assertQueryResults({$lt: ["$debt", NumberDecimal(100.44)]}, [0, 1]);
 assertQueryResults({$gte: ["$debt", NumberDecimal(20000.44)]}, []);
-assertQueryResults({$not: [{$lt: ["$debt", NumberDecimal(100.44)]}]}, [2, 3]);
+assertQueryResults({$not: [{$lt: ["$debt", NumberDecimal(100.44)]}]}, [2, 3, 4, 5]);
 
 // Date
-assertQueryResults({$gt: ["$birthdate", ISODate("2000-01-01T10:45:10.957Z")]}, [1, 3]);
-assertQueryResults({$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]}, [0, 2, 3]);
+assertQueryResults({$gt: ["$birthdate", ISODate("2000-01-01T10:45:10.957Z")]}, [1, 3, 4]);
+assertQueryResults({$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]}, [0, 2, 3, 5]);
 
-assertQueryResults({$not: [{$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]}]}, [1]);
+assertQueryResults({$not: [{$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]}]}, [1, 4]);
 
 /* ---------------------- Conjunction/Disjunction ----------------------------------------- */
 assertQueryResults({
@@ -166,7 +180,7 @@ assertQueryResults({
         {$lte: ["$debt", NumberDecimal(5000.00)]}
     ]
 },
-                   [0, 1, 3]);
+                   [0, 1, 3, 4]);
 
 assertQueryResults({
     $and: [
@@ -183,7 +197,8 @@ assertQueryResults(
 assertQueryResults({$and: [{$lte: ["$salary", Number(100000)]}, {$gte: ["$age", NumberInt(23)]}]},
                    [0, 1]);
 assertQueryResults(
-    {$or: [{$lte: ["$savings", NumberLong(100000)]}, {$gte: ["$age", NumberInt(30)]}]}, [1, 2, 3]);
+    {$or: [{$lte: ["$savings", NumberLong(100000)]}, {$gte: ["$age", NumberInt(30)]}]},
+    [1, 2, 3, 4, 5]);
 assertQueryResults({
     $not: [{
         $or: [
@@ -201,7 +216,7 @@ assertQueryResults({
         {$lte: ["$age", NumberInt(30)]},
     ]
 },
-                   [0, 1, 2, 3]);
+                   [0, 1, 2, 3, 4, 5]);
 assertQueryResults({
     $not: [{
         $or: [
@@ -212,7 +227,7 @@ assertQueryResults({
         ]
     }]
 },
-                   [1]);
+                   [1, 4, 5]);
 assertQueryResults({
     $not: [{
         $or: [
@@ -231,7 +246,7 @@ assertQueryResults({
         ]
     }]
 },
-                   [0, 1, 2, 3]);
+                   [0, 1, 2, 3, 4, 5]);
 
 /* ---------------------- Range + Equality Conjunction/Disjunction ------------------------------ */
 assertQueryResults({
@@ -241,7 +256,7 @@ assertQueryResults({
         {$ne: ["$debt", NumberDecimal(1250.69)]},
     ]
 },
-                   [0, 1, 2]);
+                   [0, 1, 2, 4, 5]);
 assertQueryResults({
     $not: [{
         $or: [
@@ -251,7 +266,7 @@ assertQueryResults({
         ]
     }]
 },
-                   []);
+                   [4, 5]);
 assertQueryResults({
     $and: [
         {$gt: ["$salary", Number(10020)]},

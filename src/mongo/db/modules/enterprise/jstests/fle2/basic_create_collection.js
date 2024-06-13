@@ -219,3 +219,30 @@ const encFieldsRangeDecimalWithBadPrecision = {
 
 assert.commandFailedWithCode(
     db.createCollection("enc_fields_rng_bad_d", encFieldsRangeDecimalWithBadPrecision), 6966808);
+
+const encFieldsRangeTypesUnbounded = {
+    encryptedFields: {
+        "fields": [
+            {
+                "path": "a",
+                "bsonType": "date",
+                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+                "queries": {"queryType": "range"}
+            },
+            {
+                "path": "b",
+                "bsonType": "long",
+                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befaea"),
+                "queries": {"queryType": "range"}
+            },
+            {
+                "path": "c",
+                "bsonType": "int",
+                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befaeb"),
+                "queries": {"queryType": "range"}
+            }
+        ]
+    }
+};
+assert.commandWorked(
+    client.createEncryptionCollection("enc_fields_rng_unbounded", encFieldsRangeTypesUnbounded));

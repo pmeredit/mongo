@@ -15,16 +15,16 @@ let client = new EncryptedClient(db.getMongo(), dbName);
 
 const edb = client.getDB();
 
-jsTest.log("createEncryptionCollection");
 assert.commandWorked(client.createEncryptionCollection("basic", {
     encryptedFields: {
         "fields": [
             {
-                "path": "age",  // first name
+                "path": "age",
                 "bsonType": "int",
                 "queries":
                     {"queryType": "range", "min": NumberInt(1), "max": NumberInt(16), "sparsity": 1}
             },
+            {"path": "rating", "bsonType": "int", "queries": {"queryType": "range"}},
             {
                 path: "name",
                 bsonType: "string",
@@ -33,12 +33,18 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     }
 }));
 
+const kAgeHypergraphHeight = 5;
+const kRatingHypergraphHeight = 33;
+let totalEdges = 0;
+
 assert.commandWorked(edb.basic.einsert({"last": "Belcher", "name": "Bob", "age": NumberInt(12)}));
 assert.commandWorked(edb.basic.einsert({"last": "Stotch", "name": "Linda"}));
+totalEdges += kAgeHypergraphHeight;
+client.assertEncryptedCollectionCounts("basic", 2, totalEdges, totalEdges);
 
-const kHypergraphHeight = 5;
-
-client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, kHypergraphHeight);
+assert.commandWorked(edb.basic.einsert({"last": "Pesto", "rating": NumberInt(2147483647)}));
+totalEdges += kRatingHypergraphHeight;
+client.assertEncryptedCollectionCounts("basic", 3, totalEdges, totalEdges);
 
 assert.commandWorked(edb.basic.erunCommand({
     update: edb.basic.getName(),
@@ -49,12 +55,25 @@ assert.commandWorked(edb.basic.erunCommand({
     update: edb.basic.getName(),
     updates: [{q: {"last": "Stotch"}, u: {"$set": {"age": NumberInt(5)}}}]
 }));
+totalEdges += (kAgeHypergraphHeight * 2);
 
-client.assertEncryptedCollectionCounts("basic", 2, 3 * kHypergraphHeight, 3 * kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 3, totalEdges, totalEdges);
 
 assert.commandWorked(edb.basic.erunCommand({
     update: edb.basic.getName(),
     updates: [{q: {"last": "Belcher"}, u: {"$unset": {"age": ""}}}]
 }));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3 * kHypergraphHeight, 3 * kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 3, totalEdges, totalEdges);
+
+assert.commandWorked(edb.basic.erunCommand({
+    update: edb.basic.getName(),
+    updates: [{q: {"last": "Pesto"}, u: {"$set": {"rating": NumberInt(-2147483648)}}}]
+}));
+assert.commandWorked(edb.basic.erunCommand({
+    update: edb.basic.getName(),
+    updates: [{q: {"last": "Belcher"}, u: {"$set": {"rating": NumberInt(-2147483648)}}}]
+}));
+
+totalEdges += (kRatingHypergraphHeight * 2);
+client.assertEncryptedCollectionCounts("basic", 3, totalEdges, totalEdges);

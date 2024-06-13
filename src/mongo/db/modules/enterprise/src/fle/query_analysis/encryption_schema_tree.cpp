@@ -8,6 +8,7 @@
 
 #include "mongo/bson/bsontypes.h"
 #include "mongo/crypto/encryption_fields_gen.h"
+#include "mongo/crypto/encryption_fields_validation.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/json_schema_parser.h"
@@ -545,22 +546,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
                 for (auto& query : supportedQueries) {
                     if (query.getQueryType() == QueryTypeEnum::Range ||
                         query.getQueryType() == QueryTypeEnum::RangePreviewDeprecated) {
-                        switch (optType.value()) {
-                            case BSONType::NumberDouble:
-                                if (!query.getMin().has_value()) {
-                                    query.setMin(Value(std::numeric_limits<double>::lowest()));
-                                    query.setMax(Value(std::numeric_limits<double>::max()));
-                                }
-                                break;
-                            case BSONType::NumberDecimal:
-                                if (!query.getMin().has_value()) {
-                                    query.setMin(Value(Decimal128::kLargestNegative));
-                                    query.setMax(Value(Decimal128::kLargestPositive));
-                                }
-                                break;
-                            default:
-                                break;
-                        }
+                        setRangeDefaults(optType.value(), &query);
                     }
                 }
             }

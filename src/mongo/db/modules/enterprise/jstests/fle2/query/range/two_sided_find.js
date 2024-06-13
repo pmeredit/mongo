@@ -20,20 +20,11 @@ jsTest.log("createEncryptionCollection");
 assert.commandWorked(client.createEncryptionCollection(collName, {
     encryptedFields: {
         "fields": [
-            {
-                path: "age",
-                bsonType: "int",
-                queries: {queryType: "range", min: NumberInt(0), max: NumberInt(255), sparsity: 1}
-            },
+            {path: "age", bsonType: "int", queries: {queryType: "range"}},
             {
                 path: "savings",
                 bsonType: "long",
-                queries: {
-                    queryType: "range",
-                    min: NumberLong(0),
-                    max: NumberLong(2147483647),
-                    sparsity: 1
-                }
+                queries: {queryType: "range", min: NumberLong(0), sparsity: 1}
             },
             {path: "zipcode", bsonType: "string", "queries": {"queryType": "equality"}},
             {path: "debt", bsonType: "decimal", "queries": {"queryType": "range", sparsity: 1}},
@@ -41,12 +32,7 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
             {
                 path: "birthdate",
                 bsonType: "date",
-                queries: {
-                    queryType: "range",
-                    min: ISODate("1980-01-01T07:30:10.957Z"),
-                    max: ISODate("2022-01-01T07:30:10.957Z"),
-                    sparsity: 1
-                }
+                queries: {queryType: "range", max: ISODate("2022-01-01T07:30:10.957Z")}
             }
         ]
     }
@@ -54,6 +40,10 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
 
 let edb = client.getDB();
 const coll = edb[collName];
+
+const INTMIN = NumberInt("-2147483648");
+const INTMAX = NumberInt("2147483647");
+const LONGMAX = NumberLong("9223372036854775807");
 
 const docs = [
     {
@@ -96,6 +86,18 @@ const docs = [
         zipcode: "098765",
         karma: 250
     },
+    {
+        _id: 4,
+        age: INTMAX,
+        savings: LONGMAX,
+        birthdate: ISODate("2022-01-01T07:30:10.957Z"),
+    },
+    {
+        _id: 5,
+        age: INTMIN,
+        savings: NumberLong(0),
+        birthdate: ISODate("1245-07-30T10:45:10.957Z"),
+    },
 ];
 
 // Bulk inserts aren't supported in FLE2, so insert each one-by-one.
@@ -114,7 +116,7 @@ function assertQueryResults(q, expected) {
 }
 
 let res = coll.find({}).toArray();
-assert.eq(res.length, 4);
+assert.eq(res.length, 6);
 
 /* ---------------------- Basic Ranges: ----------------------------------------------- */
 // NumberInt
@@ -122,7 +124,7 @@ assertQueryResults({age: {$gte: NumberInt(23), $lte: NumberInt(38)}}, [0, 1, 2])
 assertQueryResults({age: {$gte: NumberLong(23), $lte: NumberLong(38)}}, [0, 1, 2]);
 assertQueryResults({age: {$eq: NumberInt(38)}}, [2]);  // Answering equality query with range index.
 assertQueryResults({age: {$ne: NumberInt(38)}},
-                   [0, 1, 3]);  // Answering equality query with range index.
+                   [0, 1, 3, 4, 5]);  // Answering equality query with range index.
 assertQueryResults({age: {$in: [NumberInt(38), NumberInt(22)]}},
                    [2, 3]);  // Answering equality query with range index.
 
@@ -131,18 +133,18 @@ assertQueryResults({savings: {$gt: NumberLong(10000), $lt: NumberLong(2000000)}}
 assertQueryResults({savings: {$gt: NumberInt(0), $lt: NumberInt(10000)}},
                    [1, 3]);  // Answering a long index with int literals.
 assertQueryResults({savings: {$not: {$gt: NumberLong(10000), $lt: NumberLong(2000000)}}},
-                   [1, 2, 3]);
+                   [1, 2, 3, 4, 5]);
 assertQueryResults({savings: {$eq: NumberLong(4126000)}},
                    [2]);  // Answering equality query with range index.
 assertQueryResults({savings: {$ne: NumberLong(4126000)}},
-                   [0, 1, 3]);  // Answering equality query with range index.
+                   [0, 1, 3, 4, 5]);  // Answering equality query with range index.
 assertQueryResults({savings: {$in: [NumberLong(1230500), NumberLong(8540), NumberLong(1203)]}},
                    [0, 1]);  // Answering equality query with range index.
 
 // Double
 assertQueryResults({salary: {$gt: Number(10000), $lt: Number(160040.22)}}, [0, 3]);
 assertQueryResults({salary: {$ne: Number(10540)}},
-                   [0, 1, 2]);  // Answering equality query with range index.
+                   [0, 1, 2, 4, 5]);  // Answering equality query with range index.
 assertQueryResults({salary: {$eq: Number(160040.22)}},
                    [2]);  // Answering equality query with range index.
 assertQueryResults({salary: {$in: [Number(160040.22), Number(16000.00)]}}, [0, 2]);
@@ -152,7 +154,7 @@ assertQueryResults({debt: {$lt: NumberDecimal(5000), $gte: NumberDecimal(1250.69
 assertQueryResults({debt: {$eq: NumberDecimal(0.0)}},
                    [0]);  // Answering equality query with range index.
 assertQueryResults({debt: {$ne: NumberDecimal(0.0)}},
-                   [1, 2, 3]);  // Answering equality query with range index.
+                   [1, 2, 3, 4, 5]);  // Answering equality query with range index.
 assertQueryResults({debt: {$in: [NumberDecimal(100.43), NumberDecimal(10321.69)]}}, [1, 2]);
 
 // Date
@@ -166,11 +168,11 @@ assertQueryResults({
         $not: {$lt: ISODate("2000-01-01T10:45:10.957Z"), $gte: ISODate("1993-05-16T10:45:10.957Z")}
     }
 },
-                   [1, 2, 3]);
+                   [1, 2, 3, 4, 5]);
 assertQueryResults({birthdate: {$eq: ISODate("1992-07-30T10:45:10.957Z")}},
                    [2]);  // Answering equality query with range index.
 assertQueryResults({birthdate: {$ne: ISODate("1992-07-30T10:45:10.957Z")}},
-                   [0, 1, 3]);  // Answering equality query with range index.
+                   [0, 1, 3, 4, 5]);  // Answering equality query with range index.
 assertQueryResults({salary: {$in: [Number(160040.22), Number(16000.00)]}}, [0, 2]);
 
 /* ---------------------- Range Conjunction: closed range --------------------------------------- */

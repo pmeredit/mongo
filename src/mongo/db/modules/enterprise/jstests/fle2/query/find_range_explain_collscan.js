@@ -22,16 +22,7 @@ if (!isFLE2AlwaysUseCollScanModeEnabled(db)) {
 
 const collName = jsTestName();
 const encryptedFields = {
-    "fields": [{
-        "path": "age",
-        "bsonType": "int",
-        "queries": {
-            queryType: "range",
-            min: NumberInt(0),
-            max: NumberInt(255),
-            sparsity: 1,
-        }
-    }]
+    "fields": [{"path": "age", "bsonType": "int", "queries": {queryType: "range"}}]
 };
 
 const assertExplainResult = (edb, collName, query, assertions) => {

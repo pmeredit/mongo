@@ -52,6 +52,57 @@ void assertNotEncrypted(BSONObj schema, std::string path) {
     ASSERT_FALSE(result->getEncryptionMetadataForPath(FieldRef(path)));
 }
 
+void checkRangeQueryTypeConfig(const QueryTypeConfig& qtc,
+                               BSONType type,
+                               mongo::Value min,
+                               mongo::Value max,
+                               std::int64_t sparsity,
+                               boost::optional<std::int32_t> trimFactor = boost::none,
+                               boost::optional<std::int32_t> precision = boost::none) {
+    ASSERT_EQUALS(qtc.getQueryType(), QueryTypeEnum::Range);
+    ASSERT(qtc.getMin().has_value());
+    ASSERT(qtc.getMax().has_value());
+    ASSERT_EQUALS(type, min.getType());
+    ASSERT_EQUALS(type, max.getType());
+    ASSERT_EQUALS(type, qtc.getMin()->getType());
+    ASSERT_EQUALS(type, qtc.getMax()->getType());
+    switch (type) {
+        case NumberInt:
+            ASSERT_EQUALS(min.getInt(), qtc.getMin()->getInt());
+            ASSERT_EQUALS(max.getInt(), qtc.getMax()->getInt());
+            break;
+        case NumberLong:
+            ASSERT_EQUALS(min.getLong(), qtc.getMin()->getLong());
+            ASSERT_EQUALS(max.getLong(), qtc.getMax()->getLong());
+            break;
+        case Date:
+            ASSERT_EQUALS(min.getDate(), qtc.getMin()->getDate());
+            ASSERT_EQUALS(max.getDate(), qtc.getMax()->getDate());
+            break;
+        case NumberDouble:
+            ASSERT_EQUALS(min.getDouble(), qtc.getMin()->getDouble());
+            ASSERT_EQUALS(max.getDouble(), qtc.getMax()->getDouble());
+            break;
+        case NumberDecimal:
+            ASSERT_EQUALS(min.getDecimal(), qtc.getMin()->getDecimal());
+            ASSERT_EQUALS(max.getDecimal(), qtc.getMax()->getDecimal());
+            break;
+        default:
+            MONGO_UNREACHABLE;
+    }
+
+    ASSERT(qtc.getSparsity().has_value());
+    ASSERT_EQUALS(qtc.getSparsity().value(), sparsity);
+    ASSERT(precision.has_value() == qtc.getPrecision().has_value());
+    if (precision) {
+        ASSERT(precision.value() == qtc.getPrecision().value());
+    }
+    ASSERT(trimFactor.has_value() == qtc.getTrimFactor().has_value());
+    if (trimFactor) {
+        ASSERT(trimFactor.value() == qtc.getTrimFactor().value());
+    }
+}
+
 class EncryptionSchemaTreeTest : public FLETestFixture {};
 
 TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
@@ -3544,6 +3595,12 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
     auto metadataBC = leafBC->getEncryptionMetadata();
     ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
     ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+
+    checkRangeQueryTypeConfig(metadataBC->fle2SupportedQueries.value().front(),
+                              NumberInt,
+                              mongo::Value(int(0)),
+                              mongo::Value(int(10)),
+                              1);
 }
 
 
@@ -3610,6 +3667,12 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
     auto metadataBC = leafBC->getEncryptionMetadata();
     ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
     ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+
+    checkRangeQueryTypeConfig(metadataBC->fle2SupportedQueries.value().front(),
+                              NumberInt,
+                              mongo::Value(int(-10)),
+                              mongo::Value(int(20)),
+                              2);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
@@ -3829,26 +3892,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2EqualityUsingRangeParams) {
                        6775205);
 }
 
-TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinMaxUndefined) {
-    BSONObj encryptedFields = fromjson(R"({
-               "fields": [{
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
-                       "path": "b.c",
-                       "bsonType": "int",
-                       "queries": [
-                            {"queryType": "range",
-                             "sparsity": 1
-                            }
-                        ]
-                   }]
-           }
-    )");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
-                       AssertionException,
-                       6775203);
-}
-
-
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
@@ -3916,6 +3959,127 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
                        7018200);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeIntDefaults) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "int",
+                       "queries": [ {"queryType": "range", "trimFactor": 1} ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto leaf = root->getNode(FieldRef{"a"});
+    auto metadata = leaf->getEncryptionMetadata();
+
+    checkRangeQueryTypeConfig(metadata->fle2SupportedQueries.value().front(),
+                              NumberInt,
+                              mongo::Value(std::numeric_limits<int>::min()),
+                              mongo::Value(std::numeric_limits<int>::max()),
+                              1,
+                              1);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeLongDefaults) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "long",
+                       "queries": [ {"queryType": "range", "trimFactor": 1} ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto leaf = root->getNode(FieldRef{"a"});
+    auto metadata = leaf->getEncryptionMetadata();
+    checkRangeQueryTypeConfig(metadata->fle2SupportedQueries.value().front(),
+                              NumberLong,
+                              mongo::Value(std::numeric_limits<long long>::min()),
+                              mongo::Value(std::numeric_limits<long long>::max()),
+                              1,
+                              1);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateDefaults) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "date",
+                       "queries": [ {"queryType": "range", "trimFactor": 1} ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto leaf = root->getNode(FieldRef{"a"});
+    auto metadata = leaf->getEncryptionMetadata();
+    checkRangeQueryTypeConfig(metadata->fle2SupportedQueries.value().front(),
+                              Date,
+                              mongo::Value(Date_t::min()),
+                              mongo::Value(Date_t::max()),
+                              1,
+                              1);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeDoubleDefaults) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "double",
+                       "queries": [ {"queryType": "range", "trimFactor": 1} ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto leaf = root->getNode(FieldRef{"a"});
+    auto metadata = leaf->getEncryptionMetadata();
+    checkRangeQueryTypeConfig(metadata->fle2SupportedQueries.value().front(),
+                              NumberDouble,
+                              mongo::Value(std::numeric_limits<double>::lowest()),
+                              mongo::Value(std::numeric_limits<double>::max()),
+                              1,
+                              1);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeDecimal128Defaults) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "decimal",
+                       "queries": [ {"queryType": "range", "trimFactor": 1} ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto leaf = root->getNode(FieldRef{"a"});
+    auto metadata = leaf->getEncryptionMetadata();
+    checkRangeQueryTypeConfig(metadata->fle2SupportedQueries.value().front(),
+                              NumberDecimal,
+                              mongo::Value(Decimal128::kLargestNegative),
+                              mongo::Value(Decimal128::kLargestPositive),
+                              1,
+                              1);
 }
 
 }  // namespace
