@@ -285,8 +285,9 @@ void AuditInitializer::initialize(OperationContext* opCtx) {
     }
 }
 
-void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
-                                              bool isMajorityDataAvailable) {
+void AuditInitializer::onConsistentDataAvailable(OperationContext* opCtx,
+                                                 bool isMajority,
+                                                 bool isRollback) {
     if (serverGlobalParams.clusterRole.hasExclusively(ClusterRole::ShardServer)) {
         // Only config servers and non-sharded configurations need to initialize here.
         return;
@@ -311,7 +312,7 @@ void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
 
         invariant(!nonLocalDatabases,
                   "Non-local databases existed when version was uninitialized in "
-                  "onInitialDataAvailable!");
+                  "onConsistentDataAvailable!");
     }
 }
 

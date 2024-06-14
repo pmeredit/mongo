@@ -99,13 +99,13 @@ public:
     /**
      * Called after startup recovery or initial sync is complete.
      */
-    void onInitialDataAvailable(OperationContext* opCtx, bool isMajorityDataAvailable) final;
+    void onConsistentDataAvailable(OperationContext* opCtx, bool isMajority, bool isRollback) final;
     void onBecomeArbiter() final {}
     void onShutdown() final {}
     void onStepUpBegin(OperationContext* opCtx, long long term) final {}
     void onStepUpComplete(OperationContext* opCtx, long long term) final {}
     void onStepDown() final {}
-    void onRollback() final {}
+    void onRollbackBegin() final {}
     std::string getServiceName() const final {
         return "AuditInitializer";
     }
