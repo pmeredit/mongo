@@ -380,7 +380,7 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         : _options.topicName.evaluate(_expCtx.get(), streamDoc.doc);
     auto topicIt = _topicCache.find(topicName);
     if (topicIt == _topicCache.cend()) {
-        uassert(8117202,
+        uassert(ErrorCodes::StreamProcessorTooManyOutputTargets,
                 "Too many unique topic names: {}"_format(_topicCache.size()),
                 _topicCache.size() < kMaxTopicNamesCacheSize);
 

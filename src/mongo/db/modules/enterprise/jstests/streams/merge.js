@@ -579,8 +579,6 @@ const kMaxDynamicTargets = 100;
     });
 })();
 
-const kExecutorGenericSinkErrorCode = 8143705;
-
 (function testTooManyDynamicDbs() {
     jsTestLog("Running testTooManyDynamicDbs");
 
@@ -620,7 +618,8 @@ const kExecutorGenericSinkErrorCode = 8143705;
         jsTestLog(`${spName} status - \n${tojson(sp)}`);
         // 8143705 is the error code for "Too many unique databases". The error code is translated
         // by the executor to 75384.
-        return sp.status == "error" && sp.error.code == kExecutorGenericSinkErrorCode &&
+        return sp.status == "error" &&
+            sp.error.code == ErrorCodes.StreamProcessorTooManyOutputTargets &&
             sp.error.reason == "Too many unique databases: 100";
     });
 
@@ -648,7 +647,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
         ],
         badUri,
         false /* validateSuccess */);
-    assert.commandFailedWithCode(result, 13053);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
 })();
 
 // Tests $merge.on, including some cases that shouldn't work, when the specified on fields don't

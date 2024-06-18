@@ -100,14 +100,17 @@ SPStatus runMongocxxNoThrow(std::function<void()> func,
                             const mongocxx::uri& uri);
 
 /*
+ * Translates a mongocxx exception into an SPStatus. An SPStatus contains a code,
+ * user error message, and internal error message.
+ */
+SPStatus mongocxxExceptionToStatus(const mongocxx::exception& ex,
+                                   const mongocxx::uri& uri,
+                                   const std::string& errorPrefix);
+
+/*
  * Creates a mongocxx uri instance. Might throw a DBException if the URI is malformed.
  */
 std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri);
-
-/*
- * Removes internal details from a mongocxx error msg, like the uri used to connect.
- */
-std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri& uri);
 
 /**
  * Returns a WriteError from a server error, if it is a WriteError. Will return none if the

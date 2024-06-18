@@ -126,12 +126,11 @@ void MergeOperator::validateConnection() {
             }
         };
 
-        auto status = runMongocxxNoThrow(
-            std::move(validateFunc),
-            _context,
-            ErrorCodes::Error{8619002},
-            fmt::format("Failed to connect to $merge to {}", outputNs.toStringForErrorMsg()),
-            mongoProcessInterface->uri());
+        auto status = runMongocxxNoThrow(std::move(validateFunc),
+                                         _context,
+                                         ErrorCodes::Error{8619002},
+                                         getErrorPrefix(outputNs),
+                                         mongoProcessInterface->uri());
         spassert(status, status.isOK());
     }
 }
@@ -147,10 +146,14 @@ void MergeOperator::errorOut(const mongocxx::exception& e, const mongo::Namespac
     auto mongoProcessInterface =
         dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
     invariant(mongoProcessInterface);
-    auto unsafeErrorMessage = e.what();
-    auto safeErrorMessage = sanitizeMongocxxErrorMsg(e.what(), mongoProcessInterface->uri());
-    SPStatus status{{code, safeErrorMessage}, std::move(unsafeErrorMessage)};
+    SPStatus status =
+        mongocxxExceptionToStatus(e, mongoProcessInterface->uri(), getErrorPrefix(outputNs));
     spasserted(status);
+}
+
+// Returns an error message prefix for the output namespace.
+std::string MergeOperator::getErrorPrefix(const mongo::NamespaceString& outputNs) {
+    return fmt::format("$merge to {} failed", outputNs.toStringForErrorMsg());
 }
 
 OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,

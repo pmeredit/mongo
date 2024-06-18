@@ -113,7 +113,7 @@ mongocxx::database* MongoDBProcessInterface::getDb(const mongo::DatabaseName& db
 
     auto dbNameStr = DatabaseNameUtil::serialize(dbName, SerializationContext());
     tassert(8186201, "The database name must not be empty", !dbNameStr.empty());
-    uassert(8143705,
+    uassert(ErrorCodes::StreamProcessorTooManyOutputTargets,
             "Too many unique databases: {}"_format(_databaseCache.size()),
             _databaseCache.size() < kMaxDatabaseCacheSize);
 

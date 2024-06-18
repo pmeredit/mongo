@@ -87,6 +87,7 @@ private:
     std::unique_ptr<mongocxx::database> _database;
     std::unique_ptr<mongocxx::collection> _collection;
     mongocxx::options::insert _insertOptions;
+    std::string _errorPrefix;
 
     std::shared_ptr<Counter> _dlqErrorsCounter;
     std::shared_ptr<CallbackGauge> _queueSize;

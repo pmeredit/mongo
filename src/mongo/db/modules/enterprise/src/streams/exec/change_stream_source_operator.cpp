@@ -9,6 +9,7 @@
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/message.h"
+#include "streams/util/exception.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/document/value.hpp>
 #include <bsoncxx/json.hpp>
@@ -118,6 +119,10 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     for (const auto& stage : _options.pipeline) {
         _pipeline.append_stage(toBsoncxxView(stage));
     }
+
+    auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
+    auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
+    _errorPrefix = fmt::format("Change stream $source {}.{} failed", dbName, collName);
 }
 
 ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
@@ -244,29 +249,36 @@ void ChangeStreamSourceOperator::connectToSource() {
             .increment = timestamp.getInc(), .timestamp = timestamp.getSecs()});
     }
 
-    if (_collection) {
-        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _collection->watch(_pipeline, _changeStreamOptions));
-    } else if (_database) {
-        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _database->watch(_pipeline, _changeStreamOptions));
-    } else {
-        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _client->watch(_pipeline, _changeStreamOptions));
+    try {
+        if (_collection) {
+            _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+                _collection->watch(_pipeline, _changeStreamOptions));
+        } else if (_database) {
+            _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+                _database->watch(_pipeline, _changeStreamOptions));
+        } else {
+            _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+                _client->watch(_pipeline, _changeStreamOptions));
+        }
+    } catch (const mongocxx::exception& e) {
+        ErrorCodes::Error code{e.code().value()};
+        if (!_pipeline.view_array().empty() && !ErrorCodes::isNetworkError(code)) {
+            // We have some special handling here when the user sets $source.config.pipeline.
+            // The pipeline gets parsed on the target server, and since the agg layer
+            // returns many different error codes for parsing errors,
+            // here we turn all errors into StreamProcessorInvalidOptions.
+            SPStatus status = mongocxxExceptionToStatus(e, *_uri, _errorPrefix);
+            status = SPStatus{Status{ErrorCodes::StreamProcessorInvalidOptions, status.toString()},
+                              status.unsafeReason()};
+            spasserted(std::move(status));
+        }
+        std::rethrow_exception(std::exception_ptr());
     }
 
     _it = mongocxx::change_stream::iterator();
 }
 
 void ChangeStreamSourceOperator::fetchLoop() {
-    auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
-    auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
-    auto genericErrorMessage = fmt::format(
-        "Failed to connect to change stream $source for db: "
-        "{} and collection: {}",
-        dbName,
-        collName);
-
     auto fetchFunc = [this]() {
         if (MONGO_unlikely(changestreamSourceSleepBeforeConnect.shouldFail())) {
             // Sleep for a bit to simulate a slightly longer connection time.
@@ -320,17 +332,25 @@ void ChangeStreamSourceOperator::fetchLoop() {
         }
     };
     auto status = runMongocxxNoThrow(
-        std::move(fetchFunc), _context, ErrorCodes::Error{8681500}, genericErrorMessage, *_uri);
+        std::move(fetchFunc), _context, ErrorCodes::Error{8681500}, _errorPrefix, *_uri);
 
-    if (status.code() == ErrorCodes::BSONObjectTooLarge) {
-        // In SERVER-87592 we realized a pipeline like [$source: {db: test}, $merge: {into: {db:
-        // test}}] will create an infinite loop. The loop creates a document that gets larger and
-        // larger. This will eventually lead to an error from the _changestream server_, complaining
-        // 16MB limit is exceeded. In this case we fail the stream processor with a non-retryable
-        // error.
-        status = {{ErrorCodes::BSONObjectTooLarge,
-                   "A changestream $source event larger than 16MB was detected."},
-                  ""};
+    // Translate a few other user errors specific to change stream $source.
+    auto translateCode = [&](ErrorCodes::Error newCode) -> SPStatus {
+        return SPStatus{Status{newCode, status.toString()}, status.unsafeReason()};
+    };
+    if (status.code() == ErrorCodes::ChangeStreamHistoryLost) {
+        // We cannot resume from this point in the changestream.
+        status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource);
+    } else if (_options.fullDocumentMode == FullDocumentModeEnum::kRequired &&
+               status.code() == ErrorCodes::NoMatchingDocument) {
+        // If the user specifies fullDocumentMode==kRequired, the server will return
+        // NoMatchingDocument if the event doesn't have the corresponding postImage in the oplog.
+        status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
+    } else if (status.code() == ErrorCodes::BSONObjectTooLarge) {
+        // Currently a pipeline like [$source: {db: test}, $merge: {into: {db: test}}] will create
+        // an infinite loop. The loop creates a document that keeps getting larger. Eventually the
+        // _changestream server_ will complain with a BSONObjectTooLarge error.
+        status = translateCode(ErrorCodes::StreamProcessorSourceDocTooLarge);
     }
 
     // If the status returned is not OK, set the error in connectionStatus.

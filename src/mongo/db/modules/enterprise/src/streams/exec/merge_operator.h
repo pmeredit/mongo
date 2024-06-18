@@ -72,6 +72,9 @@ private:
                                     const std::vector<size_t>& docIndices,
                                     size_t maxBatchDocSize);
 
+    // Returns an error message prefix for the output namespace.
+    std::string getErrorPrefix(const mongo::NamespaceString& outputNs);
+
     Options _options;
     mongo::MergeProcessor* _processor{nullptr};
 

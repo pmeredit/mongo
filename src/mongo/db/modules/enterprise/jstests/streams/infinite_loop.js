@@ -40,8 +40,11 @@ assert.soon(() => {
     const result = sp.listStreamProcessors();
     let thisSp = result.streamProcessors.find((sp) => sp.name == spName);
     assert.neq(thisSp, null);
-    // TODO(SERVER-90624): Assert non-retryable here, this also depends on SERVER-87669.
-    return thisSp.status == "error" && thisSp.error.code == 10334;
+    let stats = sp[spName].stats();
+    return stats.dlqMessageCount > 0 ||
+        (thisSp.status == "error" &&
+         thisSp.error.code == ErrorCodes.StreamProcessorSourceDocTooLarge &&
+         thisSp.error.retryable == false);
 }, "waiting for error to appear", 5 * 60 * 1000);
 sp[spName].stop();
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

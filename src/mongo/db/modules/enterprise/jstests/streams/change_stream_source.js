@@ -859,7 +859,7 @@ function testInvalidPipeline() {
     // This is the error the target changestream $source gives us.
     assert.commandFailedWithCode(result, 40324);
     assert.eq(
-        "Failed to connect to change stream $source for db: writeToThisOtherDB and collection: writeToThisColl: Unrecognized pipeline stage name: '$foo': generic server error",
+        "Change stream $source writeToThisOtherDB.writeToThisColl failed: Unrecognized pipeline stage name: '$foo': generic server error",
         result.errmsg);
 }
 

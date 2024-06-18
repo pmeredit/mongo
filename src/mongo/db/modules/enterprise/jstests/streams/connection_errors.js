@@ -46,8 +46,8 @@ function badDBSourceStartError() {
         options: {featureFlags: {}}
     });
     assert.commandFailed(result);
-    assert.eq(13053, result.code);
-    let errmsg = `Failed to connect to change stream $source for db: ${dbName} and collection: ${inputCollName}: No suitable servers found (\`serverSelectionTryOnce\` set): [connection refused calling hello on ':']: generic server error`;
+    assert.eq(ErrorCodes.StreamProcessorAtlasConnectionError, result.code);
+    let errmsg = `Change stream $source ${dbName}.${inputCollName} failed: No suitable servers found (\`serverSelectionTryOnce\` set): [connection refused calling hello on ':']: generic server error`;
     assert.eq(errmsg, result.errmsg);
 }
 
@@ -138,10 +138,10 @@ function badMergeStartError() {
         connections: connectionRegistry,
         options: {featureFlags: {}}
     });
-    assert.commandFailedWithCode(result, 13053);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
     assert.eq(
         result.errmsg,
-        "Failed to connect to $merge to test.outputcoll: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error");
+        "$merge to test.outputcoll failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error");
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.
@@ -193,10 +193,10 @@ function badMerge_WithOn_StartError() {
         connections: connectionRegistry,
         options: {featureFlags: {}}
     });
-    assert.commandFailedWithCode(result, 13053);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
     assert.eq(
         result.errmsg,
-        "Failed to connect to $merge to test.outputcoll: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error");
+        "$merge to test.outputcoll failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error");
 }
 
 function badMongoDLQAsyncError() {
@@ -252,9 +252,11 @@ function badMongoDLQAsyncError() {
     assert.soon(() => {
         const result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 13053 &&
+        return sp.status == "error" &&
+            sp.error.code == ErrorCodes.StreamProcessorAtlasConnectionError &&
+            sp.error.retryable == true &&
             sp.error.reason ===
-            "Failed to connect to DLQ at test.dlq: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error";
+            "Dead letter queue test.dlq failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error";
     });
 
     stopStreamProcessor(spName);
@@ -428,8 +430,7 @@ function changeSourceFailsAfterSuccesfulStart() {
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         jsTestLog(sp);
         return sp.status == "error" &&
-            sp.error.reason.includes(
-                "Failed to connect to change stream $source for db: test and collection: testinput:");
+            sp.error.reason.includes("Change stream $source test.testinput failed");
     });
 
     // Stop the streamProcessor.
@@ -514,8 +515,7 @@ function startFailedStreamProcessor() {
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         jsTestLog(sp);
         return sp.status == "error" &&
-            sp.error.reason.includes(
-                "Failed to connect to change stream $source for db: test and collection: testinput:");
+            sp.error.reason.includes("Change stream $source test.testinput failed");
     });
 
     // Restart the $source replset.
@@ -623,9 +623,9 @@ function mergeListIndexesAuthFailure() {
         },
     ]);
     let result = sp[spName].start(undefined /* options */, false /* assertWorked */);
-    assert.commandFailedWithCode(result, 13);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasUnauthorizedError);
     assert(result.errmsg.includes(
-        "Failed to connect to $merge to test.outcoll: not authorized on test to execute command { listIndexes: \"outcoll\", cursor: {}, $db: \"test\""));
+        "$merge to test.outcoll failed: not authorized on test to execute command { listIndexes: \"outcoll\", cursor: {}, $db: \"test\""));
 
     replTest.stopSet();
 }
@@ -692,7 +692,8 @@ function mergeUpdateFailure() {
     assert.soon(() => {
         const result = sp.listStreamProcessors();
         const processor = result.streamProcessors.filter(p => p.name === spName)[0];
-        return processor.status == "error" && processor.error.code == 13 &&
+        return processor.status == "error" &&
+            processor.error.code == ErrorCodes.StreamProcessorAtlasUnauthorizedError &&
             processor.error.reason.includes(
                 "not authorized on test to execute command { update: \"outcoll\"");
     });
@@ -768,7 +769,8 @@ function timeseriesEmitUpdateFailure() {
         const result = sp.listStreamProcessors();
         const processor = result.streamProcessors.filter(p => p.name === spName)[0];
         jsTestLog(result);
-        return processor.status == "error" && processor.error.code == 13 &&
+        return processor.status == "error" &&
+            processor.error.code == ErrorCodes.StreamProcessorAtlasUnauthorizedError &&
             processor.error.reason.includes(
                 "not authorized on test to execute command { insert: \"timeseries_coll\"");
     });

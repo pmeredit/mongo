@@ -206,11 +206,11 @@ const caFileDoesNotMatchSubjectDNProcessor = sp[clientCertDoesNotMatchSubjectDNP
 
 let result = db.runCommand(badPEMFileProcessor.makeStartCmd());
 assert.commandFailed(result);
-assert.eq(13053, result.code);
+assert.eq(ErrorCodes.StreamProcessorAtlasConnectionError, result.code);
 
 result = db.runCommand(badCAFileProcessor.makeStartCmd());
 assert.commandFailed(result);
-assert.eq(13053, result.code);
+assert.eq(ErrorCodes.StreamProcessorAtlasConnectionError, result.code);
 
 // Note: The bad SubjectDN will allow the initial connection to establish, but the streamProcessor
 // will later see an error like:
@@ -235,7 +235,8 @@ assert.soon(() => {
     let sp = result["streamProcessors"][0];
     if (sp.hasOwnProperty("error")) {
         let errorText = "not authorized on db to execute command { update: \"outputColl\"";
-        return sp["status"] == "error" && sp["error"]["code"] == 13 &&
+        return sp["status"] == "error" &&
+            sp["error"]["code"] == ErrorCodes.StreamProcessorAtlasUnauthorizedError &&
             sp["error"]["reason"].includes(errorText) && sp["error"]["retryable"] == true;
     } else {
         return false;

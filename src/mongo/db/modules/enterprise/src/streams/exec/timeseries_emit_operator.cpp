@@ -58,6 +58,10 @@ TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options
     writeConcern.acknowledge_level(mongocxx::write_concern::level::k_majority);
     writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
+
+    _errorPrefix = fmt::format("Time series $emit to {}.{} failed",
+                               *_options.clientOptions.database,
+                               *_options.clientOptions.collection);
 }
 
 OperatorStats TimeseriesEmitOperator::processDataMsg(StreamDataMsg dataMsg) {
@@ -66,18 +70,13 @@ OperatorStats TimeseriesEmitOperator::processDataMsg(StreamDataMsg dataMsg) {
 
 void TimeseriesEmitOperator::validateConnection() {
     ErrorCodes::Error genericErrorCode{74452};
-    auto genericErrorMsg = fmt::format(
-        "Error encountered in {} while setting up the Time Series collection: {} and db: {}",
-        getName(),
-        *_options.clientOptions.collection,
-        *_options.clientOptions.database);
 
     auto validateFunc = [this]() {
         mongocxx::collection collection;
         auto collectionExists = _database->has_collection(*_options.clientOptions.collection);
         auto tsOptions = getTimeseriesOptionsFromDb();
         if (collectionExists) {
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << "Expected a Time Series collection "
                                   << *_options.clientOptions.collection,
                     tsOptions);
@@ -87,7 +86,7 @@ void TimeseriesEmitOperator::validateConnection() {
             // Check if the collection exist.
             if (collectionExists) {
                 uassert(
-                    ErrorCodes::InvalidOptions,
+                    ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << "Found a Time Series collection "
                                   << *_options.clientOptions.collection << " with a timeField "
                                   << tsOptions->getTimeField().toString()
@@ -111,7 +110,7 @@ void TimeseriesEmitOperator::validateConnection() {
             }
         } else {
             // The field $emit.timeseries is missing.
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << "$emit.timeSeries must be specified when the collection does "
                                      "not already exist "
                                   << *_options.clientOptions.collection,
@@ -123,7 +122,7 @@ void TimeseriesEmitOperator::validateConnection() {
     };
 
     auto status = runMongocxxNoThrow(
-        std::move(validateFunc), _context, genericErrorCode, genericErrorMsg, *_uri);
+        std::move(validateFunc), _context, genericErrorCode, _errorPrefix, *_uri);
     spassert(status, status.isOK());
 }
 
@@ -203,18 +202,14 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
             } catch (const mongocxx::operation_exception& ex) {
                 auto writeError = getWriteErrorFromRawServerError(ex);
                 if (!writeError) {
-                    auto code = ErrorCodes::Error{ex.code().value()};
                     LOGV2_INFO(74787,
                                "Error encountered while writing to target in timeseries $emit",
                                "db"_attr = _options.timeseriesSinkOptions.getDb(),
                                "coll"_attr = _options.timeseriesSinkOptions.getColl(),
                                "context"_attr = _context,
                                "exception"_attr = ex.what(),
-                               "code"_attr = int(code));
-                    auto unsafeErrorMessage = ex.what();
-                    auto safeErrorMessage = sanitizeMongocxxErrorMsg(ex.what(), *_uri);
-                    SPStatus status{{code, safeErrorMessage}, unsafeErrorMessage};
-                    spasserted(status);
+                               "code"_attr = int(ex.code().value()));
+                    spasserted(mongocxxExceptionToStatus(ex, *_uri, _errorPrefix));
                 }
 
                 // The writeErrors field exist, find which document cause the write error.

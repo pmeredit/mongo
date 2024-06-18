@@ -52,6 +52,9 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     // TODO(SERVER-76564): Handle timeouts, adjust this value.
     writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
+
+    _errorPrefix =
+        fmt::format("Dead letter queue {}.{} failed", *_options.database, *_options.collection);
 }
 
 int MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
@@ -80,14 +83,10 @@ void MongoDBDeadLetterQueue::doStart() {
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() {
-        auto errorMsg = fmt::format("Failed to connect to DLQ at {}.{}",
-                                    _database->name().to_string(),
-                                    _collection->name().to_string());
-
         auto status = runMongocxxNoThrow([this]() { callHello(*_database); },
                                          _context,
                                          ErrorCodes::Error{8191500},
-                                         errorMsg,
+                                         _errorPrefix,
                                          *_uri);
 
         if (!status.isOK()) {
@@ -137,7 +136,7 @@ void MongoDBDeadLetterQueue::doFlush() {
 
 void MongoDBDeadLetterQueue::consumeLoop() {
     bool done{false};
-    Status status{Status::OK()};
+    SPStatus status{Status::OK()};
 
     while (!done) {
         try {
@@ -179,6 +178,9 @@ void MongoDBDeadLetterQueue::consumeLoop() {
             }
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
+            done = true;
+        } catch (const mongocxx::exception& e) {
+            status = mongocxxExceptionToStatus(e, *_uri, _errorPrefix);
             done = true;
         } catch (const std::exception& ex) {
             LOGV2_ERROR(8112612,

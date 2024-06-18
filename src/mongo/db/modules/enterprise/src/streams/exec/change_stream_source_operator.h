@@ -160,6 +160,9 @@ private:
     std::unique_ptr<mongocxx::client> _client{nullptr};
     std::unique_ptr<mongocxx::database> _database{nullptr};
 
+    // Prefix used in error messages.
+    std::string _errorPrefix;
+
     // This field may not be set.
     std::unique_ptr<mongocxx::collection> _collection{nullptr};
 

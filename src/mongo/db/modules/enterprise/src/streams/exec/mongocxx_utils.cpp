@@ -89,20 +89,57 @@ bsoncxx::document::value callHello(mongocxx::database& db) {
     return db.run_command(make_document(kvp("hello", "1")));
 }
 
+SPStatus mongocxxExceptionToStatus(const mongocxx::exception& ex,
+                                   const mongocxx::uri& uri,
+                                   const std::string& errorPrefix) {
+    // The default errors from Atlas DB targets that should be translated into special
+    // StreamProcessorUserErrors. We do this to ignore certain user errors from
+    // our alerting.
+    stdx::unordered_map<ErrorCodes::Error, ErrorCodes::Error> codeTranslations = {
+        // This is the common "server selection timeout error" we get from mongocxx.
+        // We typically get this when connecting to paused Atlas clusters.
+        {ErrorCodes::Error{13053}, ErrorCodes::StreamProcessorAtlasConnectionError},
+        // User can cause unauthorized errors if they configure their stream processor's auth wrong.
+        {ErrorCodes::Unauthorized, ErrorCodes::StreamProcessorAtlasUnauthorizedError},
+    };
+
+    ErrorCodes::Error code{ex.code().value()};
+    auto translatedCode = codeTranslations.find(code);
+    if (translatedCode != codeTranslations.end()) {
+        code = translatedCode->second;
+    } else if (ErrorCodes::isNetworkError(code) || ErrorCodes::isShutdownError(code) ||
+               ErrorCodes::isCancellationError(code)) {
+        // Translate all other network and shutdown errors into StreamProcessorAtlasConnectionError.
+        code = ErrorCodes::StreamProcessorAtlasConnectionError;
+    }
+    auto errorMsg = fmt::format("{}: {}", errorPrefix, sanitizeMongocxxErrorMsg(ex.what(), uri));
+    return SPStatus{Status{code, std::move(errorMsg)}, ex.what()};
+}
+
 SPStatus runMongocxxNoThrow(std::function<void()> func,
                             Context* context,
                             mongo::ErrorCodes::Error genericErrorCode,
-                            const std::string& genericErrorMsg,
+                            const std::string& errorPrefix,
                             const mongocxx::uri& uri) {
     try {
         func();
         return {Status::OK()};
+    } catch (const SPException& e) {
+        LOGV2_INFO(genericErrorCode,
+                   "mongocxx request failed with SPException",
+                   "genericErrorMsg"_attr = errorPrefix,
+                   "genericErrorCode"_attr = int(genericErrorCode),
+                   "context"_attr = context->toBSON(),
+                   "code"_attr = e.code(),
+                   "reason"_attr = e.reason(),
+                   "exception"_attr = e.unsafeReason());
+        return e.toStatus();
     } catch (const DBException& e) {
         // Our code throws DBExceptions, so we treat these errors as safe to return to customers.
         auto status = e.toStatus();
         LOGV2_INFO(genericErrorCode,
                    "mongocxx request failed with DBException",
-                   "genericErrorMsg"_attr = genericErrorMsg,
+                   "genericErrorMsg"_attr = errorPrefix,
                    "genericErrorCode"_attr = int(genericErrorCode),
                    "context"_attr = context->toBSON(),
                    "code"_attr = status.code(),
@@ -110,29 +147,25 @@ SPStatus runMongocxxNoThrow(std::function<void()> func,
                    "exception"_attr = e.what());
         return {e.toStatus()};
     } catch (const mongocxx::exception& e) {
-        // Some mongocxx::exceptions need to be sanitized to return to customers.
-        auto code = e.code().value();
-        auto what = e.what();
         LOGV2_INFO(genericErrorCode,
                    "mongocxx request failed with mongocxx::exception",
-                   "genericErrorMsg"_attr = genericErrorMsg,
+                   "genericErrorMsg"_attr = errorPrefix,
                    "genericErrorCode"_attr = int(genericErrorCode),
                    "context"_attr = context->toBSON(),
-                   "code"_attr = code,
-                   "exception"_attr = what);
-
-        auto safeError =
-            fmt::format("{}: {}", genericErrorMsg, sanitizeMongocxxErrorMsg(what, uri));
-        return {{ErrorCodes::Error{code}, safeError}, what};
+                   "code"_attr = int(e.code().value()),
+                   "exception"_attr = e.what());
+        return mongocxxExceptionToStatus(e, uri, errorPrefix);
     } catch (const std::exception& e) {
         // std::exceptions are not expected and might indicate an InternalError.
         LOGV2_INFO(genericErrorCode,
                    "mongocxx request failed with std::exception",
-                   "genericErrorMsg"_attr = genericErrorMsg,
+                   "genericErrorMsg"_attr = errorPrefix,
                    "genericErrorCode"_attr = int(genericErrorCode),
                    "context"_attr = context->toBSON(),
                    "exception"_attr = e.what());
-        return {Status{ErrorCodes::InternalError, genericErrorMsg}, e.what()};
+        return {Status{ErrorCodes::InternalError,
+                       fmt::format("{}: Failed due to internal error.", errorPrefix)},
+                e.what()};
     }
 }
 
