@@ -40,7 +40,7 @@ const rst = new ReplSetTest({
         }
     ],
     // Frequent checkpoints.
-    nodeOptions: {syncdelay: 5, setParameter: {logLevel: 0}}
+    nodeOptions: {syncdelay: 5, oplogSize: 1024, setParameter: {logLevel: 0}}
 });
 
 rst.startSet();
