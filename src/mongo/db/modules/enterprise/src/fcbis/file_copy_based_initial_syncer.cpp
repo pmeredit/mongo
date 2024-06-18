@@ -612,9 +612,6 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     OperationContext* opCtx,
     StatusWith<BSONObj> swCurrConfig,
     StatusWith<LastVote> swCurrLastVote) {
-    _replicationProcess->getConsistencyMarkers()->setMinValid(opCtx,
-                                                              repl::OpTime(Timestamp(0, 1), -1));
-
     // We need to first clear the 'initialSyncId' that was copied from the sync source, and then
     // generate a new one for the syncing node.
     _replicationProcess->getConsistencyMarkers()->clearInitialSyncId(opCtx);
@@ -1464,8 +1461,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 // '.initialsync/.dummy' directory, in case we attempt to shut down.
                 uassertStatusOK(
                     _replicationProcess->getConsistencyMarkers()->createInternalCollections(opCtx));
-                _replicationProcess->getConsistencyMarkers()->setMinValid(
-                    opCtx, repl::OpTime(Timestamp(0, 1), -1));
                 _replicationProcess->getConsistencyMarkers()->setInitialSyncFlag(opCtx);
             }
 

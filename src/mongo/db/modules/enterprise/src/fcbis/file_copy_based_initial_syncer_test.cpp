@@ -2005,8 +2005,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, CleanUpLocalCollectionsAfterSync) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
 
-    auto minValidBefore = _replicationProcess->getConsistencyMarkers()->getMinValid(opCtx.get());
-    ASSERT_EQ(minValidBefore, OpTime());
     auto oplogTruncateAfterPointBefore =
         _replicationProcess->getConsistencyMarkers()->getOplogTruncateAfterPoint(opCtx.get());
     ASSERT_EQ(oplogTruncateAfterPointBefore, Timestamp());
@@ -2022,8 +2020,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, CleanUpLocalCollectionsAfterSync) {
                   StatusWith<LastVote>(ErrorCodes::NoMatchingDocument, "no vote")),
               Status::OK());
 
-    auto minValidAfter = _replicationProcess->getConsistencyMarkers()->getMinValid(opCtx.get());
-    ASSERT_EQ(minValidAfter, OpTime(Timestamp(0, 1), -1));
     auto oplogTruncateAfterPointAfter =
         _replicationProcess->getConsistencyMarkers()->getOplogTruncateAfterPoint(opCtx.get());
     ASSERT_EQ(oplogTruncateAfterPointAfter, oplogTruncateAfterPointBefore);
