@@ -536,6 +536,10 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
 }
 
 void FileCopyBasedInitialSyncer::_keepBackupCursorAlive(WithLock) {
+    if (_initialSyncCancellationSource.token().isCanceled()) {
+        return;
+    }
+
     LOGV2_DEBUG(
         5782303,
         2,
@@ -1557,6 +1561,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
 }
 
 Status FileCopyBasedInitialSyncer::shutdown() {
+    // We check the optional inside the lock but don't want to wait on the future inside the lock.
+    boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
     {
         stdx::lock_guard<Latch> lock(_mutex);
         switch (_state) {
@@ -1574,13 +1580,17 @@ Status FileCopyBasedInitialSyncer::shutdown() {
         }
         _cancelRemainingWork(lock);
         _initialSyncCancellationSource.cancel();
+
+        if (_syncingFilesState.backupCursorKeepAliveFuture) {
+            backupCursorKeepAliveFuture = std::move(_syncingFilesState.backupCursorKeepAliveFuture);
+        }
     }
 
     fCBISHangAfterShutdownCancellation.pauseWhileSet();
 
-    if (_syncingFilesState.backupCursorKeepAliveFuture) {
+    if (backupCursorKeepAliveFuture) {
         // Wait for the thread that keeps the backupCursor alive.
-        _syncingFilesState.backupCursorKeepAliveFuture.value().wait();
+        backupCursorKeepAliveFuture.value().wait();
     }
 
     // If the initial sync attempt has been started, wait for it to be canceled (through

@@ -514,8 +514,8 @@ private:
         boost::optional<mongo::UUID> backupId;  // (X)
         CursorId backupCursorId;
         std::string backupCursorCollection;
-        CancellationSource backupCursorKeepAliveCancellation;  // (X)
-        boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
+        CancellationSource backupCursorKeepAliveCancellation;               // (X)
+        boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;  // (M)
 
         // The last timestamp that the syncing node has caught up to which is known to be in the
         // stable checkpoint on the sync source.
