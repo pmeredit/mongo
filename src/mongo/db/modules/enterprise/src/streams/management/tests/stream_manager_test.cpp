@@ -314,7 +314,7 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
 
-    // Start a stream processor asynchronously and make it sleep for 100s while establishing
+    // Start a stream processor asynchronously and make it sleep for 15s while establishing
     // connections.
     setGlobalFailPoint("streamProcessorStartSleepSeconds",
                        BSON("mode"
@@ -350,6 +350,55 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     setGlobalFailPoint("streamProcessorStartSleepSeconds",
                        BSON("mode"
                             << "off"));
+}
+
+TEST_F(StreamManagerTest, StopTimesOut) {
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData(kTestTenantId1));
+    auto processorName = "name";
+    request.setName(processorName);
+    request.setProcessorId(StringData(processorName));
+    request.setCorrelationId(StringData("userRequest"));
+    request.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(request);
+
+    // Set a failpoint to make Executor sleep for 15s while stopping the stream processor.
+    setGlobalFailPoint("streamProcessorStopSleepSeconds",
+                       BSON("mode"
+                            << "alwaysOn"
+                            << "data" << BSON("sleepSeconds" << 30)));
+
+    StopStreamProcessorCommand stopRequest;
+    stopRequest.setTenantId(kTestTenantId1);
+    stopRequest.setName(processorName);
+    stopRequest.setProcessorId(StringData(processorName));
+    stopRequest.setTimeout(mongo::Seconds(10));
+    // Test that stopStreamProcessor() fails with timeout error.
+    ASSERT_THROWS_WHAT(
+        streamManager->stopStreamProcessor(stopRequest), DBException, "Timeout while stopping"_sd);
+
+    // Deactivate the fail point.
+    setGlobalFailPoint("streamProcessorStopSleepSeconds",
+                       BSON("mode"
+                            << "off"));
+
+    // Try stopping the stream processor again with a longer timeout and verify that it successfully
+    // stops.
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, processorName);
+
+    ASSERT_FALSE(streamProcessorExists(streamManager.get(), kTestTenantId1, processorName));
+
+    ListStreamProcessorsCommand listRequest;
+    listRequest.setCorrelationId(StringData("userRequest1"));
+    auto listReply = streamManager->listStreamProcessors(listRequest);
+    ASSERT_TRUE(listReply.getStreamProcessors().empty());
 }
 
 TEST_F(StreamManagerTest, GetStats) {

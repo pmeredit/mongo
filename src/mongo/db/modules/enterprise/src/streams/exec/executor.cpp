@@ -39,6 +39,8 @@ namespace {
 
 // If enabled, executor will sleep for specified duration before attempting source/sink connections.
 MONGO_FAIL_POINT_DEFINE(streamProcessorStartSleepSeconds);
+// If enabled, executor will sleep for specified duration while stopping the stream processor.
+MONGO_FAIL_POINT_DEFINE(streamProcessorStopSleepSeconds);
 
 void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDocs) {
     dassert(source);
@@ -339,6 +341,11 @@ Executor::RunStatus Executor::runOnce() {
                    "executor shutting down",
                    "context"_attr = _context,
                    "stopReason"_attr = stopReasonToString(stopReason));
+
+        if (auto fp = streamProcessorStopSleepSeconds.scoped(); fp.isActive()) {
+            auto sleepSeconds = static_cast<int64_t>(fp.getData()["sleepSeconds"].numberLong());
+            sleepFor(Seconds{sleepSeconds});
+        }
 
         _executorTimer.reset();
         if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {

@@ -961,17 +961,23 @@ void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCom
             str::stream() << "Unexpected tenantId (" << request.getTenantId() << " vs "
                           << processorInfo->context->tenantId << ")",
             request.getTenantId() == processorInfo->context->tenantId);
-    uassert(mongo::ErrorCodes::InternalError,
-            str::stream() << "Stream processor is already being stopped: " << name,
-            processorInfo->streamStatus != StreamStatusEnum::Stopping);
-    transitionToState(lk, processorInfo, StreamStatusEnum::Stopping);
-    const auto& executorStatus = processorInfo->executorStatus;
-    LOGV2_INFO(75911,
-               "Stopping stream processor",
-               "context"_attr = processorInfo->context.get(),
-               "stopReason"_attr = stopReasonToString(stopReason),
-               "stopStatus"_attr = executorStatus ? executorStatus->reason() : "");
-    processorInfo->executor->stop(stopReason);
+    if (processorInfo->streamStatus == StreamStatusEnum::Stopping) {
+        const auto& executorStatus = processorInfo->executorStatus;
+        LOGV2_INFO(9151101,
+                   "Stream processor is already being stopped",
+                   "context"_attr = processorInfo->context.get(),
+                   "stopReason"_attr = stopReasonToString(stopReason),
+                   "stopStatus"_attr = executorStatus ? executorStatus->reason() : "");
+    } else {
+        transitionToState(lk, processorInfo, StreamStatusEnum::Stopping);
+        const auto& executorStatus = processorInfo->executorStatus;
+        LOGV2_INFO(75911,
+                   "Stopping stream processor",
+                   "context"_attr = processorInfo->context.get(),
+                   "stopReason"_attr = stopReasonToString(stopReason),
+                   "stopStatus"_attr = executorStatus ? executorStatus->reason() : "");
+        processorInfo->executor->stop(stopReason);
+    }
 }
 
 int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
