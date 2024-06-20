@@ -89,6 +89,8 @@ Executor::Executor(Context* context, Options options)
         "start_duration_ms", "Time taken to start the stream processor in milliseconds", labels);
     _stopDurationGauge = _metricManager->registerIntGauge(
         "stop_duration_ms", "Time taken to stop the stream processor in milliseconds", labels);
+    _maxRunOnceDurationGauge = _metricManager->registerIntGauge(
+        "max_runonce_duration_ms", "Maximum time taken by runOnce() in milliseconds", labels);
 }
 
 Executor::~Executor() {
@@ -540,6 +542,13 @@ void Executor::runLoop() {
     invariant(_connected);
 
     while (true) {
+        Timer timer;
+        ScopeGuard guard([&] {
+            if (_maxRunOnceDurationGauge->value() < timer.millis()) {
+                _maxRunOnceDurationGauge->set(timer.millis());
+            }
+        });
+
         RunStatus status = runOnce();
         _runOnceCounter->increment(1);
         switch (status) {

@@ -223,6 +223,7 @@ private:
     std::shared_ptr<IntGauge> _memoryUsageGauge;
     std::shared_ptr<IntGauge> _startDurationGauge;
     std::shared_ptr<IntGauge> _stopDurationGauge;
+    std::shared_ptr<IntGauge> _maxRunOnceDurationGauge;
     std::unique_ptr<MetricManager> _metricManager;
 
     // Have some new outputdocs been emitted by _any_ operator since we last checked.
