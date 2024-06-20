@@ -10,6 +10,7 @@
 
 #include "audit/audit_config_gen.h"
 #include "audit/audit_header_options_gen.h"
+#include "audit/audit_options.h"
 #include "audit_enc_comp_manager.h"
 #include "audit_format.h"
 #include "mongo/bson/bsonobj.h"
@@ -47,6 +48,10 @@ public:
 
     AuditFormat getFormat() const {
         return _format;
+    }
+
+    AuditSchema getSchema() const {
+        return _schema;
     }
 
     bool getRuntimeConfiguration() const {
@@ -194,6 +199,9 @@ private:
 
     // Format of the output, either text or BSON
     AuditFormat _format;
+
+    // Output schema to use
+    AuditSchema _schema{AuditSchema::kMongo};
 
     // Configure filter/auditAuthorizationSuccess from {setAuditConfig:...}
     bool _runtimeConfiguration{false};

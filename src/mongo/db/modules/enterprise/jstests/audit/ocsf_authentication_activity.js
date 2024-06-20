@@ -37,9 +37,9 @@ const kAcceptableRangeMS = 5 * 1000;
     assert.neq(logoutLine.message, null);
     assert(authLine.hasOwnProperty("time") && logoutLine.hasOwnProperty("unmapped") &&
            logoutLine["unmapped"].hasOwnProperty("loginTime"));
-    const authDate = Date.parse(authLine["time"]["$date"]);
-    const logoutDate = Date.parse(logoutLine["time"]["$date"]);
-    const loginDate = Date.parse(logoutLine["unmapped"]["loginTime"]["$date"]);
+    const authDate = new Date(authLine["time"]);
+    const logoutDate = new Date(logoutLine["time"]);
+    const loginDate = new Date(logoutLine["unmapped"]["loginTime"]);
     assert(Math.abs(loginDate - authDate) < kAcceptableRangeMS);
     assert(Math.abs(logoutDate - authDate - kTimeDiffBetweenAuthAndLogoutMS) < kAcceptableRangeMS);
 

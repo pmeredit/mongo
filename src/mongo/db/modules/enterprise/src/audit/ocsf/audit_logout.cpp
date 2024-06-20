@@ -40,7 +40,8 @@ void audit::AuditOCSF::logLogout(Client* client,
              AuditOCSF::AuditEventOCSF::_buildUser(builder, client);
              builder->append(kMessageField, "Reason: {}"_format(reason));
              if (loginTime)
-                 builder->append(ocsf::kUnmappedFieldName, BSON("loginTime" << *loginTime));
+                 builder->append(ocsf::kUnmappedFieldName,
+                                 BSON("loginTime" << loginTime->toMillisSinceEpoch()));
          },
          ErrorCodes::OK});
 }

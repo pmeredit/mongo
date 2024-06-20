@@ -229,14 +229,18 @@ protected:
     std::unique_ptr<logger::RotatableFileWriter> _writer, _headerWriter;
 };
 
+template <JsonStringFormat format>
 class AuditEventJsonEncoder {
 public:
     static std::string encode(const AuditInterface::AuditEvent& event) {
         BSONObj eventAsBson(event.toBSON());
-        return eventAsBson.jsonString(JsonStringFormat::LegacyStrict) + '\n';
+        return eventAsBson.jsonString(format) + '\n';
     }
 };
-using JSONAppender = RotatableAuditFileAppender<AuditEventJsonEncoder>;
+using JSONAppenderStrict =
+    RotatableAuditFileAppender<AuditEventJsonEncoder<JsonStringFormat::LegacyStrict>>;
+using JSONAppenderRelaxed =
+    RotatableAuditFileAppender<AuditEventJsonEncoder<JsonStringFormat::ExtendedRelaxedV2_0_0>>;
 
 class AuditEventBsonEncoder {
 public:
@@ -366,8 +370,14 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
             }
 
             if (format == AuditFormat::AuditFormatJsonFile) {
-                auditLogAppender.reset(
-                    new JSONAppender(std::move(writer), std::move(headerWriter)));
+                if (getSchema() == AuditSchema::kMongo) {
+                    auditLogAppender.reset(
+                        new JSONAppenderStrict(std::move(writer), std::move(headerWriter)));
+                } else {
+                    invariant(getSchema() == AuditSchema::kOCSF);
+                    auditLogAppender.reset(
+                        new JSONAppenderRelaxed(std::move(writer), std::move(headerWriter)));
+                }
             } else {
                 invariant(format == AuditFormat::AuditFormatBsonFile);
                 auditLogAppender.reset(

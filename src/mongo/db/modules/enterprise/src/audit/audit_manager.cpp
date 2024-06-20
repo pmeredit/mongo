@@ -255,6 +255,17 @@ void AuditManager::initialize(const moe::Environment& params) {
         _compressionEnabled = true;
     }
 
+    if (params.count("auditLog.schema")) {
+        _schema = uassertStatusOK(
+            parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));
+        if (_schema == AuditSchema::kOCSF) {
+            uassert(ErrorCodes::BadValue,
+                    "Unknown auditLog.schema 'OCSF'",
+                    gFeatureFlagOCSF.isEnabled(
+                        serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+        }
+    }
+
     if (gAuditEncryptKeyWithKMIPGet) {
         uassert(ErrorCodes::BadValue,
                 "setParameter.auditEncryptKeyWithKMIPGet is only allowed if audit log "
@@ -365,22 +376,12 @@ void initializeAuditInterface(ServiceContext* svcCtx) {
         return;
     }
 
-    if (gFeatureFlagOCSF.isEnabled(serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-        options.count("auditLog.schema")) {
-        auto schema = uassertStatusOK(
-            parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));
-        if (schema == AuditSchema::kMongo) {
-            audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditMongo>());
-        } else {
-            invariant(schema == AuditSchema::kOCSF);
-            audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditOCSF>());
-        }
-    } else {
-        // Default to AuditMongo interface if no schema was provided in options
-        // We cannot default to mongo in audit_options.idl because, if default is provided
-        // there, an auditDestination will always be asked from the user (since schema depends
-        // on destination)
+    auto schema = globalAuditManager.getSchema();
+    if (schema == AuditSchema::kMongo) {
         audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditMongo>());
+    } else {
+        invariant(schema == AuditSchema::kOCSF);
+        audit::AuditInterface::set(svcCtx, std::make_unique<audit::AuditOCSF>());
     }
 }
 
