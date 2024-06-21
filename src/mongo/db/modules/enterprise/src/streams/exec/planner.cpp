@@ -1534,6 +1534,21 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
     options.eventDeserializer = std::move(_eventDeserializer);
     auto dag = make_unique<OperatorDag>(std::move(options), std::move(_operators));
 
+    // Validate the operator IDs in the dag.
+    for (size_t idx = 0; idx < dag->operators().size(); ++idx) {
+        const auto& op = dag->operators()[idx];
+        // TODO(SERVER-91717): Promote this to a tassert once it's rolled out globally
+        // and we're sure no existing processors will run into it.
+        dassert(op->getOperatorId() == OperatorId(idx));
+        if (op->getOperatorId() != OperatorId(idx)) {
+            LOGV2_WARNING(9012801,
+                          "Operator had unexpected operatorId",
+                          "name"_attr = op->getName(),
+                          "index"_attr = idx,
+                          "operatorId"_attr = op->getOperatorId());
+        }
+    }
+
     return PlanResult{std::move(dag), std::move(executionPlan)};
 }
 

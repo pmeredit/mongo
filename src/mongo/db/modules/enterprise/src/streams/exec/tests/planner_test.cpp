@@ -725,7 +725,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
 
         // Validate that, without a window, there are no watermark generators.
         std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
-        dag = planner.plan(pipelineWithoutWindow);
+        dag = Planner{_context.get(), {}}.plan(pipelineWithoutWindow);
         dag->start();
         kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         ASSERT(!kafkaOperator->getOptions().useWatermarks);
@@ -1394,30 +1394,46 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
     }
 }
 
-// Test the Planner's ability to return the serialied, optimized execution plan.
+// Test the execution plan the Planner chooses for various pipelines.
+// Currently, Planner changes that create different execution plans for existing stream
+// processors will cause issues in checkpoint restore.
+// WARNING: If your changes break this test, your changes might cause issues with stream processors
+// running in production. Don't change this test without consulting the streams engine team in
+// #streams-engine.
 TEST_F(PlannerTest, ExecutionPlan) {
-    _context->isEphemeral = false;
-    KafkaConnectionOptions options1{"localhost:9092"};
-    options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
-
     // The test parses and optimies the user pipeline, which returns an OperatorDag and
     // executionPlan. Then the test supplies the executionPlan to another Planner instance with
     // optimization turned off, and verifies the resulting OperatorDag matches the first one.
     auto innerTest = [&](std::string userPipeline, std::vector<std::string> expectedOperators) {
-        Planner planner(_context.get(), Planner::Options{});
+        // Setup the context.
+        auto context = get<0>(getTestContext(nullptr));
+        context->isEphemeral = false;
+        KafkaConnectionOptions options1{"localhost:9092"};
+        options1.setIsTestKafka(true);
+        AtlasConnectionOptions options2{"mongodb://localhost:270"};
+        context->connections = stdx::unordered_map<std::string, Connection>{
+            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
+            {"atlas1", Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()}}};
+
+        Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
         auto [dag, plan] = planInner(&planner, bson);
+
+        // Print some information to make debugging easier.
+        fmt::print("User pipeline\n{}\n", userPipeline);
+        fmt::print("Plan\n{}\n", Value(plan).toString());
+        BSONArrayBuilder opArr;
+        for (const auto& op : dag->operators()) {
+            opArr.append(op->getName());
+        }
+        fmt::print("Operators\n{}\n", tojson(opArr.obj()));
+
         ASSERT_EQ(expectedOperators.size(), dag->operators().size());
         for (size_t i = 0; i < expectedOperators.size(); ++i) {
             ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
         }
 
-        fmt::print("User pipeline\n{}", userPipeline);
-        fmt::print("Plan\n{}", Value(plan).toString());
-
-        Planner plannerAfterRestore(_context.get(), Planner::Options{.shouldOptimize = false});
+        Planner plannerAfterRestore(context.get(), Planner::Options{.shouldOptimize = false});
         auto [dag2, shouldBeSamePlan] = planInner(&plannerAfterRestore, plan);
         // Assert the operators produced from plan with no optimization are equal to the operators
         // produced from the user's BSON pipeline with optimization
@@ -1553,6 +1569,228 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "GroupOperator",
                "SortOperator",
                "KafkaEmitOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $set: {
+                c: "foo"
+            }
+        },
+        {
+            $match: {
+                c: "foo"
+            }
+        },
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "hour" },
+            pipeline: [
+                { $limit: 50000 },
+                { $group: { _id: "$customerId", sum: { $sum: "$value" }, all: { $push: "$value" } } },
+                { $sort: { sum: 1 } },
+                { $limit: 10 }
+            ]
+        }},
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator",
+               "SetOperator",
+               "MatchOperator",
+               "LimitOperator",
+               "GroupOperator",
+               "SortOperator",
+               "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                c: "foo"
+            }
+        },
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "hour" },
+            pipeline: [
+                { $match: {b: "bar"} },
+                { $group: { 
+                    _id: "$customerId", 
+                    sum: { $sum: "$value" }, 
+                    all: { $push: "$value" }, 
+                    avg: { $avg: "$value" } 
+                }}
+            ]
+        }},
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator",
+               "MatchOperator",
+               "MatchOperator",
+               "GroupOperator",
+               "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "MergeOperator"});
+
+    // $project and $match get re-ordered
+    innerTest(
+        R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $project: {
+                a: 1
+            }
+        },
+        {
+            $match: {
+                a: 1
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+        {"ChangeStreamConsumerOperator", "MatchOperator", "ProjectOperator", "MergeOperator"});
+
+    // Validate the window unnesting logic will prepend a window assigner before a $match that
+    // depends on the window boundaries.
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "hour" },
+            pipeline: [
+                { $match: { "_stream_meta.window.start": "foo" } },
+                { $group: { 
+                    _id: "$customerId", 
+                    sum: { $sum: "$value" }, 
+                    all: { $push: "$value" }, 
+                    avg: { $avg: "$value" } 
+                }}
+            ]
+        }},
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              // The LimitOperator is a dummy window assigning operator, it's limit is infinity.
+              {"ChangeStreamConsumerOperator",
+               "LimitOperator",
+               "MatchOperator",
+               "GroupOperator",
+               "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        { $replaceRoot: {
+            newRoot: "foo"
+        }},
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "hour" },
+            pipeline: [
+                { $match: {a: 1}},
+                { $group: { 
+                    _id: "$customerId", 
+                    sum: { $sum: "$value" }, 
+                    all: { $push: "$value" }, 
+                    avg: { $avg: "$value" } 
+                }}
+            ]
+        }},
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator",
+               "ReplaceRootOperator",
+               "MatchOperator",
+               "GroupOperator",
+               "MergeOperator"});
 }
 
 // Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying
