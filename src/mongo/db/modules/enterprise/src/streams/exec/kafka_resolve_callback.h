@@ -35,6 +35,8 @@ public:
                    struct addrinfo** res) override;
 
 private:
+    friend class KafkaResolveCallbackTest;
+
     Context* _context{nullptr};
     std::pair<std::string, std::string> splitAddressAndService(std::string& hostname);
     sockaddr_in resolve_name(const std::string& hostname, const std::string& port);

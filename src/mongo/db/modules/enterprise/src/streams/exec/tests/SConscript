@@ -532,3 +532,14 @@ env.CppUnitTest(
         "streams_test_utils",
     ],
 )
+
+env.CppUnitTest(
+    target="kafka_resolve_callback_test",
+    source=[
+        "kafka_resolve_callback_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "streams_test_utils",
+    ],
+)
