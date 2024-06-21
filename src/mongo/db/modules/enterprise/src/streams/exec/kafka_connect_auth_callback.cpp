@@ -2,7 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/base/error_codes.h"
+#include "mongo/crypto/symmetric_crypto.h"
+#include <boost/algorithm/hex.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <cerrno>
 #include <chrono>
@@ -12,6 +13,7 @@
 #include <termios.h>
 
 #include "mongo/base/data_range.h"
+#include "mongo/base/error_codes.h"
 #include "mongo/bson/json.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"
@@ -55,7 +57,37 @@ KafkaConnectAuthCallback::KafkaConnectAuthCallback(Context* context,
 
 SymmetricKey KafkaConnectAuthCallback::buildKey(const std::string& plainKey) {
     SecureVector<uint8_t> key(crypto::sym256KeySize);
-    std::copy(plainKey.begin(), plainKey.end(), key->begin());
+
+    // Determine which key type was passed, and decode accordingly.
+    switch (plainKey.size()) {
+        // For the most part, we should only see hex-encoded strings in production (as the current
+        // version of the MMS API should always return them, in general).  Unencoded string support
+        // is included for backwards compatibility, and will probably be removed in the future.
+        case 32: {
+            tassert(ErrorCodes::InternalError,
+                    "Decoded authentication key is an invalid size",
+                    plainKey.size() == key->size());
+            std::copy(plainKey.begin(), plainKey.end(), key->begin());
+            break;
+        }
+        case 64: {
+            try {
+                // Note that decodedString will contain raw bytes, not an actual string.
+                std::string decodedString = hexblob::decode(plainKey);
+                tassert(ErrorCodes::InternalError,
+                        "Decoded authentication key is an invalid size",
+                        decodedString.size() == key->size());
+                std::copy(decodedString.begin(), decodedString.end(), key->begin());
+            } catch (const ExceptionFor<ErrorCodes::FailedToParse>& e) {
+                uasserted(ErrorCodes::InternalError,
+                          str::stream() << "Encryption key is invalid: " << e.what());
+            }
+            break;
+        }
+        default:
+            tasserted(ErrorCodes::InternalError, "Encryption key size is invalid");
+    }
+
     auto keyId =
         fmt::format("{}_{}_{}", _context->tenantId, _context->streamProcessorId, _operatorName);
     auto sk = SymmetricKey(std::move(key), crypto::aesAlgorithm, keyId);

@@ -30,6 +30,8 @@ public:
     int connect_cb(int sockfd, const struct sockaddr* addr, int addrlen, const char* id) override;
 
 private:
+    friend class KafkaConnectAuthCallbackTest;
+
     mongo::SymmetricKey buildKey(const std::string& plainKey);
     std::vector<uint8_t> buildJSONPayload(const std::string& hostname,
                                           std::string timestamp,

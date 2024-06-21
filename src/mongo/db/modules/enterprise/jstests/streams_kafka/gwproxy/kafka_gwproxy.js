@@ -19,6 +19,7 @@ import {
 
 const kafkaPlaintextName = "kafka1";
 const kafkaSASLSSLName = "kafkaSSL1";
+const kafkaSASLSSLNameHexKey = "kafkaSSL1HexKey";
 const kafkaSASLSSLNameBad = "kafkaSSLBad";
 const dbConnName = "db1";
 const uri = 'mongodb://' + db.getMongo().host;
@@ -68,6 +69,25 @@ const connectionRegistry = [
             gwproxyEndpoint:
                 "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
             gwproxyKey: "abcdefghijklmnopABCDEFGHIJKLMNOP",
+            auth: {
+                saslMechanism: "PLAIN",
+                saslUsername: "kafka",
+                saslPassword: "kafka",
+                securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSASLSSLNameHexKey,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSASLSSL,
+            gwproxyEndpoint:
+                "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
+            // Hex representation of key "abcdefghijklmnopABCDEFGHIJKLMNOP",
+            gwproxyKey: "6162636465666768696a6b6c6d6e6f704142434445464748494a4b4c4d4e4f50",
             auth: {
                 saslMechanism: "PLAIN",
                 saslUsername: "kafka",
@@ -376,6 +396,61 @@ function mongoToKafkaSASLSSL() {
     stopStreamProcessor(mongoToKafkaName);
 }
 
+// This test uses the same logic as the mongoToKafka test, but uses the connection
+// registry entry for the SASL_SSL authenticated listener + SSL validation, and
+// tests with a hexadecimal authentication key.
+function mongoToKafkaSASLSSLHexKey() {
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLNameHexKey);
+
+    // Now the Kafka topic exists, and it has at least 1 event in it.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const kafkaToMongoStartCmd =
+        makeKafkaToMongoStartCmd({topicName: topicName1, collName: sinkColl1.getName()});
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.getCheckpointIds());
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => {
+        return checkpointUtils.getCheckpointIds(TEST_TENANT_ID, kafkaToMongoProcessorId).length > 0;
+    });
+
+    // Start the mongoToKafka streamProcessor.
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicName1,
+        connName: kafkaSASLSSLNameHexKey
+    })));
+
+    // Write input to the 'sourceColl'.
+    // mongoToKafka reads the source collection and writes to Kafka.
+    // kafkaToMongo reads Kafka and writes to the sink collection.
+    let input = insertData(sourceColl1);
+
+    // Verify output shows up in the sink collection as expected.
+    waitForCount(sinkColl1, input.length, 60 /* timeout */);
+    let results = sinkColl1.find({}).sort({a: 1}).toArray();
+    let output = [];
+    for (let doc of results) {
+        doc = sanitizeDoc(doc);
+        delete doc._id;
+        output.push(doc);
+    }
+    assert.eq(input, output);
+
+    // Stop the streamProcessors.
+    stopStreamProcessor(kafkaToMongoName);
+    stopStreamProcessor(mongoToKafkaName);
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
 function runKafkaTest(kafka, testFn, partitionCount = 1) {
     kafka.start(partitionCount);
@@ -395,3 +470,4 @@ let gwproxy = new LocalGWProxyServer();
 
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, mongoToKafkaSASLSSLFailure);
+runKafkaTest(kafka, mongoToKafkaSASLSSLHexKey);
