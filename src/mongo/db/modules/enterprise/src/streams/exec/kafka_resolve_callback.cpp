@@ -2,8 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <arpa/inet.h>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <netinet/in.h>
 
 #include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"
@@ -14,9 +16,6 @@
 
 using namespace mongo;
 
-namespace {
-using AddrInfoPtr = std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)>;
-}
 namespace streams {
 
 KafkaResolveCallback::KafkaResolveCallback(Context* context,
@@ -28,6 +27,10 @@ KafkaResolveCallback::KafkaResolveCallback(Context* context,
                "context"_attr = _context,
                "operatorName"_attr = _operatorName,
                "targetProxy"_attr = _targetProxy);
+
+    // Initialize random number generator for random GWProxy server selection method.
+    std::random_device _rd;
+    std::mt19937 _gen(_rd());
 }
 
 std::pair<std::string, std::string> KafkaResolveCallback::splitAddressAndService(
@@ -42,6 +45,31 @@ std::pair<std::string, std::string> KafkaResolveCallback::splitAddressAndService
             result.size() == 2);
 
     return {result[0], result[1]};
+}
+
+struct in_addr KafkaResolveCallback::getRandomProxy(AddrInfoPtr& addresses) {
+    std::vector<struct in_addr> proxyEndpoints;
+
+    for (addrinfo* ai = addresses.get(); ai != nullptr; ai = ai->ai_next) {
+        struct in_addr address = reinterpret_cast<sockaddr_in*>(ai->ai_addr)->sin_addr;
+
+        char ipAddress[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &address, ipAddress, sizeof(ipAddress));
+
+        LOGV2_INFO(780097,
+                   "Adding GWProxy address to pool",
+                   "ipAddress"_attr = ipAddress,
+                   "context"_attr = _context);
+
+        proxyEndpoints.push_back(address);
+    }
+
+    uassert(ErrorCodes::InternalError, "No GWProxy IPs available", !proxyEndpoints.empty());
+
+    // Choose a GWProxy endpoint at random. This is pretty low performance,
+    // but is out of the fast path, and does not get called very often.
+    std::uniform_int_distribution<int> rng(0, proxyEndpoints.size() - 1);
+    return proxyEndpoints.at(rng(_gen));
 }
 
 sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
@@ -67,7 +95,7 @@ sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(atoi(port.c_str()));
-    addr.sin_addr = reinterpret_cast<sockaddr_in*>(addrs->ai_addr)->sin_addr;
+    addr.sin_addr = getRandomProxy(addrs);
 
     return addr;
 }

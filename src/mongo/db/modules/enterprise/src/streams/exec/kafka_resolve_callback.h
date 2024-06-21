@@ -4,12 +4,16 @@
 
 #pragma once
 
+#include <random>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 #include <string>
 
 #include "mongo/stdx/condition_variable.h"
 
+namespace {
+using AddrInfoPtr = std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)>;
+}
 namespace streams {
 
 struct Context;
@@ -34,6 +38,7 @@ private:
     Context* _context{nullptr};
     std::pair<std::string, std::string> splitAddressAndService(std::string& hostname);
     sockaddr_in resolve_name(const std::string& hostname, const std::string& port);
+    struct in_addr getRandomProxy(AddrInfoPtr& addresses);
     int resolveCbImpl(const char* node,
                       const char* service,
                       const struct addrinfo* hints,
@@ -42,6 +47,7 @@ private:
     std::string _operatorName;
     std::string _targetProxy;
     std::unique_ptr<addrinfo> _endpoint;
+    std::mt19937 _gen;
 };
 
 
