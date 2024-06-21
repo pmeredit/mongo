@@ -44,7 +44,7 @@ assert.soon(() => {
     return stats.dlqMessageCount > 0 ||
         (thisSp.status == "error" &&
          thisSp.error.code == ErrorCodes.StreamProcessorSourceDocTooLarge &&
-         thisSp.error.retryable == false);
+         thisSp.error.userError == true && thisSp.error.retryable == false);
 }, "waiting for error to appear", 5 * 60 * 1000);
 sp[spName].stop();
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

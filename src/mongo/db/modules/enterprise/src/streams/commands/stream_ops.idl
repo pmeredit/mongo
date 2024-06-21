@@ -66,6 +66,9 @@ structs:
             retryable:
                 description: If this error is retryable
                 type: bool
+            userError:
+                description: True if this error is a user error.
+                type: bool
 
     # This struct is meant for user-facing commands only, and the field names in this struct are
     # based on the product spec.

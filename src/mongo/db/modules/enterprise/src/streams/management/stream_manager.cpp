@@ -1274,10 +1274,11 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
             replyItem.setStartedAt(processorInfo->startedAt);
             replyItem.setStatus(processorInfo->streamStatus);
             if (processorInfo->executorStatus && !processorInfo->executorStatus->isOK()) {
-                replyItem.setError(StreamError{
-                    processorInfo->executorStatus->code(),
-                    processorInfo->executorStatus->reason(),
-                    isStreamProcessorRetryableError(processorInfo->executorStatus->code())});
+                auto code = processorInfo->executorStatus->code();
+                replyItem.setError(StreamError{code,
+                                               processorInfo->executorStatus->reason(),
+                                               isStreamProcessorRetryableError(code),
+                                               isStreamProcessorUserError(code)});
             }
             replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
 

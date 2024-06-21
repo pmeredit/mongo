@@ -254,7 +254,7 @@ function badMongoDLQAsyncError() {
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
         return sp.status == "error" &&
             sp.error.code == ErrorCodes.StreamProcessorAtlasConnectionError &&
-            sp.error.retryable == true &&
+            sp.error.retryable == true && sp.error.userError == true &&
             sp.error.reason ===
             "Dead letter queue test.dlq failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error";
     });

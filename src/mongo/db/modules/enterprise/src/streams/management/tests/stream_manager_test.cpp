@@ -672,6 +672,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
             ASSERT_EQUALS("Caught std::exception of type std::runtime_error: hello exception",
                           it->getError()->getReason());
             ASSERT_EQUALS(true, it->getError()->getRetryable());
+            ASSERT_EQUALS(false, it->getError()->getUserError());
         }
         return isError;
     });
