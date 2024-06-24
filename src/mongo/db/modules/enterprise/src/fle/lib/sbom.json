@@ -488,7 +488,7 @@
             "properties": [
                 {
                     "name": "internal:team_responsible",
-                    "value": "Server Tooling & Methods"
+                    "value": "Build"
                 }
             ],
             "type": "library",
