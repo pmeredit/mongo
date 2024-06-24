@@ -575,6 +575,7 @@ void updateShardingMetadata(OperationContext* opCtx,
         }
 
         // Drop config.mongos.
+        LOGV2(9106006, "Dropping config.mongos");
         fassert(8756804,
                 storageInterface->dropCollection(opCtx, NamespaceString::kConfigMongosNamespace));
 
@@ -614,13 +615,15 @@ void updateShardingMetadata(OperationContext* opCtx,
 
     const auto& newShardIdentity = restoreConfig.getShardIdentityDocument();
 
-    // validateRestoreConfiguration enforces this on the input.
+    // validateRestoreConfiguration enforces this on the input. If we are renaming shards, the
+    // shardIdentityDocument parameter must be passed in.
     invariant(newShardIdentity || !restoreConfig.getShardingRename());
 
     const ShardIdentity& shardIdentity =
         newShardIdentity ? *newShardIdentity : previousShardIdentity;
 
     // Update the shard identity document in admin.system.version.
+    LOGV2(9106001, "Updating shard identity document");
     fassert(8291408,
             storageInterface->putSingleton(
                 opCtx,
@@ -634,21 +637,25 @@ void updateShardingMetadata(OperationContext* opCtx,
                  Timestamp(0)}));
 
     // Drop config.cache.collections.
+    LOGV2(9106002, "Dropping config.cache.collections");
     fassert(
         8291409,
         storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigCollectionsNamespace));
 
     // Drop "config.cache.chunks.*".
+    LOGV2(9106003, "Dropping config.cache.chunks.*");
     fassert(
         8291410,
         storageInterface->dropCollectionsWithPrefix(opCtx, DatabaseName::kConfig, "cache.chunks."));
 
     // Drop config.cache.databases.
+    LOGV2(9106004, "Dropping config.cache.databases");
     fassert(
         8291411,
         storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
 
     // Drop config.clusterParameters.
+    LOGV2(9106005, "Dropping config.clusterParameters");
     fassert(8291412,
             storageInterface->dropCollection(opCtx, NamespaceString::kClusterParametersNamespace));
 }
@@ -773,6 +780,19 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     if (restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet) {
         updateShardingMetadata(opCtx.get(), restoreConfig, storageInterface);
+    } else {
+        // TODO SERVER-91185: Test this logic in a targeted jstest.
+        // The data files may be from an old shard node, and we want to restore a replica set node.
+        // We should ensure the shard identity document has been removed.
+        LOGV2(9106007, "Attempting to delete old shard identity document on replica set node");
+        auto status = storageInterface->deleteById(opCtx.get(),
+                                                   NamespaceString::kServerConfigurationNamespace,
+                                                   BSON("_id"
+                                                        << "shardIdentity")
+                                                       .firstElement());
+        if (status != ErrorCodes::NoSuchKey) {
+            fassert(9106008, status);
+        }
     }
 
     // Retrieve the timestamp of the last entry in the oplog, used for setting the initial data
