@@ -63,17 +63,17 @@ struct GetAuditConfigGenerationCmd {
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCVUnsafe()) {
             // Forward the command to the config server, as we are unsure of whether the feature
             // flag is active on the cluster.
-            auto response =
-                uassertStatusOK(Grid::get(opCtx)
-                                    ->shardRegistry()
-                                    ->getConfigShard()
-                                    ->runCommandWithFixedRetryAttempts(
-                                        opCtx,
-                                        ReadPreferenceSetting(ReadPreference::PrimaryOnly),
-                                        cmd.getDbName(),
-                                        cmd.toBSON(),
-                                        Milliseconds(defaultConfigCommandTimeoutMS.load()),
-                                        Shard::RetryPolicy::kIdempotent));
+            auto response = uassertStatusOK(
+                Grid::get(opCtx)
+                    ->shardRegistry()
+                    ->getConfigShard()
+                    ->runCommandWithFixedRetryAttempts(
+                        opCtx,
+                        ReadPreferenceSetting(ReadPreference::PrimaryOnly),
+                        cmd.getDbName(),
+                        CommandHelpers::filterCommandRequestForPassthrough(cmd.toBSON()),
+                        Milliseconds(defaultConfigCommandTimeoutMS.load()),
+                        Shard::RetryPolicy::kIdempotent));
 
             uassertStatusOK(response.commandStatus);
             BSONObjBuilder result;
