@@ -546,7 +546,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
                 for (auto& query : supportedQueries) {
                     if (query.getQueryType() == QueryTypeEnum::Range ||
                         query.getQueryType() == QueryTypeEnum::RangePreviewDeprecated) {
-                        setRangeDefaults(optType.value(), &query);
+                        setRangeDefaults(optType.value(), field.getPath(), &query);
                     }
                 }
             }
