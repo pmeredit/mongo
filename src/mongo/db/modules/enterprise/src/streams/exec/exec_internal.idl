@@ -27,7 +27,8 @@ structs:
                 type: string
             v:
                 description: "Value of this header."
-                type: bindata_generic
+                type:
+                    variant: [bindata_generic, string, object, int, long]
 
     CheckpointDescription:
         description: "A high level description about a checkpoint, useful for debugging purposes."

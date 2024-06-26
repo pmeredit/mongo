@@ -10,6 +10,7 @@
 #include "streams/exec/kafka_emit_operator.h"
 
 #include "mongo/base/status.h"
+#include "mongo/bson/bsontypes_util.h"
 #include "mongo/bson/json.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
@@ -221,6 +222,84 @@ namespace {
 static constexpr size_t kMaxTopicNamesCacheSize = 100;
 }
 
+std::vector<char> serializeInt(int32_t valueInt) {
+    // Big-endian serialization
+    std::vector<char> intBytes(sizeof(valueInt), 0);
+    DataView(intBytes.data()).write<BigEndian<int32_t>>(valueInt);
+    return intBytes;
+}
+
+std::vector<char> serializeLong(int64_t valueLong) {
+    // Big-endian serialization
+    std::vector<char> longBytes(sizeof(valueLong), 0);
+    DataView(longBytes.data()).write<BigEndian<int64_t>>(valueLong);
+    return longBytes;
+}
+
+void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
+                                           const std::string& topicName,
+                                           const std::string& headerKey,
+                                           Value headerValue) {
+    RdKafka::ErrorCode err = RdKafka::ERR_NO_ERROR;
+    auto pushBinaryHeader = [&](RdKafka::Headers* headers,
+                                const std::string& key,
+                                const void* valuePointer,
+                                size_t valueLength) {
+        err = headers->add(std::move(key), valuePointer, valueLength);
+        uassert(9136400,
+                "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
+                    topicName, err),
+                err == RdKafka::ERR_NO_ERROR);
+    };
+
+    auto pushStringHeader = [&](RdKafka::Headers* headers,
+                                const std::string& key,
+                                std::string value) {
+        err = headers->add(std::move(key), value);
+        uassert(9136401,
+                "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
+                    topicName, err),
+                err == RdKafka::ERR_NO_ERROR);
+    };
+
+    auto valueType = headerValue.getType();
+    if (headerValue.missing() || valueType == jstNULL) {
+        std::vector<uint8_t> emptyBytes{};
+        BSONBinData emptyBinData{};
+        pushBinaryHeader(headers, headerKey, emptyBinData.data, emptyBinData.length);
+        return;
+    }
+
+    switch (valueType) {
+        case BinData: {
+            auto binData = headerValue.getBinData();
+            pushBinaryHeader(headers, headerKey, binData.data, binData.length);
+        } break;
+        case String: {
+            pushStringHeader(headers, headerKey, headerValue.getString());
+        } break;
+        case Object: {
+            auto obj = headerValue.getDocument().toBson();
+            auto asJson = tojson(obj, _options.jsonStringFormat, false /* pretty */);
+            pushStringHeader(headers, headerKey, asJson);
+        } break;
+        case NumberInt: {
+            int32_t valueInt = headerValue.getInt();
+            std::vector<char> intBytes = serializeInt(valueInt);
+            pushBinaryHeader(headers, headerKey, intBytes.data(), intBytes.size());
+        } break;
+        case NumberLong: {
+            int64_t valueLong = headerValue.getLong();
+            std::vector<char> longBytes = serializeLong(valueLong);
+            pushBinaryHeader(headers, headerKey, longBytes.data(), longBytes.size());
+        } break;
+        default:
+            uasserted(ErrorCodes::BadValue,
+                      str::stream() << "Header value has invalid type: " << str::stream()
+                                    << headerValue.getType());
+    }
+};
+
 RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& streamDoc,
                                                         std::string topicName) {
     RdKafka::ErrorCode err = RdKafka::ERR_NO_ERROR;
@@ -242,18 +321,6 @@ RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& st
                 return headers;
             };
 
-            auto pushHeader = [&](RdKafka::Headers* headers,
-                                  std::string key,
-                                  const void* valuePointer,
-                                  size_t valueLength) {
-                err = headers->add(std::move(key), valuePointer, valueLength);
-                uassert(
-                    8797001,
-                    "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
-                        topicName, err),
-                    err == RdKafka::ERR_NO_ERROR);
-            };
-
             if (headersField.getType() == Array) {
                 auto& headersArray = headersField.getArray();
                 headers = createHeaders();
@@ -267,12 +334,8 @@ RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& st
                     uassert(ErrorCodes::BadValue,
                             "Each header key must be of type String",
                             headerKeyField.getType() == String);
-                    uassert(ErrorCodes::BadValue,
-                            "Each header value must be of type BinData",
-                            headerValueField.getType() == BinData);
                     auto headerKey = headerKeyField.getStringData();
-                    auto headerValue = headerValueField.getBinData();
-                    pushHeader(headers, headerKey.toString(), headerValue.data, headerValue.length);
+                    serializeToHeaders(headers, topicName, headerKey.toString(), headerValueField);
                 }
             } else if (headersField.getType() == Object) {
                 auto headersObj = headersField.getDocument();
@@ -280,12 +343,8 @@ RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& st
                 auto it = headersObj.fieldIterator();
                 while (it.more()) {
                     auto field = it.next();
-                    uassert(ErrorCodes::BadValue,
-                            "Each header value must be of type BinData",
-                            field.second.getType() == BinData);
-                    auto headerValue = field.second.getBinData();
-                    pushHeader(
-                        headers, field.first.toString(), headerValue.data, headerValue.length);
+                    auto headerValue = field.second;
+                    serializeToHeaders(headers, topicName, field.first.toString(), field.second);
                 }
             } else {
                 uasserted(ErrorCodes::BadValue,
@@ -334,11 +393,7 @@ Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
                             unexpectedKeyTypeError(NumberInt),
                             keyField.getType() == NumberInt);
                     int32_t keyInt = keyField.getInt();
-                    std::vector<uint8_t> keyIntBytes(sizeof(keyInt), 0);
-                    // Big-endian serialization
-                    for (size_t i = 0; i < keyIntBytes.size(); i++) {
-                        keyIntBytes[i] = keyInt >> ((sizeof(keyInt) - i - 1) * 8);
-                    }
+                    std::vector<char> keyIntBytes = serializeInt(keyInt);
                     Value keyHolder(BSONBinData{keyIntBytes.data(),
                                                 static_cast<int>(keyIntBytes.size()),
                                                 mongo::BinDataGeneral});
@@ -349,11 +404,7 @@ Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
                             unexpectedKeyTypeError(NumberLong),
                             keyField.getType() == NumberLong);
                     int64_t keyLong = keyField.getLong();
-                    std::vector<uint8_t> keyLongBytes(sizeof(keyLong), 0);
-                    // Big-endian serialization
-                    for (size_t i = 0; i < keyLongBytes.size(); i++) {
-                        keyLongBytes[i] = keyLong >> ((sizeof(keyLong) - i - 1) * 8);
-                    }
+                    std::vector<char> keyLongBytes = serializeLong(keyLong);
                     Value keyHolder(BSONBinData{keyLongBytes.data(),
                                                 static_cast<int>(keyLongBytes.size()),
                                                 mongo::BinDataGeneral});

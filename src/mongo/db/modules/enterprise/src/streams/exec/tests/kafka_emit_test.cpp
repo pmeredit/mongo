@@ -5,6 +5,9 @@
 #include <chrono>
 #include <rdkafkacpp.h>
 
+#include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/bsontypes.h"
+#include "mongo/bson/bsontypes_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
@@ -155,6 +158,91 @@ TEST_F(KafkaEmitTest, RoundTrip) {
             ASSERT_BSONOBJ_EQ(expected, actual);
         }
     }
+}
+
+void assertBinDataEquals(const BSONBinData& lhs, const BSONBinData& rhs) {
+    ASSERT_EQ(lhs.type, rhs.type);
+    ASSERT_EQ(lhs.length, rhs.length);
+    auto lhsData = (const uint8_t*)lhs.data;
+    auto rhsData = (const uint8_t*)rhs.data;
+    for (int i = 0; i < lhs.length; ++i) {
+        ASSERT_EQ(lhsData[i], rhsData[i]);
+    }
+}
+
+TEST_F(KafkaEmitTest, TestSerializeHeaders) {
+    auto [context, _] = getTestContext(getServiceContext());
+    KafkaEmitOperator emitForTest{context.get(), {}};
+    auto createHeaders = []() {
+        auto headers = RdKafka::Headers::create();
+        return headers;
+    };
+    auto headers = createHeaders();
+
+    // Int
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyInt", Value(42));
+    ASSERT_EQ(headers->size(), 1);
+    auto header = headers->get("testKeyInt")[0];
+    BSONBinData result{
+        header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    std::vector<uint8_t> expectedBytes = {0x00, 0x00, 0x00, 0x2A};
+    BSONBinData expectedBinData{
+        expectedBytes.data(), static_cast<int>(expectedBytes.size()), mongo::BinDataGeneral};
+    assertBinDataEquals(result, expectedBinData);
+
+    // Long
+    long long longVal = 200;
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyLong", Value(longVal));
+    ASSERT_EQ(headers->size(), 2);
+    header = headers->get("testKeyLong")[0];
+    result =
+        BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    expectedBytes = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC8};
+    expectedBinData = BSONBinData{
+        expectedBytes.data(), static_cast<int>(expectedBytes.size()), mongo::BinDataGeneral};
+    assertBinDataEquals(result, expectedBinData);
+
+    // String
+    std::string stringVal = "whatsup";
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyString", Value(stringVal));
+    ASSERT_EQ(headers->size(), 3);
+    header = headers->get("testKeyString")[0];
+    result =
+        BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    expectedBinData =
+        BSONBinData{"whatsup", static_cast<int>(stringVal.size()), mongo::BinDataGeneral};
+    assertBinDataEquals(result, expectedBinData);
+
+    // BinData
+    BSONBinData binDataVal{"asdfghjkl", 5, mongo::BinDataGeneral};
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyBinData", Value(binDataVal));
+    ASSERT_EQ(headers->size(), 4);
+    header = headers->get("testKeyBinData")[0];
+    result =
+        BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    assertBinDataEquals(result, binDataVal);
+
+    // Object
+    BSONObj objVal = BSON("x" << 8);
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyObj", Value(objVal));
+    ASSERT_EQ(headers->size(), 5);
+    header = headers->get("testKeyObj")[0];
+    result =
+        BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    auto str = tojson(objVal, mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, false);
+    expectedBinData = BSONBinData{str.c_str(), static_cast<int>(str.size()), mongo::BinDataGeneral};
+    assertBinDataEquals(result, expectedBinData);
+
+    // Null / Missing
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyNull", Value(BSONNULL));
+    ASSERT_EQ(headers->size(), 6);
+    header = headers->get("testKeyNull")[0];
+    result =
+        BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    expectedBinData = BSONBinData{"", 0, mongo::BinDataGeneral};
+    assertBinDataEquals(result, expectedBinData);
+
+    delete headers;
 }
 
 }  // namespace streams

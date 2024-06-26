@@ -74,6 +74,11 @@ public:
         // This operator simply eats any control messages it receives.
     }
 
+    void serializeToHeaders(RdKafka::Headers* headers,
+                            const std::string& topicName,
+                            const std::string& headerKey,
+                            mongo::Value headerValue);
+
 protected:
     std::string doGetName() const override {
         return "KafkaEmitOperator";

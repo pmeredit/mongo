@@ -250,7 +250,17 @@ function insertData(coll) {
                 {k: "h1", v: binData},
                 {k: "h2", v: binData},
             ],
+            headersArrBadType: [{k: "h1", v: NumberDecimal(1)}],
             headersObj: {h1: binData, h2: binData},
+            headersVariedArr: [
+                {k: "h1", v: NumberInt(42)},
+                {k: "h2", v: NumberLong(200)},
+                {k: "h3", v: {a: 1}},
+                {k: "h4", v: "hello"},
+                {k: "h5", v: null}
+            ],
+            headersVariedObj:
+                {h1: NumberInt(42), h2: NumberLong(200), h3: {a: 1}, h4: "hello", h5: null},
             keyBinData: binData,
             keyInt: NumberInt(i),
             keyJson: {a: 1},
@@ -273,6 +283,7 @@ function mongoToKafkaToMongo({
     sinkKeyFormat,
     expectedKeyFunc,
     sinkHeaders,
+    expectedSerializedHeaders,
     sourceKeyFormat,
     sourceKeyFormatError,
     jsonType
@@ -330,7 +341,12 @@ function mongoToKafkaToMongo({
         for (let i = 0; i < results.length; i++) {
             let outputDoc = results[i];
             const expectedKey = sinkKey === undefined ? undefined : expectedKeyFunc(input[i]);
-            const expectedHeaders = sinkHeaders === undefined ? undefined : input[i].headers;
+
+            let expectedHeaders = expectedSerializedHeaders;
+            if (expectedHeaders === undefined) {
+                expectedHeaders = sinkHeaders === undefined ? undefined : input[i].headers;
+            }
+
             assert.eq(outputDoc._stream_meta.source.topic, topicName1, outputDoc);
             assert.eq(outputDoc._stream_meta.source.key, expectedKey, outputDoc);
             assert.eq(outputDoc._stream_meta.source.headers, expectedHeaders, outputDoc);
@@ -1005,11 +1021,42 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
                         expectDlq: false,
                         sinkHeaders: "$headersObj",
                     }));
-// array headers expression
+// array headers field with varied types
 runKafkaTest(kafka, () => mongoToKafkaToMongo({
                         expectDlq: false,
-                        sinkHeaders: {$getField: "headers"},
+                        sinkHeaders: "$headersVariedArr",
+                        // Bindata with base64 encoding for NumberInt(42), NumberLong(200), {a: 1},
+                        // "hello" respectively.
+                        expectedSerializedHeaders: [
+                            {"k": "h1", "v": BinData(0, "AAAAKg==")},
+                            {"k": "h2", "v": BinData(0, "AAAAAAAAAMg=")},
+                            {"k": "h3", "v": BinData(0, "eyJhIjp7IiRudW1iZXJEb3VibGUiOiIxIn19")},
+                            {"k": "h4", "v": BinData(0, "aGVsbG8=")},
+                            {"k": "h5", "v": BinData(0, "")}
+                        ]
                     }));
+
+// object headers field with varied types
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkHeaders: "$headersVariedObj",
+                        // Bindata with base64 encoding for NumberInt(42), NumberLong(200), {a: 1},
+                        // "hello" respectively.
+                        expectedSerializedHeaders: [
+                            {"k": "h1", "v": BinData(0, "AAAAKg==")},
+                            {"k": "h2", "v": BinData(0, "AAAAAAAAAMg=")},
+                            {"k": "h3", "v": BinData(0, "eyJhIjp7IiRudW1iZXJEb3VibGUiOiIxIn19")},
+                            {"k": "h4", "v": BinData(0, "aGVsbG8=")},
+                            {"k": "h5", "v": BinData(0, "")}
+                        ]
+                    }));
+
+// bad header value type
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkHeaders: "$headersArrBadType",
+                    }));
+
 // invalid headers type
 runKafkaTest(kafka, () => mongoToKafkaToMongo({
                         expectDlq: true,
