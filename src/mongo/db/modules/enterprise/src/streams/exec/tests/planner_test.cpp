@@ -1752,6 +1752,46 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "GroupOperator",
                "MergeOperator"});
 
+    // Validate the window unnesting logic will prepend a window assigner before a $project that
+    // depends on the window boundaries.
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "hour" },
+            pipeline: [
+                { $project: { a: "$_stream_meta.window.start" } },
+                { $group: { 
+                    _id: "$customerId", 
+                    sum: { $sum: "$value" }, 
+                    all: { $push: "$value" }, 
+                    avg: { $avg: "$value" } 
+                }}
+            ]
+        }},
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              // The LimitOperator is a dummy window assigning operator, it's limit is infinity.
+              {"ChangeStreamConsumerOperator",
+               "LimitOperator",
+               "ProjectOperator",
+               "GroupOperator",
+               "MergeOperator"});
+
     innerTest(R"(
     [
         {

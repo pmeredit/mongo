@@ -945,15 +945,19 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
-    // If there's no window aware stage, create a dummy window aware limit to maintain window
-    // semantics. Otherwise, if we require metadata to be projected and the first window stage is
-    // not window aware, we add a dummy limit operator at the beginning of the pipeline so that the
-    // window related metadata can be projected.
-    if (_windowPlanningInfo->numWindowAwareStages == 0 ||
-        (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
-         !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
-        _windowPlanningInfo->numWindowAwareStages++;
-        planLimit(/*source*/ nullptr);
+    if (_options.shouldOptimize) {
+        // If we're planning the user pipeline and there's no window aware stage,
+        // create a dummy window aware limit to maintain window semantics.
+        // Otherwise, if we require metadata to be projected and the first window stage is
+        // not window aware, we add a dummy limit operator at the beginning of the pipeline so that
+        // the window related metadata can be projected.
+        if (_windowPlanningInfo->numWindowAwareStages == 0 ||
+            (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
+             !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
+            pipeline->addInitialSource(
+                DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
+            ++_windowPlanningInfo->numWindowAwareStages;
+        }
     }
     auto executionPlan = planPipeline(*pipeline, std::move(pipelineRewriter));
 
@@ -1038,15 +1042,19 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
-    // If there's no window aware stage, create a dummy window aware limit to maintain window
-    // semantics. Otherwise, if we require metadata to be projected and the first window stage is
-    // not window aware, we add a dummy limit operator at the beginning of the pipeline so that the
-    // window related metadata can be projected.
-    if (_windowPlanningInfo->numWindowAwareStages == 0 ||
-        (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
-         !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
-        _windowPlanningInfo->numWindowAwareStages++;
-        planLimit(/*source*/ nullptr);
+    if (_options.shouldOptimize) {
+        // If we're planning the user pipeline and there's no window aware stage,
+        // create a dummy window aware limit to maintain window semantics.
+        // Otherwise, if we require metadata to be projected and the first window stage is
+        // not window aware, we add a dummy limit operator at the beginning of the pipeline so that
+        // the window related metadata can be projected.
+        if ((_windowPlanningInfo->numWindowAwareStages == 0 ||
+             (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
+              !isWindowAwareStage(pipeline->getSources().front()->getSourceName())))) {
+            pipeline->addInitialSource(
+                DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
+            ++_windowPlanningInfo->numWindowAwareStages;
+        }
     }
     auto executionPlan = planPipeline(*pipeline, std::move(pipelineRewriter));
 
@@ -1152,12 +1160,9 @@ void Planner::planSort(mongo::DocumentSource* source) {
 }
 
 void Planner::planLimit(mongo::DocumentSource* source) {
-    int64_t limitValue{std::numeric_limits<int64_t>::max()};
-    if (source) {
-        auto specificSource = dynamic_cast<DocumentSourceLimit*>(source);
-        dassert(specificSource);
-        limitValue = specificSource->getLimit();
-    }
+    auto specificSource = dynamic_cast<DocumentSourceLimit*>(source);
+    tassert(ErrorCodes::InternalError, "Expected a DocumentSourceLimit", specificSource);
+    int64_t limitValue = specificSource->getLimit();
 
     tassert(8358102, "Expected _windowPlannerInfo to be set.", _windowPlanningInfo);
     ++_windowPlanningInfo->numWindowAwareStagesPlanned;
