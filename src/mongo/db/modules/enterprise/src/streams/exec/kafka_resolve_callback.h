@@ -38,7 +38,8 @@ private:
     friend class KafkaResolveCallbackTest;
 
     Context* _context{nullptr};
-    std::pair<std::string, std::string> splitAddressAndService(std::string& hostname);
+    std::pair<std::string, std::string> generateAddressAndService(const std::string& hostname,
+                                                                  const char* service);
     sockaddr_in resolve_name(const std::string& hostname, const std::string& port);
     struct in_addr getRandomProxy(AddrInfoPtr& addresses);
     int resolveCbImpl(const char* node,

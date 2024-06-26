@@ -68,7 +68,7 @@ const connectionRegistry = [
             bootstrapServers: kafkaUriSASLSSL,
             gwproxyEndpoint:
                 "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
-            gwproxyKey: "abcdefghijklmnopABCDEFGHIJKLMNOP",
+            gwproxyKey: "14c818b4360a86df715e0c9a3b5b62f9ba932a691d883882c9dbb59468ee22f8",
             auth: {
                 saslMechanism: "PLAIN",
                 saslUsername: "kafka",
@@ -87,7 +87,7 @@ const connectionRegistry = [
             gwproxyEndpoint:
                 "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
             // Hex representation of key "abcdefghijklmnopABCDEFGHIJKLMNOP",
-            gwproxyKey: "6162636465666768696a6b6c6d6e6f704142434445464748494a4b4c4d4e4f50",
+            gwproxyKey: "14c818b4360a86df715e0c9a3b5b62f9ba932a691d883882c9dbb59468ee22f8",
             auth: {
                 saslMechanism: "PLAIN",
                 saslUsername: "kafka",
@@ -105,7 +105,9 @@ const connectionRegistry = [
             bootstrapServers: kafkaUriSASLSSL,
             gwproxyEndpoint:
                 "172.20.100.10:30000",  // This interface is added by the gwproxy setup script
-            gwproxyKey: "INCORRECTjklmnopABCDEFGHIJKLMNOP",  // Incorrect proxy key
+            gwproxyKey:
+                "14c818b4360a86df715e0c9a3b5b62f9ba932a691d883882c9dbb59468ee22f9",  // Incorrect
+                                                                                     // proxy key
             auth: {
                 saslMechanism: "PLAIN",
                 saslUsername: "kafka",

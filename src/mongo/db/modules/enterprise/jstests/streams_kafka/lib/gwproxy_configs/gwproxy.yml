@@ -5,5 +5,5 @@ proxy:
   use_default_target_port: true
   hello_timeout_seconds: 3
   dial_timeout_seconds: 10
-  authentication_key: "abcdefghijklmnopABCDEFGHIJKLMNOP"
+  authentication_key: "14c818b4360a86df715e0c9a3b5b62f9ba932a691d883882c9dbb59468ee22f8"
 metrics_listen_address: ":19096"

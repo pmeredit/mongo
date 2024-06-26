@@ -33,16 +33,27 @@ KafkaResolveCallback::KafkaResolveCallback(Context* context,
     std::mt19937 _gen(_rd());
 }
 
-std::pair<std::string, std::string> KafkaResolveCallback::splitAddressAndService(
-    std::string& hostname) {
+std::pair<std::string, std::string> KafkaResolveCallback::generateAddressAndService(
+    const std::string& hostname, const char* service) {
     // TODO(STREAMS-974): This only supports AF_INET (eg. no IPv6).
     std::vector<std::string> result;
     boost::algorithm::split(result, hostname, boost::algorithm::is_any_of(":"));
 
+    if (result.size() == 1 && service != nullptr) {
+        // Use provided TCP port passed in as service hint in original query.
+        result.push_back(std::string{service});
+    }
+
     uassert(ErrorCodes::InternalError,
-            str::stream() << "Invalid hostname:port combination for proxyEndpoint: " << hostname
+            str::stream() << "Unable to determine port for proxyEndpoint: " << hostname
                           << " Actual size of array is: " << result.size(),
             result.size() == 2);
+
+    LOGV2_INFO(780098,
+               "Generated proxy endpoint for connection",
+               "context"_attr = _context,
+               "hostname"_attr = result[0],
+               "port"_attr = result[1]);
 
     return {result[0], result[1]};
 }
@@ -78,6 +89,7 @@ sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
 
     // Build hints for getaddrinfo.
     addrinfo hints{};
+    hints.ai_flags = AI_ADDRCONFIG;
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
@@ -134,7 +146,7 @@ int KafkaResolveCallback::resolveCbImpl(const char* node,
 
     LOGV2_INFO(780008, "Calling custom DNS resolver for librdkafka.", "context"_attr = _context);
 
-    auto [hostname, port] = splitAddressAndService(_targetProxy);
+    auto [hostname, port] = generateAddressAndService(_targetProxy, service);
     auto resolverResult = resolve_name(hostname, port);
 
     _endpoint = std::make_unique<addrinfo>();

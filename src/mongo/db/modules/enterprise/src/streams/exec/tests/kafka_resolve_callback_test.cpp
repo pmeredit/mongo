@@ -16,7 +16,7 @@ namespace streams {
 class KafkaResolveCallbackTest : public unittest::Test {
 protected:
     auto checkResolverFailures();
-    auto testHostnameParser(std::string& fqdnAndPort);
+    auto testHostnameParser(std::string& fqdnAndPort, const char* service);
     auto makeContext() {
         auto context = std::make_unique<Context>();
         context->streamProcessorId = UUID::gen().toString();
@@ -37,11 +37,11 @@ auto KafkaResolveCallbackTest::checkResolverFailures() {
     return krc.resolve_name(host.toString(), port.toString());
 }
 
-auto KafkaResolveCallbackTest::testHostnameParser(std::string& fqdnAndPort) {
+auto KafkaResolveCallbackTest::testHostnameParser(std::string& fqdnAndPort, const char* service) {
     auto context = makeContext();
-    KafkaResolveCallback krc{context.get(), "testOperator", "an.unresolvable.name.local:12345"};
+    KafkaResolveCallback krc{context.get(), "testOperator", fqdnAndPort};
 
-    return krc.splitAddressAndService(fqdnAndPort);
+    return krc.generateAddressAndService(fqdnAndPort, service);
 }
 
 TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetHost) {
@@ -99,21 +99,34 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverFailsPredictablyBadHostname) {
 }
 
 TEST_F(KafkaResolveCallbackTest, TestGoodHostAndPortPair) {
-    // Wrapper to test private splitAddressAndService method.  This mostly
-    // only matters when we add support for IPv6.
+    // Wrapper to test private generateAddressAndService method.
+    // This should return a correctly split hostname and port.
     std::string hostAndPort{"foo.bar.name:12345"};
 
-    auto splitHost = testHostnameParser(hostAndPort);
+    auto splitHost = testHostnameParser(hostAndPort, nullptr);
     ASSERT_EQUALS(splitHost.first, "foo.bar.name");
     ASSERT_EQUALS(splitHost.second, "12345");
 }
 
 TEST_F(KafkaResolveCallbackTest, TestBadHostAndPortPair) {
-    // Wrapper to test private splitAddressAndService method.  This mostly
-    // only matters when we add support for IPv6.
+    // Wrapper to test private generateAddressAndService method.  This
+    // should throw an exception, as we can't determine a valid port
+    // to connect to on the proxy.
     std::string hostAndPort{"foo.bar.name.no.port"};
 
-    ASSERT_THROWS(testHostnameParser(hostAndPort), mongo::DBException);
+    ASSERT_THROWS(testHostnameParser(hostAndPort, nullptr), mongo::DBException);
+}
+
+TEST_F(KafkaResolveCallbackTest, TestGoodHostAndService) {
+    // Wrapper to test private generateAddressAndService method.
+    // This should determine that there is no embedded port in the
+    // target proxy hostname, and use the provided one passed in to
+    // the original resolve_cb call.
+    std::string hostAndPort{"foo.bar.name.no.port"};
+
+    auto splitHost = testHostnameParser(hostAndPort, "12345");
+    ASSERT_EQUALS(splitHost.first, "foo.bar.name.no.port");
+    ASSERT_EQUALS(splitHost.second, "12345");
 }
 
 }  // namespace streams
