@@ -58,7 +58,7 @@
 #include "mongo/s/query/cluster_cursor_manager.h"
 #include "mongo/s/resource_yielders.h"
 #include "mongo/s/router_uptime_reporter.h"
-#include "mongo/s/service_entry_point_mongos.h"
+#include "mongo/s/service_entry_point_router_role.h"
 #include "mongo/s/session_catalog_router.h"
 #include "mongo/s/sessions_collection_sharded.h"
 #include "mongo/s/sharding_initialization.h"
@@ -504,7 +504,8 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
 #endif
 
     ShardingState::create(serviceContext);
-    serviceContext->getService()->setServiceEntryPoint(std::make_unique<ServiceEntryPointMongos>());
+    serviceContext->getService()->setServiceEntryPoint(
+        std::make_unique<ServiceEntryPointRouterRole>());
 
     {
         const auto loadBalancerPort = load_balancer_support::getLoadBalancerPort();
