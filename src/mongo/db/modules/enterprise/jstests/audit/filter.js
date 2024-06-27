@@ -9,23 +9,26 @@ const runTest = function(audit, db, admin) {
 
     // Authentication does not match the audit filter
     assert(admin.auth({user: "user1", pwd: "pwd"}));
-    audit.assertNoNewEntries();
+    audit.fastForward();
 
     const coll = db.coll;
 
     // "insert" command matches the audit filter
     assert.writeOK(coll.insert({_id: 0, data: "foobar"}));
-    audit.assertCmd("authCheck", {
-        "command": "insert",
-        "ns": coll.getFullName(),
-        "args": {
-            "insert": coll.getName(),
-            "ordered": true,
-            "lsid": db.getSession().getSessionId(),
-            "$db": db.getName(),
-            "documents": [{"_id": 0, "data": "foobar"}]
-        }
-    });
+    const uuid = audit
+                     .assertCmd("authCheck", {
+                         "command": "insert",
+                         "ns": coll.getFullName(),
+                         "args": {
+                             "insert": coll.getName(),
+                             "ordered": true,
+                             "lsid": db.getSession().getSessionId(),
+                             "$db": db.getName(),
+                             "documents": [{"_id": 0, "data": "foobar"}]
+                         }
+                     })
+                     .uuid;
+    jsTest.log('Connection UUID: ' + tojson(uuid));
 
     // "find" command matches the audit filter
     assert.eq("foobar", coll.findOne({_id: 0}).data);
@@ -44,7 +47,7 @@ const runTest = function(audit, db, admin) {
 
     // Collection drop does not match the audit filter, so no entry is produced
     coll.drop();
-    audit.assertNoNewEntries();
+    audit.assertNoNewEntriesMatching({"uuid": uuid});
     admin.logout();
 };
 

@@ -254,35 +254,44 @@ export class AuditSpooler {
     }
 
     /**
-     * Assert that no new audit events, optionally of a give type, have been emitted
+     * Assert that no new audit events matching an optional filter have been emitted
      * since the last event observed via the Spooler.
      *
-     * paramPartial is a partial match on the param field of the audit log. If the param field
-     * in the log line contains all the keys from paramPartial and the values match the values
-     * from param partial, then the log line fits the search and will be considered a new entry.
+     * By using this.deepPartialEquals, we get scalar comparison for free and any object
+     * comparisons are implicitly performed using a partial equality match.
      */
-    assertNoNewEntries(atype = undefined, paramPartial = undefined) {
+    assertNoNewEntriesMatching(filter = {}) {
         // We want lines to return false. True means there is a match which we do not want.
         const log = this.getAllLines().slice(this._auditLine).filter(function(line) {
-            let parsedLine;
-            try {
-                parsedLine = JSON.parse(line);
-            } catch (err) {
-                jsTest.log(line);
-                throw err;
-            }
-
-            if (atype !== undefined && parsedLine.atype !== atype) {
-                return false;
-            }
-            if (paramPartial !== undefined) {
-                if (!this.deepPartialEquals(parsedLine.param, paramPartial)) {
-                    return false;
+            const parsedLine = function() {
+                try {
+                    return JSON.parse(line);
+                } catch (err) {
+                    jsTest.log("Failed to parse line as JSON: " + line);
+                    throw err;
                 }
-            }
-            return true;
+            }();
+
+            return Object.keys(filter).every(
+                (key) => this.deepPartialEquals(parsedLine[key], filter[key]));
         }, this);
         assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
+    }
+
+    /**
+     * Legacy wrapper for assertNoNewEntriesMatching.
+     * Maps separate parameters for `atype` and `param`.
+     */
+    assertNoNewEntries(atype = undefined, paramPartial = undefined) {
+        const filter = {};
+        if (atype !== undefined) {
+            assert.eq(typeof atype, 'string');
+            filter.atype = atype;
+        }
+        if (paramPartial !== undefined) {
+            filter.param = paramPartial;
+        }
+        return this.assertNoNewEntriesMatching(filter);
     }
 
     _makeErrorMessage() {
