@@ -1202,6 +1202,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
         auto kafkaConsumerPartitionStates =
             processorInfo->executor->getKafkaConsumerPartitionStates();
         if (!kafkaConsumerPartitionStates.empty()) {
+            int64_t kafkaTotalOffsetLag{0};
             std::vector<mongo::KafkaConsumerPartitionState> partitionStatesReply;
             partitionStatesReply.reserve(kafkaConsumerPartitionStates.size());
             for (auto& state : kafkaConsumerPartitionStates) {
@@ -1209,9 +1210,12 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                 stateReply.setPartition(state.partition);
                 stateReply.setCurrentOffset(state.currentOffset);
                 stateReply.setCheckpointOffset(state.checkpointOffset);
+                stateReply.setPartitionOffsetLag(state.partitionOffsetLag);
+                kafkaTotalOffsetLag += state.partitionOffsetLag;
                 partitionStatesReply.push_back(std::move(stateReply));
             }
             reply.setKafkaPartitions(std::move(partitionStatesReply));
+            reply.setKafkaTotalOffsetLag(kafkaTotalOffsetLag);
         }
 
         auto changeStreamState = processorInfo->executor->getChangeStreamState();
