@@ -1110,10 +1110,10 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) 
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 
-    // TODO(SERVER-90511): This currently just returns the "not rewritten, user specified" $lookup
+    // TODO(SERVER-90510): This currently just returns the "not rewritten, user specified" $lookup
     // stage, i.e. {$lookup: {from: {connectionName: "atlasDB", db: "test", coll: "foo"}}}.
-    // But this is not enough. In SERVER-90511 we want to return this "user specified" stage as well
-    // as the $match and $unwind absorbed in the $lookup.
+    // But this is not enough. In SERVER-90511 we made the change for $lookup serialized spec to
+    // absorb $match and $unwind.
     return stageObj;
 }
 
