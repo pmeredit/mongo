@@ -22,6 +22,7 @@
 #include "streams/util/exception.h"
 
 #include <chrono>
+#include <exception>
 #include <filesystem>
 #include <memory>
 
@@ -297,8 +298,20 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
         }
         ASSERT_FALSE(
             isStreamProcessorConnected(streamManager.get(), kTestTenantId1, processorName));
-        stopStreamProcessor(
-            streamManager.get(), kTestTenantId1, processorName, StopReason::ExternalStopRequest);
+        try {
+            stopStreamProcessor(streamManager.get(),
+                                kTestTenantId1,
+                                processorName,
+                                StopReason::ExternalStopRequest);
+        } catch (const DBException& e) {
+            if (e.code() == ErrorCodes::StreamProcessorDoesNotExist) {
+                // This error is allowed. The start thread might remove the processor from the map
+                // if it hits "Executor future returned early during start, likely due to a
+                // connection error or an external stop request".
+                return;
+            }
+            std::rethrow_exception(std::current_exception());
+        }
     });
 
     startThread.join();
