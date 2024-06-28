@@ -30,8 +30,6 @@
 
 namespace streams {
 
-MONGO_FAIL_POINT_DEFINE(slowKafkaSource);
-
 using namespace mongo;
 
 namespace {
@@ -539,9 +537,6 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
 }
 
 void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
-    if (MONGO_unlikely(slowKafkaSource.shouldFail())) {
-        sleepFor(Seconds{1});
-    }
     switch (message.err()) {
         case RdKafka::ERR__TIMED_OUT:
             break;  // Do nothing.

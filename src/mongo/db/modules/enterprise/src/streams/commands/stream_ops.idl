@@ -149,10 +149,6 @@ structs:
                     The offset that the stream processor last committed to the kafka broker and checkpoint
                     for this partition.
                 type: safeInt64
-            partitionOffsetLag:
-                description: >
-                    The lag between the current offset and the latest offset at the broker for this topic/partition.
-                type: safeInt64
 
     GetStatsReply:
         description: "Response message for streams_getStats command"
@@ -208,11 +204,6 @@ structs:
                     Only applicable to stream processors using a kafka source. This contains the current state of each
                     partition for the kafka source.
                 type: array<KafkaConsumerPartitionState>
-                optional: true
-            kafkaTotalOffsetLag:
-                description: >
-                    Only applicable to stream processors using a kafka source. This is the total of all the partition lags.
-                type: safeInt64
                 optional: true
             changeStreamState:
                 type:

@@ -316,7 +316,6 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
     std::vector<RdKafka::TopicPartition*> assignedPartitions;
     while (!shutdown) {
         stdx::unique_lock lock(_groupConsumerMutex);
-
         // TODO(SERVER-87007): Consider promoting the dasserts in this routine to errors that stop
         // processing. Currently we don't want errors in this routine to fail processing in
         // production.
@@ -1045,34 +1044,10 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
             currentOffset = *consumerStartOffset;
         }
 
-        int64_t offsetLag = -1;
-        int64_t low = 0;
-        int64_t high = 0;
-        if (_groupConsumer) {
-            // From librdkafa documentation, this is a local call and returns cached
-            // values for the low/high offsets for the given topic/partition.
-            // The cached high offset is updated for every message that is received
-            // by librdkafa from the broker. The cached low offset is updated less frequently
-            // but we are only going to use the cached high offset here.
-            auto err = _groupConsumer->get_watermark_offsets(
-                _options.topicName, consumerInfo.partition, &low, &high);
-
-            if (err == RdKafka::ERR_NO_ERROR && high != RdKafka::Topic::OFFSET_INVALID) {
-                // currentOffset is 1 more than the offset of the last received message
-                offsetLag = high - (currentOffset - 1);
-            } else {
-                LOGV2_INFO(9092701,
-                           "error retrieving high offset in get_watermark_offsets",
-                           "err"_attr = err,
-                           "high"_attr = high);
-            }
-        }
-
         states.push_back(
             KafkaConsumerPartitionState{.partition = consumerInfo.partition,
                                         .currentOffset = currentOffset,
-                                        .checkpointOffset = consumerInfo.checkpointOffset,
-                                        .partitionOffsetLag = offsetLag});
+                                        .checkpointOffset = consumerInfo.checkpointOffset});
     }
 
     return states;
