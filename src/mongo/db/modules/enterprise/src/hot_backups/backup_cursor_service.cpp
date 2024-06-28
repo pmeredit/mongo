@@ -50,6 +50,30 @@ ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{
         BackupCursorHooks::registerInitializer(constructBackupCursorService);
     }};
 
+/**
+ * Normalizes ident names with and without 'directoryPerDb' and 'wiredTigerDirectoryForIndexes'
+ * mode.
+ *
+ * The durable catalog can return idents in four forms:
+ *  - <db_name>/<collection|index>/<ident_identifier>
+ *    - directoryPerDb + wiredTigerDirectoryForIndexes
+ *  - <db_name>/<ident_name>
+ *    - directoryPerDb
+ *  - <collection|index>/<ident_identifier>
+ *    - wiredTigerDirectoryForIndexes
+ *  - <ident_name>
+ *    - default, no options enabled
+ *
+ * ident_identifier: <counter>-<random number>
+ * ident_name: <collection|index>-<ident_identifier>
+ *
+ * This function trims the leading directory names leaving only the ident's unique identifier.
+ */
+inline std::string getIdentStem(const std::string& ident) {
+    boost::filesystem::path identPath(ident);
+    return identPath.stem().string();
+}
+
 void populateMetadataFromCursor(
     OperationContext* opCtx,
     std::unique_ptr<SeekableRecordCursor> catalogCursor,
@@ -71,7 +95,7 @@ void populateMetadataFromCursor(
         }
 
         const UUID uuid = *entry->metadata->options.uuid;
-        std::string& collectionIdent = entry->ident;
+        std::string collectionIdent = getIdentStem(entry->ident);
 
         // Add the trimmed collection ident to the map. Do not overwrite if it already exists.
         if (identsToNsAndUUID.find(collectionIdent) == identsToNsAndUUID.end()) {
@@ -80,7 +104,7 @@ void populateMetadataFromCursor(
 
         // Add the trimmed index idents to the map. Do not overwrite if it already exists.
         for (const BSONElement& indexIdentElem : entry->indexIdents) {
-            std::string indexIdent = indexIdentElem.String();
+            std::string indexIdent = getIdentStem(indexIdentElem.String());
             if (identsToNsAndUUID.find(indexIdent) == identsToNsAndUUID.end()) {
                 identsToNsAndUUID.emplace(indexIdent, std::make_pair(nss, uuid));
             }
