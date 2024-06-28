@@ -12,7 +12,6 @@
 namespace mongo {
 class ExpressionContext;
 }
-
 namespace streams {
 
 class DocumentSourceWindowStub : public mongo::DocumentSource {
@@ -38,16 +37,21 @@ protected:
     }
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
-        MONGO_UNREACHABLE;
+        uasserted(mongo::ErrorCodes::NotImplemented,
+                  fmt::format("distributedPlanLogic is not implemented for {}", getSourceName()));
     }
 
     GetNextResult doGetNext() override {
-        MONGO_UNREACHABLE;
+        uasserted(mongo::ErrorCodes::NotImplemented,
+                  fmt::format("doGetNext is not implemented for {}, it can only be used in Atlas "
+                              "Stream Processing.",
+                              getSourceName()));
     }
 
     mongo::Value serialize(
         const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const override {
-        MONGO_UNREACHABLE;
+        uasserted(mongo::ErrorCodes::NotImplemented,
+                  fmt::format("serialize is not implemented for {}", getSourceName()));
     }
 
     mongo::DepsTracker::State getDependencies(mongo::DepsTracker* deps) const override {
