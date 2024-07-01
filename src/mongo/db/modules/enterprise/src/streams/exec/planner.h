@@ -85,14 +85,6 @@ private:
         std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     };
 
-    struct PlanResult {
-        // The OperatorDag for execution.
-        std::unique_ptr<OperatorDag> dag;
-
-        // The serialized representation of the optimized execution plan.
-        std::vector<mongo::BSONObj> executionPlan;
-    };
-
     // Adds the given Operator to '_operators'.
     void appendOperator(std::unique_ptr<Operator> oper);
 
@@ -154,7 +146,7 @@ private:
                                              std::unique_ptr<PipelineRewriter> pipelineRewriter);
 
     // Helper function of plan() that does all the work.
-    PlanResult planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
+    std::unique_ptr<OperatorDag> planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
 
     Context* _context{nullptr};
     Options _options;
