@@ -338,7 +338,29 @@ Executor::RunStatus Executor::runOnce() {
         }
     }
 
+    std::deque<CheckpointId> processedCheckpoints;
+    if (_context->checkpointStorage) {
+        processedCheckpoints = processFlushedCheckpoints();
+    }
+
     if (shutdown) {
+        if (_lastCheckpointId) {
+            // We wrote the last checkpoint in the last runOnce call, check if it's been flushed and
+            // processed.
+            if (std::find(processedCheckpoints.begin(),
+                          processedCheckpoints.end(),
+                          *_lastCheckpointId) != processedCheckpoints.end()) {
+                LOGV2_INFO(8914502,
+                           "Checkpoint is flushed",
+                           "context"_attr = _context,
+                           "checkpointId"_attr = *_lastCheckpointId);
+                return RunStatus::kShutdown;
+            }
+
+            // We're still waiting for the last checkpoint to be flushed.
+            return RunStatus::kShuttingDown;
+        }
+
         LOGV2_INFO(8728300,
                    "executor shutting down",
                    "context"_attr = _context,
@@ -358,7 +380,13 @@ Executor::RunStatus Executor::runOnce() {
                     .writeCheckpointCommand = _writeCheckpointCommand.load(),
                     .shutdown = true});
             if (checkpointControlMsg) {
-                sendCheckpointControlMsg(std::move(*checkpointControlMsg));
+                sendCheckpointControlMsg(*checkpointControlMsg);
+                _lastCheckpointId = checkpointControlMsg->id;
+                LOGV2_INFO(8914501,
+                           "Waiting for checkpoint to be flushed",
+                           "context"_attr = _context,
+                           "checkpointId"_attr = _lastCheckpointId);
+                return RunStatus::kShuttingDown;
             }
         }
         _stopDurationGauge->set(_executorTimer.millis());
@@ -385,10 +413,6 @@ Executor::RunStatus Executor::runOnce() {
                         "firstcheckpoint"_attr = checkpointCoordinator->writtenFirstCheckpoint());
             sendCheckpointControlMsg(std::move(*checkpointControlMsg));
         }
-    }
-
-    if (_context->checkpointStorage) {
-        processFlushedCheckpoints();
     }
 
     _writeCheckpointCommand.store(WriteCheckpointCommand::kNone);
@@ -471,13 +495,13 @@ bool Executor::isShutdown() {
 
 void Executor::onCheckpointFlushed(CheckpointId checkpointId) {
     tassert(ErrorCodes::InternalError,
-            "Expected checkpointStorage to be set in Executor::notifyCheckpointFlushed.",
+            "Expected checkpointStorage to be set in Executor::onCheckpointFlushed.",
             _context->checkpointStorage);
     stdx::lock_guard<Latch> lock(_mutex);
     _checkpointFlushEvents.push_back(checkpointId);
 }
 
-void Executor::processFlushedCheckpoints() {
+std::deque<CheckpointId> Executor::processFlushedCheckpoints() {
     std::deque<CheckpointId> checkpointFlushEvents;
     {
         stdx::lock_guard<Latch> lock(_mutex);
@@ -496,6 +520,8 @@ void Executor::processFlushedCheckpoints() {
         flushedCheckpoints.pop_front();
         processFlushedCheckpoint(std::move(description));
     }
+
+    return checkpointFlushEvents;
 }
 
 void Executor::ensureConnected(Date_t deadline) {
@@ -564,6 +590,11 @@ void Executor::runLoop() {
                 // TODO: add jitter
                 stdx::this_thread::sleep_for(
                     stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
+                break;
+            case RunStatus::kShuttingDown:
+                // During shutdown we've written the final checkpoint and we're waiting for
+                // it to be flushed.
+                stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
                 break;
             case RunStatus::kShutdown:
                 LOGV2_INFO(75896, "exiting runLoop() after shutdown", "context"_attr = _context);

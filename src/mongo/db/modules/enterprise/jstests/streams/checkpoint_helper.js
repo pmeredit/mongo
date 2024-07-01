@@ -4,6 +4,7 @@
  * ]
  */
 
+import {Thread} from "jstests/libs/parallelTester.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     waitForCount,
@@ -25,6 +26,7 @@ export function removeProjections(doc) {
 export class LocalDiskCheckpointUtil {
     constructor(checkpointDir, tenantId, streamProcessorId) {
         this.tenantId = tenantId;
+        this.checkpointBaseDir = checkpointDir;
         this._spCheckpointDir = `${checkpointDir}/${tenantId}/${streamProcessorId}`;
         this.processorId = streamProcessorId;
         this.flushedIds = [];
@@ -72,7 +74,9 @@ export class LocalDiskCheckpointUtil {
     }
 
     deleteCheckpointDirectory(checkpointId) {
-        removeFile(this.getRestoreDirectory(checkpointId));
+        const dir = this.getRestoreDirectory(checkpointId);
+        jsTestLog(`Removing checkpoint directory ${dir}`);
+        removeFile(dir);
     }
 
     clear() {
@@ -95,6 +99,48 @@ export class LocalDiskCheckpointUtil {
                     checkpointFlushedEvent: {checkpointId: parseInt(id)}
                 }));
                 this.flushedIds.push(id);
+            }
+        }
+        return this.flushedIds;
+    }
+}
+
+export function flushUntilStopped(
+    name, tenantId, processorId, checkpointBaseDir, alreadyFlushedCheckpointIds = []) {
+    let flushedIds = alreadyFlushedCheckpointIds;
+    while (true) {
+        let result = db.runCommand({streams_listStreamProcessors: '', tenantId: tenantId});
+        assert.commandWorked(result);
+        let processor = result.streamProcessors.filter(s => s.name == name)[0];
+        if (processor == null || processor.length == 0) {
+            // The processor has been stopped, return.
+            return;
+        }
+
+        // Flush any committed checkpoints we haven't flushed already.
+        const spCheckpointDir = `${checkpointBaseDir}/${tenantId}/${processorId}`;
+        const checkpointIds =
+            listFiles(spCheckpointDir)
+                .filter((e) => e.isDirectory)
+                .filter((checkpointDir) => {
+                    const manifestFile =
+                        listFiles(checkpointDir.name).find((file) => file.baseName === "MANIFEST");
+                    return manifestFile !== undefined;
+                })
+                .map((checkpointDir) => checkpointDir.baseName);
+        checkpointIds.sort();
+        for (const id of checkpointIds) {
+            // only flush checkpoint IDs that we haven't flushed already.
+            if (!flushedIds.includes(id)) {
+                jsTestLog(`Flushing checkpoint ${id}`);
+                let result = db.runCommand({
+                    streams_sendEvent: '',
+                    tenantId: tenantId,
+                    processorId: processorId,
+                    checkpointFlushedEvent: {checkpointId: parseInt(id)}
+                });
+                assert(result.ok == 1 || result.code == ErrorCodes.StreamProcessorDoesNotExist);
+                flushedIds.push(id);
             }
         }
     }
@@ -283,7 +329,11 @@ export class TestHelper {
     }
 
     stop(assertWorked = true) {
-        this.sp[this.spName].stop(assertWorked);
+        // This will flush all the checkpoints on disk that have not already
+        // been flushed.
+        this.sp[this.spName].stop(assertWorked, this.checkpointUtil.flushedIds);
+        // Update the flushedIds so we don't flush them again on a subsequent start/stop.
+        this.checkpointUtil.flushedIds = this.checkpointUtil.checkpointIds;
     }
 
     stats() {

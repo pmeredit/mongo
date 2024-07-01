@@ -3,6 +3,10 @@
  *  featureFlagStreams,
  * ]
  */
+import {Thread} from "jstests/libs/parallelTester.js";
+import {
+    flushUntilStopped
+} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {TEST_TENANT_ID} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 // StreamProcessor and Streams classes are used to make the
@@ -19,6 +23,7 @@ export class StreamProcessor {
         this._name = name;
         this._pipeline = pipeline;
         this._connectionRegistry = connectionRegistry;
+        this._processorId = this._name;
         this._db = db;
         if (dbForTest != null) {
             this._db = dbForTest;
@@ -33,7 +38,7 @@ export class StreamProcessor {
         return {
             streams_startStreamProcessor: '',
             tenantId: this._tenantId,
-            name: this._name,
+            name: this._processorId,
             processorId: this._name,
             pipeline: this._pipeline,
             connections: this._connectionRegistry,
@@ -44,6 +49,7 @@ export class StreamProcessor {
 
     // Start the streamProcessor.
     start(options, assertWorked = true) {
+        this._startOptions = options;
         const result = this._db.runCommand(this.makeStartCmd(options));
         if (assertWorked) {
             assert.commandWorked(result);
@@ -60,11 +66,28 @@ export class StreamProcessor {
     }
 
     // Stop the streamProcessor.
-    stop(assertWorked = true) {
+    stop(assertWorked = true, alreadyFlushedCheckpointIds = []) {
+        let flushThread = null;
+        if (this._startOptions != null && this._startOptions.checkpointOptions != null) {
+            const checkpointOptions = this._startOptions.checkpointOptions;
+            const checkpointBaseDir = checkpointOptions.localDisk.writeDirectory;
+            flushThread = new Thread(flushUntilStopped,
+                                     this._name,
+                                     this._tenantId,
+                                     this._processorId,
+                                     checkpointBaseDir,
+                                     alreadyFlushedCheckpointIds);
+            flushThread.start();
+        }
+
         const result = this._db.runCommand(this.makeStopCmd());
+        if (flushThread != null) {
+            flushThread.join();
+        }
         if (assertWorked) {
             assert.commandWorked(result);
         }
+
         return result;
     }
 

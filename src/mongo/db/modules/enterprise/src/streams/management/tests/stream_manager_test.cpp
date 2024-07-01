@@ -9,6 +9,7 @@
 #include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
@@ -187,6 +188,67 @@ public:
     std::chrono::milliseconds getCheckpointInterval(
         StreamManager::StreamProcessorInfo* processorInfo) {
         return processorInfo->executor->_context->checkpointInterval;
+    }
+
+    // Used to act like the streams Agent and flush committed checkpoints.
+    void flushUntilStopped(CheckpointStorage* storage,
+                           StreamManager* manager,
+                           const std::string processorId,
+                           const std::string tenantId) {
+        auto localDiskStorage = dynamic_cast<LocalDiskCheckpointStorage*>(storage);
+
+        auto deadline = Date_t::now() + Minutes{1};
+        while (Date_t::now() < deadline) {
+            // Checkpoint if the processor has been stopped.
+            auto list =
+                manager->listStreamProcessors(ListStreamProcessorsCommand{}).getStreamProcessors();
+            auto processorStopped = std::find_if(list.begin(), list.end(), [&](const auto& s) {
+                                        return s.getProcessorId() == processorId;
+                                    }) == list.end();
+            if (processorStopped) {
+                return;
+            }
+
+            // Find the committed checkpoints in ascending order.
+            std::vector<std::tuple<CheckpointId, std::filesystem::path>> checkpointsToFlush;
+            for (const auto& dirEntry :
+                 std::filesystem::recursive_directory_iterator(localDiskStorage->writeRootDir())) {
+                if (dirEntry.path().filename() == "MANIFEST") {
+                    auto checkpointPath = dirEntry.path().parent_path();
+                    auto checkpointIdStr = checkpointPath.filename().string();
+                    checkpointsToFlush.push_back(
+                        std::make_tuple(std::stoll(checkpointIdStr), checkpointPath));
+                }
+            }
+            std::sort(checkpointsToFlush.begin(),
+                      checkpointsToFlush.end(),
+                      [](const auto& lhs, const auto& rhs) -> bool {
+                          return std::get<CheckpointId>(lhs) < std::get<CheckpointId>(rhs);
+                      });
+
+            // Flush the committed checkpoints and remove them from local disk.
+            for (const auto& checkpoint : checkpointsToFlush) {
+                SendEventCommand cmd;
+                cmd.setProcessorId(processorId);
+                cmd.setTenantId(tenantId);
+                cmd.setCheckpointFlushedEvent(
+                    CheckpointFlushedEvent{std::get<CheckpointId>(checkpoint)});
+                try {
+                    fmt::print("Notifying checkpoint flush {}",
+                               cmd.getCheckpointFlushedEvent()->getCheckpointId());
+                    manager->sendEvent(std::move(cmd));
+                } catch (const DBException& e) {
+                    // StreamProcessorDoesNotExist is allowed to happen because the processor might
+                    // have already stopped.
+                    if (e.code() != ErrorCodes::StreamProcessorDoesNotExist) {
+                        std::rethrow_exception(std::current_exception());
+                    }
+                }
+                std::filesystem::remove_all(std::get<std::filesystem::path>(checkpoint));
+            }
+        }
+        // deadline exceeded
+        ASSERT(false);
     }
 };
 
@@ -842,9 +904,16 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         updateContextFeatureFlags(processorInfo, tFeatureFlags);
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
+        stdx::thread flusherThread([&]() {
+            flushUntilStopped(processorInfo->context->checkpointStorage.get(),
+                              streamManager.get(),
+                              request.getProcessorId().toString(),
+                              request.getTenantId().toString());
+        });
         stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
         ASSERT(!streamProcessorExists(
             streamManager.get(), kTestTenantId1, request.getName().toString()));
+        flusherThread.join();
         std::filesystem::remove_all(writeDir);
     };
 

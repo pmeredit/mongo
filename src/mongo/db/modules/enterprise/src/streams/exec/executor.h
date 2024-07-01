@@ -34,7 +34,6 @@ namespace streams {
 class DeadLetterQueue;
 class OperatorDag;
 class OutputSampler;
-class ExecutorTest;
 struct Context;
 
 /**
@@ -130,12 +129,12 @@ private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
     friend class StreamManagerTest;
-    friend class ExecutorTest;
 
     enum class RunStatus {
         kActive,
         kIdle,
         kShutdown,
+        kShuttingDown,
     };
 
     // Cost function for the bounded test only docs MPSC queue.
@@ -176,7 +175,7 @@ private:
     void processFlushedCheckpoint(mongo::CheckpointDescription checkpointDescription);
 
     // Process any checkpoints that have been flushed to remote storage.
-    void processFlushedCheckpoints();
+    std::deque<CheckpointId> processFlushedCheckpoints();
 
     // Update stream processor feature flags for this context.
     void updateContextFeatureFlags();
@@ -190,6 +189,8 @@ private:
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
     StopReason _stopReason;
+    // During stop we write a final checkpoint and set this member variable.
+    boost::optional<CheckpointId> _lastCheckpointId;
     bool _connected{false};
     StreamStats _streamStats;
 

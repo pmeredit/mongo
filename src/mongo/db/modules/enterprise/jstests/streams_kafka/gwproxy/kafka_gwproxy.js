@@ -1,4 +1,6 @@
+import {Thread} from "jstests/libs/parallelTester.js";
 import {
+    flushUntilStopped,
     LocalDiskCheckpointUtil,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
@@ -6,7 +8,6 @@ import {
     listStreamProcessors,
     sanitizeDoc,
     startSample,
-    stopStreamProcessor,
     TEST_TENANT_ID,
     waitForCount,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -130,6 +131,28 @@ function getRestoreDirectory(processorId) {
         return null;
     }
     return util.getRestoreDirectory(util.latestCheckpointId);
+}
+
+function stopStreamProcessor(name) {
+    jsTestLog(`Stopping ${name}`);
+    let result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+    assert.commandWorked(result);
+    const processor = result.streamProcessors.filter(s => s.name == name)[0];
+    assert(processor != null);
+    const processorId = processor.processorId;
+    let flushThread =
+        new Thread(flushUntilStopped, name, TEST_TENANT_ID, processorId, checkpointBaseDir);
+    flushThread.start();
+
+    let stopCmd = {
+        streams_stopStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: name,
+    };
+    assert.commandWorked(db.runCommand(stopCmd));
+    if (flushThread != null) {
+        flushThread.join();
+    }
 }
 
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
