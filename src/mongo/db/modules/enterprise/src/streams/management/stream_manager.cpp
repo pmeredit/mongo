@@ -1214,9 +1214,11 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
             reply.setKafkaPartitions(std::move(partitionStatesReply));
         }
 
-        auto changeStreamState = processorInfo->executor->getChangeStreamState();
+        const auto& [changeStreamState, changeStreamLag] =
+            processorInfo->executor->getChangeStreamState();
         if (changeStreamState) {
             reply.setChangeStreamState(changeStreamState.get());
+            reply.setChangeStreamTimeDifferenceSecs(changeStreamLag);
         }
 
         std::vector<mongo::VerboseOperatorStats> out;

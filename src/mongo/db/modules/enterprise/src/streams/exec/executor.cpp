@@ -246,10 +246,10 @@ bool Executor::isConnected() {
     return _connected;
 }
 
-boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> Executor::getChangeStreamState()
-    const {
+std::pair<boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>, mongo::Seconds>
+Executor::getChangeStreamState() const {
     stdx::lock_guard<Latch> lock(_mutex);
-    return _changeStreamState;
+    return {_changeStreamState, _changeStreamLag};
 }
 
 void Executor::writeCheckpoint(bool force) {
@@ -311,6 +311,7 @@ Executor::RunStatus Executor::runOnce() {
         if (const auto* source =
                 dynamic_cast<ChangeStreamSourceOperator*>(_options.operatorDag->source())) {
             _changeStreamState = source->getCurrentState();
+            _changeStreamLag = source->getChangeStreamLag();
         }
 
         for (auto& sampler : _outputSamplers) {

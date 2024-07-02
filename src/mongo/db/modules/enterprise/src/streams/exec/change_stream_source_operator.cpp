@@ -7,6 +7,7 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "mongo/db/pipeline/resume_token.h"
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/message.h"
 #include "streams/util/exception.h"
@@ -20,6 +21,7 @@
 #include <mongocxx/exception/query_exception.hpp>
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
+#include <mutex>
 #include <variant>
 
 #include "mongo/bson/bsonobj.h"
@@ -54,8 +56,42 @@ namespace {
 // connecting.
 MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepBeforeConnect);
 
+// If enabled the executor thread will sleep for some time after processing a batch of fetched
+// events
+MONGO_FAIL_POINT_DEFINE(changestreamSlowEventProcessing);
+
 // Name of the error code field name in the raw server error object.
 static constexpr char kErrorCodeFieldName[] = "code";
+
+// Helper function to get the timestamp of the latest event in the oplog. This involves
+// invoking a command on the server and so can be slow.
+mongo::Timestamp getLatestOplogTime(mongocxx::database* database, mongocxx::client* client) {
+    // Run the hello command to test the connection and retrieve the current operationTime.
+    // A failure will throw an exception.
+    bsoncxx::document::value helloResponse{bsoncxx::document::view()};
+
+    auto helloRequest = make_document(kvp("hello", "1"));
+
+    if (database) {
+        helloResponse = database->run_command(std::move(helloRequest));
+    } else {
+        // Use the config database because the driver requires us to call run_command under a
+        // particular DB.
+        const std::string defaultDb{"config"};
+        helloResponse = client->database(defaultDb).run_command(std::move(helloRequest));
+    }
+
+    auto operationTime = helloResponse.find("operationTime");
+    // With Atlas sources, we don't expect to hit this.
+    uassert(8748300,
+            "Expected an operationTime in the response. Is the changestream $source a replset?",
+            operationTime != helloResponse.end());
+    uassert(8308700,
+            "Expected an operationTime timestamp field.",
+            operationTime->type() == bsoncxx::type::k_timestamp);
+    auto timestamp = operationTime->get_timestamp();
+    return {timestamp.timestamp, timestamp.increment};
+}
 
 };  // namespace
 
@@ -130,6 +166,31 @@ ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
     dassert(!_changeStreamThread.joinable());
 }
 
+mongo::Seconds ChangeStreamSourceOperator::getChangeStreamLag() const {
+    if (!_latestResumeToken) {
+        return mongo::Seconds{0};
+    }
+
+    const auto& streamPoint = *_latestResumeToken;
+    auto opLogLatestTs = _changestreamOperationTime.load().count();
+
+    unsigned delta = 0;
+
+    if (const BSONObj* resumeToken = std::get_if<mongo::BSONObj>(&streamPoint)) {
+        unsigned tokenSecs = ResumeToken::parse(*resumeToken).getClusterTime().getSecs();
+        if (opLogLatestTs > tokenSecs) {
+            delta = opLogLatestTs - tokenSecs;
+        }
+    } else if (const mongo::Timestamp* ts = std::get_if<mongo::Timestamp>(&streamPoint)) {
+        if (opLogLatestTs > ts->getSecs()) {
+            delta = opLogLatestTs - ts->getSecs();
+        }
+    } else {
+        tasserted(9043601, "Unexpected resume token type");
+    }
+    return mongo::Seconds{delta};
+}
+
 OperatorStats ChangeStreamSourceOperator::doGetStats() {
     OperatorStats stats{_stats};
     {
@@ -200,32 +261,9 @@ void ChangeStreamSourceOperator::connectToSource() {
         initFromCheckpoint();
     }
 
-    // Run the hello command to test the connection and retrieve the current operationTime.
-    // A failure will throw an exception.
-    auto helloRequest = make_document(kvp("hello", "1"));
-    bsoncxx::document::value helloResponse{bsoncxx::document::view()};
-    if (_database) {
-        helloResponse = _database->run_command(std::move(helloRequest));
-    } else {
-        // Use the config database because the driver requires us to call run_command under a
-        // particular DB.
-        const std::string defaultDb{"config"};
-        helloResponse = _client->database(defaultDb).run_command(std::move(helloRequest));
-    }
-
     if (!_state.getStartingPoint()) {
-        // If we don't have a starting point, use the operationTime from the hello request.
-        auto operationTime = helloResponse.find("operationTime");
-        // With Atlas sources, we don't expect to hit this.
-        uassert(8748300,
-                "Expected an operationTime in the response. Is the changestream $source a replset?",
-                operationTime != helloResponse.end());
-        uassert(8308700,
-                "Expected an operationTime timestamp field.",
-                operationTime->type() == bsoncxx::type::k_timestamp);
-        auto timestamp = operationTime->get_timestamp();
         _state.setStartingPoint(std::variant<mongo::BSONObj, mongo::Timestamp>(
-            Timestamp{timestamp.timestamp, timestamp.increment}));
+            getLatestOplogTime(_database.get(), _client.get())));
     }
 
     // Establish our change stream cursor.
@@ -250,15 +288,16 @@ void ChangeStreamSourceOperator::connectToSource() {
     }
 
     try {
+        _clientSession.reset(new mongocxx::client_session{_client->start_session()});
         if (_collection) {
             _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-                _collection->watch(_pipeline, _changeStreamOptions));
+                _collection->watch(*_clientSession, _pipeline, _changeStreamOptions));
         } else if (_database) {
             _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-                _database->watch(_pipeline, _changeStreamOptions));
+                _database->watch(*_clientSession, _pipeline, _changeStreamOptions));
         } else {
             _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-                _client->watch(_pipeline, _changeStreamOptions));
+                _client->watch(*_clientSession, _pipeline, _changeStreamOptions));
         }
     } catch (const mongocxx::exception& e) {
         ErrorCodes::Error code{e.code().value()};
@@ -395,7 +434,8 @@ void ChangeStreamSourceOperator::doStart() {
         try {
             fetchLoop();
         } catch (const std::exception& e) {
-            // Note: fetchLoop has its own error handling so we don't expect to this this exception.
+            // Note: fetchLoop has its own error handling so we don't expect to this this
+            // exception.
             LOGV2_WARNING(8681501,
                           "Unexpected std::exception in changestream $source",
                           "exception"_attr = e.what());
@@ -432,12 +472,18 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     auto& changeEvents = batch.docs;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
 
+    // Regardless of whether we have new input documents, update latest resumeToken
+    if (batch.lastResumeToken) {
+        _latestResumeToken =
+            std::variant<mongo::BSONObj, mongo::Timestamp>((*batch.lastResumeToken));
+    }
+
     // Return if no documents are available at the moment.
     if (changeEvents.empty()) {
         if (batch.lastResumeToken) {
             // mongocxx might give us a new resume token even if no change events are read.
-            // Only update resumeTokenAdvancedSinceLastCheckpoint if the resume token is different
-            // from the one we already have
+            // Only update resumeTokenAdvancedSinceLastCheckpoint if the resume token is
+            // different from the one we already have
             tassert(8017801, "Expected _state to have a startingPoint", _state.getStartingPoint());
             if (holds_alternative<BSONObj>(*_state.getStartingPoint())) {
                 const auto& currentResumeToken = get<BSONObj>(*_state.getStartingPoint());
@@ -498,6 +544,10 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     }
 
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
+    if (MONGO_unlikely(changestreamSlowEventProcessing.shouldFail())) {
+        sleepFor(Milliseconds{2500});
+    }
+
     tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
     _state.setStartingPoint(
         std::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
@@ -544,11 +594,15 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             "Expected resume token to be set whenever we read a change event.",
             resumeToken || !changeEvent);
 
-    // If we've hit the end of our cursor, set our iterator to the default iterator so that we can
-    // reset it on the next call to 'readSingleChangeEvent'.
+    // If we've hit the end of our cursor, set our iterator to the default iterator so that we
+    // can reset it on the next call to 'readSingleChangeEvent'.
     if (_it == _changeStreamCursor->end()) {
         _it = mongocxx::change_stream::iterator();
     }
+
+    // Store latest operationTime regardless of whether we get a new resumeToken/event or not
+    _changestreamOperationTime.store(mongo::Seconds{_clientSession->operation_time().timestamp});
+
     // Return early if we didn't read a change event or resume token.
     if (!changeEvent && !eventResumeToken) {
         return false;
@@ -585,7 +639,8 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 // - The 'clusterTime' (if we're reading from a change stream against a cluster whose
 // version is LT 6.0).
 //
-// Then, does additional work to generate a watermark. Throws if a timestamp could not be obtained.
+// Then, does additional work to generate a watermark. Throws if a timestamp could not be
+// obtained.
 mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc,
                                                        const Document& fullDocument) {
     mongo::Date_t ts;
@@ -618,11 +673,12 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     Document changeEventDoc(std::move(changeStreamObj));
     mongo::Date_t ts;
 
-    // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and return.
+    // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and
+    // return.
     try {
         if (_options.fullDocumentOnly) {
-            // If fullDocumentOnly is set and is true, we only process change stream event with a
-            // fullDocument field. Any other event is sent to the dlq.
+            // If fullDocumentOnly is set and is true, we only process change stream event with
+            // a fullDocument field. Any other event is sent to the dlq.
             uassert(ErrorCodes::BadValue,
                     str::stream() << "Missing fullDocument field in change stream event",
                     changeEventDoc[DocumentSourceChangeStream::kFullDocumentField].getType() ==

@@ -212,6 +212,12 @@ structs:
                 description: >
                     This is last read resume token or startAtOperationTimestamp if we have not read anything if 
                     the source is change stream."
+            changeStreamTimeDifferenceSecs:
+                description: >
+                    This is the lag (in seconds) of the last read change event as compared with the last event in the oplog.
+                    If all available events have been read, then lag becomes 0
+                type: seconds
+                optional: true
 
     VerboseStatus:
         description: "Internal details about a stream processor, used for debugging purposes."

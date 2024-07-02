@@ -135,7 +135,7 @@ function runChangeStreamSourceTest({
     const verboseStats = getStats(processorName);
     jsTestLog(verboseStats);
     assert.eq(verboseStats["ok"], 1);
-    const startingPoint = verboseStats['changeStreamState']['_data'];
+    const startingPoint = verboseStats['changeStreamState'];
     assert(startingPoint);
     assert.commandWorked(processor.stop());
 
@@ -203,6 +203,7 @@ runChangeStreamSourceTest({
     overrideTsField: null,
     timeField: null,
 });
+
 runChangeStreamSourceTest({
     expectedNumberOfDataMessages: 14,
     dbName: writeDBTwo,
@@ -887,6 +888,125 @@ function testCollWithoutDb() {
 }
 
 testCollWithoutDb();
+
+// This test tests that we observe the change stream lag in the verbose stats. This is
+// achieved via enabling a failpoint that slows down message processing in the executor thread in
+// mongod this lets the lag grow large enough (> 1 second) for it to be observed. After observing
+// the lag the failpoint is disabled so that the server catches up with the stream and at that
+// point, we append newer events to a different collection that is not being watched by this
+// changestream. Then the test validates that we do not observe any lag in this situation, since we
+// are effectively "caught up" with the stream
+function testChangeStreamSourceLagStat() {
+    clearState();
+
+    assert.commandWorked(db.adminCommand(
+        {'configureFailPoint': 'changestreamSlowEventProcessing', 'mode': 'alwaysOn'}));
+
+    const processorName = "changeStreamSourceLaggingProcessor";
+    sp.createStreamProcessor(processorName, [
+        {$source: {connectionName: connectionName, db: writeDBOne, coll: writeCollOne}},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(2), unit: "second"},
+                pipeline: [
+                    {
+                        $group: {
+                            _id: "$operationType",
+                            sum: {$sum: 1},
+                            pushAll: {$push: "$$ROOT"},
+                            firstDocTime: {$first: "$_ts"},
+                            lastDocTime: {$last: "$_ts"}
+                        }
+                    },
+                ]
+            }
+        },
+        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+    ]);
+
+    const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    const writeColl2 = db.getSiblingDB(writeDBOne)[writeCollTwo];
+    // Perform 10 inserts
+    for (let i = 0; i < 10; i++) {
+        assert.commandWorked(writeColl.insertOne({_id: 2 + i, a: 2 + i}));
+    }
+
+    const processor = sp[processorName];
+    assert.commandWorked(processor.start({featureFlags: {}}));
+
+    // Keep appending new events to the oplog and check that eventually startingPointLag > 0.
+    // Since we have enabled slowChangestreamSource fail point, so the server
+    // is being slow in processing events. Hence, eventually we should
+    // see a gap between the resume token point and the latest event in the oplog
+    var lagSeen = false;
+    var i = 13;
+    for (let j = 0; j < 50; j++) {
+        // append events, with some sleeps to get the oplog event times to increase noticeably
+        for (let k = 0; k < 10; k++) {
+            assert.commandWorked(writeColl.insertOne({_id: i, a: 2 + i}));
+            i += 1;
+        }
+
+        // Now check if we have started seeing the lag yet
+        const verboseStats = getStats(processorName);
+        // jsTestLog(verboseStats);
+        assert.eq(verboseStats["ok"], 1);
+        const startingPoint = verboseStats['changeStreamState'];
+        assert(startingPoint);
+        const startingPointLag = verboseStats['changeStreamTimeDifferenceSecs'];
+        if (startingPointLag > 0) {
+            lagSeen = true;
+            break;
+        }
+        sleep(200);
+    }
+
+    assert(lagSeen);
+
+    // Now disable failpoint so that we read all events and catch up
+    assert.commandWorked(
+        db.adminCommand({'configureFailPoint': 'changestreamSlowEventProcessing', 'mode': 'off'}));
+
+    // Now wait till we have read all events
+    assert.soon(() => {
+        const verboseStats = getStats(processorName);
+        // jsTestLog(verboseStats);
+        assert.eq(verboseStats["ok"], 1);
+        const startingPoint = verboseStats['changeStreamState'];
+        assert(startingPoint);
+        const startingPointLag = verboseStats['changeStreamTimeDifferenceSecs'];
+        return startingPointLag == 0;
+    });
+
+    // Now write to coll2, since we are only watching coll1, we will not get any
+    // new events and so will be "caught up" and so the lag will show
+    // as 0
+    for (let j = 0; j < 25; j++) {
+        for (let k = 0; k < 50; k++) {
+            assert.commandWorked(writeColl2.insertOne({_id: i, a: 2 + i}));
+            i += 1;
+        }
+        sleep(200);
+    }
+
+    // Give some time for things to settle down
+    sleep(5000);
+
+    assert.soon(() => {
+        const verboseStats = getStats(processorName);
+        // jsTestLog(verboseStats);
+        assert.eq(verboseStats["ok"], 1);
+        const startingPoint = verboseStats['changeStreamState'];
+        assert(startingPoint);
+        const startingPointLag = verboseStats['changeStreamTimeDifferenceSecs'];
+        return startingPointLag == 0;
+    });
+
+    stopStreamProcessor(processorName);
+    clearState();
+}
+
+testChangeStreamSourceLagStat();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.

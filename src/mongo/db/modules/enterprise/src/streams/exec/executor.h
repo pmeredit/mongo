@@ -106,8 +106,12 @@ public:
     // Returns a description of the last committed checkpoint, if there is one.
     boost::optional<mongo::CheckpointDescription> getLastCommittedCheckpointDescription();
 
-    // Returns the current resume token or startAtOperationTimestamp for a change stream $source.
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getChangeStreamState() const;
+    // The first component of the returned pair is the current resume token or
+    // startAtOperationTimestamp for a change stream $source. The second component is the delta
+    // between the timestamp of the last event in the oplog and the timestamp in the last obtained
+    // resume token from the change stream.
+    std::pair<boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>, mongo::Seconds>
+    getChangeStreamState() const;
 
     // Get feature flags set for this context.
     mongo::BSONObj testOnlyGetFeatureFlags() const;
@@ -236,6 +240,7 @@ private:
         WriteCheckpointCommand::kNone};
     // The current resume token or timestamp for a change stream $source.
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
+    mongo::Seconds _changeStreamLag;
     std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlagsUpdate;
 
     // A queue of checkpointIDs that have been flushed to remote storage.

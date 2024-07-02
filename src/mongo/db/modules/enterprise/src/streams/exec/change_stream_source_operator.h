@@ -83,6 +83,11 @@ public:
         return _resumeTokenAdvancedSinceLastCheckpoint;
     }
 
+    // The delta between the timestamp of the last event in the oplog and the timestamp in the last
+    // obtained resume token from the change stream. This function is called once per loop by the
+    // executor thread
+    mongo::Seconds getChangeStreamLag() const;
+
 private:
     struct DocBatch {
         DocBatch(size_t capacity) {
@@ -139,8 +144,8 @@ private:
     // It established the connection with the $source and starts reading.
     void fetchLoop();
 
-    // Attempts to read a change event from '_changeEventCursor'. Returns true if a single event was
-    // read and added to '_activeChangeEventDocBatch', false otherwise.
+    // Attempts to read a change event from '_changeEventCursor'. Returns true if a single event
+    // was read and added to '_activeChangeEventDocBatch', false otherwise.
     bool readSingleChangeEvent();
 
     // Runs at the beginning of fetchLoop. Establishes a connection with the target and opens a
@@ -158,6 +163,7 @@ private:
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri{nullptr};
     std::unique_ptr<mongocxx::client> _client{nullptr};
+    std::unique_ptr<mongocxx::client_session> _clientSession{nullptr};
     std::unique_ptr<mongocxx::database> _database{nullptr};
 
     // Prefix used in error messages.
@@ -202,8 +208,8 @@ private:
     // Tracks an exception that needs to be returned to the caller.
     std::exception_ptr _exception;
 
-    // Whether '_changeStreamThread' should shut down. This is triggered when stop() is called or
-    // an error is encountered.
+    // Whether '_changeStreamThread' should shut down. This is triggered when stop() is called
+    // or an error is encountered.
     bool _shutdown{false};
 
     // ConnectionStatus of the changestream. Updated when connected succeeds and
@@ -223,9 +229,16 @@ private:
 
     // Note that in the future (SERVER-82562), if we change the meaning of a checkpoint commit
     // to mean that it has been uploaded to S3, we still need to ensure that the
-    // _resumeTokenAdvancedSinceLastCheckpoint update happens after the take-a-checkpoint control
-    // message has propagated through the DAG and before we resume further data processing
+    // _resumeTokenAdvancedSinceLastCheckpoint update happens after the take-a-checkpoint
+    // control message has propagated through the DAG and before we resume further data
+    // processing
     bool _resumeTokenAdvancedSinceLastCheckpoint{false};
+
+    // This is the resume token corresponding to the point where we are in the change stream.
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _latestResumeToken;
+    // This is the timestamp of the last event in the oplog in the server. This is updated
+    // from the auxiliary event fetching thread each time we get a new event on the change stream.
+    mongo::Atomic<mongo::Seconds> _changestreamOperationTime;
 
     // Metrics that track the number of docs and bytes prefetched.
     std::shared_ptr<IntGauge> _queueSizeGauge;
