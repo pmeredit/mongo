@@ -122,9 +122,6 @@ structs:
                 type: array<string>
                 stability: stable
                 optional: true
-            optimizedPipeline:
-                description: "Optimized pipeline"
-                type: pipeline
 
     StopStreamProcessorReply:
         description: "Response message for streams_stopStreamProcessor command"

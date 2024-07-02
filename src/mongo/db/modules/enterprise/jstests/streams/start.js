@@ -56,11 +56,7 @@ function startStreamProcessor(pipeline,
     outputColl.drop();
 
     // Calls streams_startStreamProcessor with validateOnly: true.
-    let result = startStreamProcessor([
-        {$source: {connectionName: dbConnectionName, db: dbName, coll: inputCollName}},
-        {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
-    ]);
-    assert.eq(result["optimizedPipeline"], [
+    startStreamProcessor([
         {$source: {connectionName: dbConnectionName, db: dbName, coll: inputCollName}},
         {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
     ]);

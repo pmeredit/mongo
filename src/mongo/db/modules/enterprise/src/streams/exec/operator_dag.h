@@ -34,8 +34,7 @@ public:
         // Tracks DocumentSource objects corresponding to the stages between the source and the
         // sink.
         mongo::Pipeline::SourceContainer pipeline;
-        std::vector<mongo::BSONObj> inputPipeline;
-        std::vector<mongo::BSONObj> optimizedPipeline;
+        std::vector<mongo::BSONObj> bsonPipeline;
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
         std::unique_ptr<EventDeserializer> eventDeserializer;
     };
@@ -57,12 +56,8 @@ public:
     // Returns the last operator in _operators.
     SinkOperator* sink() const;
 
-    const std::vector<mongo::BSONObj>& inputPipeline() const {
-        return _options.inputPipeline;
-    }
-
-    const std::vector<mongo::BSONObj>& optimizedPipeline() const {
-        return _options.optimizedPipeline;
+    const std::vector<mongo::BSONObj>& bsonPipeline() const {
+        return _options.bsonPipeline;
     }
 
     const OperatorContainer& operators() const {

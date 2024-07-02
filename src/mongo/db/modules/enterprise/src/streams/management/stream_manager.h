@@ -61,6 +61,13 @@ public:
             (mongo::ProcessInfo::getMemSizeMB() * 1024 * 1024) - kMemoryLimitBufferSpaceBytes)};
     };
 
+    struct StartResult {
+        // Only set when startRequest.options.shouldStartSample is true.
+        boost::optional<int64_t> startSampleCursorId;
+        // Only set when startRequest.options.parseOnly is true.
+        boost::optional<mongo::StringSet> connectionNames;
+    };
+
     // Encapsulates a batch of sampled output records.
     struct OutputSample {
         std::vector<mongo::BSONObj> outputDocs;
@@ -75,8 +82,7 @@ public:
 
     // Starts a new stream processor. Returns an optional sample cursor ID, which is only set if
     // the shouldStartSample is set in the start request.
-    mongo::StartStreamProcessorReply startStreamProcessor(
-        const mongo::StartStreamProcessorCommand& request);
+    StartResult startStreamProcessor(const mongo::StartStreamProcessorCommand& request);
 
     // Stops the stream processor specified by request params.
     void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request);
@@ -194,8 +200,7 @@ private:
 
     // Helper method of the public startStreamProcessor() method that starts the stream processor
     // in an asynchronous manner.
-    mongo::StartStreamProcessorReply startStreamProcessorAsync(
-        const mongo::StartStreamProcessorCommand& request);
+    StartResult startStreamProcessorAsync(const mongo::StartStreamProcessorCommand& request);
 
     // Helper method of the public startSample() method.
     int64_t startSample(mongo::WithLock,
