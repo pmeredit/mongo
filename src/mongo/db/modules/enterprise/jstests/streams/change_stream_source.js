@@ -138,9 +138,12 @@ function runChangeStreamSourceTest({
     const startingPoint = verboseStats['changeStreamState']['_data'];
     assert(startingPoint);
     assert.commandWorked(processor.stop());
-    const res = outputColl.find().toArray();
 
-    assert.eq(res.length, expectedNumberOfDataMessages, tojson(res));
+    let res;
+    assert.soon(() => {
+        res = outputColl.find().toArray();
+        return res.length == expectedNumberOfDataMessages;
+    });
     let previousTime = null;
     let resumeTokenSet = new Set();
     for (const doc of res) {
