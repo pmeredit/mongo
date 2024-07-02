@@ -196,7 +196,8 @@ void synchronize(Client* client) try {
                 5,
                 "Setting new audit configuration in auditSynchronizeJob",
                 "config"_attr = auditConfigDoc);
-    am->setConfiguration(client, auditConfigDoc);
+    am->setConfigurationUsingFormatIfNotSet(
+        client, auditConfigDoc, AuditConfigFormat::WithGeneration);
 
 } catch (const DBException& ex) {
     LOGV2_WARNING(

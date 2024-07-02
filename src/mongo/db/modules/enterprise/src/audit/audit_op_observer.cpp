@@ -66,7 +66,8 @@ const ReplicaSetAwareServiceRegistry::Registerer<AuditInitializer> _registerer(
 }  // namespace
 
 void AuditOpObserver::updateAuditConfig(Client* client, const AuditConfigDocument& config) try {
-    getGlobalAuditManager()->setConfiguration(client, config);
+    getGlobalAuditManager()->setConfigurationUsingFormatIfNotSet(
+        client, config, AuditConfigFormat::WithGeneration);
 } catch (const DBException& ex) {
     // In practice, this should only result when filter is unparsable as a match expression,
     // and that should never happen because the setAuditConfig command would have failed.
@@ -389,7 +390,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
         }
 
         auto* am = getGlobalAuditManager();
-        auto config = am->getAuditConfig();
+        // It's okay to acquire a snapshot here, since this function is always being called from the
+        // setFCV command, so FCV changes are blocked.
+        auto config =
+            am->getAuditConfig(serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
 
         // Null out the generation and timestamp because we are generating a new timestamp
         config.setGeneration(boost::none);
@@ -467,7 +471,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
             Helpers::upsert(opCtx, configSettingsColl, doc.toBSON());
             wuow.commit();
         }
-        AuditConfigDocument doc = getGlobalAuditManager()->getAuditConfig();
+        // It's okay to acquire a snapshot here, since this function is always being called from the
+        // setFCV command, so FCV changes are blocked.
+        auto doc = getGlobalAuditManager()->getAuditConfig(
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
         invariant(doc.getFilter().isEmpty());
         invariant(!doc.getAuditAuthorizationSuccess());
         invariant(!doc.getClusterParameterTime());

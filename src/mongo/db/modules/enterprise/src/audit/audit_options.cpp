@@ -86,7 +86,10 @@ void AuditConfigParameter::append(OperationContext*,
                                   StringData name,
                                   const boost::optional<TenantId>&) {
     b->append("_id"_sd, kAuditConfigParameter);
-    b->append(name, getGlobalAuditManager()->getAuditConfig().toBSON());
+    b->append(name,
+              getGlobalAuditManager()
+                  ->getAuditConfigUsingFormatIfNotSet(AuditConfigFormat::WithTimestamp)
+                  .toBSON());
 }
 
 Status AuditConfigParameter::set(const BSONElement& newValueElement,
@@ -94,7 +97,8 @@ Status AuditConfigParameter::set(const BSONElement& newValueElement,
     AuditConfigDocument newDoc =
         AuditConfigDocument::parse(IDLParserContext("auditConfigDocument"), newValueElement.Obj());
 
-    getGlobalAuditManager()->setConfiguration(Client::getCurrent(), newDoc);
+    getGlobalAuditManager()->setConfigurationUsingFormatIfNotSet(
+        Client::getCurrent(), newDoc, AuditConfigFormat::WithTimestamp);
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
@@ -118,14 +122,17 @@ Status AuditConfigParameter::validate(const BSONElement& newValueElement,
 }
 
 Status AuditConfigParameter::reset(const boost::optional<TenantId>&) try {
-    getGlobalAuditManager()->resetConfiguration(Client::getCurrent());
+    getGlobalAuditManager()->resetConfigurationUsingFormatIfNotSet(
+        Client::getCurrent(), AuditConfigFormat::WithTimestamp);
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
 LogicalTime AuditConfigParameter::getClusterParameterTime(const boost::optional<TenantId>&) const {
-    auto cpt = getGlobalAuditManager()->getAuditConfig().getClusterParameterTime();
+    auto cpt = getGlobalAuditManager()
+                   ->getAuditConfigUsingFormatIfNotSet(AuditConfigFormat::WithTimestamp)
+                   .getClusterParameterTime();
     if (!cpt) {
         return LogicalTime::kUninitialized;
     }

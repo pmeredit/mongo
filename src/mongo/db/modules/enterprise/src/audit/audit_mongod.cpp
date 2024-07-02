@@ -10,6 +10,7 @@
 #include "audit/audit_manager.h"
 #include "audit/audit_options_gen.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/catalog_raii.h"
 #include "mongo/db/commands/set_cluster_parameter_invocation.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
@@ -100,6 +101,8 @@ struct SetAuditConfigCmd {
         "Not authorized to change audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kNever;
     static void typedRun(OperationContext* opCtx, const Request& cmd) {
+        // Take global lock in IX to synchronize FCV check with writes.
+        Lock::GlobalLock lk(opCtx, MODE_IX);
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             // Enabled and FCV is high enough, yell about deprecation and redirect to
@@ -203,13 +206,13 @@ struct GetAuditConfigCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(fcvSnapshot)) {
             LOGV2_WARNING(6648202,
                           "Command 'getAuditConfig' is deprecated, use "
                           "getClusterParameter on the auditConfig cluster parameter instead.");
         }
-        return getGlobalAuditManager()->getAuditConfig();
+        return getGlobalAuditManager()->getAuditConfig(fcvSnapshot);
     }
 };
 MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>).forShard();

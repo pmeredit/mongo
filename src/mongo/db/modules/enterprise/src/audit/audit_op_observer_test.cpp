@@ -541,8 +541,10 @@ TEST_F(AuditOpObserverTest, InvalidFilterSyntax) {
         config.setGeneration(OID::gen());
         config.setFilter(testcase.getOwned());
         config.setAuditAuthorizationSuccess(false);
-        ASSERT_THROWS_CODE(
-            am->setConfiguration(nullptr, config), DBException, ErrorCodes::BadValue);
+        ASSERT_THROWS_CODE(am->setConfigurationUsingFormatIfNotSet(
+                               nullptr, config, AuditConfigFormat::WithGeneration),
+                           DBException,
+                           ErrorCodes::BadValue);
     }
 }
 

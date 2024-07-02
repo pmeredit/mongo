@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include "audit_format.h"
 #include "audit_key_manager.h"
 
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/audit_format.h"
 
 namespace mongo {
 namespace audit {

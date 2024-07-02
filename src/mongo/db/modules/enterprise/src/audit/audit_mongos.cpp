@@ -94,6 +94,10 @@ struct GetAuditConfigCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
+        // (Generic FCV reference): We use the latest FCV to determine the default format for the
+        // audit config, since we don't have the cluster FCV.
+        static const auto fixedFcvSnapshot =
+            ServerGlobalParams::FCVSnapshot(multiversion::GenericFCV::kLatest);
         // (Ignore FCV check): This check is on mongos so we expect to ignore FCV here.
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCVUnsafe()) {
             // If the feature flag is enabled, we refresh our audit configuration. If FCV is high
@@ -102,7 +106,7 @@ struct GetAuditConfigCmd {
             // with the auditSynchronizeJob, so we can just return the in-memory state here.
             uassertStatusOK(ClusterServerParameterRefresher::get(opCtx)->refreshParameters(opCtx));
         }
-        return getGlobalAuditManager()->getAuditConfig();
+        return getGlobalAuditManager()->getAuditConfig(fixedFcvSnapshot);
     }
 };
 MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>).forRouter();

@@ -72,7 +72,19 @@ AuditManager::OIDorLogicalTime AuditManager::parseGenerationOrTimestamp(
     }
 }
 
-void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& config) {
+void AuditManager::setConfiguration(Client* client,
+                                    const AuditConfigDocument& config,
+                                    const ServerGlobalParams::FCVSnapshot& fcvSnapshot) {
+    auto inferredFormat =
+        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(fcvSnapshot)
+        ? AuditConfigFormat::WithTimestamp
+        : AuditConfigFormat::WithGeneration;
+    return setConfigurationUsingFormatIfNotSet(client, config, inferredFormat);
+}
+
+void AuditManager::setConfigurationUsingFormatIfNotSet(Client* client,
+                                                       const AuditConfigDocument& config,
+                                                       AuditConfigFormat format) {
     uassert(ErrorCodes::RuntimeAuditConfigurationNotEnabled,
             "Unable to update runtime audit configuration when it has not been enabled",
             _enabled && _runtimeConfiguration);
@@ -84,7 +96,7 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
 
     // auditConfigure events are always emitted, regardless of filter settings.
     auto interface = AuditInterface::get(client->getServiceContext());
-    interface->logConfigEvent(client, config);
+    interface->logConfigEvent(client, config, format);
 
     // Swap in the new configuration.
     auto newConfig = std::make_shared<RuntimeConfiguration>();
@@ -97,27 +109,35 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     LOGV2(5497401, "Updated runtime audit configuration", "config"_attr = config);
 }
 
-AuditConfigDocument AuditManager::getAuditConfig() const {
+AuditConfigDocument AuditManager::getAuditConfigUsingFormatIfNotSet(
+    AuditConfigFormat format) const {
     // Snapshot configuration at a point in time.
     auto current = std::atomic_load(&_config);
 
     AuditConfigDocument config;
-    visit(OverloadedVisitor{
-              [&](std::monostate) {
-                  if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                          serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                      config.setClusterParameterTime(LogicalTime::kUninitialized);
-                  } else {
-                      config.setGeneration(OID());
-                  }
-              },
-              [&](const OID& oid) { config.setGeneration(oid); },
-              [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
+    visit(OverloadedVisitor{[&](std::monostate) {
+                                if (format == AuditConfigFormat::WithTimestamp) {
+                                    config.setClusterParameterTime(LogicalTime::kUninitialized);
+                                } else {
+                                    config.setGeneration(OID());
+                                }
+                            },
+                            [&](const OID& oid) { config.setGeneration(oid); },
+                            [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
           current->generationOrTimestamp);
     config.setFilter(current->filterBSON.getOwned());
     config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
 
     return config;
+}
+
+AuditConfigDocument AuditManager::getAuditConfig(
+    const ServerGlobalParams::FCVSnapshot& fcvSnapshot) const {
+    auto inferredFormat =
+        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(fcvSnapshot)
+        ? AuditConfigFormat::WithTimestamp
+        : AuditConfigFormat::WithGeneration;
+    return getAuditConfigUsingFormatIfNotSet(inferredFormat);
 }
 
 std::unique_ptr<MatchExpression> AuditManager::parseFilter(BSONObj filter) {
@@ -294,9 +314,17 @@ void AuditManager::initialize(const moe::Environment& params) {
     _initializeAuditLog(params);
 }
 
-void AuditManager::resetConfiguration(Client* client) {
+void AuditManager::resetConfiguration(Client* client,
+                                      const ServerGlobalParams::FCVSnapshot& fcvSnapshot) {
     if (_enabled && _runtimeConfiguration) {
-        setConfiguration(client, {{}, false /* auditAuthorizationSuccess */});
+        setConfiguration(client, {{}, false /* auditAuthorizationSuccess */}, fcvSnapshot);
+    }
+}
+
+void AuditManager::resetConfigurationUsingFormatIfNotSet(Client* client, AuditConfigFormat format) {
+    if (_enabled && _runtimeConfiguration) {
+        setConfigurationUsingFormatIfNotSet(
+            client, {{}, false /* auditAuthorizationSuccess */}, format);
     }
 }
 

@@ -15,9 +15,8 @@ namespace {
 constexpr auto kPreviousParam = "previous"_sd;
 constexpr auto kConfigParam = "config"_sd;
 
-void logUninitialized(BSONObjBuilder* builder) {
-    if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+void logUninitialized(BSONObjBuilder* builder, audit::AuditConfigFormat formatIfPrevConfigNotSet) {
+    if (formatIfPrevConfigNotSet == audit::AuditConfigFormat::WithTimestamp) {
         builder->append(audit::AuditConfigDocument::kClusterParameterTimeFieldName,
                         LogicalTime::kUninitialized.asTimestamp());
     } else {
@@ -29,20 +28,22 @@ void logUninitialized(BSONObjBuilder* builder) {
 
 // Implemented as a helper function to allow AuditOCSF to include the same data
 // in its unmapped field for this event type.
-void audit::logMongoConfigEvent(BSONObjBuilder* builder, const AuditConfigDocument& config) {
+void audit::buildMongoConfigEventParams(BSONObjBuilder* builder,
+                                        const AuditConfigDocument& config,
+                                        audit::AuditConfigFormat formatIfPrevConfigNotSet) {
     {
         BSONObjBuilder previous(builder->subobjStart(kPreviousParam));
         auto* am = getGlobalAuditManager();
         auto prevConfig = am->getConfig();
-        visit(OverloadedVisitor{[&](std::monostate) { logUninitialized(&previous); },
-                                [&](const OID& oid) {
-                                    previous.append(AuditConfigDocument::kGenerationFieldName, oid);
-                                },
-                                [&](const LogicalTime& time) {
-                                    previous.append(
-                                        AuditConfigDocument::kClusterParameterTimeFieldName,
-                                        time.asTimestamp());
-                                }},
+        visit(OverloadedVisitor{
+                  [&](std::monostate) { logUninitialized(&previous, formatIfPrevConfigNotSet); },
+                  [&](const OID& oid) {
+                      previous.append(AuditConfigDocument::kGenerationFieldName, oid);
+                  },
+                  [&](const LogicalTime& time) {
+                      previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
+                                      time.asTimestamp());
+                  }},
               prevConfig->generationOrTimestamp);
 
         previous.append(AuditConfigDocument::kFilterFieldName, prevConfig->filterBSON);
@@ -59,7 +60,7 @@ void audit::logMongoConfigEvent(BSONObjBuilder* builder, const AuditConfigDocume
                                     // this case, we need to append the uninitialized
                                     // generation/cluster time (based on the feature flag) to
                                     // keep the audit log consistent.
-                                    logUninitialized(&configBuilder);
+                                    logUninitialized(&configBuilder, formatIfPrevConfigNotSet);
                                 },
                                 [](auto) {}},
               AuditManager::parseGenerationOrTimestamp(config));
@@ -67,12 +68,16 @@ void audit::logMongoConfigEvent(BSONObjBuilder* builder, const AuditConfigDocume
     }
 }
 
-void audit::AuditMongo::logConfigEvent(Client* client, const AuditConfigDocument& config) const {
-    logEvent(AuditMongo::AuditEventMongo(
-        {client,
-         AuditEventType::kAuditConfigure,
-         [&](BSONObjBuilder* params) { logMongoConfigEvent(params, config); },
-         ErrorCodes::OK}));
+void audit::AuditMongo::logConfigEvent(Client* client,
+                                       const AuditConfigDocument& config,
+                                       audit::AuditConfigFormat formatIfPrevConfigNotSet) const {
+    logEvent(AuditMongo::AuditEventMongo({client,
+                                          AuditEventType::kAuditConfigure,
+                                          [&](BSONObjBuilder* params) {
+                                              buildMongoConfigEventParams(
+                                                  params, config, formatIfPrevConfigNotSet);
+                                          },
+                                          ErrorCodes::OK}));
 }
 
 }  // namespace mongo
