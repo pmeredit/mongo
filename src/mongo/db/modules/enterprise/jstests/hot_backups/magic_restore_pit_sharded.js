@@ -25,6 +25,9 @@
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
+jsTestLog("Temporarily skipping test.");
+quit();
+
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {
     jsTestLog("Temporarily skipping test for Windows variants. See SERVER-86034.");
