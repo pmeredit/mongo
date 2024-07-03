@@ -120,10 +120,9 @@ public:
     }
 
     // TODO(SERVER-90425): Remove this once the main plan API is changed.
-    std::pair<std::unique_ptr<OperatorDag>, std::vector<mongo::BSONObj>> planInner(
-        Planner* planner, const std::vector<mongo::BSONObj>& bsonPipeline) {
-        auto result = planner->planInner(bsonPipeline);
-        return std::make_pair(std::move(result.dag), std::move(result.executionPlan));
+    std::unique_ptr<OperatorDag> planInner(Planner* planner,
+                                           const std::vector<mongo::BSONObj>& bsonPipeline) {
+        return planner->planInner(bsonPipeline);
     }
 
 protected:
@@ -1417,11 +1416,11 @@ TEST_F(PlannerTest, ExecutionPlan) {
 
         Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
-        auto [dag, plan] = planInner(&planner, bson);
+        auto dag = planInner(&planner, bson);
 
         // Print some information to make debugging easier.
         fmt::print("User pipeline\n{}\n", userPipeline);
-        fmt::print("Plan\n{}\n", Value(plan).toString());
+        fmt::print("Plan\n{}\n", Value(dag->optimizedPipeline()).toString());
         BSONArrayBuilder opArr;
         for (const auto& op : dag->operators()) {
             opArr.append(op->getName());
@@ -1434,7 +1433,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
 
         Planner plannerAfterRestore(context.get(), Planner::Options{.shouldOptimize = false});
-        auto [dag2, shouldBeSamePlan] = planInner(&plannerAfterRestore, plan);
+        auto dag2 = planInner(&plannerAfterRestore, dag->optimizedPipeline());
         // Assert the operators produced from plan with no optimization are equal to the operators
         // produced from the user's BSON pipeline with optimization
         ASSERT_EQ(expectedOperators.size(), dag2->operators().size());
@@ -1442,9 +1441,9 @@ TEST_F(PlannerTest, ExecutionPlan) {
             ASSERT_EQ(expectedOperators[i], dag2->operators()[i]->getName());
         }
         // Assert the execution plan equals plan
-        ASSERT_EQ(shouldBeSamePlan.size(), plan.size());
-        for (size_t i = 0; i < plan.size(); ++i) {
-            ASSERT_BSONOBJ_EQ(plan[i], shouldBeSamePlan[i]);
+        ASSERT_EQ(dag2->optimizedPipeline().size(), dag->optimizedPipeline().size());
+        for (size_t i = 0; i < dag->optimizedPipeline().size(); ++i) {
+            ASSERT_BSONOBJ_EQ(dag->optimizedPipeline()[i], dag2->optimizedPipeline()[i]);
         }
     };
 

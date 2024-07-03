@@ -475,7 +475,7 @@ void StreamManager::transitionToState(mongo::WithLock,
     }
 }
 
-StreamManager::StartResult StreamManager::startStreamProcessor(
+StartStreamProcessorReply StreamManager::startStreamProcessor(
     const mongo::StartStreamProcessorCommand& request) {
     Timer executionTimer;
     auto activeGauge = _streamProcessorActiveGauges[kStartCommand];
@@ -495,13 +495,16 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         if (dlqOptions) {
             connectionNames.insert(dlqOptions->getConnectionName().toString());
         }
-        return {.connectionNames = std::move(connectionNames)};
+        StartStreamProcessorReply startReply;
+        startReply.setConnectionNames(
+            std::vector<StringData>(connectionNames.begin(), connectionNames.end()));
+        return startReply;
     }
 
-    auto startResult = startStreamProcessorAsync(request);
+    auto startReply = startStreamProcessorAsync(request);
     if (isValidateOnlyRequest(request)) {
         // If this is a validateOnly request, the streamProcessor is not started.
-        return startResult;
+        return startReply;
     }
 
     std::string tenantId = request.getTenantId().toString();
@@ -559,7 +562,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         // Throw an error back to the client calling start.
         uasserted(status->code(), status->reason());
     }
-    return startResult;
+    return startReply;
 }
 
 boost::optional<std::string> StreamManager::getAssignedTenantId(mongo::WithLock) {
@@ -577,7 +580,7 @@ void StreamManager::assertTenantIdIsValid(mongo::WithLock lk, mongo::StringData 
             !assignedTenantId || *assignedTenantId == tenantId);
 }
 
-StreamManager::StartResult StreamManager::startStreamProcessorAsync(
+StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
     const mongo::StartStreamProcessorCommand& request) {
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
@@ -622,6 +625,7 @@ StreamManager::StartResult StreamManager::startStreamProcessorAsync(
         stopStreamProcessor(stopCommand, StopReason::ExternalStartRequestForFailedState);
     }
 
+    StartStreamProcessorReply startReply;
     boost::optional<int64_t> sampleCursorId;
     mongo::Future<void> executorFuture;
     {
@@ -642,9 +646,12 @@ StreamManager::StartResult StreamManager::startStreamProcessorAsync(
         }
 
         std::unique_ptr<StreamProcessorInfo> info = createStreamProcessorInfo(lk, request);
+
+        startReply.setOptimizedPipeline(info->operatorDag->optimizedPipeline());
+
         if (isValidateOnlyRequest(request)) {
             // If this is a validateOnly request, return here without starting the streamProcessor.
-            return StartResult{boost::none};
+            return startReply;
         }
 
         // After we release the lock, no streamProcessor with the same name can be
@@ -679,7 +686,8 @@ StreamManager::StartResult StreamManager::startStreamProcessorAsync(
             .onError([this, tenantId, name](Status status) {
                 onExecutorShutdown(tenantId, name, std::move(status));
             });
-    return StartResult{sampleCursorId};
+    startReply.setSampleCursorId(sampleCursorId);
+    return startReply;
 }
 
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfo(
@@ -778,11 +786,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         processorInfo->context->restoreCheckpointId =
             processorInfo->context->checkpointStorage->getRestoreCheckpointId();
 
-        LOGV2_INFO(75910,
-                   "Restore checkpoint ID",
-                   "context"_attr = processorInfo->context.get(),
-                   "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
         if (processorInfo->context->restoreCheckpointId) {
+            LOGV2_INFO(75910,
+                       "Restore checkpoint ID",
+                       "context"_attr = processorInfo->context.get(),
+                       "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
             // Note: Here we call startCheckpointRestore so we can get the stats from the
             // checkpoint. The Executor will later call checkpointRestored in its background
             // thread once the operator dag has been fully restored.
@@ -1282,7 +1290,7 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
                                                isStreamProcessorRetryableError(code),
                                                isStreamProcessorUserError(code)});
             }
-            replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
+            replyItem.setPipeline(processorInfo->operatorDag->inputPipeline());
 
             if (request.getVerbose()) {
                 replyItem.setVerboseStatus(getVerboseStatus(lk, name, processorInfo.get()));

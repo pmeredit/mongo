@@ -959,7 +959,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
             ++_windowPlanningInfo->numWindowAwareStages;
         }
     }
-    auto executionPlan = planPipeline(*pipeline, std::move(pipelineRewriter));
+    auto optimizedPipeline = planPipeline(*pipeline, std::move(pipelineRewriter));
 
     invariant(_windowPlanningInfo->numWindowAwareStages ==
               _windowPlanningInfo->numWindowAwareStagesPlanned);
@@ -970,18 +970,18 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     } else {
         _context->checkpointInterval = kSlowCheckpointInterval;
     }
-    return serializedWindowStage(kTumblingWindowStageName, bsonOptions, std::move(executionPlan));
+    return serializedWindowStage(
+        kTumblingWindowStageName, bsonOptions, std::move(optimizedPipeline));
 }
 
-mongo::BSONObj Planner::serializedWindowStage(
-    const std::string& stageName,
-    mongo::BSONObj spec,
-    std::vector<mongo::BSONObj> innerPipelineExecutionPlan) {
+mongo::BSONObj Planner::serializedWindowStage(const std::string& stageName,
+                                              mongo::BSONObj spec,
+                                              std::vector<mongo::BSONObj> optimizedInnerPipeline) {
     // Return the supplied spec, replace pipeline with the optimized inner pipeline.
     Document stageDoc(spec);
     MutableDocument mutableStage(stageDoc);
     std::vector<Value> innerPipelineArray;
-    for (const auto& stage : innerPipelineExecutionPlan) {
+    for (const auto& stage : optimizedInnerPipeline) {
         innerPipelineArray.push_back(Value(stage));
     }
     mutableStage[TumblingWindowOptions::kPipelineFieldName] = Value(innerPipelineArray);
@@ -1256,8 +1256,8 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
     lookupPlanningInfo.rewrittenLookupStages = pipelineRewriter->getRewrittenLookupStages();
     _lookupPlanningInfos.push_back(std::move(lookupPlanningInfo));
 
-    std::vector<BSONObj> executionPlan;
-    executionPlan.reserve(pipeline.getSources().size());
+    std::vector<BSONObj> optimizedPipeline;
+    optimizedPipeline.reserve(pipeline.getSources().size());
 
     for (const auto& stage : pipeline.getSources()) {
         const auto& stageInfo = stageTraits[stage->getSourceName()];
@@ -1275,7 +1275,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
 
         switch (stageInfo.type) {
             case StageType::kAddFields: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1287,7 +1287,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kSet: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1299,7 +1299,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kMatch: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceMatch*>(stage.get());
                 dassert(specificSource);
                 MatchOperator::Options options{.documentSource = specificSource};
@@ -1309,7 +1309,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kProject: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1321,7 +1321,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kRedact: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceRedact*>(stage.get());
                 dassert(specificSource);
                 RedactOperator::Options options{.documentSource = specificSource};
@@ -1331,7 +1331,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kReplaceRoot: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1343,7 +1343,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kUnwind: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceUnwind*>(stage.get());
                 dassert(specificSource);
                 UnwindOperator::Options options{.documentSource = specificSource};
@@ -1353,7 +1353,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kValidate: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(stage.get());
                 dassert(specificSource);
                 auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
@@ -1363,32 +1363,32 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kGroup: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 planGroup(stage.get());
                 break;
             }
             case StageType::kSort: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 planSort(stage.get());
                 break;
             }
             case StageType::kLimit: {
-                executionPlan.push_back(serialize());
+                optimizedPipeline.push_back(serialize());
                 planLimit(stage.get());
                 break;
             }
             case StageType::kTumblingWindow: {
-                executionPlan.push_back(planTumblingWindow(stage.get()));
+                optimizedPipeline.push_back(planTumblingWindow(stage.get()));
                 break;
             }
             case StageType::kHoppingWindow: {
-                executionPlan.push_back(planHoppingWindow(stage.get()));
+                optimizedPipeline.push_back(planHoppingWindow(stage.get()));
                 break;
             }
             case StageType::kLookUp: {
                 auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
                 dassert(lookupSource);
-                executionPlan.push_back(planLookUp(lookupSource));
+                optimizedPipeline.push_back(planLookUp(lookupSource));
                 break;
             }
             default:
@@ -1398,7 +1398,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
 
     _lookupPlanningInfos.pop_back();
     _pipeline.splice(_pipeline.end(), std::move(pipeline.getSources()));
-    return executionPlan;
+    return optimizedPipeline;
 }
 
 std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipeline) {
@@ -1415,7 +1415,7 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     }
 
     try {
-        return planInner(bsonPipeline).dag;
+        return planInner(bsonPipeline);
     } catch (const DBException& e) {
         if (e.code() == ErrorCodes::InternalError || e.code() == ErrorCodes::UnknownError) {
             // We don't expect these errors (even if the user's pipeline is bad), so we throw
@@ -1429,7 +1429,7 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     }
 }
 
-Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
+std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
     uassert(
         ErrorCodes::InvalidOptions, "Pipeline must have at least one stage", !bsonPipeline.empty());
     std::string firstStageName(bsonPipeline.begin()->firstElementFieldNameStringData());
@@ -1450,7 +1450,7 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
                 stage.nFields() == 1);
     }
 
-    std::vector<BSONObj> executionPlan;
+    std::vector<BSONObj> optimizedPipeline;
 
     // Get the $source BSON.
     auto current = bsonPipeline.begin();
@@ -1476,7 +1476,7 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
         }
 
         // Create the source operator
-        executionPlan.push_back(sourceSpec);
+        optimizedPipeline.push_back(sourceSpec);
         planSource(sourceSpec, useWatermarks, sendIdleMessages);
         ++current;
     }
@@ -1496,9 +1496,9 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
     if (!middleStages.empty()) {
         auto [pipeline, pipelineRewriter] = preparePipeline(std::move(middleStages));
         auto pipelineExecutionPlan = planPipeline(*pipeline, std::move(pipelineRewriter));
-        executionPlan.insert(executionPlan.end(),
-                             std::make_move_iterator(pipelineExecutionPlan.begin()),
-                             std::make_move_iterator(pipelineExecutionPlan.end()));
+        optimizedPipeline.insert(optimizedPipeline.end(),
+                                 std::make_move_iterator(pipelineExecutionPlan.begin()),
+                                 std::make_move_iterator(pipelineExecutionPlan.end()));
     }
 
     // After the loop above, current is either pointing to a sink
@@ -1521,7 +1521,7 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
     }
 
     if (!sinkSpec.isEmpty()) {
-        executionPlan.push_back(sinkSpec);
+        optimizedPipeline.push_back(sinkSpec);
 
         auto sinkStageName = sinkSpec.firstElementFieldNameStringData();
         if (isMergeStage(sinkStageName)) {
@@ -1533,7 +1533,8 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
     }
 
     OperatorDag::Options options;
-    options.bsonPipeline = bsonPipeline;
+    options.inputPipeline = bsonPipeline;
+    options.optimizedPipeline = std::move(optimizedPipeline);
     options.pipeline = std::move(_pipeline);
     options.timestampExtractor = std::move(_timestampExtractor);
     options.eventDeserializer = std::move(_eventDeserializer);
@@ -1554,7 +1555,7 @@ Planner::PlanResult Planner::planInner(const std::vector<BSONObj>& bsonPipeline)
         }
     }
 
-    return PlanResult{std::move(dag), std::move(executionPlan)};
+    return dag;
 }
 
 mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipeline) {

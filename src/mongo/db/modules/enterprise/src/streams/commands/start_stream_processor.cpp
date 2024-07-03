@@ -45,15 +45,7 @@ public:
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            auto result = streamManager->startStreamProcessor(requestParams);
-            Reply reply;
-            reply.setSampleCursorId(result.startSampleCursorId);
-            if (result.connectionNames) {
-                std::vector<StringData> connectionNames(result.connectionNames->begin(),
-                                                        result.connectionNames->end());
-                reply.setConnectionNames(std::move(connectionNames));
-            }
-            return reply;
+            return streamManager->startStreamProcessor(requestParams);
         }
 
     private:
