@@ -23,7 +23,6 @@ using namespace mongo;
 class OutputSamplerTest : public AggregationContextFixture {
 public:
     OutputSamplerTest() {
-        _metricManager = std::make_unique<MetricManager>();
         _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
     }
 
@@ -33,7 +32,6 @@ public:
     }
 
 protected:
-    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
 };
 

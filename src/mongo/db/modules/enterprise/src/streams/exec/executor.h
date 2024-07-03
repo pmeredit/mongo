@@ -53,8 +53,10 @@ public:
         // Whether the executor should send one last CheckpointControlMsg through the OperatorDag
         // before shutting down.
         bool sendCheckpointControlMsgBeforeShutdown{true};
-        // Initial connection fails if it takes longer than this.
+        // Maximum time allowed to set up the initial connections.
         mongo::Seconds connectTimeout{60};
+        // Maximum time allowed to gracefully stop the stream processor.
+        mongo::Seconds stopTimeout{10 * 60};
         // Whether to let data flow through the Operator DAG after it is started.
         bool enableDataFlow{true};
         // Max amount of bytes that can be buffered in the in-memory buffer. Once
@@ -193,6 +195,7 @@ private:
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
     StopReason _stopReason;
+    mongo::Date_t _stopDeadline;
     // During stop we write a final checkpoint and set this member variable.
     boost::optional<CheckpointId> _lastCheckpointId;
     bool _connected{false};

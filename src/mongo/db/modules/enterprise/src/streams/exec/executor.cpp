@@ -201,6 +201,7 @@ void Executor::stop(StopReason stopReason) {
     stdx::lock_guard<Latch> lock(_mutex);
     _shutdown = true;
     _stopReason = stopReason;
+    _stopDeadline = Date_t::now() + _options.stopTimeout;
 }
 
 std::vector<OperatorStats> Executor::getOperatorStats() {
@@ -267,7 +268,6 @@ Executor::RunStatus Executor::runOnce() {
     dassert(sink);
     auto checkpointCoordinator = _options.checkpointCoordinator;
     bool shutdown{false};
-    StopReason stopReason;
 
     // Ensure the source is still connected. If not, throw an error.
     auto connectionStatus = source->getConnectionStatus();
@@ -289,7 +289,6 @@ Executor::RunStatus Executor::runOnce() {
         // Only shutdown if the inserted test documents have all been processed.
         if (_shutdown && _testOnlyDocsQueue.getStats().queueDepth == 0) {
             shutdown = true;
-            stopReason = _stopReason;
             break;
         }
 
@@ -345,6 +344,21 @@ Executor::RunStatus Executor::runOnce() {
     }
 
     if (shutdown) {
+        StopReason stopReason;
+        mongo::Date_t stopDeadline;
+        {
+            stdx::lock_guard<Latch> lock(_mutex);
+            stopReason = _stopReason;
+            stopDeadline = _stopDeadline;
+        }
+
+        if (auto fp = streamProcessorStopSleepSeconds.scoped(); fp.isActive()) {
+            auto sleepSeconds = static_cast<int64_t>(fp.getData()["sleepSeconds"].numberLong());
+            sleepFor(Seconds{sleepSeconds});
+        }
+
+        uassert(75388, "Timeout while stopping", Date_t::now() <= stopDeadline);
+
         if (_lastCheckpointId) {
             // We wrote the last checkpoint in the last runOnce call, check if it's been flushed and
             // processed.
@@ -366,11 +380,6 @@ Executor::RunStatus Executor::runOnce() {
                    "executor shutting down",
                    "context"_attr = _context,
                    "stopReason"_attr = stopReasonToString(stopReason));
-
-        if (auto fp = streamProcessorStopSleepSeconds.scoped(); fp.isActive()) {
-            auto sleepSeconds = static_cast<int64_t>(fp.getData()["sleepSeconds"].numberLong());
-            sleepFor(Seconds{sleepSeconds});
-        }
 
         _executorTimer.reset();
         if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {

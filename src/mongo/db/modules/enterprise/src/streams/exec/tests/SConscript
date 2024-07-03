@@ -125,6 +125,25 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
+    target="streams_executor_test",
+    source=[
+        "streams_executor_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+)
+
+env.CppUnitTest(
     target="group_operator_test",
     source=[
         "group_operator_test.cpp",

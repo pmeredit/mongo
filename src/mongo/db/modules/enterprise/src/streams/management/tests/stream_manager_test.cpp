@@ -448,7 +448,7 @@ TEST_F(StreamManagerTest, StopTimesOut) {
     setGlobalFailPoint("streamProcessorStopSleepSeconds",
                        BSON("mode"
                             << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 30)));
+                            << "data" << BSON("sleepSeconds" << 15)));
 
     StopStreamProcessorCommand stopRequest;
     stopRequest.setTenantId(kTestTenantId1);
