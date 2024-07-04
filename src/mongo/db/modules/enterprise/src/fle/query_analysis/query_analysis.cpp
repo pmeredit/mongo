@@ -19,6 +19,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/encryption_fields_util.h"
+#include "mongo/crypto/encryption_fields_validation.h"
 #include "mongo/crypto/fle_crypto.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/basic_types_gen.h"
@@ -1528,8 +1529,6 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
     tassert(7018205, "Encrypted query must define a maximum.", indexConfig.getMax().has_value());
     auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
     auto cm = indexConfig.getContention();
-    auto sparsity = indexConfig.getSparsity();
-    auto trimFactor = indexConfig.getTrimFactor();
 
     FLE2RangeFindSpec findSpec;
 
@@ -1541,7 +1540,7 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
     edgesInfo.setIndexMin(indexBounds["0"]);
     edgesInfo.setIndexMax(indexBounds["1"]);
     edgesInfo.setPrecision(indexConfig.getPrecision());
-    edgesInfo.setTrimFactor(trimFactor);
+    edgesInfo.setTrimFactor(indexConfig.getTrimFactor().value_or(kFLERangeTrimFactorDefault));
     findSpec.setEdgesInfo(edgesInfo);
 
     findSpec.setPayloadId(payloadId);
@@ -1555,7 +1554,7 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
                                                     ki,
                                                     IDLAnyType(rangeBSON.firstElement()),
                                                     cm);
-    idlPlaceholder.setSparsity(sparsity);
+    idlPlaceholder.setSparsity(indexConfig.getSparsity().value_or(kFLERangeSparsityDefault));
     return serializeFle2Placeholder(fieldname, idlPlaceholder);
 }
 
