@@ -29,7 +29,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                     "queryType": "range",
                     "min": new Date("1900-01-01"),
                     "max": new Date("2600-01-01"),
-                    "sparsity": 1
+                    "sparsity": 1,
+                    "trimFactor": 0,
                 }
             },
             {
@@ -50,6 +51,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                     "min": NumberLong(0),
                     "max": NumberLong(7),
                     "sparsity": 1,
+                    "trimFactor": 0,
                 }
             },
             {
@@ -60,14 +62,19 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                     "min": NumberInt(0),
                     "max": NumberInt(12),
                     "sparsity": 2,
+                    "trimFactor": 0,
                 }
             },
             {
                 "path": "weight",
                 "bsonType": "double",
-                "queries": {"queryType": "range", "sparsity": 4}
+                "queries": {"queryType": "range", "sparsity": 4, "trimFactor": 0}
             },
-            {"path": "rating", "bsonType": "long", "queries": {"queryType": "range"}}
+            {
+                "path": "rating",
+                "bsonType": "long",
+                "queries": {"queryType": "range", "sparsity": 1, "trimFactor": 0}
+            }
         ]
     }
 }));

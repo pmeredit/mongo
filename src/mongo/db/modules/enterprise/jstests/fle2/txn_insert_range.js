@@ -29,6 +29,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                     "min": NumberLong(0),
                     "max": NumberLong(7),
                     "sparsity": 1,
+                    "trimFactor": 0,
                 }
             },
         ]

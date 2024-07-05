@@ -100,7 +100,7 @@ void FLE2TestFixture::setUp() {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "date",
                         "bsonType": "date",
-                        "queries": {"queryType": "range"}
+                        "queries": {"queryType": "range", "trimFactor": 0, "sparsity": 1}
                     }
                 ]
             }

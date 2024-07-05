@@ -30,13 +30,19 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                     "min": NumberLong(1),
                     "max": NumberLong(16),
                     "sparsity": 1,
+                    "trimFactor": 0,
                 }
             },
             {
                 "path": "num.num",
                 "bsonType": "int",
-                "queries":
-                    {"queryType": "range", "min": NumberInt(0), "max": NumberInt(3), "sparsity": 2}
+                "queries": {
+                    "queryType": "range",
+                    "min": NumberInt(0),
+                    "max": NumberInt(3),
+                    "sparsity": 2,
+                    "trimFactor": 0
+                }
             },
             {"path": "ssn", "bsonType": "string", "queries": {"queryType": "equality"}}
         ]

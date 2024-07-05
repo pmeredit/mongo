@@ -23,24 +23,36 @@ const kSampleEncryptedFields = {
                 "queryType": kRangeQuery,
                 min: NumberInt(0),
                 max: NumberInt(0x7FFFFFFF),
-                sparsity: 1
+                sparsity: 1,
+                trimFactor: 0,
             }
         },
         {
             path: "balance",
             bsonType: "double",
-            queries:
-                {queryType: kRangeQuery, min: -1000000.0, max: 1000000.0, precision: 9, sparsity: 3}
+            queries: {
+                queryType: kRangeQuery,
+                min: -1000000.0,
+                max: 1000000.0,
+                precision: 9,
+                sparsity: 3,
+                trimFactor: 0
+            }
         },
     ],
 };
+const kUnboundedRangeQuery = {
+    queryType: kRangeQuery,
+    sparsity: 1,
+    trimFactor: 0
+};
 const kUnboundedRangeEncryptedFields = {
     fields: [
-        {path: "int", bsonType: "int", queries: {queryType: kRangeQuery}},
-        {path: "long", bsonType: "long", queries: {queryType: kRangeQuery}},
-        {path: "date", bsonType: "date", queries: {queryType: kRangeQuery}},
-        {path: "double", bsonType: "double", queries: {queryType: kRangeQuery}},
-        {path: "decimal", bsonType: "decimal", queries: {queryType: kRangeQuery}},
+        {path: "int", bsonType: "int", queries: kUnboundedRangeQuery},
+        {path: "long", bsonType: "long", queries: kUnboundedRangeQuery},
+        {path: "date", bsonType: "date", queries: kUnboundedRangeQuery},
+        {path: "double", bsonType: "double", queries: kUnboundedRangeQuery},
+        {path: "decimal", bsonType: "decimal", queries: kUnboundedRangeQuery},
     ],
 };
 

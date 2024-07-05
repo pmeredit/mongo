@@ -25,7 +25,14 @@ const sampleEncryptedFields = {
         {
             path: "n",
             bsonType: "int",
-            queries: {"queryType": "range", contention: 0, sparsity: 1, min: INTMIN, max: INTMAX}
+            queries: {
+                "queryType": "range",
+                contention: 0,
+                sparsity: 1,
+                min: INTMIN,
+                max: INTMAX,
+                trimFactor: 0
+            }
         },
     ]
 };

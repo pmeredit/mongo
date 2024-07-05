@@ -52,6 +52,7 @@ void assertNotEncrypted(BSONObj schema, std::string path) {
     ASSERT_FALSE(result->getEncryptionMetadataForPath(FieldRef(path)));
 }
 
+constexpr int kExpectDefaultSparsity = 2;
 void checkRangeQueryTypeConfig(const QueryTypeConfig& qtc,
                                BSONType type,
                                mongo::Value min,
@@ -3982,7 +3983,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeIntDefaults) {
                               NumberInt,
                               mongo::Value(std::numeric_limits<int>::min()),
                               mongo::Value(std::numeric_limits<int>::max()),
-                              1,
+                              kExpectDefaultSparsity,
                               1);
 }
 
@@ -4006,7 +4007,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeLongDefaults) {
                               NumberLong,
                               mongo::Value(std::numeric_limits<long long>::min()),
                               mongo::Value(std::numeric_limits<long long>::max()),
-                              1,
+                              kExpectDefaultSparsity,
                               1);
 }
 
@@ -4030,7 +4031,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateDefaults) {
                               Date,
                               mongo::Value(Date_t::min()),
                               mongo::Value(Date_t::max()),
-                              1,
+                              kExpectDefaultSparsity,
                               1);
 }
 
@@ -4054,7 +4055,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDoubleDefaults) {
                               NumberDouble,
                               mongo::Value(std::numeric_limits<double>::lowest()),
                               mongo::Value(std::numeric_limits<double>::max()),
-                              1,
+                              kExpectDefaultSparsity,
                               1);
 }
 
@@ -4078,7 +4079,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDecimal128Defaults) {
                               NumberDecimal,
                               mongo::Value(Decimal128::kLargestNegative),
                               mongo::Value(Decimal128::kLargestPositive),
-                              1,
+                              kExpectDefaultSparsity,
                               1);
 }
 
