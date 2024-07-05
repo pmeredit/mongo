@@ -33,6 +33,10 @@
 #include "cyrus_sasl_authentication_session.h"
 #include "util/gssapi_helpers.h"
 
+#if __has_feature(address_sanitizer)
+#include <sanitizer/lsan_interface.h>
+#endif
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 
@@ -255,6 +259,16 @@ using namespace mongo;
 
 int main(int argc, char** argv) {
     unittest::TempDir tempDir("sasl_authentication_session_gssapi_test");
+
+#if __has_feature(address_sanitizer)
+    // TODO(SERVER-91832) Supressions are setup on this test to ignore the memory leak in the rhel88
+    // version of libsasl, see https://github.com/cyrusimap/cyrus-sasl/issues/843
+    // Remove when the upstream issue is resolved and we are no longer testing on a version of rhel
+    // with this issue prseent.
+    // TODO(SERVER-92171) Move the supression into lsan.suppresions once the stack trace generation
+    // of leaks created in system libraries is fixed
+    __lsan_disable();
+#endif
 
     // Set up *nix-based kerberos.
     setupEnvironment();
