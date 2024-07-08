@@ -242,6 +242,18 @@ TEST_F(KafkaEmitTest, TestSerializeHeaders) {
     expectedBinData = BSONBinData{"", 0, mongo::BinDataGeneral};
     assertBinDataEquals(result, expectedBinData);
 
+    // Double
+    double doubleVal = -2.5;
+    emitForTest.serializeToHeaders(headers, "testing", "testKeyDouble", Value(doubleVal));
+    ASSERT_EQ(headers->size(), 7);
+    header = headers->get("testKeyDouble")[0];
+    result =
+        BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
+    expectedBytes = {0xC0, 0x04, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+    expectedBinData = BSONBinData{
+        expectedBytes.data(), static_cast<int>(expectedBytes.size()), mongo::BinDataGeneral};
+    assertBinDataEquals(result, expectedBinData);
+
     delete headers;
 }
 

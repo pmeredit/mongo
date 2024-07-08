@@ -236,6 +236,13 @@ std::vector<char> serializeLong(int64_t valueLong) {
     return longBytes;
 }
 
+std::vector<char> serializeDouble(double valueDouble) {
+    // Big-endian serialization
+    std::vector<char> doubleBytes(sizeof(valueDouble), 0);
+    DataView(doubleBytes.data()).write<BigEndian<double>>(valueDouble);
+    return doubleBytes;
+}
+
 void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
                                            const std::string& topicName,
                                            const std::string& headerKey,
@@ -292,6 +299,11 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
             int64_t valueLong = headerValue.getLong();
             std::vector<char> longBytes = serializeLong(valueLong);
             pushBinaryHeader(headers, headerKey, longBytes.data(), longBytes.size());
+        } break;
+        case NumberDouble: {
+            double valueDouble = headerValue.getDouble();
+            std::vector<char> doubleBytes = serializeDouble(valueDouble);
+            pushBinaryHeader(headers, headerKey, doubleBytes.data(), doubleBytes.size());
         } break;
         default:
             uasserted(ErrorCodes::BadValue,
@@ -407,6 +419,17 @@ Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
                     std::vector<char> keyLongBytes = serializeLong(keyLong);
                     Value keyHolder(BSONBinData{keyLongBytes.data(),
                                                 static_cast<int>(keyLongBytes.size()),
+                                                mongo::BinDataGeneral});
+                    return keyHolder;
+                }
+                case mongo::KafkaKeyFormatEnum::Double: {
+                    uassert(ErrorCodes::BadValue,
+                            unexpectedKeyTypeError(NumberDouble),
+                            keyField.getType() == NumberDouble);
+                    double keyDouble = keyField.getDouble();
+                    std::vector<char> keyDoubleBytes = serializeDouble(keyDouble);
+                    Value keyHolder(BSONBinData{keyDoubleBytes.data(),
+                                                static_cast<int>(keyDoubleBytes.size()),
                                                 mongo::BinDataGeneral});
                     return keyHolder;
                 }

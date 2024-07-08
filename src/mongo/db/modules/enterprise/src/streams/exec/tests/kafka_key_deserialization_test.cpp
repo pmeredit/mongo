@@ -14,7 +14,12 @@ class KafkaKeyDeserializationTest : public unittest::Test {
 public:
     static const std::vector<mongo::KafkaKeyFormatEnum> keyFormats;
 
-    std::variant<std::vector<std::uint8_t>, std::string, mongo::BSONObj, std::int32_t, std::int64_t>
+    std::variant<std::vector<std::uint8_t>,
+                 std::string,
+                 mongo::BSONObj,
+                 std::int32_t,
+                 std::int64_t,
+                 double>
     deserializeKafkaKey(std::vector<std::uint8_t> key, mongo::KafkaKeyFormatEnum keyFormat) {
         return KafkaConsumerOperator::deserializeKafkaKey(std::move(key), keyFormat);
     }
@@ -95,6 +100,22 @@ TEST_F(KafkaKeyDeserializationTest, Long) {
 TEST_F(KafkaKeyDeserializationTest, LongIncorrectLength) {
     std::vector<std::uint8_t> key{0x0};
     auto deserializedKey = deserializeKafkaKey(key, mongo::KafkaKeyFormatEnum::Long);
+    ASSERT(holds_alternative<std::vector<std::uint8_t>>(deserializedKey));
+    auto binDataKey = std::get<std::vector<std::uint8_t>>(deserializedKey);
+    ASSERT_EQ(binDataKey, key);
+}
+
+TEST_F(KafkaKeyDeserializationTest, Double) {
+    std::vector<std::uint8_t> key{0xC0, 0x04, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+    auto deserializedKey = deserializeKafkaKey(key, mongo::KafkaKeyFormatEnum::Double);
+    ASSERT(holds_alternative<double>(deserializedKey));
+    auto doubleKey = std::get<double>(deserializedKey);
+    ASSERT_EQ(doubleKey, -2.5);
+}
+
+TEST_F(KafkaKeyDeserializationTest, DoubleIncorrectLength) {
+    std::vector<std::uint8_t> key{0xC0, 0x04, 0x0, 0x0};
+    auto deserializedKey = deserializeKafkaKey(key, mongo::KafkaKeyFormatEnum::Double);
     ASSERT(holds_alternative<std::vector<std::uint8_t>>(deserializedKey));
     auto binDataKey = std::get<std::vector<std::uint8_t>>(deserializedKey);
     ASSERT_EQ(binDataKey, key);

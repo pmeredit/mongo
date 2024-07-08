@@ -604,7 +604,12 @@ int64_t KafkaConsumerOperator::doRunOnce() {
     return totalNumInputDocs;
 }
 
-std::variant<std::vector<std::uint8_t>, std::string, mongo::BSONObj, std::int32_t, std::int64_t>
+std::variant<std::vector<std::uint8_t>,
+             std::string,
+             mongo::BSONObj,
+             std::int32_t,
+             std::int64_t,
+             double>
 KafkaConsumerOperator::deserializeKafkaKey(std::vector<std::uint8_t> key,
                                            KafkaKeyFormatEnum keyFormat) {
     switch (keyFormat) {
@@ -634,25 +639,22 @@ KafkaConsumerOperator::deserializeKafkaKey(std::vector<std::uint8_t> key,
             if (key.size() != sizeof(int32_t)) {
                 return key;
             }
-            int32_t deserializedKey = 0;
             // Big-endian deserialization
-            for (auto byte : key) {
-                deserializedKey <<= 8;
-                deserializedKey |= byte & 0xFF;
-            }
-            return deserializedKey;
+            return ConstDataView(reinterpret_cast<char*>(key.data())).read<BigEndian<int32_t>>();
         }
         case KafkaKeyFormatEnum::Long: {
             if (key.size() != sizeof(int64_t)) {
                 return key;
             }
-            int64_t deserializedKey = 0;
             // Big-endian deserialization
-            for (auto byte : key) {
-                deserializedKey <<= 8;
-                deserializedKey |= byte & 0xFF;
+            return ConstDataView(reinterpret_cast<char*>(key.data())).read<BigEndian<int64_t>>();
+        }
+        case KafkaKeyFormatEnum::Double: {
+            if (key.size() != sizeof(double)) {
+                return key;
             }
-            return deserializedKey;
+            // Big-endian deserialization
+            return ConstDataView(reinterpret_cast<char*>(key.data())).read<BigEndian<double>>();
         }
         default: {
             MONGO_UNREACHABLE;

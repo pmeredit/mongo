@@ -255,9 +255,13 @@ private:
 
     // Deserialize the Kafka key according to the specified key format. If the deserialization
     // fails, the key will be returned as BinData.
-    static std::
-        variant<std::vector<std::uint8_t>, std::string, mongo::BSONObj, std::int32_t, std::int64_t>
-        deserializeKafkaKey(std::vector<std::uint8_t> key, mongo::KafkaKeyFormatEnum keyFormat);
+    static std::variant<std::vector<std::uint8_t>,
+                        std::string,
+                        mongo::BSONObj,
+                        std::int32_t,
+                        std::int64_t,
+                        double>
+    deserializeKafkaKey(std::vector<std::uint8_t> key, mongo::KafkaKeyFormatEnum keyFormat);
 
     Options _options;
     boost::optional<mongo::KafkaSourceCheckpointState> _restoredCheckpointState;

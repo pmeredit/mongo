@@ -178,7 +178,8 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                     [&](int32_t key) { newStreamMeta.setNestedField(keyPath, Value(key)); },
                     [&](int64_t key) {
                         newStreamMeta.setNestedField(keyPath, Value(static_cast<long long>(key)));
-                    }},
+                    },
+                    [&](double key) { newStreamMeta.setNestedField(keyPath, Value(key)); }},
                 *internalStreamMeta.getSource()->getKey());
         }
         if (internalStreamMeta.getSource()->getHeaders()) {

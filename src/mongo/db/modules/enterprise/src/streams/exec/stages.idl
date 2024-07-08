@@ -107,6 +107,7 @@ enums:
             # The int and long are big-endian to align with the Java serializer/deserializer for Kafka
             Int: "int"
             Long: "long"
+            Double: "double"
 
     KafkaSourceKeyFormatError:
         description: "How to handle error during Kafka key deserialization"

@@ -284,11 +284,19 @@ function generateInput(count = null) {
                 {k: "h2", v: NumberLong(200)},
                 {k: "h3", v: {a: 1}},
                 {k: "h4", v: "hello"},
-                {k: "h5", v: null}
+                {k: "h5", v: null},
+                {k: "h6", v: -2.5}
             ],
-            headersVariedObj:
-                {h1: NumberInt(42), h2: NumberLong(200), h3: {a: 1}, h4: "hello", h5: null},
+            headersVariedObj: {
+                h1: NumberInt(42),
+                h2: NumberLong(200),
+                h3: {a: 1},
+                h4: "hello",
+                h5: null,
+                h6: -2.5
+            },
             keyBinData: binData,
+            keyDouble: 100.5 - i,
             keyInt: NumberInt(i),
             keyJson: {a: 1},
             keyLong: NumberLong(i),
@@ -1022,6 +1030,21 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
                         sinkKeyFormat: "binData",
                         sourceKeyFormat: "long",
                     }));
+// double key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: false,
+                        sinkKey: "$keyDouble",
+                        sinkKeyFormat: "double",
+                        sourceKeyFormat: "double",
+                        expectedKeyFunc: (doc) => doc.keyDouble,
+                    }));
+// invalid double key field
+runKafkaTest(kafka, () => mongoToKafkaToMongo({
+                        expectDlq: true,
+                        sinkKey: "$keyBinData",
+                        sinkKeyFormat: "binData",
+                        sourceKeyFormat: "double",
+                    }));
 // string key field
 runKafkaTest(kafka, () => mongoToKafkaToMongo({
                         expectDlq: false,
@@ -1078,7 +1101,8 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
                             {"k": "h2", "v": BinData(0, "AAAAAAAAAMg=")},
                             {"k": "h3", "v": BinData(0, "eyJhIjp7IiRudW1iZXJEb3VibGUiOiIxIn19")},
                             {"k": "h4", "v": BinData(0, "aGVsbG8=")},
-                            {"k": "h5", "v": BinData(0, "")}
+                            {"k": "h5", "v": BinData(0, "")},
+                            {"k": "h6", "v": BinData(0, "wAQAAAAAAAA=")}
                         ]
                     }));
 
@@ -1093,7 +1117,8 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
                             {"k": "h2", "v": BinData(0, "AAAAAAAAAMg=")},
                             {"k": "h3", "v": BinData(0, "eyJhIjp7IiRudW1iZXJEb3VibGUiOiIxIn19")},
                             {"k": "h4", "v": BinData(0, "aGVsbG8=")},
-                            {"k": "h5", "v": BinData(0, "")}
+                            {"k": "h5", "v": BinData(0, "")},
+                            {"k": "h6", "v": BinData(0, "wAQAAAAAAAA=")}
                         ]
                     }));
 

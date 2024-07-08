@@ -28,7 +28,7 @@ structs:
             v:
                 description: "Value of this header."
                 type:
-                    variant: [bindata_generic, string, object, int, long]
+                    variant: [bindata_generic, string, object, int, long, double]
 
     CheckpointDescription:
         description: "A high level description about a checkpoint, useful for debugging purposes."
@@ -121,7 +121,7 @@ structs:
             key:
                 description: "Key of this Kafka document"
                 type:
-                    variant: [bindata_generic, string, object, int, long]
+                    variant: [bindata_generic, string, object, int, long, double]
                 optional: true
             headers:
                 description: "Headers of this Kafka document"
