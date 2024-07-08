@@ -86,11 +86,11 @@ void getEncryptInformation(const NamespaceString ns,
     // We call serializeWithoutTenantPrefix_UNSAFE here because the encryptionInformation document
     // does not contain the tenantId. The tenantId is contained in the validated tenancy scope of
     // the owning object.
-    uassert(
-        6411900,
-        "Namespace in encryptionInformation: '"s + schemaSpec.firstElementFieldNameStringData() +
-            "' does not match namespace given in command: '" + ns.toStringForErrorMsg() + '\'',
-        schemaSpec.firstElementFieldNameStringData() == ns.serializeWithoutTenantPrefix_UNSAFE());
+    uassert(6411900,
+            "Namespace in encryptionInformation: '" + schemaSpec.firstElementFieldNameStringData() +
+                "' does not match namespace given in command: '" + ns.toStringForErrorMsg() + '\'',
+            schemaSpec.firstElementFieldNameStringData() ==
+                ns.serializeWithoutTenantPrefix_UNSAFE());
 
     encryptInfo = schemaSpec.firstElement().Obj().getOwned();
     fleVersion = FleVersion::kFle2;

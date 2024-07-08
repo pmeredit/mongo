@@ -22,6 +22,7 @@
 namespace streams {
 
 using namespace mongo;
+using namespace std::string_literals;
 
 // Override StubMongoProcessInterface like done in document_source_merge_test.cpp
 class MongoProcessInterfaceForTest : public MongoDBProcessInterface {
