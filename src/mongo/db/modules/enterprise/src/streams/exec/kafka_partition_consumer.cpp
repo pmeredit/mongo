@@ -402,6 +402,12 @@ void KafkaPartitionConsumer::connectToSource() {
             str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
             resp == RdKafka::ERR_NO_ERROR);
 
+    LOGV2_INFO(9219600,
+               "KafkaPartitionConsumer started",
+               "context"_attr = _context,
+               "partition"_attr = partition(),
+               "maxPrefetchByteSize"_attr = _options.maxPrefetchByteSize);
+
     // Set the state to connected.
     stdx::lock_guard<Latch> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};

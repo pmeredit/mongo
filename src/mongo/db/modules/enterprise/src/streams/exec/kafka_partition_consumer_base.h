@@ -37,7 +37,7 @@ public:
         // Maximum number of documents getDocuments() should return per call.
         int32_t maxNumDocsToReturn{kDataMsgMaxDocSize};
         // Max number of bytes to prefetch across batches.
-        int32_t maxPrefetchByteSize{kDataMsgMaxByteSize * 10};
+        int32_t maxPrefetchByteSize{0};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
         // Timeout used for Kafka api calls.
@@ -53,7 +53,11 @@ public:
         boost::optional<std::string> gwproxyKey;
     };
 
-    KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {}
+    KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {
+        tassert(9219601,
+                "Expected maxPrefetchByteSize greater than zero",
+                _options.maxPrefetchByteSize > 0);
+    }
 
     virtual ~KafkaPartitionConsumerBase() = default;
 

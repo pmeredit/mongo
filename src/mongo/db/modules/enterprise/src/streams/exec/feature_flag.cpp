@@ -4,6 +4,7 @@
 
 #include "streams/exec/feature_flag.h"
 #include "mongo/bson/bsontypes.h"
+#include "streams/exec/operator.h"
 
 namespace streams {
 
@@ -46,5 +47,10 @@ boost::optional<double> FeatureFlagValue::getDouble() const {
 
 const FeatureFlagDefinition FeatureFlags::kCheckpointDurationInMs{
     "checkpointDuration", "checkpoint Duration in ms", mongo::Value(60 * 60 * 1000)};
+
+const FeatureFlagDefinition FeatureFlags::kKafkaMaxPrefetchByteSize{
+    "kafkaMaxPrefetchByteSize",
+    "Maximum buffer size (in bytes) for each Kafka $source partition.",
+    mongo::Value(kDataMsgMaxByteSize * 10)};
 
 }  // namespace streams

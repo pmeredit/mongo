@@ -34,6 +34,7 @@ private:
 class FeatureFlags {
 public:
     static const FeatureFlagDefinition kCheckpointDurationInMs;
+    static const FeatureFlagDefinition kKafkaMaxPrefetchByteSize;
 };
 
 }  // namespace streams

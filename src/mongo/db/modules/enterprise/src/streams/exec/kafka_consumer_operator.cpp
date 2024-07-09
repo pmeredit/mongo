@@ -973,6 +973,12 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.queueByteSizeGauge = _queueByteSizeGauge;
     options.gwproxyEndpoint = _options.gwproxyEndpoint;
     options.gwproxyKey = _options.gwproxyKey;
+    auto maxPrefetchByteSize =
+        _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaMaxPrefetchByteSize)
+            .getInt();
+    tassert(9219602, "Expected maxPrefetchByteSize to be set", maxPrefetchByteSize);
+    options.maxPrefetchByteSize = *maxPrefetchByteSize;
+
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
     } else {

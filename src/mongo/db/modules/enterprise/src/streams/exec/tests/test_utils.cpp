@@ -10,6 +10,7 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/test_constants.h"
 
 using namespace mongo;
@@ -61,6 +62,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     auto executor = std::make_unique<Executor>(context.get(), Executor::Options{});
     context->dlq->registerMetrics(executor->getMetricManager());
     context->streamMetaFieldName = "_stream_meta";
+    context->featureFlags = StreamProcessorFeatureFlags{{}, Date_t::now()};
 
     return std::make_tuple(std::move(context), std::move(executor));
 }
