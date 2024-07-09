@@ -55,10 +55,8 @@ function smokeTestDLQ() {
     assert.eq(expectedCount, results.length, tojson(results));
 
     // Validate that 7 events are in the DLQ
-    let dlqResults = dlqColl.find({}).toArray();
     const expectedDlqCount = 7;
-    waitForCount(dlqColl, expectedDlqCount);
-    assert.eq(expectedDlqCount, dlqResults.length, tojson(dlqResults));
+    assert.soon(() => { return dlqColl.count() == expectedDlqCount; });
 
     // Stop the streamProcessor.
     assert.commandWorked(sp.sp1.stop());
