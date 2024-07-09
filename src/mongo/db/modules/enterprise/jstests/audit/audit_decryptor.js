@@ -5,6 +5,7 @@
  * @tags: [uses_pykmip, requires_gcm, incompatible_with_s390x]
  */
 
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
     AuditSpooler,
@@ -17,6 +18,9 @@ import {
     KMIPGetFixture,
     LocalFixture,
 } from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js";
+
+const kMongoSchema = 'mongo';
+const kOCSFSchema = 'ocsf';
 
 // note: this port number must be unique among the audit tests that use
 // the PyKMIP server, so that these tests can run in parallel without
@@ -51,8 +55,10 @@ function getCompressedMessage(json) {
     }
 }
 
+let bOCSFEnabled = undefined;
+
 print("Testing audit log decryptor program");
-function testAuditLogDecryptor(serverFixture, isMongos, keyManagerFixture) {
+function testAuditLogDecryptor(serverFixture, isMongos, keyManagerFixture, schema) {
     const enableCompression = true;
     keyManagerFixture.startKeyServer();
     let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);
@@ -61,8 +67,20 @@ function testAuditLogDecryptor(serverFixture, isMongos, keyManagerFixture) {
         opts = {other: {mongosOptions: opts}};
     }
 
-    jsTest.log("Testing: " + tojson(opts));
-    const {conn, audit, admin} = serverFixture.startProcess(opts);
+    const kFormat = 'JSON';
+    jsTest.log(`Testing ${schema}/${kFormat}: ` + tojson(opts));
+    const {conn, audit, admin} = serverFixture.startProcess(opts, kFormat, schema);
+
+    admin.createUser({user: 'admin', pwd: 'pwd', roles: ['root']});
+    assert(admin.auth('admin', 'pwd'));
+
+    if (bOCSFEnabled === undefined) {
+        // JIT initialize of bOCSFEnabled,
+        // lets us know if we can run the OCSF variant next.
+        bOCSFEnabled =
+            FeatureFlagUtil.isEnabled(admin, "OCSF", {username: 'admin', password: 'pwd'});
+        jsTest.log('featureFlagOCSF === ' + tojson(bOCSFEnabled));
+    }
 
     // Skips first line since it's the header
     audit.setCurrentAuditLine(audit.getCurrentAuditLine() + 1);
@@ -81,7 +99,9 @@ function testAuditLogDecryptor(serverFixture, isMongos, keyManagerFixture) {
     sleep(2000);
 
     const auditPath = conn.fullOptions.auditPath;
-    const runId = (isMongos ? "sharded" : "standalone") + "_" + keyManagerFixture.getName();
+    const mode = isMongos ? 'sharded' : 'standalone';
+    const fixtureName = keyManagerFixture.getName();
+    const runId = `${mode}_${fixtureName}_${schema}`;
     const outputFile = MongoRunner.dataPath + "decompressedLog_" + runId + ".json";
     const decryptPid = keyManagerFixture.runDecryptor(auditPath, outputFile);
     assert.eq(waitProgram(decryptPid), 0);
@@ -107,12 +127,22 @@ for (const keyManagerFixture of keyManagerFixtures) {
 
     {
         const standaloneFixture = new StandaloneFixture();
-        jsTest.log("Testing decrypt of audit file from standalone");
-        testAuditLogDecryptor(standaloneFixture, false, keyManagerFixture);
+        jsTest.log("Testing decrypt of mongo audit file from standalone");
+        testAuditLogDecryptor(standaloneFixture, false, keyManagerFixture, kMongoSchema);
     }
-    {
+    if (bOCSFEnabled) {
+        const standaloneFixture = new StandaloneFixture();
+        jsTest.log("Testing decrypt of OCSF audit file from standalone");
+        testAuditLogDecryptor(standaloneFixture, false, keyManagerFixture, kOCSFSchema);
+    }
+
+    const schemas = [kMongoSchema];
+    if (bOCSFEnabled) {
+        schemas.push(kOCSFSchema);
+    }
+    schemas.forEach(function(schema) {
         const shardingFixture = new ShardingFixture();
-        jsTest.log("Testing decrypt of audit file fromm sharded cluster");
-        testAuditLogDecryptor(shardingFixture, true, keyManagerFixture);
-    }
+        jsTest.log(`Testing decrypt of ${schema} audit file fromm sharded cluster`);
+        testAuditLogDecryptor(shardingFixture, true, keyManagerFixture, schema);
+    });
 }

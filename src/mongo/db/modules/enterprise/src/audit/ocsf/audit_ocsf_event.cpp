@@ -108,7 +108,9 @@ void AuditOCSF::AuditEventOCSF::_init(const TryLogEventParamsOCSF& tryLogParams)
 
     builder.append(kCategoryIdField, tryLogParams.ocsfEventCategory);
     builder.append(kClassUidField, tryLogParams.ocsfEventClass);
-    builder.append(kTimestampField, getTimestamp().toMillisSinceEpoch());
+    if (!getGlobalAuditManager()->getEncryptionEnabled()) {
+        builder.append(kTimestampField, getTimestamp().toMillisSinceEpoch());
+    }
     builder.append(kSeverityIdField, tryLogParams.severity);
 
     builder.append(kTypeUID,
