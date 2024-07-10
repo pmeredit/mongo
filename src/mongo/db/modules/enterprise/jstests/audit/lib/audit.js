@@ -310,57 +310,86 @@ export class AuditSpooler {
         return msg;
     }
 
+    // Extended JSON encodes longs (and sometimes other types) using objects.
+    // This makes simple numeric comparison.... tricky.
+    // Cast these types to Numbers which can be cleanly compared by Javascript.
+    relaxJSON(input) {
+        if ((typeof input === "object") && (Object.keys(input).length === 1)) {
+            const kNumericKeys = ['$numberInt', '$numberLong', '$numberDouble', '$numberDecimal'];
+            for (let typ of kNumericKeys) {
+                if (input.hasOwnProperty(typ)) {
+                    try {
+                        return Number(input[typ]);
+                    } catch (e) {
+                        print(`Could not parse ${input[typ]} as a number`);
+                        // Ignore failure to parse.
+                    }
+                }
+            }
+        }
+        return input;
+    }
+
     deepPartialEquals(target, source) {
         print("Checking '" + JSON.stringify(target) + "' vs '" + JSON.stringify(source) + "'");
         for (let property in source) {
+            function debug(msg) {
+                print(
+                    msg + ': ' +
+                    tojson(
+                        {property: property, source: source[property], target: target[property]}));
+            }
+
             if (source.hasOwnProperty(property)) {
                 if (target[property] === undefined) {
                     print("Target missing property: " + property);
                     return false;
                 }
 
-                if (typeof source[property] === "function") {
+                const sourceProp = this.relaxJSON(source[property]);
+                const targetProp = this.relaxJSON(target[property]);
+
+                if (typeof sourceProp === "function") {
                     /* { foo: (v) => (v > 5) } */
-                    const res = source[property](target[property]);
+                    const res = sourceProp(targetProp);
                     if (!res) {
-                        print(property + " does not satisfy callback: " + tojson(source[property]) +
-                              "(" + tojson(target[property]) + ") == false");
+                        debug('Callback not satisfied');
                         return false;
                     }
-                } else if (Array.isArray(source[property])) {
+                } else if (Array.isArray(sourceProp)) {
                     /* { foo: ['bar', 'baz', ...] } */
                     // Assert that all of the elements in source satisfy deepPartialEquals for at
                     // least one element in target.
-                    const res = source[property].every(srcElement => {
-                        return target[property].some(targetElement => {
-                            return this.deepPartialEquals(targetElement, srcElement);
-                        });
-                    });
-                    if (!res) {
-                        print(property + " does not contain all expected elements. " +
-                              tojson(source[property]) + " != " + tojson(target[property]));
+                    if (!Array.isArray(targetProp)) {
+                        debug('Target property is not an array');
                         return false;
                     }
 
-                } else if (typeof source[property] !== "object") {
-                    /* { foo: 'bar' } */
-                    const res = source[property] === target[property];
+                    const res = sourceProp.every(
+                        (srcElem) => targetProp.some(
+                            (targetElem) => this.deepPartialEquals(targetElem, srcElem)));
                     if (!res) {
-                        print(property + " not equal. " + source[property] +
-                              " != " + target[property]);
+                        debug('Source array contain element(s) not found in target');
                         return false;
                     }
-                } else if (source[property] instanceof RegExp) {
-                    /* { foo: /bar.*baz/ } */
-                    const res = source[property].test(target[property]);
+                } else if (typeof sourceProp !== "object") {
+                    /* { foo: 'bar' } */
+                    const res = sourceProp === targetProp;
                     if (!res) {
-                        print(property + " does not match pattern " + source[property].toString() +
-                              " != " + target[property]);
+                        debug('Targets are not trivially equal');
+                        return false;
+                    }
+                } else if (sourceProp instanceof RegExp) {
+                    /* { foo: /bar.*baz/ } */
+                    const res = sourceProp.test(targetProp);
+                    if (!res) {
+                        debug('Regex pattern ' + sourceProp.toString() +
+                              ' not satisfied by target');
                         return false;
                     }
                 } else {
                     /* { foo: {bar: 'baz'} } */
-                    if (!this.deepPartialEquals(target[property], source[property])) {
+                    if (!this.deepPartialEquals(targetProp, sourceProp)) {
                         return false;
                     }
                 }
