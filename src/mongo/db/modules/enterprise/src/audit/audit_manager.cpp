@@ -278,12 +278,6 @@ void AuditManager::initialize(const moe::Environment& params) {
     if (params.count("auditLog.schema")) {
         _schema = uassertStatusOK(
             parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));
-        if (_schema == AuditSchema::kOCSF) {
-            uassert(ErrorCodes::BadValue,
-                    "Unknown auditLog.schema 'OCSF'",
-                    gFeatureFlagOCSF.isEnabled(
-                        serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
-        }
     }
 
     if (gAuditEncryptKeyWithKMIPGet) {

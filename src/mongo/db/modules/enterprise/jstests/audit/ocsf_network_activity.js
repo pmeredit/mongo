@@ -13,8 +13,8 @@ const kNetworkActivityId = 99;
     const standaloneFixture = new StandaloneFixture();
     jsTest.log("Testing OCSF authenticate activity output on standalone");
 
-    const {conn, audit, admin} = standaloneFixture.startProcess(
-        {"auditSchema": "OCSF", "setParameter": "featureFlagOCSF=true"}, "JSON", "ocsf");
+    const {conn, audit, admin} =
+        standaloneFixture.startProcess({"auditSchema": "OCSF"}, "JSON", "ocsf");
 
     audit.fastForward();
 

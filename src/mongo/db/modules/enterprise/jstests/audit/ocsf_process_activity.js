@@ -15,8 +15,8 @@ const kProcessActivityUnknown = 99;
     const standaloneFixture = new StandaloneFixture();
     jsTest.log("Testing OCSF process activity output on standalone");
 
-    const {conn, audit, admin} = standaloneFixture.startProcess(
-        {"auditSchema": "OCSF", "setParameter": "featureFlagOCSF=true"}, "JSON", "ocsf");
+    const {conn, audit, admin} =
+        standaloneFixture.startProcess({"auditSchema": "OCSF"}, "JSON", "ocsf");
 
     let line =
         audit.assertEntry(kProcessActivityCategory, kProcessActivityClass, kProcessActivityLaunch);

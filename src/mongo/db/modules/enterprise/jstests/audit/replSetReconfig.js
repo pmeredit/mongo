@@ -62,7 +62,7 @@ function runTest(m, assertion) {
     MongoRunner.stopMongod(m);
 }
 
-if ((TestData.setParameters || {}).featureFlagOCSF) {
+{
     const kDiscovery = 5;
     const kDeviceConfigState = 5002;
     const kDeviceConfigStateLog = 1;

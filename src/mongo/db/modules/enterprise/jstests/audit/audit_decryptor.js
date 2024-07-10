@@ -55,8 +55,6 @@ function getCompressedMessage(json) {
     }
 }
 
-let bOCSFEnabled = undefined;
-
 print("Testing audit log decryptor program");
 function testAuditLogDecryptor(serverFixture, isMongos, keyManagerFixture, schema) {
     const enableCompression = true;
@@ -73,14 +71,6 @@ function testAuditLogDecryptor(serverFixture, isMongos, keyManagerFixture, schem
 
     admin.createUser({user: 'admin', pwd: 'pwd', roles: ['root']});
     assert(admin.auth('admin', 'pwd'));
-
-    if (bOCSFEnabled === undefined) {
-        // JIT initialize of bOCSFEnabled,
-        // lets us know if we can run the OCSF variant next.
-        bOCSFEnabled =
-            FeatureFlagUtil.isEnabled(admin, "OCSF", {username: 'admin', password: 'pwd'});
-        jsTest.log('featureFlagOCSF === ' + tojson(bOCSFEnabled));
-    }
 
     // Skips first line since it's the header
     audit.setCurrentAuditLine(audit.getCurrentAuditLine() + 1);
@@ -125,21 +115,13 @@ let keyManagerFixtures = [
 for (const keyManagerFixture of keyManagerFixtures) {
     jsTest.log("Testing with key store type " + keyManagerFixture.getName());
 
-    {
+    const schemas = [kMongoSchema, kOCSFSchema];
+    schemas.forEach(function(schema) {
         const standaloneFixture = new StandaloneFixture();
-        jsTest.log("Testing decrypt of mongo audit file from standalone");
-        testAuditLogDecryptor(standaloneFixture, false, keyManagerFixture, kMongoSchema);
-    }
-    if (bOCSFEnabled) {
-        const standaloneFixture = new StandaloneFixture();
-        jsTest.log("Testing decrypt of OCSF audit file from standalone");
-        testAuditLogDecryptor(standaloneFixture, false, keyManagerFixture, kOCSFSchema);
-    }
+        jsTest.log(`Testing decrypt of ${schema} audit file from standalone`);
+        testAuditLogDecryptor(standaloneFixture, false, keyManagerFixture, schema);
+    });
 
-    const schemas = [kMongoSchema];
-    if (bOCSFEnabled) {
-        schemas.push(kOCSFSchema);
-    }
     schemas.forEach(function(schema) {
         const shardingFixture = new ShardingFixture();
         jsTest.log(`Testing decrypt of ${schema} audit file fromm sharded cluster`);

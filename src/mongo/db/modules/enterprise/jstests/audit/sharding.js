@@ -149,7 +149,7 @@ function runTest(st, extraShard) {
     st.stop();
 }
 
-if (TestData.setParameters.featureFlagOCSF) {
+{
     jsTest.log('schema === ocsf');
     const st = MongoRunner.runShardedClusterAuditLogger({}, {auth: null}, 'JSON', 'ocsf');
     const extraShard =

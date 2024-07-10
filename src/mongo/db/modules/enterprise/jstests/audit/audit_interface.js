@@ -3,8 +3,7 @@
 import {StandaloneFixture} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function testOCSFAuditing(fixture) {
-    const {conn, audit, admin} =
-        fixture.startProcess({"auditSchema": "OCSF", "setParameter": "featureFlagOCSF=true"});
+    const {conn, audit, admin} = fixture.startProcess({"auditSchema": "OCSF"});
 
     // Currently OCSF auditing does not log anything in log file,
     // only in system logs for testing
@@ -15,8 +14,7 @@ function testOCSFAuditing(fixture) {
 }
 
 function testMongoAuditing(fixture) {
-    const {conn, audit, admin} =
-        fixture.startProcess({"auditSchema": "mongo", "setParameter": "featureFlagOCSF=true"});
+    const {conn, audit, admin} = fixture.startProcess({"auditSchema": "mongo"});
 
     audit.assertEntry("startup");
     let auditLogs = audit.getAllLines();
@@ -26,7 +24,7 @@ function testMongoAuditing(fixture) {
 }
 
 function testNoSchemaSpecified(fixture) {
-    const {conn, audit, admin} = fixture.startProcess({"setParameter": "featureFlagOCSF=true"});
+    const {conn, audit, admin} = fixture.startProcess({});
 
     audit.assertEntry("startup");
     let auditLogs = audit.getAllLines();

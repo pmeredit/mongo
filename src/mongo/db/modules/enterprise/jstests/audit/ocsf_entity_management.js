@@ -91,8 +91,8 @@ function assertEntrySearch(
     const standaloneFixture = new StandaloneFixture();
     jsTest.log("Testing OCSF entity management output on standalone");
 
-    const {conn, audit, admin} = standaloneFixture.startProcess(
-        {"auditSchema": "OCSF", "setParameter": "featureFlagOCSF=true"}, "JSON", "ocsf");
+    const {conn, audit, admin} =
+        standaloneFixture.startProcess({"auditSchema": "OCSF"}, "JSON", "ocsf");
 
     standaloneFixture.createUserAndAuth();
     audit.fastForward();
