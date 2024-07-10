@@ -206,7 +206,13 @@ function runStepdownDuringCompactPhaseBeforeESCCleanup(conn, fixture) {
     // What happens during step-up is similar to the test
     // runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped
     client.assertStateCollectionsAfterCompact(collName, true, false);
-    client.assertEncryptedCollectionCounts(collName, 10, 11, 0);
+
+    // Assert the number of ESC entries is either 11 (retry joined ongoing compact)
+    // or 1 (retry started a new compact).
+    const escNss = client.getStateCollectionNamespaces(collName).esc;
+    let escCount = client.getDB()[escNss].countDocuments({});
+    assert(escCount == 11 || escCount == 1, "Got unexpected escCount: " + escCount);
+    client.assertEncryptedCollectionCounts(collName, 10, escCount, 0);
 }
 
 {
