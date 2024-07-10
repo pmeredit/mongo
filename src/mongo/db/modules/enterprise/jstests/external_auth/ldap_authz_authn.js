@@ -269,14 +269,34 @@ function testX509Callback({conn}) {
     assert(retVal == 0);
 }
 
+function __sanitizeMatch(flag) {
+    const buildInfo = getBuildInfo();
+    const sanitizeMatch =
+        /-fsanitize=([^\s]+) /.exec(buildInfo.buildEnvironment.ccflags.toString());
+    if (flag && sanitizeMatch && RegExp(flag).exec(sanitizeMatch[1])) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 testNativeLDAP();
 testNativeLDAPNoDNMapping();
 testNativeLDAPUndefinedDNMapping();
 testX509();
-if (!_isWindows()) {
-    // Windows machines must be a part of the Kerberos domain. Move this out with SERVER-24671.
-    testGSSAPI();
-    // Windows machines don't support saslauthd.
-    testLDAPSaslauthd();
-    testNativeAndGSSAPI();
+
+// TODO(SERVER-91832) Supressions are setup on this test to ignore the memory leak in the rhel88
+// version of libsasl, see https://github.com/cyrusimap/cyrus-sasl/issues/843
+// Remove when the upstream issue is resolved and we are no longer testing on a version of rhel
+// with this issue prseent.
+// TODO(SERVER-92171) Move the supression into lsan.suppresions once the stack trace generation
+// of leaks created in system libraries is fixed
+if (!__sanitizeMatch("address")) {
+    if (!_isWindows()) {
+        // Windows machines must be a part of the Kerberos domain. Move this out with SERVER-24671.
+        testGSSAPI();
+        // Windows machines don't support saslauthd.
+        testLDAPSaslauthd();
+        testNativeAndGSSAPI();
+    }
 }
