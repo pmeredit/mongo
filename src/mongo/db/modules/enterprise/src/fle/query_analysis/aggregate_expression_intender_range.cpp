@@ -16,6 +16,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/pipeline/accumulator_percentile.h"
 #include "mongo/db/pipeline/expression_find_internal.h"
+#include "mongo/db/pipeline/expression_from_accumulator_quantile.h"
 #include "mongo/db/pipeline/expression_function.h"
 #include "mongo/db/pipeline/expression_js_emit.h"
 #include "mongo/db/pipeline/expression_test_api_version.h"

@@ -5,6 +5,7 @@
 #include <boost/intrusive_ptr.hpp>
 
 #include "aggregate_expression_intender.h"
+#include "mongo/db/pipeline/expression_from_accumulator_quantile.h"
 #include "mongo/db/pipeline/expression_walker.h"
 
 namespace mongo::aggregate_expression_intender {
