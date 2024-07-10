@@ -127,15 +127,6 @@ structs:
                 type: pipeline
                 optional: true
 
-    StopStreamProcessorReply:
-        description: "Response message for streams_stopStreamProcessor command"
-        strict: false
-        is_command_reply: true
-
-    WriteStreamCheckpointReply:
-        description: "Response message for streams_WriteCheckpoint command"
-        is_command_reply: true
-
     KafkaConsumerPartitionState:
         description: "State of a single partition in the kafka consumer source"
         strict: false
@@ -222,6 +213,19 @@ structs:
                     If all available events have been read, then lag becomes 0
                 type: seconds
                 optional: true
+
+    StopStreamProcessorReply:
+        description: "Response message for streams_stopStreamProcessor command"
+        strict: false
+        is_command_reply: true
+        fields:
+            stats:
+                description: "The final stats for the processor after it stopped."
+                type: GetStatsReply
+
+    WriteStreamCheckpointReply:
+        description: "Response message for streams_WriteCheckpoint command"
+        is_command_reply: true
 
     VerboseStatus:
         description: "Internal details about a stream processor, used for debugging purposes."

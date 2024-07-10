@@ -89,16 +89,16 @@ public:
         streamManager->onExecutorShutdown(tenantId, name, status);
     }
 
-    void stopStreamProcessor(StreamManager* streamManager, std::string tenantId, StringData name) {
+    auto stopStreamProcessor(StreamManager* streamManager, std::string tenantId, StringData name) {
         StopStreamProcessorCommand stopRequest;
         stopRequest.setTenantId(tenantId);
         stopRequest.setName(name);
         stopRequest.setProcessorId(StringData(name));
         stopRequest.setTimeout(mongo::Seconds(60));
-        streamManager->stopStreamProcessor(stopRequest);
+        return streamManager->stopStreamProcessor(stopRequest);
     }
 
-    void stopStreamProcessor(StreamManager* streamManager,
+    auto stopStreamProcessor(StreamManager* streamManager,
                              std::string tenantId,
                              std::string name,
                              StopReason stopReason) {
@@ -107,7 +107,7 @@ public:
         stopCommand.setName(name);
         stopCommand.setProcessorId(StringData(name));
         stopCommand.setTimeout(mongo::Seconds(60));
-        streamManager->stopStreamProcessor(stopCommand, stopReason);
+        return streamManager->stopStreamProcessor(stopCommand, stopReason);
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
@@ -546,7 +546,10 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(statsReply.getOutputMessageCount(), operatorStats[2].getInputMessageCount());
     ASSERT_EQUALS(statsReply.getOutputMessageSize(), operatorStats[2].getInputMessageSize());
 
-    stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName);
+    auto finalStats =
+        stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName).getStats();
+    finalStats.setStatus(StreamStatusEnum::Running);
+    ASSERT_BSONOBJ_EQ(finalStats.toBSON(), statsReply.toBSON());
 }
 
 TEST_F(StreamManagerTest, GetStats_Kafka) {

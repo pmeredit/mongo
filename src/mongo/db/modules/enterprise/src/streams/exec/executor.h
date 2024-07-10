@@ -173,10 +173,6 @@ private:
     // Takes the mutex and checks for _shutdown.
     bool isShutdown();
 
-    // Updates the stream stats snapshot stored on the executor and also updates the corresponding
-    // metrics for those stats.
-    void updateStats(StreamStats stats);
-
     // This is called when a checkpoint has been flushed to remote storage.
     void processFlushedCheckpoint(mongo::CheckpointDescription checkpointDescription);
 
@@ -185,6 +181,9 @@ private:
 
     // Update stream processor feature flags for this context.
     void updateContextFeatureFlags();
+
+    // Updates all the stats, including the $source state. Called once per runOnce.
+    void updateStats();
 
     // Context of the streamProcessor, used for logging purposes.
     Context* _context{nullptr};
@@ -199,6 +198,11 @@ private:
     // During stop we write a final checkpoint and set this member variable.
     boost::optional<CheckpointId> _lastCheckpointId;
     bool _connected{false};
+
+
+    // The last snapshot of the stats after a batch is finished.
+    // NOTE: This and other stats like _kafkaConsumerPartitionStates might be retrieved
+    // after the executor is stopped.
     StreamStats _streamStats;
 
     // Only applicable if the stream processor has a kafka source.

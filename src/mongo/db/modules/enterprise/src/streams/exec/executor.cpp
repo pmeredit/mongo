@@ -261,6 +261,56 @@ void Executor::writeCheckpoint(bool force) {
     }
 }
 
+void Executor::updateStats() {
+    // Update _streamStats with the latest stats.
+    StreamStats newStats;
+    const auto& operators = _options.operatorDag->operators();
+    for (const auto& oper : operators) {
+        newStats.operatorStats.push_back(oper->getStats());
+    }
+
+    auto prevSummary = computeStreamSummaryStats(_streamStats.operatorStats);
+    auto newSummary = computeStreamSummaryStats(newStats.operatorStats);
+    auto delta = newSummary - prevSummary;
+
+    _numInputDocumentsCounter->increment(delta.numInputDocs);
+    _numInputBytesCounter->increment(delta.numInputBytes);
+    _numOutputDocumentsCounter->increment(delta.numOutputDocs);
+    _numOutputBytesCounter->increment(delta.numOutputBytes);
+    _memoryUsageGauge->set(_context->memoryAggregator->getCurrentMemoryUsageBytes());
+
+    if (delta.numOutputDocs || delta.numDlqDocs) {
+        // no need to check thru all the individual operators
+        _uncheckpointedState = true;
+    }
+
+    if (!_uncheckpointedState) {
+        // Need to check thru each operators outputdocs stats since the summary
+        // only considers that for the sink operator
+        for (unsigned i = 0; i < _streamStats.operatorStats.size(); i++) {
+            if (newStats.operatorStats[i].numOutputDocs >
+                _streamStats.operatorStats[i].numOutputDocs) {
+                _uncheckpointedState = true;
+                break;
+            }
+        }
+    }
+    _streamStats = std::move(newStats);
+
+
+    _metricManager->takeSnapshot();
+
+    if (const auto* source = dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
+        _kafkaConsumerPartitionStates = source->getPartitionStates();
+    }
+
+    if (const auto* source =
+            dynamic_cast<ChangeStreamSourceOperator*>(_options.operatorDag->source())) {
+        _changeStreamState = source->getCurrentState();
+        _changeStreamLag = source->getChangeStreamLag();
+    }
+}
+
 Executor::RunStatus Executor::runOnce() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
@@ -283,6 +333,12 @@ Executor::RunStatus Executor::runOnce() {
     // is running out of memory.
     _context->memoryAggregator->poll();
 
+    // Process flushed checkpoints.
+    std::deque<CheckpointId> processedCheckpoints;
+    if (_context->checkpointStorage) {
+        processedCheckpoints = processFlushedCheckpoints();
+    }
+
     do {
         stdx::lock_guard<Latch> lock(_mutex);
 
@@ -292,26 +348,8 @@ Executor::RunStatus Executor::runOnce() {
             break;
         }
 
-        // Update _streamStats with the latest stats.
-        StreamStats streamStats;
-        const auto& operators = _options.operatorDag->operators();
-        for (const auto& oper : operators) {
-            streamStats.operatorStats.push_back(oper->getStats());
-        }
-        updateStats(std::move(streamStats));
-        _metricManager->takeSnapshot();
+        updateStats();
         updateContextFeatureFlags();
-
-        if (const auto* source =
-                dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
-            _kafkaConsumerPartitionStates = source->getPartitionStates();
-        }
-
-        if (const auto* source =
-                dynamic_cast<ChangeStreamSourceOperator*>(_options.operatorDag->source())) {
-            _changeStreamState = source->getCurrentState();
-            _changeStreamLag = source->getChangeStreamLag();
-        }
 
         for (auto& sampler : _outputSamplers) {
             sink->addOutputSampler(sampler);
@@ -336,11 +374,6 @@ Executor::RunStatus Executor::runOnce() {
         if (auto* chg = dynamic_cast<ChangeStreamSourceOperator*>(source)) {
             changeStreamAdvanced = chg->hasUncheckpointedState();
         }
-    }
-
-    std::deque<CheckpointId> processedCheckpoints;
-    if (_context->checkpointStorage) {
-        processedCheckpoints = processFlushedCheckpoints();
     }
 
     if (shutdown) {
@@ -435,36 +468,6 @@ Executor::RunStatus Executor::runOnce() {
         return RunStatus::kActive;
     }
     return RunStatus::kIdle;
-}
-
-void Executor::updateStats(StreamStats newStats) {
-    auto prevSummary = computeStreamSummaryStats(_streamStats.operatorStats);
-    auto newSummary = computeStreamSummaryStats(newStats.operatorStats);
-    auto delta = newSummary - prevSummary;
-
-    _numInputDocumentsCounter->increment(delta.numInputDocs);
-    _numInputBytesCounter->increment(delta.numInputBytes);
-    _numOutputDocumentsCounter->increment(delta.numOutputDocs);
-    _numOutputBytesCounter->increment(delta.numOutputBytes);
-    _memoryUsageGauge->set(_context->memoryAggregator->getCurrentMemoryUsageBytes());
-
-    if (delta.numOutputDocs || delta.numDlqDocs) {
-        // no need to check thru all the individual operators
-        _uncheckpointedState = true;
-    }
-
-    if (!_uncheckpointedState) {
-        // Need to check thru each operators outputdocs stats since the summary
-        // only considers that for the sink operator
-        for (unsigned i = 0; i < _streamStats.operatorStats.size(); i++) {
-            if (newStats.operatorStats[i].numOutputDocs >
-                _streamStats.operatorStats[i].numOutputDocs) {
-                _uncheckpointedState = true;
-                break;
-            }
-        }
-    }
-    _streamStats = std::move(newStats);
 }
 
 void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
@@ -606,9 +609,10 @@ void Executor::runLoop() {
                 // it to be flushed.
                 stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
                 break;
-            case RunStatus::kShutdown:
+            case RunStatus::kShutdown: {
                 LOGV2_INFO(75896, "exiting runLoop() after shutdown", "context"_attr = _context);
                 return;
+            }
         }
     }
 }

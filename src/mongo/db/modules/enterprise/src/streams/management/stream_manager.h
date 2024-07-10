@@ -79,7 +79,8 @@ public:
         const mongo::StartStreamProcessorCommand& request);
 
     // Stops the stream processor specified by request params.
-    void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request);
+    mongo::StopStreamProcessorReply stopStreamProcessor(
+        const mongo::StopStreamProcessorCommand& request);
 
     // Causes stream processor to write a checkpoint
     void writeCheckpoint(const mongo::WriteStreamCheckpointCommand& request);
@@ -219,8 +220,8 @@ private:
                                   StreamManager::StreamProcessorInfo* processorInfo);
 
     // Stops a stream processor with the given name.
-    void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request,
-                             StopReason stopReason);
+    mongo::StopStreamProcessorReply stopStreamProcessor(
+        const mongo::StopStreamProcessorCommand& request, StopReason stopReason);
 
     // Helper method of stopStreamProcessor() method that stops the stream processor in an
     // asynchronous manner.

@@ -40,8 +40,7 @@ public:
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            streamManager->stopStreamProcessor(requestParams);
-            return Reply{};
+            return streamManager->stopStreamProcessor(requestParams);
         }
 
     private:

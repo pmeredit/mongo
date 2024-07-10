@@ -861,7 +861,8 @@ void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& r
     info->executor.get()->writeCheckpoint(request.getForce());
 }
 
-void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand& request) {
+StopStreamProcessorReply StreamManager::stopStreamProcessor(
+    const mongo::StopStreamProcessorCommand& request) {
     LOGV2_INFO(8238704,
                "Stopping stream processor",
                "correlationId"_attr = request.getCorrelationId(),
@@ -879,11 +880,11 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
     });
     activeGauge->incBy(1);
 
-    stopStreamProcessor(request, StopReason::ExternalStopRequest);
+    return stopStreamProcessor(request, StopReason::ExternalStopRequest);
 }
 
-void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand& request,
-                                        StopReason stopReason) {
+StopStreamProcessorReply StreamManager::stopStreamProcessor(
+    const mongo::StopStreamProcessorCommand& request, StopReason stopReason) {
     stopStreamProcessorAsync(request, stopReason);
 
     std::string tenantId = request.getTenantId().toString();
@@ -915,6 +916,15 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
         status = getExecutorStopStatus();
         uassert(75383, "Timeout while stopping", Date_t::now() <= deadline);
     }
+
+    // Get the final stats for the processor. The agent saves these so stats
+    // can be retrieved while the processor is stopped.
+    mongo::GetStatsCommand cmd;
+    cmd.setVerbose(true);
+    cmd.setTenantId(request.getTenantId());
+    cmd.setProcessorId(request.getProcessorId());
+    cmd.setName(request.getName());
+    auto finalStats = getStats(std::move(cmd));
 
     // Remove the streamProcessor from the map.
     std::unique_ptr<StreamProcessorInfo> processorInfo;
@@ -956,6 +966,8 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
             _memoryUsageMonitor->reset();
         }
     }
+
+    return StopStreamProcessorReply{std::move(finalStats)};
 }
 
 void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCommand& request,
