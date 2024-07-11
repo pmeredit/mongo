@@ -151,6 +151,11 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    mongo::query_shape::CollectionType getCollectionType(mongo::OperationContext* opCtx,
+                                                         const mongo::NamespaceString& nss) final {
+        MONGO_UNREACHABLE;
+    }
+
     void renameIfOptionsAndIndexesHaveNotChanged(
         mongo::OperationContext* opCtx,
         const mongo::NamespaceString& sourceNs,
