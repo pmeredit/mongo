@@ -115,6 +115,9 @@ struct KafkaConsumerPartitionState {
     // The offset that the stream processor last committed to the kafka broker and checkpoint
     // for this partition.
     int64_t checkpointOffset{0};
+
+    // This is the lag of the current offset from the latest offset in the broker
+    boost::optional<int64_t> partitionOffsetLag;
 };  // struct KafkaConsumerPartitionState
 
 }  // namespace streams

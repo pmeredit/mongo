@@ -88,6 +88,10 @@ public:
         return doGetStartOffset();
     }
 
+    boost::optional<int64_t> getLatestOffsetAtBroker() const {
+        return doGetLatestOffsetAtBroker();
+    }
+
     // Returns the number of topic partitions.
     // Returns boost::none if the partition count has not been initialized yet.
     boost::optional<int64_t> getNumPartitions() const {
@@ -109,6 +113,7 @@ protected:
     virtual void doStop() = 0;
     virtual ConnectionStatus doGetConnectionStatus() const = 0;
     virtual boost::optional<int64_t> doGetStartOffset() const = 0;
+    virtual boost::optional<int64_t> doGetLatestOffsetAtBroker() const = 0;
     virtual boost::optional<int64_t> doGetNumPartitions() const = 0;
     virtual std::vector<KafkaSourceDocument> doGetDocuments() = 0;
     virtual OperatorStats doGetStats() = 0;

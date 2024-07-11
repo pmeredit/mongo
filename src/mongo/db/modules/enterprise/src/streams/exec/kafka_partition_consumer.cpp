@@ -492,6 +492,29 @@ void KafkaPartitionConsumer::fetchLoop() {
     }
 }
 
+boost::optional<int64_t> KafkaPartitionConsumer::doGetLatestOffsetAtBroker() const {
+    int64_t low = RdKafka::Topic::OFFSET_INVALID;
+    int64_t high = RdKafka::Topic::OFFSET_INVALID;
+
+    // From librdkafa documentation, this is a local call and returns cached
+    // values for the low/high offsets for the given topic/partition.
+    // The cached high offset is updated for every message that is received
+    // by librdkafa from the broker. The cached low offset is updated less frequently
+    // but we are only going to use the cached high offset here.
+    auto err =
+        _consumer->get_watermark_offsets(_options.topicName, _options.partition, &low, &high);
+
+    if (err != RdKafka::ERR_NO_ERROR) {
+        LOGV2_INFO(9092701,
+                   "Could not get latest offset at broker",
+                   "partition"_attr = _options.partition,
+                   "err"_attr = err);
+        return boost::none;
+    }
+
+    return high;
+}
+
 void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
     int32_t numActiveDocVecs{0};
     {

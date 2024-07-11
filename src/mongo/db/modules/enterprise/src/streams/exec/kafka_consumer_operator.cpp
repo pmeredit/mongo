@@ -33,6 +33,10 @@
 
 namespace streams {
 
+namespace {
+MONGO_FAIL_POINT_DEFINE(slowKafkaSource);
+}
+
 using namespace mongo;
 
 KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
@@ -538,6 +542,10 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
         auto sourceDocs = consumerInfo.consumer->getDocuments();
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
+
+        if (MONGO_unlikely(slowKafkaSource.shouldFail())) {
+            sleepFor(Seconds{2});
+        }
 
         // Handle idleness time out.
         if (consumerInfo.partitionIdleTimeoutMs != stdx::chrono::milliseconds(0)) {
@@ -1052,10 +1060,17 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
             currentOffset = *consumerStartOffset;
         }
 
+        boost::optional<int64_t> offsetLag;
+        auto brokerHighOffset = consumerInfo.consumer->getLatestOffsetAtBroker();
+        if (brokerHighOffset && *brokerHighOffset >= currentOffset) {
+            offsetLag = *brokerHighOffset - currentOffset;
+        }
+
         states.push_back(
             KafkaConsumerPartitionState{.partition = consumerInfo.partition,
                                         .currentOffset = currentOffset,
-                                        .checkpointOffset = consumerInfo.checkpointOffset});
+                                        .checkpointOffset = consumerInfo.checkpointOffset,
+                                        .partitionOffsetLag = offsetLag});
     }
 
     return states;

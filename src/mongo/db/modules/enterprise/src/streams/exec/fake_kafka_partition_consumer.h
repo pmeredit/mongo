@@ -47,6 +47,10 @@ private:
         return _startOffset;
     }
 
+    boost::optional<int64_t> doGetLatestOffsetAtBroker() const override {
+        return boost::none;
+    }
+
     boost::optional<int64_t> doGetNumPartitions() const override {
         MONGO_UNREACHABLE;
     }

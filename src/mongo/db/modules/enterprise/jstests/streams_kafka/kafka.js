@@ -305,8 +305,8 @@ function generateInput(count = null) {
     }
     return input;
 }
-function insertData(coll) {
-    const input = generateInput();
+function insertData(coll, count = null) {
+    const input = generateInput(count);
     sourceColl1.insertMany(input);
     return input;
 }
@@ -949,17 +949,107 @@ function testKafkaAsyncError() {
     stopStreamProcessor(startCmd.name);
 }
 
+// Starts a mongo->kafka->mongo setup and tests that in the SP that is
+// processing incoming kafka events, we see an offset lag in the verbose stats
+function testKafkaOffsetLag(
+    {sinkKey, sinkKeyFormat, sinkHeaders, sourceKeyFormat, sourceKeyFormatError, jsonType} = {}) {
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    // Now the Kafka topic exists, and it has at least 1 event in it.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        topicName: topicName1,
+        collName: sinkColl1.getName(),
+        sourceKeyFormat,
+        sourceKeyFormatError
+    });
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => { return checkpointUtils.checkpointIds.length > 0; });
+
+    // Turn on failpoint to slow down the kafka source operator in the stream processor
+    assert.commandWorked(
+        db.adminCommand({'configureFailPoint': 'slowKafkaSource', 'mode': 'alwaysOn'}));
+
+    // Start the mongoToKafka streamProcessor.
+    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
+    // processor.
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicName1,
+        connName: kafkaPlaintextName,
+        sinkKey,
+        sinkKeyFormat,
+        sinkHeaders,
+        jsonType
+    })));
+
+    assert.soon(() => {
+        // Write input to the 'sourceColl'.
+        // mongoToKafka reads the source collection and writes to Kafka.
+        // kafkaToMongo reads Kafka and writes to the sink collection.
+        sleep(1000);
+        insertData(sourceColl1, 1000);
+        const verboseStats = getStats(kafkaToMongoName);
+        assert.eq(verboseStats["ok"], 1);
+        jsTestLog(verboseStats);
+        const kafkaPartitions = verboseStats['kafkaPartitions'];
+        if (!kafkaPartitions[0].hasOwnProperty('partitionOffsetLag')) {
+            return false;
+        }
+        assert.eq(kafkaPartitions[0]['partitionOffsetLag'], verboseStats['kafkaTotalOffsetLag']);
+        // We have inserted 10000 docs and are running with the slowKafkaSource failpoint which
+        // will cause the SP to process one message a second.
+        return kafkaPartitions[0]['partitionOffsetLag'] > 0;
+    });
+
+    // Now disable the failpoint and ensure that the lag eventually falls to 0
+    assert.commandWorked(db.adminCommand({'configureFailPoint': 'slowKafkaSource', 'mode': 'off'}));
+
+    assert.soon(() => {
+        const verboseStats = getStats(kafkaToMongoName);
+        assert.eq(verboseStats["ok"], 1);
+        jsTestLog(verboseStats);
+        const kafkaPartitions = verboseStats['kafkaPartitions'];
+        if (!kafkaPartitions[0].hasOwnProperty('partitionOffsetLag')) {
+            return false;
+        }
+        assert.eq(kafkaPartitions[0]['partitionOffsetLag'], verboseStats['kafkaTotalOffsetLag']);
+        return kafkaPartitions[0]['partitionOffsetLag'] == 0;
+    });
+
+    // Stop the streamProcessors.
+    stopStreamProcessor(kafkaToMongoName);
+    stopStreamProcessor(mongoToKafkaName);
+}
+
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka,
              () => mongoToKafkaToMongoMaintainStreamMeta({$limit: 1} /* nonGroupWindowStage */));
-runKafkaTest(
-    kafka, () => mongoToKafkaToMongoMaintainStreamMeta({$sort: {a: 1}} /* nonGroupWindowStage */));
+runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({
+                        $sort: {a: 1}
+                    } /* nonGroupWindowStage
+                       */));
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 runKafkaTest(kafka, kafkaStartAtEarliestTest);
+
+// offset lag in verbose stats
+runKafkaTest(kafka, testKafkaOffsetLag);
 
 numDocumentsToInsert = 100000;
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);

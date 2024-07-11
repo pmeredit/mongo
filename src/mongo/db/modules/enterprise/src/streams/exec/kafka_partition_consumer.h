@@ -132,6 +132,8 @@ private:
     // Returns _startOffset.
     boost::optional<int64_t> doGetStartOffset() const override;
 
+    boost::optional<int64_t> doGetLatestOffsetAtBroker() const override;
+
     // Returns _numPartitions.
     boost::optional<int64_t> doGetNumPartitions() const override;
 
