@@ -75,9 +75,7 @@ public:
     ChangeStreamSourceOperator(Context* context, Options options);
     ~ChangeStreamSourceOperator() override;
 
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getCurrentState() const {
-        return _state.getStartingPoint();
-    }
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getCurrentState() const;
 
     bool hasUncheckpointedState() const {
         return _resumeTokenAdvancedSinceLastCheckpoint;

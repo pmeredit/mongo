@@ -797,4 +797,23 @@ boost::optional<mongo::BSONObj> ChangeStreamSourceOperator::doGetLastCommittedSt
     return boost::none;
 }
 
+boost::optional<std::variant<BSONObj, Timestamp>> ChangeStreamSourceOperator::getCurrentState()
+    const {
+    auto startingPoint = _state.getStartingPoint();
+    if (!startingPoint) {
+        return boost::none;
+    }
+    if (holds_alternative<BSONObj>(*startingPoint)) {
+        auto bson = get<BSONObj>(*startingPoint);
+        bson.makeOwned();
+        return boost::make_optional(std::variant<BSONObj, Timestamp>(std::move(bson)));
+    } else {
+        tassert(9233400,
+                "Expected timestamp startingPoint",
+                holds_alternative<Timestamp>(*startingPoint));
+        return boost::make_optional(
+            std::variant<BSONObj, Timestamp>(get<Timestamp>(*startingPoint)));
+    }
+}
+
 }  // namespace streams
