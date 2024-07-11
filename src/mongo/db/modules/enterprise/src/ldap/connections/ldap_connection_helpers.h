@@ -425,7 +425,8 @@ private:
     static LDAPQuery makeRootDSEQuery() {
         auto swRootDSEQuery =
             LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
-        invariant(swRootDSEQuery.isOK());  // This isn't user configurable, so should never fail
+        invariant(
+            swRootDSEQuery.getStatus());  // This isn't user configurable, so should never fail
 
         auto swQuery = LDAPQuery::instantiateQuery(swRootDSEQuery.getValue(),
                                                    LDAPQueryContext::kLivenessCheck);

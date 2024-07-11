@@ -234,7 +234,7 @@ OpTimeAndWallTime FileCopyBasedInitialSyncer::_getTopOfOplogOpTimeAndWallTime(
 
     auto optimeAndWallTime =
         OpTimeAndWallTime::parseOpTimeAndWallTimeFromOplogEntry(oplogEntryBSON);
-    invariant(optimeAndWallTime.isOK(),
+    invariant(optimeAndWallTime.getStatus(),
               str::stream() << "Found an invalid oplog entry: " << oplogEntryBSON
                             << ", error: " << optimeAndWallTime.getStatus());
 

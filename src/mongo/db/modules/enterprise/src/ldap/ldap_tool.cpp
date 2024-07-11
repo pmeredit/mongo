@@ -320,7 +320,7 @@ int ldapToolMain(int argc, char** argv) {
 
     auto swRootDSEQuery =
         LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
-    invariant(swRootDSEQuery.isOK());  // This isn't user configurable, so should never fail
+    invariant(swRootDSEQuery.getStatus());  // This isn't user configurable, so should never fail
 
     StatusWith<LDAPEntityCollection> swResult = runner->runQuery(
         LDAPQuery::instantiateQuery(swRootDSEQuery.getValue(), LDAPQueryContext::kLivenessCheck)
@@ -381,11 +381,11 @@ int ldapToolMain(int argc, char** argv) {
 
         auto rootDSEForestQuery =
             LDAPQueryConfig::createLDAPQueryConfig("?forestFunctionality?base?(objectclass=*)");
-        invariant(rootDSEForestQuery.isOK());
+        invariant(rootDSEForestQuery.getStatus());
 
         auto initialQueryResults = LDAPQuery::instantiateQuery(rootDSEForestQuery.getValue(),
                                                                LDAPQueryContext::kLivenessCheck);
-        invariant(initialQueryResults.isOK());
+        invariant(initialQueryResults.getStatus());
 
         StatusWith<LDAPEntityCollection> forestQueryResults =
             runner->runQuery(initialQueryResults.getValue(),
