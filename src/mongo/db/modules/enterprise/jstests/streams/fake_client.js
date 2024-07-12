@@ -184,11 +184,16 @@ export class StreamProcessor {
     }
 
     // `stats` returns the stats corresponding to this stream processor.
-    stats(verbose = true) {
+    stats(verbose = true, scale = 1) {
         assert(!this._isUsingAtlas, "Not supported against real Atlas");
 
-        const res = this._db.runCommand(
-            {streams_getStats: '', tenantId: this._tenantId, name: this._name, verbose});
+        const res = this._db.runCommand({
+            streams_getStats: '',
+            tenantId: this._tenantId,
+            name: this._name,
+            scale: scale,
+            verbose
+        });
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;

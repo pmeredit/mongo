@@ -135,6 +135,24 @@ import {
         verboseStats["operatorStats"].reduce((sum, stats) => sum + stats["stateSize"], 0);
     assert.eq(totalStateSize, verboseStats['stateSize']);
 
+    // Verify scaled stats match expected results.
+    const scaleFactor = 10;
+    const verboseScaledStats = stream.stats(true /* verbose */, scaleFactor);
+    jsTestLog(verboseScaledStats);
+    assert.eq(verboseScaledStats['inputMessageSize'],
+              verboseStats['inputMessageSize'] / scaleFactor);
+    assert.eq(verboseScaledStats['outputMessageSize'],
+              verboseStats['outputMessageSize'] / scaleFactor);
+    assert.eq(verboseScaledStats['stateSize'], verboseStats['stateSize'] / scaleFactor);
+    assert.eq(verboseScaledStats['memoryTrackerBytes'],
+              verboseStats['memoryTrackerBytes'] / scaleFactor);
+    const sourceScaledStats = verboseScaledStats['operatorStats'][0];
+    assert.eq(sourceScaledStats['inputMessageSize'], sourceStats['inputMessageSize'] / scaleFactor);
+    const groupScaledStats = verboseScaledStats['operatorStats'][1];
+    assert.eq(groupScaledStats['stateSize'], groupStats['stateSize'] / scaleFactor);
+    const sinkScaledStats = verboseScaledStats['operatorStats'][2];
+    assert.eq(sinkScaledStats['stateSize'], sinkStats['stateSize'] / scaleFactor);
+
     stream.stop();
 })();
 
@@ -197,10 +215,10 @@ import {
             (operatorStats) => operatorStats.name === "GroupOperator");
         const otherOperatorStats =
             stats['operatorStats'].filter((operatorStats) => operatorStats.name != "GroupOperator");
-        if (groupOperatorStats.length === 1 && groupOperatorStats[0].executionTime >= 1) {
+        if (groupOperatorStats.length === 1 && groupOperatorStats[0].executionTimeSecs >= 1) {
             assert(otherOperatorStats.length > 0);
             for (let operatorStats of otherOperatorStats) {
-                assert.lt(operatorStats.executionTime, groupOperatorStats[0].executionTime);
+                assert.lt(operatorStats.executionTimeSecs, groupOperatorStats[0].executionTimeSecs);
             }
             return true;
         }

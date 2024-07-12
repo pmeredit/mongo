@@ -84,26 +84,26 @@ structs:
                 type: safeInt64
             inputMessageSize:
                 description: Total number of input bytes read, including docs that were rejected.
-                type: safeInt64
+                type: safeDouble
             outputMessageCount:
                 description: Total number of output messages emitted.
                 type: safeInt64
             outputMessageSize:
                 description: Total number of output bytes emitted.
-                type: safeInt64
+                type: safeDouble
             dlqMessageCount:
                 description: Total number of input messages that were rejected and sent to the dead letter queue.
                 type: safeInt64
             dlqMessageSize:
                 description: Total number of bytes sent to the dead letter queue.
-                type: safeInt64
+                type: safeDouble
             stateSize:
                 description: Total state size of the operator.
-                type: safeInt64
+                type: safeDouble
             maxMemoryUsage:
                 description: Max memory usage of the operator thus far.
-                type: safeInt64
-            executionTime:
+                type: safeDouble
+            executionTimeSecs:
                 description: Total execution time of the operator (in seconds).
                 type: seconds 
 
@@ -184,13 +184,13 @@ structs:
                 type: safeInt64
             dlqMessageSize:
                 description: Total number of bytes sent to the DLQ
-                type: safeInt64
+                type: safeDouble
             stateSize:
                 description: Number of bytes that the window operators are using to store state.
-                type: safeInt64
+                type: safeDouble
             memoryTrackerBytes:
                 description: Number of bytes used by the worker.
-                type: safeInt64
+                type: safeDouble
             operatorStats:
                 description: Stats broken down by operator. This is only populated when requesting for stats in verbose mode.
                 type: array<VerboseOperatorStats>

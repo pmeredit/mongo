@@ -1213,9 +1213,9 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     reply.setOutputMessageCount(summaryStats.numOutputDocs);
     reply.setOutputMessageSize(double(summaryStats.numOutputBytes) / scale);
     reply.setDlqMessageCount(summaryStats.numDlqDocs);
-    reply.setDlqMessageSize(summaryStats.numDlqBytes);
-    reply.setStateSize(summaryStats.memoryUsageBytes);
-    reply.setMemoryTrackerBytes(_memoryAggregator->getCurrentMemoryUsageBytes());
+    reply.setDlqMessageSize(double(summaryStats.numDlqBytes) / scale);
+    reply.setStateSize(double(summaryStats.memoryUsageBytes) / scale);
+    reply.setMemoryTrackerBytes(double(_memoryAggregator->getCurrentMemoryUsageBytes()) / scale);
 
     if (summaryStats.watermark >= 0) {
         reply.setWatermark(Date_t::fromMillisSinceEpoch(summaryStats.watermark));
@@ -1261,13 +1261,13 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
             auto& s = operatorStats[i];
             out.push_back({s.operatorName,
                            s.numInputDocs,
-                           s.numInputBytes,
+                           (double)s.numInputBytes / scale,
                            s.numOutputDocs,
-                           s.numOutputBytes,
+                           (double)s.numOutputBytes / scale,
                            s.numDlqDocs,
-                           s.numDlqBytes,
-                           s.memoryUsageBytes,
-                           s.maxMemoryUsageBytes,
+                           (double)s.numDlqBytes / scale,
+                           (double)s.memoryUsageBytes / scale,
+                           (double)s.maxMemoryUsageBytes / scale,
                            mongo::duration_cast<Seconds>(s.executionTime)});
         }
         reply.setOperatorStats(std::move(out));
