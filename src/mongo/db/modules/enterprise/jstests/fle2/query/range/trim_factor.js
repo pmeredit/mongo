@@ -124,26 +124,31 @@ const LONGMAX = NumberLong("9223372036854775807");
 const DATEMIN = new Date(INTMIN * 2);
 const DATEMAX = new Date(INTMAX * 2);
 
-runCreateCollectionTest(true, "int", 31, INTMIN, INTMAX);
-runCreateCollectionTest(true, "int", 31);
+runCreateCollectionTest(true, "int", 3, INTMIN, INTMAX);
+runCreateCollectionTest(true, "int", 3);
 runCreateCollectionTest(false, "int", 32, INTMIN, INTMAX);
 runCreateCollectionTest(false, "int", 32);
+runCreateCollectionTest(false, "int", 20);
 
-runCreateCollectionTest(true, "long", 63, LONGMIN, LONGMAX);
-runCreateCollectionTest(true, "long", 63);
+runCreateCollectionTest(true, "long", 3, LONGMIN, LONGMAX);
+runCreateCollectionTest(true, "long", 3);
 runCreateCollectionTest(false, "long", 64, LONGMIN, LONGMAX);
 runCreateCollectionTest(false, "long", 64);
+runCreateCollectionTest(false, "long", 20);
 
-runCreateCollectionTest(true, "date", 32, DATEMIN, DATEMAX);
-runCreateCollectionTest(true, "date", 63);
+runCreateCollectionTest(true, "date", 3, DATEMIN, DATEMAX);
+runCreateCollectionTest(true, "date", 6);
 runCreateCollectionTest(false, "date", 33, DATEMIN, DATEMAX);
 runCreateCollectionTest(false, "date", 64);
+runCreateCollectionTest(false, "date", 20);
 
-runCreateCollectionTest(true, "double", 63);
+runCreateCollectionTest(true, "double", 6);
 runCreateCollectionTest(false, "double", 64);
+runCreateCollectionTest(false, "double", 20);
 
-runCreateCollectionTest(true, "decimal", 127);
+runCreateCollectionTest(true, "decimal", 12);
 runCreateCollectionTest(false, "decimal", 128);
+runCreateCollectionTest(false, "decimal", 20);
 
 // Inserts per doc = (# bits in domain + 1) - TF
 runCRUDTest(NumberInt, "int", 2, 3, NumberInt(0), NumberInt(15));
