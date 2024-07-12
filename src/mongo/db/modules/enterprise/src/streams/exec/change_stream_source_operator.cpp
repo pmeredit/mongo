@@ -311,7 +311,18 @@ void ChangeStreamSourceOperator::connectToSource() {
                               status.unsafeReason()};
             spasserted(std::move(status));
         }
-        std::rethrow_exception(std::exception_ptr());
+        if (code == 19) {
+            // mongocxx throws this error code when the watch call fails to connect to the target.
+            // This is one of the places where mongocxx error codes don't align with the server
+            // error codes:
+            //   - {code: 19, name: CannotReuseObject}
+            SPStatus status = mongocxxExceptionToStatus(e, *_uri, _errorPrefix);
+            status =
+                SPStatus{Status{ErrorCodes::StreamProcessorAtlasConnectionError, status.toString()},
+                         status.unsafeReason()};
+            spasserted(std::move(status));
+        }
+        std::rethrow_exception(std::current_exception());
     }
 
     _it = mongocxx::change_stream::iterator();

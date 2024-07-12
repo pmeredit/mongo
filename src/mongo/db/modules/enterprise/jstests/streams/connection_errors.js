@@ -51,6 +51,44 @@ function badDBSourceStartError() {
     assert.eq(errmsg, result.errmsg);
 }
 
+function badDBSourceStartErrorWithStartAtOperationTime() {
+    const badUri = "mongodb://127.0.0.1:9123";
+    const dbConnectionName = "db1";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const spName = "sp1";
+    const connectionRegistry = [{
+        name: dbConnectionName,
+        type: 'atlas',
+        options: {
+            uri: badUri,
+        }
+    }];
+    // Calls streams_startStreamProcessor with a bad $source.
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: spName,
+        processorId: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: dbConnectionName,
+                    db: dbName,
+                    coll: inputCollName,
+                    config: {startAtOperationTime: db.hello().$clusterTime.clusterTime}
+                }
+            },
+            {$emit: {connectionName: "__testMemory"}}
+        ],
+        connections: connectionRegistry,
+        options: {featureFlags: {}}
+    });
+    assert.commandFailed(result);
+    assert.eq(ErrorCodes.StreamProcessorAtlasConnectionError, result.code);
+    assert(result.errmsg.includes(`Change stream $source test.testin failed`));
+}
+
 function badKafkaSourceStartError() {
     const spName = "sp2";
     const badUri = 'foohost:9092';
@@ -781,6 +819,7 @@ function timeseriesEmitUpdateFailure() {
 }
 
 badDBSourceStartError();
+badDBSourceStartErrorWithStartAtOperationTime();
 badKafkaSourceStartError();
 badMergeStartError();
 badMerge_WithOn_StartError();
