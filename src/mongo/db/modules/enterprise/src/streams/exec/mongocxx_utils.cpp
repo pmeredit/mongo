@@ -10,6 +10,7 @@
 #include <mongocxx/uri.hpp>
 
 #include "mongo/db/service_context.h"
+#include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/util/exception.h"
 
@@ -101,6 +102,11 @@ SPStatus mongocxxExceptionToStatus(const mongocxx::exception& ex,
         {ErrorCodes::Error{13053}, ErrorCodes::StreamProcessorAtlasConnectionError},
         // User can cause unauthorized errors if they configure their stream processor's auth wrong.
         {ErrorCodes::Unauthorized, ErrorCodes::StreamProcessorAtlasUnauthorizedError},
+        // We see this error when the target cluster is paused.
+        {ErrorCodes::NotWritablePrimary, ErrorCodes::StreamProcessorAtlasConnectionError},
+        // We see this error when the user gives us insufficient auth to query the config
+        // collection.
+        {ErrorCodes::Error{8000}, ErrorCodes::StreamProcessorAtlasUnauthorizedError},
     };
 
     ErrorCodes::Error code{ex.code().value()};
@@ -110,6 +116,10 @@ SPStatus mongocxxExceptionToStatus(const mongocxx::exception& ex,
     } else if (ErrorCodes::isNetworkError(code) || ErrorCodes::isShutdownError(code) ||
                ErrorCodes::isCancellationError(code)) {
         // Translate all other network and shutdown errors into StreamProcessorAtlasConnectionError.
+        code = ErrorCodes::StreamProcessorAtlasConnectionError;
+    } else if (code == ErrorCodes::Error{4} &&
+               str::contains(StringData{ex.what()}, "socket error or timeout")) {
+        // We see this error when the target cluster is paused.
         code = ErrorCodes::StreamProcessorAtlasConnectionError;
     }
     auto errorMsg = fmt::format("{}: {}", errorPrefix, sanitizeMongocxxErrorMsg(ex.what(), uri));
