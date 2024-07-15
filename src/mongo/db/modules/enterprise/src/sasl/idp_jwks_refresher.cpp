@@ -50,7 +50,10 @@ StatusWith<bool> IDPJWKSRefresher::refreshKeys(const JWKSFetcherFactory& factory
     // authenticated with tokens signed by now-evicted keys would not have been invalidated. Use a
     // snapshot of the original key material to compare the current key manager's keys with the
     // newly created one.
-    const auto& oldKeys = _keyManager->getKeys();
+    // We create a new shared_ptr pointing to the same underlying object as _keyManager to prevent
+    // `use after free` in the case where oidcRefreshKeys is called and the underlying JWKManager
+    // is deleted while we were comparing old keys with new ones.
+    auto oldKeyManager = getKeyManager();
     auto newKeyManager = std::make_shared<crypto::JWKManager>(factory.makeJWKSFetcher(_issuer));
 
     auto keyRefreshStatus = newKeyManager->loadKeys();
@@ -67,18 +70,20 @@ StatusWith<bool> IDPJWKSRefresher::refreshKeys(const JWKSFetcherFactory& factory
 
     // If a key was removed from our keyManager during our process of just in time refresh we will
     // set the flag for invalidation.
-    auto oldKeyManager = std::atomic_exchange(&_keyManager, std::move(newKeyManager));  // NOLINT
+    std::atomic_exchange(&_keyManager, std::move(newKeyManager));  // NOLINT
     bool invalidate = oldKeyManager->getIsKeyModified() ||
-        std::any_of(oldKeys.cbegin(), oldKeys.cend(), [&](const auto& entry) {
-                          auto newKey = newKeys.find(entry.first);
-                          if (newKey == newKeys.end()) {
-                              // Key no longer exists in this JWKS.
-                              return true;
-                          }
+        std::any_of(oldKeyManager->getKeys().cbegin(),
+                    oldKeyManager->getKeys().cend(),
+                    [&](const auto& entry) {
+                        auto newKey = newKeys.find(entry.first);
+                        if (newKey == newKeys.end()) {
+                            // Key no longer exists in this JWKS.
+                            return true;
+                        }
 
-                          // If the original key material has changed, then go ahead and invalidate.
-                          return entry.second.woCompare(newKey->second) != 0;
-                      });
+                        // If the original key material has changed, then go ahead and invalidate.
+                        return entry.second.woCompare(newKey->second) != 0;
+                    });
 
     _lastRefresh = Date_t::now();
 
