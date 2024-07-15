@@ -112,6 +112,7 @@ runCreateCollectionTest(true, "int", 0, NumberInt(0), NumberInt(1));
 runCreateCollectionTest(false, "int", 1, NumberInt(0), NumberInt(1));
 runCreateCollectionTest(true, "int", 1, NumberInt(0), NumberInt(2));
 runCreateCollectionTest(false, "int", 2, NumberInt(0), NumberInt(2));
+runCreateCollectionTest(true, "int", undefined, NumberInt(0), NumberInt(2));  // use defalt tf
 
 const INTMIN = NumberInt("-2147483648");
 const INTMAX = NumberInt("2147483647");
@@ -161,3 +162,14 @@ runCRUDTest((x) => new Date(NumberLong(x)), "date", 6, 28, DATEMIN, DATEMAX);
 runCRUDTest((x) => new Date(NumberLong(x)), "date", 6, 59);
 runCRUDTest((x) => x, "double", 7, 58);
 runCRUDTest(NumberDecimal, "decimal", 8, 121);
+
+// Test unspecified trimFactor, where domain size (4) is smaller than the default tf (6)
+// Effective tf clamps down to (domain_size - 1), so insert_count = (4+1) - (4-1) = 2
+runCRUDTest(NumberInt, "int", undefined, 2, NumberInt(0), NumberInt(0xF));
+// Test unspecified trim factor, where domain size is equal to the default tf
+// Effective tf clamps down to (domain_size - 1), so insert_count = (6+1) - (6-1) = 2
+runCRUDTest(NumberInt, "int", undefined, 2, NumberInt(0), NumberInt(0x3F));
+// Test unspecified trim factor, where domain size is greater than the default tf (6)
+// Effective tf is the default tf
+runCRUDTest(NumberInt, "int", undefined, 2, NumberInt(0), NumberInt(0x7F));
+runCRUDTest(NumberInt, "int", undefined, 3, NumberInt(0), NumberInt(0xFF));

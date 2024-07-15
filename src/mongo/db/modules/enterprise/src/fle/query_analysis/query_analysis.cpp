@@ -1540,7 +1540,7 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
     edgesInfo.setIndexMin(indexBounds["0"]);
     edgesInfo.setIndexMax(indexBounds["1"]);
     edgesInfo.setPrecision(indexConfig.getPrecision());
-    edgesInfo.setTrimFactor(indexConfig.getTrimFactor().value_or(kFLERangeTrimFactorDefault));
+    edgesInfo.setTrimFactor(indexConfig.getTrimFactor());
     findSpec.setEdgesInfo(edgesInfo);
 
     findSpec.setPayloadId(payloadId);
