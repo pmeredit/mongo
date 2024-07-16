@@ -4,6 +4,8 @@
 
 #include "streams/exec/context.h"
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 namespace streams {
 
 mongo::BSONObj Context::toBSON() const {
@@ -17,6 +19,14 @@ Context::~Context() {
     // order of the member variables in Context which can be brittle, we
     // force it to be destructed first here.
     checkpointStorage.reset();
+}
+
+mongo::BSONObj toBSON(Context* context) {
+    if (!context) {
+        LOGV2_WARNING(76898, "context is nullptr during log");
+        return mongo::BSONObj();
+    }
+    return context->toBSON();
 }
 
 }  // namespace streams

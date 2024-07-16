@@ -20,14 +20,6 @@ MetricManager::LabelsVec getDefaultMetricLabels(Context* context) {
     return labels;
 }
 
-mongo::BSONObj toBSON(Context* context) {
-    if (!context) {
-        LOGV2_WARNING(76898, "context is nullptr during log");
-        return mongo::BSONObj();
-    }
-    return context->toBSON();
-}
-
 mongo::BSONObj toBSON(const StreamDataMsg& msg) {
     return msg.toBSONForLogging();
 }

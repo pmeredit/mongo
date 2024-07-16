@@ -74,7 +74,14 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
         // Note: right now we can always commit a checkpoint once the (one and only)
         // Sink receives it. This needs improvement when we support multiple sinks.
         _context->dlq->flush();
+        Timer flushTimer;
         flush();
+        if (Seconds{flushTimer.seconds()} > Seconds{30}) {
+            LOGV2_INFO(76453,
+                       "flushing the sink queue took a long time",
+                       "context"_attr = _context,
+                       "flushDuration"_attr = Seconds{flushTimer.seconds()});
+        }
         _context->checkpointStorage->addStats(
             controlMsg.checkpointMsg->id, _operatorId, getStats());
         _context->checkpointStorage->commitCheckpoint(controlMsg.checkpointMsg->id);

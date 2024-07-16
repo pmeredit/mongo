@@ -78,4 +78,7 @@ struct Context {
     ~Context();
 };
 
+// This function allows Context* to be used in LOG statements.
+mongo::BSONObj toBSON(Context* context);
+
 }  // namespace streams

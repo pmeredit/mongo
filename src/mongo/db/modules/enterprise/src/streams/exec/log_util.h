@@ -35,9 +35,6 @@ struct Context;
 // Get default labels for a specific streamProcessor's metrics.
 MetricManager::LabelsVec getDefaultMetricLabels(Context* context);
 
-// This function allows Context* to be used in LOG statements.
-mongo::BSONObj toBSON(Context* context);
-
 // Allows StreamDataMsg to be use in LOGV2 statements.
 mongo::BSONObj toBSON(const StreamDataMsg& msg);
 
