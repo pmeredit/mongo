@@ -554,6 +554,10 @@ commands:
                 description: "If true, more details are returned about each stream processor."
                 type: bool
                 default: false
+            processorId:
+                description: "If set, list specific stream processor."
+                type: string
+                optional: true
 
     streams_writeCheckpoint:
         description: "Request a stream processor to write a checkpoint"

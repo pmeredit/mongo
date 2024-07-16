@@ -1302,6 +1302,10 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
             streamProcessors.reserve(tenantIter.second->processors.size());
         }
         for (auto& [name, processorInfo] : tenantIter.second->processors) {
+            if (request.getProcessorId() &&
+                processorInfo->context->streamProcessorId != *request.getProcessorId()) {
+                continue;
+            }
             ListStreamProcessorsReplyItem replyItem;
             replyItem.setNs(processorInfo->context->expCtx->ns);
             replyItem.setTenantId(processorInfo->context->tenantId);
