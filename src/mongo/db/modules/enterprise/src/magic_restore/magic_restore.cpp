@@ -712,13 +712,25 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
 }
 
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
+    BSONObjBuilder magicRestoreTimeElapsedBuilder;
+    BSONObjBuilder magicRestoreInfoBuilder;
+
+    Date_t beginMagicRestore = svcCtx->getFastClockSource()->now();
+
     LOGV2(8290800, "Beginning magic restore");
     auto opCtx = cc().makeOperationContext();
 
     LOGV2(8290608, "Reading magic restore configuration from stdin");
+
     auto reader = BSONStreamReader(std::cin);
-    auto restoreConfig =
-        RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"), reader.getNext());
+    RestoreConfiguration restoreConfig;
+    {
+        TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                  "Reading magic restore configuration",
+                                                  &magicRestoreTimeElapsedBuilder);
+        restoreConfig =
+            RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"), reader.getNext());
+    }
 
     // Take unstable checkpoints from here on out. Nothing done as part of a restore is replication
     // rollback safe.
@@ -745,11 +757,18 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
           "Truncating oplog to max checkpoint timestamp",
           "maxCheckPointTs"_attr = restoreConfig.getMaxCheckpointTs());
     auto replProcess = repl::ReplicationProcess::get(svcCtx);
-    replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
-        opCtx.get(), restoreConfig.getMaxCheckpointTs());
+    repl::StorageInterface* storageInterface;
+    {
+        TimeElapsedBuilderScopedTimer scopedTimer(
+            svcCtx->getFastClockSource(),
+            "Truncating oplog to max checkpoint timestamp and truncating local DB collections",
+            &magicRestoreTimeElapsedBuilder);
+        replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
+            opCtx.get(), restoreConfig.getMaxCheckpointTs());
 
-    auto* storageInterface = repl::StorageInterface::get(svcCtx);
-    truncateLocalDbCollections(opCtx.get(), storageInterface);
+        storageInterface = repl::StorageInterface::get(svcCtx);
+        truncateLocalDbCollections(opCtx.get(), storageInterface);
+    }
 
     LOGV2(8290811, "Inserting new replica set config");
     fassert(7197102,
@@ -761,9 +780,15 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     const auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp();
     if (pointInTimeTimestamp) {
-        // If the restore is point-in-time, we expect additional objects in the BSON stream.
-        fassert(8290701, reader.hasNext());
-        writeOplogEntriesToOplog(opCtx.get(), reader);
+        {
+            TimeElapsedBuilderScopedTimer scopedTimer(
+                svcCtx->getFastClockSource(),
+                "Inserting additional entries into the oplog for a point-in-time restore",
+                &magicRestoreTimeElapsedBuilder);
+            // If the restore is point-in-time, we expect additional objects in the BSON stream.
+            fassert(8290701, reader.hasNext());
+            writeOplogEntriesToOplog(opCtx.get(), reader);
+        }
         // For a PIT restore, we only want to insert oplog entries with timestamps up to and
         // including the pointInTimeTimestamp. External callers of magic restore should only pass
         // along entries up to the PIT timestamp, but we truncate the oplog after this point to
@@ -771,19 +796,35 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
         LOGV2(8290812,
               "Truncating oplog to PIT timestamp",
               "pointInTimeTimestamp"_attr = pointInTimeTimestamp.get());
-        replProcess->getReplicationRecovery()->truncateOplogToTimestamp(opCtx.get(),
-                                                                        pointInTimeTimestamp.get());
+        {
+            TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                      "Truncating oplog to PIT timestamp",
+                                                      &magicRestoreTimeElapsedBuilder);
+            replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
+                opCtx.get(), pointInTimeTimestamp.get());
+        }
         LOGV2(8290813, "Beginning to apply additional PIT oplog entries");
-        replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(opCtx.get(),
-                                                                           recoveryTimestamp.get());
+        {
+            TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                      "Applying oplog entries for restore",
+                                                      &magicRestoreTimeElapsedBuilder);
+            replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(
+                opCtx.get(), recoveryTimestamp.get());
+        }
     }
 
     if (restoreConfig.getSystemUuids()) {
+        TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                  "Creating internal collections with UUID",
+                                                  &magicRestoreTimeElapsedBuilder);
         createInternalCollectionsWithUuid(
             opCtx.get(), storageInterface, restoreConfig.getSystemUuids().get());
     }
 
     if (restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet) {
+        TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                  "Updating sharding metadata",
+                                                  &magicRestoreTimeElapsedBuilder);
         updateShardingMetadata(opCtx.get(), restoreConfig, storageInterface);
     } else {
         // TODO SERVER-91185: Test this logic in a targeted jstest.
@@ -825,6 +866,9 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     auto autoCreds = restoreConfig.getAutomationCredentials();
     if (autoCreds) {
+        TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                  "Upserting automation credentials",
+                                                  &magicRestoreTimeElapsedBuilder);
         upsertAutomationCredentials(opCtx.get(), autoCreds.get(), storageInterface);
     }
 
@@ -843,7 +887,16 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     // history from the original snapshot.
     opCtx->getServiceContext()->getStorageEngine()->setOldestTimestamp(stableTimestamp, false);
     LOGV2(8290816, "Set stable and oldest timestamps", "ts"_attr = stableTimestamp);
-    LOGV2(8290817, "Finished magic restore");
+
+    mongo::Milliseconds elapsedRestoreTime =
+        svcCtx->getFastClockSource()->now() - beginMagicRestore;
+    magicRestoreTimeElapsedBuilder.append("Magic Restore Tool total elapsed time",
+                                          elapsedRestoreTime.toString());
+    magicRestoreInfoBuilder.append("Statistics", magicRestoreTimeElapsedBuilder.obj());
+
+    LOGV2(8290817,
+          "Finished magic restore",
+          "Summary of time elapsed"_attr = magicRestoreInfoBuilder.obj());
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }
