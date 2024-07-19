@@ -7,6 +7,7 @@
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -114,6 +115,7 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
         outputMsg.docs.emplace_back(std::move(streamDoc));
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
             curDataMsgByteSize >= kDataMsgMaxByteSize) {
+            incOperatorStats({.timeSpent = window->creationTimer.elapsed()});
             sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
             outputMsg = newStreamDataMsg();
         }
@@ -121,6 +123,7 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
     }
 
     if (!outputMsg.docs.empty()) {
+        incOperatorStats({.timeSpent = window->creationTimer.elapsed()});
         sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
     }
 }

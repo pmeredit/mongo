@@ -162,6 +162,7 @@ env.CppUnitTest(
     ],
 )
 
+
 env.CppUnitTest(
     target="window_aware_operator_test",
     source=[
@@ -265,6 +266,17 @@ env.CppUnitTest(
     target="watermark_combiner_test",
     source=[
         "watermark_combiner_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+)
+
+env.CppUnitTest(
+    target="stream_stats_test",
+    source=[
+        "stream_stats_test.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",

@@ -40,6 +40,7 @@ void WindowAwareLimitOperator::doProcessDocs(Window* window,
         doc.streamMeta = window->streamMetaTemplate;
     }
     if (!msg.docs.empty()) {
+        incOperatorStats({.timeSpent = window->creationTimer.elapsed()});
         sendDataMsg(/*outputIdx*/ 0, std::move(msg));
     }
 }

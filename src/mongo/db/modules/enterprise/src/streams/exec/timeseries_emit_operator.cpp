@@ -251,6 +251,7 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
             docBatch.clear();
         }
     }
+    stats.timeSpent = dataMsg.creationTimer->elapsed();
     return stats;
 }
 

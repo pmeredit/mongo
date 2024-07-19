@@ -6,9 +6,11 @@
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
+#include <cstdint>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -124,6 +126,9 @@ void Operator::sendDataMsg(int32_t outputIdx,
             _operatorTimer.unpause();
         }
     });
+    // Reset creation timer of the dataMsg at this point, so that we can calculate timeSpent
+    // accurately.
+    dataMsg.creationTimer = mongo::Timer{};
 
     LOGV2_DEBUG(
         8241200, 1, "sendDataMsg", "operatorName"_attr = getName(), "dataMsg"_attr = dataMsg);

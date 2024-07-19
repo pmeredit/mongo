@@ -68,6 +68,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
             if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
                 curDataMsgByteSize >= kDataMsgMaxByteSize) {
                 // Make sure to not wrap sendDataMsg() calls with a try/catch block.
+                incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
                 sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
                 outputMsg = newStreamDataMsg();
             }
@@ -76,6 +77,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
     invariant(nextInputDocIdx == dataMsg.docs.size());
 
     if (!outputMsg.docs.empty()) {
+        incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
         sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
     }
     if (controlMsg) {

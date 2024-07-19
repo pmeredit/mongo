@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/context.h"
@@ -76,6 +77,9 @@ protected:
         mongo::Status status{mongo::Status::OK()};
         // Stats for this window.
         PerWindowStats stats;
+
+        // creationTimer for this window
+        mongo::Timer creationTimer;
     };
 
     void doStart() override;

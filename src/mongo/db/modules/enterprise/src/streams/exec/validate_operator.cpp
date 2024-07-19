@@ -54,7 +54,9 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
         }
     }
 
-    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
+    incOperatorStats({.numDlqDocs = numDlqDocs,
+                      .numDlqBytes = numDlqBytes,
+                      .timeSpent = dataMsg.creationTimer->elapsed()});
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 

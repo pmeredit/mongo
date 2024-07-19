@@ -220,6 +220,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     for (int i = 0; i < 10; ++i) {
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{_id: {}, a: {}}}", i, i))));
     }
+    dataMsg.creationTimer = mongo::Timer{};
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
@@ -268,7 +269,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     for (int i = 0; i < 10; ++i) {
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{_id: {}, a: {}}}", i, i))));
     }
-
+    dataMsg.creationTimer = mongo::Timer{};
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
@@ -316,7 +317,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     for (int i = 0; i < 10; ++i) {
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{_id: {}, a: {}}}", i, i))));
     }
-
+    dataMsg.creationTimer = mongo::Timer{};
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
@@ -364,7 +365,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     for (int i = 0; i < 10; ++i) {
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{_id: {}, a: {}}}", i, i))));
     }
-
+    dataMsg.creationTimer = mongo::Timer{};
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
@@ -411,7 +412,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
         dataMsg.docs.emplace_back(
             Document(fromjson(fmt::format("{{_id: {}, b: {}, customerId: {}}}", i, i, 100 + i))));
     }
-
+    dataMsg.creationTimer = mongo::Timer{};
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
@@ -478,6 +479,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     streamMetaSource.setOffset(30);
     streamDoc.streamMeta.setSource(streamMetaSource);
     dataMsg.docs.emplace_back(std::move(streamDoc));
+    dataMsg.creationTimer = mongo::Timer{};
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
@@ -543,6 +545,7 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
         mutDoc.addField("value" + std::to_string(i), Value{std::string(documentSize1MB, 'a' + i)});
     }
     StreamDataMsg dataMsg{{mutDoc.freeze()}};
+    dataMsg.creationTimer = mongo::Timer{};
     mergeOperator->onDataMsg(0, dataMsg);
     mergeOperator->flush();
 
@@ -588,6 +591,7 @@ TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
         Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize4MB, 'c')))));
     dataMsg.docs.emplace_back(
         Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'd')))));
+    dataMsg.creationTimer = mongo::Timer{};
 
     mergeOperator->onDataMsg(0, dataMsg);
     mergeOperator->flush();
@@ -607,6 +611,7 @@ TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
         Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize4MB, 'c')))));
     dataMsg2.docs.emplace_back(
         Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'd')))));
+    dataMsg2.creationTimer = mongo::Timer{};
 
     mergeOperator->onDataMsg(0, dataMsg2);
     mergeOperator->flush();
@@ -623,6 +628,7 @@ TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
         Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize3MB, 'c')))));
     dataMsg3.docs.emplace_back(
         Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(documentSize8MB, 'd')))));
+    dataMsg3.creationTimer = mongo::Timer{};
 
     mergeOperator->onDataMsg(0, dataMsg3);
     mergeOperator->flush();
@@ -649,6 +655,7 @@ TEST_F(MergeOperatorTest, BatchLargerThanQueueMaxSize) {
     for (int i = 0; i < docsInBatch; ++i) {
         dataMsg.docs.push_back(generateDoc());
     }
+    dataMsg.creationTimer = mongo::Timer{};
 
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"

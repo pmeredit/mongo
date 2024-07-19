@@ -3,6 +3,7 @@
  */
 #include "streams/exec/merge_operator.h"
 
+#include "mongo/util/duration.h"
 #include "streams/exec/message.h"
 #include "streams/util/exception.h"
 #include <boost/optional.hpp>
@@ -319,6 +320,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
         curBatchByteSize = 0;
     }
 
+    stats.timeSpent = dataMsg.creationTimer->elapsed();
     return stats;
 }
 

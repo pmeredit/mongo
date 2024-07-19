@@ -10,8 +10,17 @@
 #include <vector>
 
 #include "mongo/util/duration.h"
+#include "mongo/util/timer.h"
 
 namespace streams {
+/**
+ * Calculates TimeSpent based on a decay factor.
+ *   uses exponential decay based on elapsed time.  The decay is such that the readings older than 5
+ * minutes would contribute to less than 1 percent.
+ */
+mongo::Microseconds calculateDecayTimeSpent(int64_t currentTimeSpentMicros,
+                                            int64_t previousTimeSpentMicros,
+                                            int64_t timeDeltaMillis);
 
 // Encapsulates stats for an Operator.
 struct OperatorStats {
@@ -32,9 +41,14 @@ struct OperatorStats {
     int64_t maxMemoryUsageBytes{0};
     // Total execution time (in microseconds) for the operator.
     mongo::Microseconds executionTime{0};
-    // waternark timestamp for the operator
+    // watermark timestamp for the operator
     // right now supported only for source
     int64_t watermark{-1};
+
+    // time spent in this operator
+    mongo::Microseconds timeSpent{0};
+    // lastTimeSpentUpdated timer to be able to decay previous value.
+    mongo::Timer lastTimeSpentUpdated;
 
     OperatorStats& operator+=(const OperatorStats& other) {
         numInputDocs += other.numInputDocs;
@@ -47,6 +61,15 @@ struct OperatorStats {
         maxMemoryUsageBytes =
             std::max(maxMemoryUsageBytes, std::max(memoryUsageBytes, other.maxMemoryUsageBytes));
         executionTime += other.executionTime;
+        // timeSpent needs to be updated whenever an output batch is emitted,
+        // using the arrival time of the batch.
+        // For windows, we use the time when the window is created.
+        if (other.timeSpent > mongo::Microseconds(0)) {
+            auto elapsed = lastTimeSpentUpdated.millis();
+            timeSpent =
+                calculateDecayTimeSpent(other.timeSpent.count(), timeSpent.count(), elapsed);
+            lastTimeSpentUpdated.reset();
+        }
         // watermark is not updated here intentionally.
         return *this;
     }

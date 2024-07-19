@@ -11,6 +11,10 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/util.h"
 
+// If enabled the executor thread will sleep for some time after processing a batch of fetched
+// events
+MONGO_FAIL_POINT_DEFINE(matchOperatorSlowEventProcessing);
+
 namespace streams {
 
 using namespace mongo;
@@ -29,6 +33,10 @@ void MatchOperator::doOnDataMsg(int32_t inputIdx,
     int64_t numDlqDocs{0};
     int64_t numDlqBytes{0};
 
+    if (MONGO_unlikely(matchOperatorSlowEventProcessing.shouldFail())) {
+        sleepFor(Milliseconds{2500});
+    }
+
     for (auto& streamDoc : dataMsg.docs) {
         bool matchResult{false};
         try {
@@ -46,7 +54,9 @@ void MatchOperator::doOnDataMsg(int32_t inputIdx,
         }
     }
 
-    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
+    incOperatorStats({.numDlqDocs = numDlqDocs,
+                      .numDlqBytes = numDlqBytes,
+                      .timeSpent = dataMsg.creationTimer->elapsed()});
 
     // Make sure to not wrap sendDataMsg() calls with a try/catch block.
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));

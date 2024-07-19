@@ -78,12 +78,15 @@ void WindowAwareSortOperator::doCloseWindow(Window* window) {
         outputMsg.docs.emplace_back(std::move(streamDoc));
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
             curDataMsgByteSize >= kDataMsgMaxByteSize) {
+            incOperatorStats({.timeSpent = window->creationTimer.elapsed()});
             sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
             outputMsg = newStreamDataMsg();
         }
     }
-
-    sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), boost::none);
+    if (!outputMsg.docs.empty()) {
+        incOperatorStats({.timeSpent = window->creationTimer.elapsed()});
+        sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), boost::none);
+    }
 }
 
 std::unique_ptr<WindowAwareOperator::Window> WindowAwareSortOperator::doMakeWindow(

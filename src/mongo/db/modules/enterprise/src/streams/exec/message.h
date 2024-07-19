@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/util/timer.h"
 #include "streams/exec/exec_internal_gen.h"
 
 namespace streams {
@@ -99,6 +100,7 @@ struct StreamDocument {
 // Encapsulates the data we want to send from an operator to the next operator.
 struct StreamDataMsg {
     std::vector<StreamDocument> docs;
+    boost::optional<mongo::Timer> creationTimer;
 
     int64_t getSizeBytes() const {
         int64_t out{0};

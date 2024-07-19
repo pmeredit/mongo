@@ -197,6 +197,7 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     for (auto& streamDoc : dataMsg.docs) {
         try {
             processStreamDoc(streamDoc);
+            incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
             numOutputDocs++;
             numOutputBytes += streamDoc.doc.memUsageForSorter();
             if (samplersPresent) {

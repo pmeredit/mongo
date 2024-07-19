@@ -1269,6 +1269,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                            (double)s.memoryUsageBytes / scale,
                            (double)s.maxMemoryUsageBytes / scale,
                            mongo::duration_cast<Seconds>(s.executionTime)});
+            out[i].setTimeSpentMillis(mongo::duration_cast<Milliseconds>(s.timeSpent));
         }
         reply.setOperatorStats(std::move(out));
     }

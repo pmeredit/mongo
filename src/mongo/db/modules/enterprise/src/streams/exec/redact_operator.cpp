@@ -47,7 +47,9 @@ void RedactOperator::doOnDataMsg(int32_t inputIdx,
         streamDoc.doc = std::move(*resultDoc);
         outputMsg.docs.emplace_back(std::move(streamDoc));
     }
-    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
+    incOperatorStats({.numDlqDocs = numDlqDocs,
+                      .numDlqBytes = numDlqBytes,
+                      .timeSpent = dataMsg.creationTimer->elapsed()});
 
     // Make sure to not wrap sendDataMsg() calls with a try/catch block.
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));

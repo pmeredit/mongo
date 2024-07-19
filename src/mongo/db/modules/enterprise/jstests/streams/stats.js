@@ -156,6 +156,56 @@ import {
     stream.stop();
 })();
 
+(function testGetStats_TimeSpent() {
+    const sp = new Streams(TEST_TENANT_ID, [
+        {name: 'db', type: 'atlas', options: {uri: `mongodb://${db.getMongo().host}`}},
+        {
+            name: 'kafka',
+            type: 'kafka',
+            options: {bootstrapServers: 'localhost:9092', isTestKafka: true}
+        },
+    ]);
+    assert.commandWorked(db.adminCommand(
+        {'configureFailPoint': 'matchOperatorSlowEventProcessing', 'mode': 'alwaysOn'}));
+    const source = {
+        $source: {
+            connectionName: 'kafka',
+            topic: 'topic',
+            timeField: {$dateFromString: {'dateString': '$timestamp'}},
+            testOnlyPartitionCount: NumberInt(1),
+        },
+    };
+    const match = {$match: {"value": 1}};
+    const stream = sp.createStreamProcessor('sp0', [source, match, sink.memory]);
+
+    stream.start({featureFlags: {}});
+
+    const documents = [
+        // Two documents with same grouping key (`id`) and `timestamp`, so
+        // they should fall into the same window and the same group within that
+        // window, so only one document should be produced for the following
+        // two input documents from the window operator.
+        {timestamp: "2023-03-03T20:42:29.000Z", id: 1, value: 1},
+        {timestamp: "2023-03-03T20:42:29.000Z", id: 1, value: 1},
+
+        {timestamp: "2023-03-03T20:42:30.000Z", id: 2, value: 1},
+    ];
+    stream.testInsert(...documents);
+
+    // Wait for the two documents to be emitted.
+    assert.soon(() => {
+        jsTestLog(stream.stats());
+        return stream.stats()['outputMessageCount'] == 3;
+    });
+    const stats = stream.stats();
+    jsTestLog(stats);
+    assert.eq(3, stats['inputMessageCount']);
+    const matchOperatorStats =
+        stats['operatorStats'].filter((operatorStats) => operatorStats.name === "MatchOperator");
+    assert.gte(matchOperatorStats[0].timeSpentMillis, 2500);
+    stream.stop();
+})();
+
 (function testGetStats_ExecutionTime() {
     const inputColl = db.input_coll;
     const outColl = db.output_coll;
@@ -213,9 +263,12 @@ import {
         jsTestLog(stats);
         const groupOperatorStats = stats['operatorStats'].filter(
             (operatorStats) => operatorStats.name === "GroupOperator");
+        const unwindOperatorStats = stats['operatorStats'].filter(
+            (operatorStats) => operatorStats.name === "UnwindOperator");
         const otherOperatorStats =
             stats['operatorStats'].filter((operatorStats) => operatorStats.name != "GroupOperator");
-        if (groupOperatorStats.length === 1 && groupOperatorStats[0].executionTimeSecs >= 1) {
+        if (groupOperatorStats.length === 1 && groupOperatorStats[0].executionTimeSecs >= 1 &&
+            unwindOperatorStats.length == 2 && unwindOperatorStats[1].timeSpentMillis >= 1) {
             assert(otherOperatorStats.length > 0);
             for (let operatorStats of otherOperatorStats) {
                 assert.lt(operatorStats.executionTimeSecs, groupOperatorStats[0].executionTimeSecs);

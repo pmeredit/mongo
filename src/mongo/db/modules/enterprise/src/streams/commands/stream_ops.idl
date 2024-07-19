@@ -106,6 +106,10 @@ structs:
             executionTimeSecs:
                 description: Total execution time of the operator (in seconds).
                 type: seconds 
+            timeSpentMillis:
+                description: Total timeSpent in the operator (in milliseconds)
+                type: milliseconds
+                optional: true
 
     StartStreamProcessorReply:
         description: "Response message for streams_startStreamProcessor command"
