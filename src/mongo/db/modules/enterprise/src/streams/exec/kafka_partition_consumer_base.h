@@ -35,7 +35,7 @@ public:
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
         // Maximum number of documents getDocuments() should return per call.
-        int32_t maxNumDocsToReturn{kDataMsgMaxDocSize};
+        int32_t maxNumDocsToReturn{500};
         // Max number of bytes to prefetch across batches.
         int32_t maxPrefetchByteSize{0};
         // Auth related config options like "sasl.username".

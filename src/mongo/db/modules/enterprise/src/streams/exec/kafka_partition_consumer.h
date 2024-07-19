@@ -55,6 +55,8 @@ private:
         struct DocVec {
             DocVec(size_t capacity) {
                 docs.reserve(capacity);
+                // Initialize byteSize with the space used by the vector itself.
+                byteSize = sizeof(KafkaSourceDocument) * docs.capacity();
             }
 
             // Appends the given doc to docs.

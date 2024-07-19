@@ -472,8 +472,17 @@ ConnectionStatus KafkaConsumerOperator::doGetConnectionStatus() {
 int64_t KafkaConsumerOperator::doRunOnce() {
     invariant(!_consumers.empty());
 
-    StreamDataMsg dataMsg;
-    dataMsg.docs.reserve(2 * _options.maxNumDocsToReturn);
+    auto dataMsgMaxDocSize = std::min(_testOnlyDataMsgMaxDocSize, kDataMsgMaxDocSize);
+
+    int32_t curDataMsgByteSize{0};
+    auto newStreamDataMsg = [&]() {
+        StreamDataMsg dataMsg;
+        dataMsg.docs.reserve(dataMsgMaxDocSize + _options.maxNumDocsToReturn);
+        curDataMsgByteSize = 0;
+        return dataMsg;
+    };
+
+    StreamDataMsg dataMsg = newStreamDataMsg();
 
     // Priority queue that contains indices to the corresponding consumer in the `_consumers`
     // slice. The consumers in this priority queue are prioritized based on local watermarks,
@@ -496,7 +505,8 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
     int64_t totalNumInputDocs{0};
     auto maybeFlush = [&](bool force) {
-        if (force || int32_t(dataMsg.docs.size()) >= _options.maxNumDocsToReturn) {
+        if (force || int32_t(dataMsg.docs.size()) >= dataMsgMaxDocSize ||
+            curDataMsgByteSize >= kDataMsgMaxByteSize) {
             boost::optional<StreamControlMsg> newControlMsg = boost::none;
             if (_watermarkCombiner) {
                 newControlMsg = StreamControlMsg{_watermarkCombiner->getCombinedWatermarkMsg()};
@@ -519,22 +529,19 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                     _lastControlMsg = *newControlMsg;
                 }
                 sendDataMsg(/*outputIdx*/ 0, std::move(dataMsg), std::move(newControlMsg));
-                dataMsg = StreamDataMsg{};
+                dataMsg = newStreamDataMsg();
             } else if (newControlMsg) {
                 _lastControlMsg = *newControlMsg;
                 // Note that we send newControlMsg only if it differs from _lastControlMsg.
                 sendControlMsg(/*outputIdx*/ 0, std::move(*newControlMsg));
             }
+            return true;
         }
+        return false;
     };
 
-    // Max number of batches to process on this single run instance.
-    int numBatches{0};
-    int maxBatches = int(_consumers.size());
-
-    // Only count as a processed batch if the consumer partition had documents to process,
-    // otherwise don't add the consumer partition back into the `consumerq` priority queue.
-    while (numBatches < maxBatches && !consumerq.empty()) {
+    bool flushed{false};
+    while (!flushed && !consumerq.empty()) {
         // Prioritize consumers with the lowest local watermark.
         int consumerIdx = consumerq.top();
         consumerq.pop();
@@ -575,7 +582,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
         totalNumInputDocs += numInputDocs;
 
         for (auto& sourceDoc : sourceDocs) {
-            numInputBytes += sourceDoc.sizeBytes;
+            numInputBytes += sourceDoc.messageSizeBytes;
             invariant(!consumerInfo.maxOffset || sourceDoc.offset > *consumerInfo.maxOffset);
             consumerInfo.maxOffset = sourceDoc.offset;
             auto streamDoc =
@@ -585,6 +592,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                     consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
                 }
 
+                curDataMsgByteSize += streamDoc->doc.getApproximateSize();
                 dataMsg.docs.push_back(std::move(*streamDoc));
             } else {
                 // Invalid or late document, inserted into the dead letter queue.
@@ -593,7 +601,8 @@ int64_t KafkaConsumerOperator::doRunOnce() {
         }
 
         if (numInputDocs > 0) {
-            ++numBatches;
+            // Since the partition produced some documents, add it back into the `consumerq`
+            // priority queue.
             consumerq.push(consumerIdx);
         }
 
@@ -604,10 +613,12 @@ int64_t KafkaConsumerOperator::doRunOnce() {
             _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().eventTimeWatermarkMs;
         }
 
-        maybeFlush(/*force*/ false);
+        flushed = maybeFlush(/*force*/ false);
     }
 
-    maybeFlush(/*force*/ true);
+    if (!flushed) {
+        maybeFlush(/*force*/ true);
+    }
 
     return totalNumInputDocs;
 }
@@ -789,7 +800,7 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
             int64_t sizeBytes = inputDocs[j].objsize();
             docs.push_back(
                 KafkaSourceDocument{.doc = std::move(inputDocs[j]),
-                                    .sizeBytes = sizeBytes,
+                                    .messageSizeBytes = sizeBytes,
                                     .logAppendTimeMs = Date_t::now().toMillisSinceEpoch()});
         }
         fakeKafkaPartition->addDocuments(std::move(docs));

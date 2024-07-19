@@ -198,6 +198,7 @@ private:
         ASSERT_EQ(_props.input.size(), _props.source->_consumers.size());
 
         // Setup the consumers with the input.
+        int32_t totalDocsPerChunk{0};
         for (auto& kv : _props.input) {
             const int partition = kv.first;
             auto& input = kv.second;
@@ -209,12 +210,15 @@ private:
             auto consumer = dynamic_cast<FakeKafkaPartitionConsumer*>(consumerIt->consumer.get());
             std::vector<KafkaSourceDocument> sourceDocs;
             for (auto& doc : input.docs) {
-                sourceDocs.push_back(KafkaSourceDocument{.doc = doc, .sizeBytes = doc.objsize()});
+                sourceDocs.push_back(
+                    KafkaSourceDocument{.doc = doc, .messageSizeBytes = doc.objsize()});
             }
+            totalDocsPerChunk += input.docsPerChunk;
             consumer->_docsPerChunk = input.docsPerChunk;
             consumer->_overrideOffsets = true;
             consumer->addDocuments(std::move(sourceDocs));
         }
+        _props.source->_testOnlyDataMsgMaxDocSize = totalDocsPerChunk;
     }
 
     Properties _props;
@@ -401,27 +405,22 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
     // expected number of documents to output in the next
     // loop execution.
     auto expectedNumDocsThisRun = [&]() {
-        size_t result = 0;
-        int64_t numBatches = 0;
-        int64_t maxBatches = input.size();
+        int32_t result = 0;
         int64_t currPartition = 0;
         int64_t totalRemainingDocs = 0;
+        int32_t testOnlyDataMsgMaxDocSize = 5;
 
         for (const auto& [partition, options] : input) {
             totalRemainingDocs += options.docs.size() - currentIdx(partition);
         }
 
-        // We may send more than one batch per partition if another partition has
-        // no batches to send. On every run iteration, we try to send atmost N
-        // batches where N is the number of partitions.
-        while (numBatches < maxBatches && totalRemainingDocs > 0) {
+        while (result < testOnlyDataMsgMaxDocSize && totalRemainingDocs > 0) {
             const auto& options = input[currPartition];
             auto remainingDocs = options.docs.size() - currentIdx(currPartition);
             auto chunkSize = size_t(options.docsPerChunk);
             auto expectedNumDocs = remainingDocs < chunkSize ? remainingDocs : chunkSize;
 
             if (expectedNumDocs > 0) {
-                ++numBatches;
                 inputIdx[currPartition] = inputIdx[currPartition] + expectedNumDocs;
             }
 
@@ -429,7 +428,6 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
             totalRemainingDocs -= expectedNumDocs;
             result += expectedNumDocs;
         }
-
         return result;
     };
 

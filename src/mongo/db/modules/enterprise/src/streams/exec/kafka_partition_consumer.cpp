@@ -43,7 +43,13 @@ static constexpr stdx::chrono::milliseconds kKafkaConsumeCallbackTimeoutMs{1'000
 
 void KafkaPartitionConsumer::DocBatch::DocVec::pushDoc(KafkaSourceDocument doc) {
     dassert(size() < capacity());
-    byteSize += doc.sizeBytes;
+    if (doc.doc) {
+        // TODO: Better buffer management could allow us to pack 2.5x more docs in the
+        // prefetch buffer, currently there seem to be a lot of wastage of capacity.
+        byteSize += doc.doc->sharedBuffer().capacity();
+    } else {
+        byteSize += doc.messageSizeBytes;
+    }
     docs.push_back(std::move(doc));
 }
 
@@ -64,16 +70,19 @@ bool KafkaPartitionConsumer::DocBatch::empty() const {
 
 void KafkaPartitionConsumer::DocBatch::emplaceDocVec(size_t capacity) {
     docVecs.emplace(capacity);
+    auto& docVec = docVecs.back();
+    byteSize += docVec.getByteSize();
 }
 
 void KafkaPartitionConsumer::DocBatch::pushDocToLastDocVec(KafkaSourceDocument doc) {
     auto& docVec = docVecs.back();
     dassert(docVec.size() < docVec.capacity());
     ++numDocs;
-    byteSize -= docVec.getByteSize();
-    dassert(byteSize >= 0);
+    int64_t byteSizePrev = docVec.getByteSize();
     docVec.pushDoc(std::move(doc));
-    byteSize += docVec.getByteSize();
+    int64_t byteSizeDelta = docVec.getByteSize() - byteSizePrev;
+    dassert(byteSizeDelta >= 0);
+    byteSize += byteSizeDelta;
 }
 
 void KafkaPartitionConsumer::DocBatch::pushDocVec(DocVec docVec) {
@@ -273,7 +282,6 @@ OperatorStats KafkaPartitionConsumer::doGetStats() {
     return OperatorStats{.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes()};
 }
 
-
 std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
@@ -431,11 +439,10 @@ void KafkaPartitionConsumer::fetchLoop() {
             if (_finalizedDocBatch.getByteSize() >= _options.maxPrefetchByteSize) {
                 LOGV2_DEBUG(74678,
                             1,
-                            "{partition}: waiting when bytesBuffered: {bytesBuffered}"
-                            " numDocsReturned: {numDocsReturned}",
+                            "{partition}: waiting for consumer",
                             "context"_attr = _context,
                             "partition"_attr = partition(),
-                            "numDocs"_attr = _finalizedDocBatch.numDocs,
+                            "docsBuffered"_attr = _finalizedDocBatch.size(),
                             "bytesBuffered"_attr = _finalizedDocBatch.getByteSize(),
                             "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
                 _consumerThreadWakeUpCond.wait(fLock, [this]() {
@@ -615,7 +622,7 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Messa
 
     sourceDoc.partition = partition();
     sourceDoc.offset = message.offset();
-    sourceDoc.sizeBytes = message.len();
+    sourceDoc.messageSizeBytes = message.len();
     auto keyPointer = static_cast<const uint8_t*>(message.key_pointer());
     if (keyPointer) {
         auto keyLen = message.key_len();

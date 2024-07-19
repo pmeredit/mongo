@@ -67,7 +67,7 @@ public:
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
         // Maximum number of documents getDocuments() should return per call.
-        int32_t maxNumDocsToReturn{kDataMsgMaxDocSize};
+        int32_t maxNumDocsToReturn{500};
         // If true, test kafka partition consumers are used.
         bool isTest{false};
         // Auth related config options like "sasl.username".
@@ -271,6 +271,7 @@ private:
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
+    int32_t _testOnlyDataMsgMaxDocSize{std::numeric_limits<int32_t>::max()};
     // Checkpoint state that has not yet been flushed to remote storage.
     UnflushedStateContainer _unflushedStateContainer;
 

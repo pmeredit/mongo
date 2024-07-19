@@ -30,6 +30,7 @@ using CheckpointId = int64_t;
 enum class WatermarkStatus { kActive, kIdle };
 
 // Encapsulates a document read from Kafka and all the metadata for it.
+// TODO(SERVER-92412): Reduce this struct's size.
 struct KafkaSourceDocument {
     // Exactly one of following 2 fields is ever populated.
     // Contains the BSON document when the input event is successfully parsed.
@@ -44,7 +45,7 @@ struct KafkaSourceDocument {
     int64_t offset{0};
 
     // Size of raw message read from Kafka in bytes.
-    int64_t sizeBytes{0};
+    int64_t messageSizeBytes{0};
 
     // The log append time of this document.
     boost::optional<int64_t> logAppendTimeMs{0};

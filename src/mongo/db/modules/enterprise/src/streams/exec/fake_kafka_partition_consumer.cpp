@@ -62,7 +62,7 @@ OperatorStats FakeKafkaPartitionConsumer::doGetStats() {
     int64_t currentOffset = _currentOffset;
     while (size_t(currentOffset) < _docs.size()) {
         auto& doc = _docs[currentOffset];
-        stats += {.memoryUsageBytes = doc.sizeBytes};
+        stats += {.memoryUsageBytes = doc.messageSizeBytes};
         currentOffset++;
     }
 
