@@ -710,9 +710,8 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
          *      - with setParameter.ttlMonitorEnabled=false
          *      - with no sharding.clusterRole value
          *      - with setParameter.disableLogicalSessionCacheRefresh=true
-         *      - with setParameter.allowUnsafeUntimestampedWrites=true
-         *      - with setParameter.wiredTigerSkipTableLoggingChecksOnStartup=true
-         * This matches what Cloud does today.
+         * These settings may not actually be necessary, but this matches what Cloud does today and
+         * could be re-evaluated in the future.
          *
          * For simplicity, we restore to a single node replica set. In practice we'd want to
          * do the same procedure on each shard server in the destination cluster.
@@ -723,12 +722,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         let options = _addServerParams({
             dbpath: restorePath,
             noCleanData: true,  // Do not delete existing data on startup.
-            setParameter: {
-                ttlMonitorEnabled: false,
-                disableLogicalSessionCacheRefresh: true,
-                allowUnsafeUntimestampedWrites: true,
-                wiredTigerSkipTableLoggingChecksOnStartup: true
-            }
+            setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
         },
                                        isCSRS,
                                        isSelectiveRestore);
@@ -835,19 +829,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
              *      - with setParameter.ttlMonitorEnabled=false
              *      - with no sharding.clusterRole value
              *      - with setParameter.disableLogicalSessionCacheRefresh=true
-             *      - with setParameter.allowUnsafeUntimestampedWrites=true
-             *      - with setParameter.wiredTigerSkipTableLoggingChecksOnStartup=true
-             * This matches what Cloud does today.
+             * These settings may not actually be necessary, but this matches what Cloud does today
+             * and could be re-evaluated in the future.
              */
             options = _addServerParams({
                 dbpath: restorePath,
                 noCleanData: true,
-                setParameter: {
-                    ttlMonitorEnabled: false,
-                    disableLogicalSessionCacheRefresh: true,
-                    allowUnsafeUntimestampedWrites: true,
-                    wiredTigerSkipTableLoggingChecksOnStartup: true
-                }
+                setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
             },
                                        isCSRS,
                                        isSelectiveRestore);
@@ -925,12 +913,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                 dbpath: restorePath,
                 noCleanData: true,
                 restore: '',
-                setParameter: {
-                    ttlMonitorEnabled: false,
-                    disableLogicalSessionCacheRefresh: true,
-                    allowUnsafeUntimestampedWrites: true,
-                    wiredTigerSkipTableLoggingChecksOnStartup: true
-                }
+                setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
             });
             assert.neq(conn, null);
 
@@ -965,22 +948,18 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
          *      - with setParameter.ttlMonitorEnabled=false
          *      - with no sharding.clusterRole value
          *      - with setParameter.disableLogicalSessionCacheRefresh=true
-         *      - with setParameter.allowUnsafeUntimestampedWrites=true
-         *      - with setParameter.wiredTigerSkipTableLoggingChecksOnStartup=true
-         * This matches what Cloud does today.
+         * These settings may not actually be necessary, but this matches what Cloud does today and
+         * could be re-evaluated in the future.
          */
-        options = _addServerParams({
-            dbpath: restorePath,
-            noCleanData: true,
-            setParameter: {
-                ttlMonitorEnabled: false,
-                disableLogicalSessionCacheRefresh: true,
-                allowUnsafeUntimestampedWrites: true,
-                wiredTigerSkipTableLoggingChecksOnStartup: true
-            }
-        },
-                                   isCSRS,
-                                   isSelectiveRestore);
+        options = _addServerParams(
+            {
+                dbpath: restorePath,
+                noCleanData: true,
+                setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
+            },
+            isCSRS,
+            /*isSelectiveRestore=*/ false);  // hard-code selective restore param to false for the
+                                             // final boot at end of restore process.
 
         return MongoRunner.runMongod(options);
     }
