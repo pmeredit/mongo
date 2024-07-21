@@ -42,4 +42,6 @@ private:
         std::chrono::time_point<std::chrono::system_clock>::min()};
 };
 
+int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags);
+
 }  // namespace streams

@@ -6,6 +6,7 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/logv2/log.h"
 #include "streams/exec/connection_status.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/util/exception.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
@@ -23,7 +24,10 @@ using namespace mongo;
 
 QueuedSinkOperator::QueuedSinkOperator(Context* context, int32_t numInputs)
     : SinkOperator(context, numInputs),
-      _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {}
+      _queue(decltype(_queue)::Options{
+          .maxQueueDepth = static_cast<size_t>(getMaxQueueSizeBytes(_context->featureFlags)),
+          .costFunc =
+              QueueCostFunc{.maxSizeBytes = getMaxQueueSizeBytes(_context->featureFlags)}}) {}
 
 void QueuedSinkOperator::doStart() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
@@ -182,6 +186,9 @@ void QueuedSinkOperator::consumeLoop() {
             done = true;
         }
     }
+
+    // This will cause any thread calling _queue.push to throw an exception.
+    _queue.closeConsumerEnd();
 
     // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
     // loop because of an exception, then the flush in the executor thread will fail after

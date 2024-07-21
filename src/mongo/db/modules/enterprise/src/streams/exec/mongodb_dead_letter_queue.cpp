@@ -12,6 +12,7 @@
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/util/metric_manager.h"
 #include <exception>
 #include <mongocxx/exception/exception.hpp>
@@ -24,9 +25,6 @@ using namespace mongo;
 
 namespace {
 
-// Max size of the queue (in bytes) until `push()` starts blocking.
-static constexpr int64_t kQueueMaxSizeBytes = 128 * 1024 * 1024;  // 128 MB
-
 // Max size of each write batch (in bytes) to mongodb.
 static constexpr int64_t kWriteBatchMaxSizeBytes = 1 * 1024 * 1024;  // 1 MB
 
@@ -36,7 +34,9 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
                                                streams::MongoCxxClientOptions options)
     : DeadLetterQueue(context),
       _options(options),
-      _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {
+      _queue(decltype(_queue)::Options{
+          .maxQueueDepth = static_cast<size_t>(getMaxQueueSizeBytes(_context->featureFlags))}) {
+
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = makeMongocxxUri(_options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, _options.toMongoCxxClientOptions());
@@ -195,6 +195,8 @@ void MongoDBDeadLetterQueue::consumeLoop() {
         }
     }
 
+    // This will cause any thread calling _queue.push to throw an exception.
+    _queue.closeConsumerEnd();
 
     // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
     // loop because of an exception, then the flush in the executor thread will fail after

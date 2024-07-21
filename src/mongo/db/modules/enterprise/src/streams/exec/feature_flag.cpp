@@ -53,4 +53,10 @@ const FeatureFlagDefinition FeatureFlags::kKafkaMaxPrefetchByteSize{
     "Maximum buffer size (in bytes) for each Kafka $source partition.",
     mongo::Value(kDataMsgMaxByteSize * 10)};
 
+const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
+    "maxQueueSizeBytes",
+    "Maximum buffer size (in bytes) for a sink queue.",
+    // 128 MB default
+    mongo::Value::createIntOrLong(128 * 1024 * 1024)};
+
 }  // namespace streams

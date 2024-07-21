@@ -5,9 +5,11 @@
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
+    getStats,
     listStreamProcessors,
+    makeRandomString,
     stopStreamProcessor,
-    TEST_TENANT_ID,
+    TEST_TENANT_ID
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 (function() {
@@ -475,6 +477,103 @@ function changeSourceFailsAfterSuccesfulStart() {
     stopStreamProcessor(spName);
 }
 
+function mergeFailsWithFullQueue() {
+    // Start the replset used as the $merge target for the streamProcessor.
+    const mongostream = db;
+    const mergeTarget = new ReplSetTest({
+        name: "streams_mergefails_test",
+        nodes: 1,
+        waitForKeys: false,
+    });
+    mergeTarget.startSet();
+    mergeTarget.initiateWithAnyNodeAsPrimary(
+        Object.extend(mergeTarget.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+    const conn = mergeTarget.getPrimary();
+    const dbName = "test";
+    const dbMergeTarget = conn.getDB(dbName);
+    const mergeTargetUri = 'mongodb://' + dbMergeTarget.getMongo().host;
+    const writeConnection = "mergeTargetThatWillGetKilled";
+    const outputCollName = "testoutput";
+    // Use the default replset for the $merge target and to actually
+    // run the streamProcessor.
+    const connectionRegistry = [
+        {
+            name: writeConnection,
+            type: 'atlas',
+            options: {
+                uri: mergeTargetUri,
+            }
+        },
+        {
+            name: '__testMemory',
+            type: 'in_memory',
+            options: {},
+        }
+    ];
+    const outputColl = dbMergeTarget.getSiblingDB(dbName)[outputCollName];
+    outputColl.drop();
+
+    const spName = "sp1";
+
+    // Each doc is about 2Kb, the unwind will multiple it by 100.
+    // So each input doc leads to 200kB of data.
+    // With 10 input docs that's 2MB.
+    Random.setRandomSeed(42);
+    let array = [];
+    for (let i = 0; i < 100; i += 1) {
+        array.push(i);
+    }
+    let doc = {arr: array, str: makeRandomString(2000)};
+    let input = [];
+    for (let i = 0; i < 20; i += 1) {
+        input.push(doc);
+    }
+
+    // Start the stream processor.
+    assert.commandWorked(mongostream.runCommand({
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: spName,
+        processorId: spName,
+        pipeline: [
+            {$source: {connectionName: "__testMemory"}},
+            {$unwind: "$arr"},
+            {$merge: {into: {connectionName: writeConnection, db: dbName, coll: outputCollName}}}
+        ],
+        connections: connectionRegistry,
+        options: {
+            featureFlags: {
+                // 500kB
+                maxQueueSizeBytes: NumberInt(500000)
+            }
+        }
+    }));
+
+    const batches = 3;
+    for (let i = 0; i < batches; i += 1) {
+        assert.commandWorked(db.runCommand({
+            streams_testOnlyInsert: '',
+            tenantId: TEST_TENANT_ID,
+            name: spName,
+            documents: input
+        }));
+    }
+    // Now kill the $merge replset.
+    mergeTarget.stopSet();
+
+    // Verify the streamProcessor goes into an error state.
+    assert.soon(() => {
+        let result =
+            mongostream.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
+        let sp = result.streamProcessors.find((sp) => sp.name == spName);
+        jsTestLog(getStats(spName));
+        return sp.status == "error";
+    });
+
+    // Stop the streamProcessor.
+    stopStreamProcessor(spName);
+}
+
 // Validate that a stream processor in an error state can be restarted by calling start.
 function startFailedStreamProcessor() {
     const rstSource = new ReplSetTest({
@@ -831,6 +930,7 @@ unparseableMongocxxUri();
 mergeListIndexesAuthFailure();
 mergeUpdateFailure();
 timeseriesEmitUpdateFailure();
+mergeFailsWithFullQueue();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 }());

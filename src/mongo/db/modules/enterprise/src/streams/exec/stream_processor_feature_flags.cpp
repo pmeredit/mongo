@@ -42,4 +42,9 @@ FeatureFlagValue StreamProcessorFeatureFlags::getFeatureFlagValue(
     return featureFlag.defaultValue;
 }
 
+int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(8748200, "Feature flags should be set", featureFlags);
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kMaxQueueSizeBytes).getInt();
+}
+
 }  // namespace streams

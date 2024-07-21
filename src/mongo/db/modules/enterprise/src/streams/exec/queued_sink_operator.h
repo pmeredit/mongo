@@ -47,9 +47,6 @@ protected:
         bool flushSignal{false};
     };
 
-    // Max size of the queue (in bytes) until `push()` starts blocking.
-    static constexpr int64_t kQueueMaxSizeBytes = 128 * 1024 * 1024;  // 128 MB
-
     // Cost function for the queue so that we limit the max queue size based on the
     // byte size of the documents rather than having the same weight for each document.
     struct QueueCostFunc {
@@ -60,14 +57,16 @@ protected:
             }
 
             auto size = msg.data->getSizeBytes();
-            if (size > kQueueMaxSizeBytes) {
+            if (size > maxSizeBytes) {
                 // ProducerConsumerQueue will throw ProducerConsumerQueueBatchTooLarge if a single
                 // item is larger than the max queue size. We want to allow a single large
                 // StreamDataMsg in the queue.
-                return kQueueMaxSizeBytes;
+                return maxSizeBytes;
             }
             return size;
         }
+
+        int64_t maxSizeBytes{0};
     };
 
     // Called from the background consumer thread as it pops data messages from the queue.
