@@ -17,6 +17,7 @@ using namespace mongo;
 namespace streams {
 
 const int ManifestBuilder::kVersion = 1;
+const int ManifestBuilder::kMinAllowedVersion = 1;
 
 void ManifestBuilder::addOpRecord(OperatorId opId, int fileIdx, off_t begOffset, size_t recLen) {
     invariant(recLen);

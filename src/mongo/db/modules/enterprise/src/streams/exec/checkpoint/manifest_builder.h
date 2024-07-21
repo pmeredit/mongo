@@ -51,6 +51,7 @@ public:
     using OpStateRanges = absl::InlinedVector<OpStateRange, 1>;
 
     static const int kVersion;
+    static const int kMinAllowedVersion;
 
     ManifestBuilder(CheckpointId checkpointId,
                     Context* context,

@@ -279,10 +279,11 @@ void LocalDiskCheckpointStorage::doCloseStateWriter(WriterHandle* writer) {
 
 bool LocalDiskCheckpointStorage::validateManifest(const mongo::Manifest& manifest) const {
     int version = manifest.getVersion();
-    tassert(
-        ErrorCodes::InternalError,
-        fmt::format("version mismatch!, expected/actual={}/{}", ManifestBuilder::kVersion, version),
-        ManifestBuilder::kVersion == version);
+    tassert(ErrorCodes::InternalError,
+            fmt::format("Expected version greater than or equal to {}, got {}",
+                        ManifestBuilder::kMinAllowedVersion,
+                        version),
+            version >= ManifestBuilder::kMinAllowedVersion);
 
     return true;
 }
