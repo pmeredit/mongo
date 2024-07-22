@@ -2,7 +2,8 @@
  * A simple case of sharded snapshot backup/restore where the backup was taken with a 'last-lts'
  * binary version.
  *
- * @tags: [requires_wiredtiger,
+ * @tags: [backport_required_multiversion,
+ *         requires_wiredtiger,
  *         requires_persistence]
  */
 

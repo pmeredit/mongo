@@ -2,7 +2,8 @@
  * A simple case of sharded PIT backup/restore where the backup was taken with a 'last-continuous'
  * binary version.
  *
- * @tags: [requires_wiredtiger,
+ * @tags: [backport_required_multiversion,
+ *         requires_wiredtiger,
  *         requires_persistence]
  */
 
