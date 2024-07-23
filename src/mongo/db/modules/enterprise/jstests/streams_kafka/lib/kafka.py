@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import time
+import random
 from typing import Any, Dict, List, Optional
 
 LOGGER = logging.getLogger(__name__)
@@ -188,17 +189,39 @@ def _wait_for_kafka_ready(port, timeout_secs=30):
 
 
 def start(args) -> int:
-    # Start zookeeper
-    ret = _run_process(ZOOKEEPER_START_ARGS)
-    if ret != 0:
-        raise RuntimeError("Failed to start zookeeper with error code: {ret}")
-    _wait_for_port(ZOOKEEPER_PORT)
-    # Start kafka
-    ret = _run_process(_get_kafka_start_args(args.partitions))
-    if ret != 0:
-        raise RuntimeError("Failed to start kafka with error code: {ret}")
-    _wait_for_port(KAFKA_PORT)
-    _wait_for_kafka_ready(KAFKA_PORT)
+    def _start():
+        # Start zookeeper
+        ret = _run_process(ZOOKEEPER_START_ARGS)
+        if ret != 0:
+            raise RuntimeError("Failed to start zookeeper with error code: {ret}")
+        _wait_for_port(ZOOKEEPER_PORT)
+        # Start kafka
+        ret = _run_process(_get_kafka_start_args(args.partitions))
+        if ret != 0:
+            raise RuntimeError("Failed to start kafka with error code: {ret}")
+        _wait_for_port(KAFKA_PORT)
+        _wait_for_kafka_ready(KAFKA_PORT)
+
+    # https://jira.mongodb.org/browse/BF-33895:
+    # On rare ocassion in evergreen, the containers fail to start with an
+    # error like: "fatal error: concurrent map writes".
+    # Looks like this is fixed in newer versions of docker:
+    # https://github.com/docker/compose/issues/10150.
+    # Here we add some retry logic to work around this issue.
+    max_retries = 2
+    retries = 0
+    last_exception = None
+    while retries < max_retries:
+        try:
+            _start()
+            return 0
+        except Exception as e:
+            print(f"Start containers failed with ${e}")
+            retries += 1
+            if retries < max_retries:
+                sleep_secs = random.randint(1, 60)
+                time.sleep(sleep_secs)
+    raise last_exception
 
 
 def stop(args) -> int:
