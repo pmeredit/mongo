@@ -91,7 +91,17 @@ assert.commandWorked(primary.getDB(dbName).runCommand({
 }));
 
 // Start running FSM workloads against the primary.
-const fsmPid = fsmClient(primary.host);
+let fsmPid = 0;
+let attempts = 0;
+
+// Make sure the fsm client does not fail within the first few seconds of running due to some
+// unrelated network error (usually when fetching yml files from a remote location).
+do {
+    jsTestLog("Attempt " + attempts + " of starting up the fsm client");
+    fsmPid = fsmClient(primary.host);
+    attempts += 1;
+    sleep(5 * 1000);
+} while (!checkProgram(fsmPid).alive && attempts < 10);
 
 const importFn = async function(dbName, tid, dbPaths) {
     const {copyFilesForExport, validateImportCollection} = await import(
@@ -140,22 +150,26 @@ importThreads.forEach((waitForThread, tid) => {
 jsTestLog("Finished importing collections");
 
 const fsmStatus = checkProgram(fsmPid);
-assert(fsmStatus.alive,
-       jsTest.name() + ' FSM client was not running at end of test and exited with code: ' +
-           fsmStatus.exitCode);
+// If the fsmClient ran successfully then kill it, otherwise log that it was not running and move
+// on. This is okay since the fsm client would have failed for reasons unrelated to the restore
+// procedure.
+if (fsmStatus.alive) {
+    const kSIGINT = 2;
+    const exitCode = stopMongoProgramByPid(fsmPid, kSIGINT);
+    if (!_isWindows()) {
+        // The mongo shell calls TerminateProcess() on Windows rather than more gracefully
+        // interrupting resmoke.py test execution.
 
-const kSIGINT = 2;
-const exitCode = stopMongoProgramByPid(fsmPid, kSIGINT);
-if (!_isWindows()) {
-    // The mongo shell calls TerminateProcess() on Windows rather than more gracefully
-    // interrupting resmoke.py test execution.
-
-    // resmoke.py may exit cleanly on SIGINT, returning 130 if the suite tests were running and
-    // returning SIGINT otherwise. It may also exit uncleanly, in which case stopMongoProgramByPid
-    // returns -SIGINT. See SERVER-67390 and SERVER-72449.
-    assert(
-        exitCode == 130 || exitCode == -kSIGINT || exitCode == kSIGINT,
-        'expected resmoke.py to exit due to being interrupted, but exited with code: ' + exitCode);
+        // resmoke.py may exit cleanly on SIGINT, returning 130 if the suite tests were running and
+        // returning SIGINT otherwise. It may also exit uncleanly, in which case
+        // stopMongoProgramByPid returns -SIGINT. See SERVER-67390 and SERVER-72449.
+        assert(exitCode == 130 || exitCode == -kSIGINT || exitCode == kSIGINT,
+               'expected resmoke.py to exit due to being interrupted, but exited with code: ' +
+                   exitCode);
+    }
+} else {
+    jsTestLog(jsTest.name() + ' FSM client was not running at end of test and exited with code: ' +
+              fsmStatus.exitCode);
 }
 
 rst.stopSet();
