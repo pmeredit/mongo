@@ -219,7 +219,8 @@ function benchmark() {
 }
 
 const debugBuild = db.adminCommand("buildInfo").debug;
-if (!debugBuild) {
-    // Don't run this on debug builds in Evergreen, it takes too long.
+if (!debugBuild && !_isAddressSanitizerActive() && !_isThreadSanitizerActive() &&
+    !_isLeakSanitizerActive() && !_isLeakSanitizerActive()) {
+    // Don't run this on debug builds or sanitizer builds in Evergreen, it takes too long.
     benchmark();
 }
