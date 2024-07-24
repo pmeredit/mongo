@@ -245,12 +245,14 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
     auto dataStoreSession = backupSession->dataStoreSession();
     auto cursor = dataStoreSession->beginBackup();
 
-    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
-    _keystoreMetadata.setDirty(true);
-    auto status =
-        _keystoreMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
-    if (!status.isOK()) {
-        return status;
+    {
+        auto keystoreMetadataUpdateGuard = _keystoreMetadata.synchronize();
+        keystoreMetadataUpdateGuard->setDirty(true);
+        auto status = keystoreMetadataUpdateGuard->store(
+            _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
+        if (!status.isOK()) {
+            return status;
+        }
     }
 
     std::vector<std::string> filesToCopy;
@@ -280,10 +282,10 @@ Status EncryptionKeyManager::endNonBlockingBackup() {
         _backupSession.reset();
     }
 
-    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
-    _keystoreMetadata.setDirty(false);
-    auto status =
-        _keystoreMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
+    auto keystoreMetadataUpdateGuard = _keystoreMetadata.synchronize();
+    keystoreMetadataUpdateGuard->setDirty(false);
+    auto status = keystoreMetadataUpdateGuard->store(
+        _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
     if (!status.isOK()) {
         return status;
     }
@@ -537,19 +539,22 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         }
     }
 
-    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
-    _keystoreMetadata = std::move(swMetadata.getValue());
+    auto keystoreMetadataUpdateGuard = _keystoreMetadata.synchronize();
+    *keystoreMetadataUpdateGuard = std::move(swMetadata.getValue());
 
     // Open the local WT key store, create it if it doesn't exist.
     try {
-        _keystore = Keystore::makeKeystore(_keystorePath, _keystoreMetadata, _encryptionParams);
-        if ((_keystoreMetadata.getDirty() || _encryptionParams->rotateDatabaseKeys) &&
+        _keystore = Keystore::makeKeystore(
+            _keystorePath,
+            static_cast<Keystore::Version>(keystoreMetadataUpdateGuard->getVersion()),
+            _encryptionParams);
+        if ((keystoreMetadataUpdateGuard->getDirty() || _encryptionParams->rotateDatabaseKeys) &&
             gcmModeEnabled) {
             const auto kKeystoreSchemaVersionForRotate = 1;
-            if (_keystoreMetadata.getVersion() < kKeystoreSchemaVersionForRotate) {
+            if (keystoreMetadataUpdateGuard->getVersion() < kKeystoreSchemaVersionForRotate) {
                 LOGV2(24040,
                       "Upgrading keystore schema version",
-                      "oldSchemaVersion"_attr = _keystoreMetadata.getVersion(),
+                      "oldSchemaVersion"_attr = keystoreMetadataUpdateGuard->getVersion(),
                       "newSchemaVersion"_attr = kKeystoreSchemaVersionForRotate);
 
                 auto tmppath = _keystorePath;
@@ -571,17 +576,19 @@ Status EncryptionKeyManager::_initLocalKeystore() {
                 keystoreBak += terseCurrentTimeForFilename();
                 fs::rename(_keystorePath, keystoreBak);
                 fs::rename(tmppath, _keystorePath);
-                _keystoreMetadata.setVersion(kKeystoreSchemaVersionForRotate);
-                uassertStatusOK(_keystoreMetadata.store(
+                keystoreMetadataUpdateGuard->setVersion(kKeystoreSchemaVersionForRotate);
+                uassertStatusOK(keystoreMetadataUpdateGuard->store(
                     _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
 
                 // Reopen keystore with new schema.
                 _masterKeyRequested = false;
-                _keystore =
-                    Keystore::makeKeystore(_keystorePath, _keystoreMetadata, _encryptionParams);
+                _keystore = Keystore::makeKeystore(
+                    _keystorePath,
+                    static_cast<Keystore::Version>(keystoreMetadataUpdateGuard->getVersion()),
+                    _encryptionParams);
             }
 
-            if (_keystoreMetadata.getDirty()) {
+            if (keystoreMetadataUpdateGuard->getDirty()) {
                 LOGV2(24041,
                       "Detected an unclean shutdown of the encrypted storage engine - rolling over "
                       "all database keys");
@@ -590,19 +597,19 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             }
 
             _keystore->rollOverKeys();
-            _keystoreMetadata.setDirty(false);
+            keystoreMetadataUpdateGuard->setDirty(false);
 
             // Make sure that we can get the new system key before persisting the metadata file
             // so that we know the rollover was successful.
             uassertStatusOK(_getSystemKey(kSystemKeyId, FindMode::kIdOrCurrent));
-            uassertStatusOK(_keystoreMetadata.store(
+            uassertStatusOK(keystoreMetadataUpdateGuard->store(
                 _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
         } else if (!gcmModeEnabled) {
-            if (_keystoreMetadata.getDirty()) {
+            if (keystoreMetadataUpdateGuard->getDirty()) {
                 LOGV2_DEBUG(
                     24043, 1, "Detected an unclean shutdown of the encrypted storage engine");
-                _keystoreMetadata.setDirty(false);
-                uassertStatusOK(_keystoreMetadata.store(
+                keystoreMetadataUpdateGuard->setDirty(false);
+                uassertStatusOK(keystoreMetadataUpdateGuard->store(
                     _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
             }
         }
@@ -634,11 +641,15 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     }
     _rotMasterKey = std::move(swRotMasterKey.getValue());
 
-    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
-    auto status = _keystoreMetadata.store(
-        _metadataPath(PathMode::kInitializing), _rotMasterKey, *_encryptionParams);
-    if (!status.isOK()) {
-        return status;
+    Keystore::Version version = Keystore::Version::k0;
+    {
+        auto keystoreMetadataUpdateGuard = _keystoreMetadata.synchronize();
+        auto status = keystoreMetadataUpdateGuard->store(
+            _metadataPath(PathMode::kInitializing), _rotMasterKey, *_encryptionParams);
+        if (!status.isOK()) {
+            return status;
+        }
+        version = static_cast<Keystore::Version>(keystoreMetadataUpdateGuard->getVersion());
     }
 
     SymmetricKeyId rotMasterKeyId = _rotMasterKey->getKeyId();
@@ -646,14 +657,13 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     fs::path initRotKeystorePath = rotKeystorePath;
     initRotKeystorePath += "-initializing-keystore";
 
-    auto rotKeyStore =
-        Keystore::makeKeystore(initRotKeystorePath, _keystoreMetadata, _encryptionParams);
+    auto rotKeyStore = Keystore::makeKeystore(initRotKeystorePath, version, _encryptionParams);
     auto writeSession = rotKeyStore->makeSession();
 
     auto keystore = std::move(_keystore);
     auto readSession = keystore->makeSession();
 
-    if (_keystoreMetadata.getVersion() < 1) {
+    if (version == Keystore::Version::k0) {
         // V0 doesn't support rollover, so we don't need to complicate the logic
         for (auto&& key : *readSession) {
             writeSession->insert(key);
@@ -722,8 +732,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
 }
 
 std::int32_t EncryptionKeyManager::getKeystoreVersion() const {
-    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
-    return _keystoreMetadata.getVersion();
+    return _keystoreMetadata->getVersion();
 }
 
 void initializeEncryptionKeyManager(ServiceContext* service) {

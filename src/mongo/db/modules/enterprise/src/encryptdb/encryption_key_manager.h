@@ -16,6 +16,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
+#include "mongo/util/synchronized_value.h"
 #include "symmetric_crypto.h"
 
 namespace mongo {
@@ -188,9 +189,7 @@ private:
     /**
      * Metadata file containing schema version and whether they keystore is dirty.
      */
-    mutable Mutex _keystoreMetadataMutex =
-        MONGO_MAKE_LATCH("EncryptionKeyManager::_keystoreMetadataMutex");
-    KeystoreMetadataFile _keystoreMetadata;
+    synchronized_value<KeystoreMetadataFile> _keystoreMetadata;
 
     /**
      * Ephemeral key whose life time does not span server restarts.

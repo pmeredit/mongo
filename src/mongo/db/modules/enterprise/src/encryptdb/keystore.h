@@ -25,10 +25,6 @@ class Keystore {
 public:
     virtual ~Keystore() = default;
 
-    static std::unique_ptr<Keystore> makeKeystore(const boost::filesystem::path& path,
-                                                  const KeystoreMetadataFile& metadata,
-                                                  const EncryptionGlobalParams* params);
-
     enum class Version : int32_t { k0 = 0, k1 = 1 };
     static std::unique_ptr<Keystore> makeKeystore(const boost::filesystem::path& path,
                                                   Version version,

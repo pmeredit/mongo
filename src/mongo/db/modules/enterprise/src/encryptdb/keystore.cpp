@@ -523,11 +523,4 @@ std::unique_ptr<Keystore> Keystore::makeKeystore(const boost::filesystem::path& 
     }
 }
 
-std::unique_ptr<Keystore> Keystore::makeKeystore(const boost::filesystem::path& path,
-                                                 const KeystoreMetadataFile& metadata,
-                                                 const EncryptionGlobalParams* params) {
-
-    return Keystore::makeKeystore(path, static_cast<Version>(metadata.getVersion()), params);
-}
-
 }  // namespace mongo
