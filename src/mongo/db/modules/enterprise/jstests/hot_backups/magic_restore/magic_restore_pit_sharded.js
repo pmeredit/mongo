@@ -143,10 +143,6 @@ function runTest(insertHigherTermOplogEntry) {
     expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
     assert.eq(expectedDocs.length, 8);
 
-    // TODO SERVER-90356: remove this if we decide to allow PIT without oplog entries after
-    // the checkpoint timestamp.
-    assert.commandWorked(db.adminCommand({addShardToZone: st.shard0.shardName, zone: 'x'}));
-
     jsTestLog("Getting backup cluster dbHashes");
     // expected DBs are admin, config and db
     const dbHashes =

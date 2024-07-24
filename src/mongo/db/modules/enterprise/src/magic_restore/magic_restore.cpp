@@ -780,36 +780,38 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     const auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp();
     if (pointInTimeTimestamp) {
-        {
-            TimeElapsedBuilderScopedTimer scopedTimer(
-                svcCtx->getFastClockSource(),
-                "Inserting additional entries into the oplog for a point-in-time restore",
-                &magicRestoreTimeElapsedBuilder);
-            // If the restore is point-in-time, we expect additional objects in the BSON stream.
-            fassert(8290701, reader.hasNext());
-            writeOplogEntriesToOplog(opCtx.get(), reader);
-        }
-        // For a PIT restore, we only want to insert oplog entries with timestamps up to and
-        // including the pointInTimeTimestamp. External callers of magic restore should only pass
-        // along entries up to the PIT timestamp, but we truncate the oplog after this point to
-        // guarantee that we don't restore to a timestamp later than the PIT timestamp.
-        LOGV2(8290812,
-              "Truncating oplog to PIT timestamp",
-              "pointInTimeTimestamp"_attr = pointInTimeTimestamp.get());
-        {
-            TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
-                                                      "Truncating oplog to PIT timestamp",
-                                                      &magicRestoreTimeElapsedBuilder);
-            replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
-                opCtx.get(), pointInTimeTimestamp.get());
-        }
-        LOGV2(8290813, "Beginning to apply additional PIT oplog entries");
-        {
-            TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
-                                                      "Applying oplog entries for restore",
-                                                      &magicRestoreTimeElapsedBuilder);
-            replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(
-                opCtx.get(), recoveryTimestamp.get());
+        if (reader.hasNext()) {
+            {
+                TimeElapsedBuilderScopedTimer scopedTimer(
+                    svcCtx->getFastClockSource(),
+                    "Inserting additional entries into the oplog for a point-in-time restore",
+                    &magicRestoreTimeElapsedBuilder);
+                writeOplogEntriesToOplog(opCtx.get(), reader);
+            }
+            // For a PIT restore, we only want to insert oplog entries with timestamps up to and
+            // including the pointInTimeTimestamp. External callers of magic restore should only
+            // pass along entries up to the PIT timestamp, but we truncate the oplog after this
+            // point to guarantee that we don't restore to a timestamp later than the PIT timestamp.
+            LOGV2(8290812,
+                  "Truncating oplog to PIT timestamp",
+                  "pointInTimeTimestamp"_attr = pointInTimeTimestamp.get());
+            {
+                TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                          "Truncating oplog to PIT timestamp",
+                                                          &magicRestoreTimeElapsedBuilder);
+                replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
+                    opCtx.get(), pointInTimeTimestamp.get());
+            }
+            LOGV2(8290813, "Beginning to apply additional PIT oplog entries");
+            {
+                TimeElapsedBuilderScopedTimer scopedTimer(svcCtx->getFastClockSource(),
+                                                          "Applying oplog entries for restore",
+                                                          &magicRestoreTimeElapsedBuilder);
+                replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(
+                    opCtx.get(), recoveryTimestamp.get());
+            }
+        } else {
+            LOGV2(9035600, "No additional oplog entries to insert for PIT restore");
         }
     }
 
