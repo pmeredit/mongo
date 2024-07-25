@@ -7,7 +7,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {

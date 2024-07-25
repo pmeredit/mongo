@@ -18,7 +18,7 @@
  * ]
  */
 import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
-import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
@@ -231,7 +231,7 @@ while (backupCursor.hasNext()) {
     }
 
     jsTestLog("Copying for backup: " + tojson(doc));
-    _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, backupDbPath);
+    copyFileHelper({filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, backupDbPath);
 }
 
 backupCursor.close();

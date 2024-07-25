@@ -7,7 +7,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     authAndVerify,
@@ -27,7 +27,7 @@ if (_isWindows()) {
 // LDAP AUTH TESTS.
 
 function testLDAP(insertHigherTermOplogEntry) {
-    let configGenerator = new LDAPTestConfigGenerator();
+let configGenerator = new LDAPTestConfigGenerator();
     configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [

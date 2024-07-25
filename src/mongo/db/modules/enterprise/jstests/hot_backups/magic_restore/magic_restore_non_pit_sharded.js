@@ -17,7 +17,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
