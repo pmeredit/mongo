@@ -7,7 +7,6 @@
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
-#include "mongo/bson/bsonobj.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/error_labels.h"
 #include "mongo/db/operation_context.h"
@@ -746,14 +745,20 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
-    // Configure checkpointing.
+    // TODO(SERVER-78464): When restoring from a checkpoint, we shouldn't be re-parsing
+    // the user supplied BSON here to create the
+    // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
+    // We also need to validate somewhere that the startCommandBsonPipeline is still the
+    // same.
     Planner::Options plannerOptions;
-    const auto& userPipeline = request.getPipeline();
-    std::vector<mongo::BSONObj> executionPlan;
+    Planner streamPlanner(processorInfo->context.get(), plannerOptions);
+    LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
+    processorInfo->operatorDag = streamPlanner.plan(request.getPipeline());
 
+    // Configure checkpointing.
     bool checkpointEnabled = request.getOptions().getCheckpointOptions() &&
-        !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral;
-
+        !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral &&
+        isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
     if (checkpointEnabled) {
         const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
 
@@ -786,48 +791,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                        "Restore checkpoint ID",
                        "context"_attr = processorInfo->context.get(),
                        "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
-
-            // TODO(SERVER-92447): Remove this check.
-            auto useExecutionPlanFromCheckpoint =
-                processorInfo->context->featureFlags
-                    ->getFeatureFlagValue(FeatureFlags::kUseExecutionPlanFromCheckpoint)
-                    .getBool();
-            if (useExecutionPlanFromCheckpoint && *useExecutionPlanFromCheckpoint) {
-                if (processorInfo->context->executionPlan.empty()) {
-                    LOGV2_WARNING(75908,
-                                  "Execution plan not found in the checkpoint ",
-                                  "context"_attr = processorInfo->context.get(),
-                                  "checkpointId"_attr =
-                                      processorInfo->context->restoreCheckpointId);
-                } else {
-                    LOGV2_INFO(75912,
-                               "Using the Execution Plan from the checkpoint",
-                               "context"_attr = processorInfo->context.get(),
-                               "checkpointId"_attr = processorInfo->context->restoreCheckpointId,
-                               "executionPlan"_attr = processorInfo->context->executionPlan);
-                    plannerOptions.shouldOptimize = false;
-                    executionPlan = processorInfo->context->executionPlan;
-                }
-            }
-        }
-    }
-
-    Planner streamPlanner(processorInfo->context.get(), plannerOptions);
-
-    LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
-
-    processorInfo->operatorDag =
-        streamPlanner.plan(executionPlan.empty() ? userPipeline : executionPlan);
-
-    if (checkpointEnabled) {
-        auto isCheckpointSuportedForSource =
-            isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
-        if (processorInfo->context->restoreCheckpointId) {
-            tassert(8874301,
-                    fmt::format("Checkpoint not supported for the source: {}",
-                                processorInfo->operatorDag->source()->getName()),
-                    isCheckpointSuportedForSource);
-
             // Note: Here we call startCheckpointRestore so we can get the stats from the
             // checkpoint. The Executor will later call checkpointRestored in its background
             // thread once the operator dag has been fully restored.
@@ -837,37 +800,28 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             processorInfo->restoreCheckpointOperatorInfo =
                 processorInfo->context->checkpointStorage->getRestoreCheckpointOperatorInfo();
 
-            // TODO(SERVER-92447): Remove the validate operator check.
+            // TODO(SERVER-78464): Remove this.
             // Validate the operators in the checkpoint match the OperatorDag we've created.
             validateOperatorsInCheckpoint(*processorInfo->restoreCheckpointOperatorInfo,
                                           processorInfo->operatorDag->operators());
         }
 
-        // Start the checkpoint coordinator if checkpoint is supported for the given source.
-        if (isCheckpointSuportedForSource) {
-            const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
-            if (checkpointOptions->getDebugOnlyIntervalMs()) {
-                // If provided, use the client supplied interval.
-                processorInfo->context->checkpointInterval =
-                    stdx::chrono::milliseconds{*checkpointOptions->getDebugOnlyIntervalMs()};
-            }
-
-            processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
-            processorInfo->checkpointCoordinator =
-                std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
-                    .processorId = processorInfo->context->streamProcessorId,
-                    .enableDataFlow = request.getOptions().getEnableDataFlow(),
-                    .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
-                        !processorInfo->context->restoreCheckpointId,
-                    .checkpointIntervalMs = processorInfo->context->checkpointInterval,
-                    .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo,
-                    .storage = processorInfo->context->checkpointStorage.get(),
-                });
-        } else {
-            // Checkpoint is not supported for the given source, cleanup the CheckpointStorage
-            // object.
-            processorInfo->context->checkpointStorage.reset(nullptr);
+        if (checkpointOptions->getDebugOnlyIntervalMs()) {
+            // If provided, use the client supplied interval.
+            processorInfo->context->checkpointInterval =
+                stdx::chrono::milliseconds{*checkpointOptions->getDebugOnlyIntervalMs()};
         }
+
+        processorInfo->checkpointCoordinator =
+            std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
+                .processorId = processorInfo->context->streamProcessorId,
+                .enableDataFlow = request.getOptions().getEnableDataFlow(),
+                .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
+                    !processorInfo->context->restoreCheckpointId,
+                .checkpointIntervalMs = processorInfo->context->checkpointInterval,
+                .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo,
+                .storage = processorInfo->context->checkpointStorage.get(),
+            });
     }
 
     // Create the Executor.

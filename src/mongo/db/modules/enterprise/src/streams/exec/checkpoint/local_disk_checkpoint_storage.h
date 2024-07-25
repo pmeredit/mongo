@@ -157,7 +157,7 @@ private:
     // This function is part of the restore path. Given a manifest file, it 1) validates the
     // embedded file checksum 2) Retrieves the operator range maps 3) Retrieves the stored checksums
     // of the state files.
-    void populateManifestInfo(const std::filesystem::path& manifestFile);
+    ManifestInfo getManifestInfo(const std::filesystem::path& manifestFile);
 
     // An internal helper for some basic validation of the read-in manifest file during the restore
     // flow. TODO(SERVER-83239): Add logical validation based on actual version. For now, just
@@ -176,7 +176,6 @@ private:
     std::unique_ptr<Restorer> _activeRestorer;
     // Tracks the last checkpointId created.
     boost::optional<CheckpointId> _lastCreatedCheckpointId;
-    boost::optional<ManifestInfo> _restoredManifestInfo;
 };
 
 }  // namespace streams

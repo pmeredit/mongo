@@ -136,9 +136,6 @@ TEST_F(LocalDiskCheckpointStorageTest, basic_round_trip) {
     // Now begin to read
     opts.restoreRootDir = dir;
     std::tie(ctxt, executor, chkpt) = makeLocalDiskCheckpointStorage(streamProcessorId, opts);
-    auto restoredChkId = chkpt->getRestoreCheckpointId();
-    ASSERT_TRUE(restoredChkId);
-    ASSERT_EQ(chkId, *restoredChkId);
     chkpt->startCheckpointRestore(chkId);
 
     {
@@ -216,9 +213,6 @@ TEST_F(LocalDiskCheckpointStorageTest, many_operators) {
 
     opts.restoreRootDir = dir;
     std::tie(ctxt, executor, chkpt) = makeLocalDiskCheckpointStorage(streamProcessorId, opts);
-    auto restoredChkId = chkpt->getRestoreCheckpointId();
-    ASSERT_TRUE(restoredChkId);
-    ASSERT_EQ(chkId, *restoredChkId);
     chkpt->startCheckpointRestore(chkId);
 
     for (auto& written : opStates) {
@@ -313,9 +307,6 @@ TEST_F(LocalDiskCheckpointStorageTest, large_round_trip_multi_threads) {
                 opts.restoreRootDir = dir;
                 std::tie(ctxt, executor, chkpt) =
                     makeLocalDiskCheckpointStorage(streamProcessorId, opts);
-                auto restoredChkId = chkpt->getRestoreCheckpointId();
-                ASSERT_TRUE(restoredChkId);
-                ASSERT_EQ(chkId, *restoredChkId);
                 chkpt->startCheckpointRestore(chkId);
 
                 for (auto& written : opStates) {

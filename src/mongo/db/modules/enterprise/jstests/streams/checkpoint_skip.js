@@ -11,7 +11,7 @@ import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/stre
 // changed. The current definition of "has something changed" is: Since the last checkpoint
 // commit, 1) Has any operator in the DAG output docs or dlq'd docs? 2) If input is a changestream
 // source, then do we have a new resume token since we last committed
-function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
+function checkpointCoordinatorTakeCheckpointTest() {
     var numCustomers = 50;
     let baseTs = ISODate("2023-01-01T00:00:00.000Z");
     const pipeline = [
@@ -51,8 +51,8 @@ function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
                               pipeline,
                               999999999 /* interval */,
                               "changestream" /* sourceType */,
-                              true /*useNewCheckpointing*/,
-                              useRestoredExecutionPlan);
+                              true /*useNewCheckpointing*/);
+
     test.run();
 
     assert.eq(test.stats()["operatorStats"][5]["name"], "GroupOperator");
@@ -141,7 +141,6 @@ function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
     test.stop();
 }
 
-checkpointCoordinatorTakeCheckpointTest(true);
-checkpointCoordinatorTakeCheckpointTest(false);
+checkpointCoordinatorTakeCheckpointTest();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

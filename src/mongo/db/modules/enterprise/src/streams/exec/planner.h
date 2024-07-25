@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/util/string_map.h"
@@ -56,6 +55,7 @@ public:
 
     /**
      * Creates an OperatorDag from a user supplied BSON array.
+     * TODO(SERVER-90425): Return the executionPlan here as well.
      */
     std::unique_ptr<OperatorDag> plan(const std::vector<mongo::BSONObj>& bsonPipeline);
 
@@ -132,8 +132,7 @@ private:
     void planLimit(mongo::DocumentSource* source);
 
     // Plans a $lookup stage. Returns a BSONObj that represents the optimized lookup stage.
-    mongo::BSONObj planLookUp(mongo::DocumentSourceLookUp* documentSource,
-                              mongo::BSONObj serializedPlan);
+    mongo::BSONObj planLookUp(mongo::DocumentSourceLookUp* documentSource);
 
     // Helper function to prepare the pipeline before sending it to planning. This step includes
     // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the

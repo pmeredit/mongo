@@ -11,9 +11,7 @@
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/change_stream.hpp>
 
-#include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/change_stream_options_gen.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
@@ -1072,8 +1070,7 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     return serializedWindowStage(kHoppingWindowStageName, bsonOptions, std::move(executionPlan));
 }
 
-mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
-                                   mongo::BSONObj serializedPlan) {
+mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) {
     auto& lookupPlanningInfo = _lookupPlanningInfos.back();
     auto& stageObj =
         lookupPlanningInfo.rewrittenLookupStages.at(lookupPlanningInfo.numLookupStagesPlanned++)
@@ -1113,19 +1110,11 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 
-    // Rewrite the lookup pipeline from Server style to Stream style.
-    lookupObj = serializedPlan.firstElement().Obj();
-    BSONObjBuilder lookupBuilder;
-    BSONObjBuilder builder(lookupBuilder.subobjStart(kLookUpStageName));
-    for (auto elem : lookupObj) {
-        if (elem.fieldNameStringData() == kFromFieldName) {
-            builder.append(fromField);
-            continue;
-        }
-        builder.append(elem);
-    }
-    builder.doneFast();
-    return lookupBuilder.obj();
+    // TODO(SERVER-90510): This currently just returns the "not rewritten, user specified" $lookup
+    // stage, i.e. {$lookup: {from: {connectionName: "atlasDB", db: "test", coll: "foo"}}}.
+    // But this is not enough. In SERVER-90511 we made the change for $lookup serialized spec to
+    // absorb $match and $unwind.
+    return stageObj;
 }
 
 void Planner::planGroup(mongo::DocumentSource* source) {
@@ -1270,34 +1259,23 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
     std::vector<BSONObj> optimizedPipeline;
     optimizedPipeline.reserve(pipeline.getSources().size());
 
-    auto serialize = [&](const boost::intrusive_ptr<DocumentSource>& stage) {
-        // Serialize the stage and add it to the execution plan.
-        // Window and lookup stages require some special handling and don't use this block.
-        std::vector<Value> serializedStage;
-        SerializationOptions opts{.serializeForCloning = true};
-        stage->serializeToArray(serializedStage, opts);
-
-        // TODO(SERVER-92447): Remove the flag check.
-        auto useExecutionPlanFromCheckpoint =
-            _context->featureFlags
-                ->getFeatureFlagValue(FeatureFlags::kUseExecutionPlanFromCheckpoint)
-                .getBool();
-        if (useExecutionPlanFromCheckpoint && *useExecutionPlanFromCheckpoint) {
-            tassert(8358103,
-                    "Expected serializeToArray to return a single BSONObj.",
-                    serializedStage.size() == 1);
-        } else if (serializedStage.size() != 1) {
-            LOGV2_WARNING(9012802, "SerializeToArray returned more than one BSONObj.");
-        }
-        return serializedStage[0].getDocument().toBson();
-    };
-
     for (const auto& stage : pipeline.getSources()) {
         const auto& stageInfo = stageTraits[stage->getSourceName()];
 
+        auto serialize = [&]() {
+            // Serialize the stage and add it to the execution plan.
+            // Window and lookup stages require some special handling and don't use this block.
+            std::vector<Value> serializedStage;
+            SerializationOptions opts{.serializeForCloning = true};
+            stage->serializeToArray(serializedStage, opts);
+            // TODO(SERVER-90464): Assert the serializeToArray returns a single BSONObj once $lookup
+            // and $sort changes are in.
+            return serializedStage[0].getDocument().toBson();
+        };
+
         switch (stageInfo.type) {
             case StageType::kAddFields: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1309,7 +1287,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kSet: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1321,7 +1299,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kMatch: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceMatch*>(stage.get());
                 dassert(specificSource);
                 MatchOperator::Options options{.documentSource = specificSource};
@@ -1331,7 +1309,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kProject: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1343,7 +1321,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kRedact: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceRedact*>(stage.get());
                 dassert(specificSource);
                 RedactOperator::Options options{.documentSource = specificSource};
@@ -1353,7 +1331,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kReplaceRoot: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource =
                     dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
                 dassert(specificSource);
@@ -1365,7 +1343,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kUnwind: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceUnwind*>(stage.get());
                 dassert(specificSource);
                 UnwindOperator::Options options{.documentSource = specificSource};
@@ -1375,7 +1353,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kValidate: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(stage.get());
                 dassert(specificSource);
                 auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
@@ -1385,17 +1363,17 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kGroup: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 planGroup(stage.get());
                 break;
             }
             case StageType::kSort: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 planSort(stage.get());
                 break;
             }
             case StageType::kLimit: {
-                optimizedPipeline.push_back(serialize(stage));
+                optimizedPipeline.push_back(serialize());
                 planLimit(stage.get());
                 break;
             }
@@ -1410,7 +1388,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
             case StageType::kLookUp: {
                 auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
                 dassert(lookupSource);
-                optimizedPipeline.push_back(planLookUp(lookupSource, serialize(stage)));
+                optimizedPipeline.push_back(planLookUp(lookupSource));
                 break;
             }
             default:

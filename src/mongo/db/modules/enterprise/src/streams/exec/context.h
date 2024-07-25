@@ -52,9 +52,6 @@ struct Context {
     // The new checkpoint storage interface. This is currently only set in unit tests.
     std::unique_ptr<CheckpointStorage> checkpointStorage;
 
-    // The optimized execution plan.
-    std::vector<mongo::BSONObj> executionPlan;
-
     // Defines the checkpoint interval used for periodic checkpoints.
     // Set in the Planner depending on the plan.
     mongo::stdx::chrono::milliseconds checkpointInterval;

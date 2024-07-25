@@ -7,7 +7,7 @@
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
-function largeGroupTest(useRestoredExecutionPlan) {
+function largeGroupTest() {
     function generateInput(cnt) {
         let input = [];
         var msPerDocument = 1;
@@ -61,8 +61,8 @@ function largeGroupTest(useRestoredExecutionPlan) {
                               pipeline,
                               999999999 /* interval */,
                               "changestream" /* sourceType */,
-                              true /*useNewCheckpointing*/,
-                              useRestoredExecutionPlan);
+                              true /*useNewCheckpointing*/);
+
     test.run();
     // Wait for all the messages to be read.
     assert.soon(() => { return test.stats()["inputMessageCount"] == inputBeforeStop.length; });
@@ -91,8 +91,6 @@ function largeGroupTest(useRestoredExecutionPlan) {
     test.stop();
 }
 
-largeGroupTest(true);
-// TODO(SERVER-92447): Remove this.
-largeGroupTest(false);
+largeGroupTest();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

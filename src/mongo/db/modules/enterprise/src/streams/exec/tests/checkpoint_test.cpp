@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "mongo/bson/bsonelement.h"
-#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -89,7 +88,6 @@ public:
         _props.context->connections = testKafkaConnectionRegistry();
         Planner planner(_props.context.get(), {});
         _props.dag = planner.plan(bsonVector);
-        _props.context->executionPlan = _props.dag->optimizedPipeline();
 
         CheckpointCoordinator::Options coordinatorOptions{
             .processorId = _props.context->streamProcessorId,
@@ -153,11 +151,8 @@ public:
     void restore(CheckpointId checkpointId) {
         _props.context->restoreCheckpointId = checkpointId;
         _props.context->connections = testKafkaConnectionRegistry();
-
-        Planner::Options plannerOptions{.shouldOptimize = false};
-        Planner planner(_props.context.get(), plannerOptions);
-        _props.dag = planner.plan(_props.context->executionPlan);
-
+        Planner planner(_props.context.get(), {});
+        _props.dag = planner.plan(_props.userBson);
         init();
     }
 
