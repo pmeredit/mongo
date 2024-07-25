@@ -183,7 +183,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
             tracker.updateStatsPostInsert("ssn", ssnValue);
             nEdc++;
         }
-        assert.commandWorked(coll.insertMany(inserts));
+        assert.commandWorked(coll.insertMany(inserts, {ordered: false}));
 
         let totals = tracker.calculateTotalStatsForFields("first", "ssn");
 
