@@ -4,10 +4,12 @@
 
 #pragma once
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/context.h"
 #include "streams/exec/exec_internal_gen.h"
 
 namespace streams {

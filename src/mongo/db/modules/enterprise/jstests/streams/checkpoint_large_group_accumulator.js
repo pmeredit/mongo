@@ -29,7 +29,7 @@ function getOperatorStats(operatorName, statsOutput) {
  *     ensures that the resume was successful
  *   - Close the tumbling window and validates the results
  */
-function largeGroupAccumulatorTest() {
+function largeGroupAccumulatorTest(useRestoredExecutionPlan) {
     const pipeline = [
         {$replaceRoot: {newRoot: "$fullDocument"}},
         {
@@ -101,7 +101,8 @@ function largeGroupAccumulatorTest() {
                               pipeline,
                               999999999 /* interval */,
                               "changestream" /* sourceType */,
-                              true /*useNewCheckpointing*/);
+                              true /*useNewCheckpointing*/,
+                              useRestoredExecutionPlan);
 
     test.run();
 
@@ -146,6 +147,8 @@ function largeGroupAccumulatorTest() {
     assert.commandWorked(db.adminCommand({setParameter: 1, internalQueryMaxPushBytes: oldLimit}));
 }
 
-largeGroupAccumulatorTest();
+largeGroupAccumulatorTest(true);
+// TODO(SERVER-92447): Remove this.
+largeGroupAccumulatorTest(false);
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

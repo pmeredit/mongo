@@ -47,7 +47,7 @@ const startOptions = {
         // Checkpoint every five seconds.
         debugOnlyIntervalMs: 5000,
     },
-    featureFlags: {},
+    featureFlags: {useExecutionPlanFromCheckpoint: true},
 };
 
 const connectionRegistry = [
@@ -147,7 +147,7 @@ function makeMongoToKafkaStartCmd({
             debugOnlyIntervalMs: 5000,
         },
         dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
-        featureFlags: {},
+        featureFlags: {useExecutionPlanFromCheckpoint: true},
     };
     if (parseOnly) {
         options.parseOnly = true;
@@ -189,7 +189,7 @@ function makeKafkaToMongoStartCmd({
             debugOnlyIntervalMs: 5000,
         },
         dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
-        featureFlags: {},
+        featureFlags: {useExecutionPlanFromCheckpoint: true},
     };
     if (parseOnly) {
         options.parseOnly = true;
@@ -685,7 +685,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
                     },
                 },
                 enableUnnestedWindow: true,
-                featureFlags: {},
+                featureFlags: {useExecutionPlanFromCheckpoint: true},
             },
             processorId: `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`,
         };

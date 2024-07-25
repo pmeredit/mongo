@@ -1830,6 +1830,206 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "MatchOperator",
                "GroupOperator",
                "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $lookup: {
+                from: {
+                    connectionName: "atlas1",
+                    db: "foreignDB",
+                    coll: "lookupColl"
+                },
+                localField: "sumL",
+                foreignField: "sumF",
+                as: "same"
+            }
+        },
+        {
+            $unwind: { path: "$same" }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "LookUpOperator", "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $lookup: {
+                from: {
+                    connectionName: "atlas1",
+                    db: "foreignDB",
+                    coll: "lookupColl"
+                },
+                localField: "sumL",
+                foreignField: "sumF",
+                as: "same"
+            }
+        },
+        {
+            $unwind: { path: "$same" }
+        },
+        {
+            $match: {'same.subfield': {$eq: 1}}
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "LookUpOperator", "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $lookup: {
+                from: {
+                    connectionName: "atlas1",
+                    db: "foreignDB",
+                    coll: "lookupColl"
+                },
+                localField: "sumL",
+                foreignField: "sumF",
+                as: "same"
+            }
+        },
+        {
+            $unwind: { path: "$same" }
+        },
+        {
+            $match: {'field': {$eq: 1}}
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "MatchOperator", "LookUpOperator", "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $lookup: {
+                from: {
+                    connectionName: "atlas1",
+                    db: "foreignDB",
+                    coll: "lookupColl"
+                },
+                localField: "sumL",
+                foreignField: "sumF",
+                as: "same"
+            }
+        },
+        {
+            $unwind: { path: "$different" }
+        },
+        {
+            $match: {'same.subfield': {$eq: 1}}
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator",
+               "LookUpOperator",
+               "MatchOperator",
+               "UnwindOperator",
+               "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $lookup: {
+                from: {
+                    connectionName: "atlas1",
+                    db: "foreignDB",
+                    coll: "lookupColl"
+                },
+                localField: "sumL",
+                foreignField: "sumF",
+                as: "same"
+            }
+        },
+        {
+            $unwind: { path: "$different" }
+        },
+        {
+            $match: {'field': {$eq: 1}}
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator",
+               "MatchOperator",
+               "LookUpOperator",
+               "UnwindOperator",
+               "MergeOperator"});
 }
 
 // Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying

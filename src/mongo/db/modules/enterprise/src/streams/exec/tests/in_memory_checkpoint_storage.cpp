@@ -108,5 +108,4 @@ InMemoryCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
 boost::optional<CheckpointId> InMemoryCheckpointStorage::doGetRestoreCheckpointId() {
     return _mostRecentCommitted;
 }
-
 }  // namespace streams
