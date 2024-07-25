@@ -276,9 +276,8 @@ function testOIDC(insertHigherTermOplogEntry) {
     const expectedDocs = db.getCollection(coll).find().toArray();
 
     const magicRestoreUtils = new MagicRestoreUtils({
-        backupSource: primary,
+        rst: rst,
         pipeDir: MongoRunner.dataDir,
-        isPit: false,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
     magicRestoreUtils.takeCheckpointAndOpenBackup();
@@ -289,7 +288,7 @@ function testOIDC(insertHigherTermOplogEntry) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 6);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 6, "i");
+    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
     const {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
     assert.eq(entriesAfterBackup.length, 3);
 
@@ -299,7 +298,7 @@ function testOIDC(insertHigherTermOplogEntry) {
     assert.commandWorked(
         admin.runCommand({updateRole: "issuer1/myReadWriteRole", privileges: [], roles: []}));
 
-    const expectedConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
+    const expectedConfig = magicRestoreUtils.getExpectedConfig();
     rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
     let restoreConfiguration = {
@@ -330,7 +329,6 @@ function testOIDC(insertHigherTermOplogEntry) {
 
     magicRestoreUtils.postRestoreChecks({
         node: primary,
-        expectedConfig: expectedConfig,
         dbName: dbName,
         collName: coll,
         expectedOplogCountForNs: 3,

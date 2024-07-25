@@ -53,7 +53,7 @@ function runTest(updateAutoCreds) {
     }
 
     const magicRestoreUtils = new MagicRestoreUtils({
-        backupSource: primary,
+        rst: rst,
         pipeDir: MongoRunner.dataDir,
     });
     magicRestoreUtils.takeCheckpointAndOpenBackup();
@@ -64,13 +64,13 @@ function runTest(updateAutoCreds) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 6);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 6, "i");
+    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
     let {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
     assert.eq(entriesAfterBackup.length, 3);
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
-    let expectedConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
+    let expectedConfig = magicRestoreUtils.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
@@ -113,7 +113,6 @@ function runTest(updateAutoCreds) {
 
     magicRestoreUtils.postRestoreChecks({
         node: primary,
-        expectedConfig: expectedConfig,
         dbName: dbName,
         collName: coll,
         expectedOplogCountForNs: 3,
@@ -147,9 +146,9 @@ function runTest(updateAutoCreds) {
     // The writes to the auth collections should not have been written to the oplog. If we updated
     // automation credentials, the initial inserts should exist in the oplog from the snapshot.
     magicRestoreUtils.assertOplogCountForNamespace(
-        primary, "admin.system.roles", updateAutoCreds ? 1 : 0);
+        primary, {ns: "admin.system.roles"}, updateAutoCreds ? 1 : 0);
     magicRestoreUtils.assertOplogCountForNamespace(
-        primary, "admin.system.users", updateAutoCreds ? 1 : 0);
+        primary, {ns: "admin.system.users"}, updateAutoCreds ? 1 : 0);
     rst.stopSet();
 }
 

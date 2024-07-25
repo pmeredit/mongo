@@ -47,7 +47,7 @@ function runTest(insertHigherTermOplogEntry) {
     assert.commandWorked(db.runCommand(insertCommand));
 
     const magicRestoreUtils = new MagicRestoreUtils({
-        backupSource: primary,
+        rst: rst,
         pipeDir: MongoRunner.dataDir,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
@@ -64,14 +64,14 @@ function runTest(insertHigherTermOplogEntry) {
     // Original insert + 'e', 'f', 'g'.
     assert.eq(db.getCollection(coll).find().toArray().length, 4);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 4, "i");
+    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 4);
     let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
     // 'e', 'f', 'g' inserts.
     assert.eq(entriesAfterBackup.length, 3);
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
-    let expectedConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
+    let expectedConfig = magicRestoreUtils.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(
@@ -112,7 +112,6 @@ function runTest(insertHigherTermOplogEntry) {
 
     magicRestoreUtils.postRestoreChecks({
         node: primary,
-        expectedConfig: expectedConfig,
         dbName: dbName,
         collName: coll,
         // Retried retryable writes do not generate additional oplog entries.

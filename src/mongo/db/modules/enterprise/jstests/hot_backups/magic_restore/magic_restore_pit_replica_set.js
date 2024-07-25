@@ -33,7 +33,7 @@ TestData.skipEnforceFastCountOnValidate = true;
 
 function runTest(insertHigherTermOplogEntry, testAuth) {
     jsTestLog("Running PIT magic restore with insertHigherTermOplogEntry: " +
-              insertHigherTermOplogEntry);
+              insertHigherTermOplogEntry + " and testAuth: " + testAuth);
     const sourceCluster = new ReplSetTest({nodes: 1});
     sourceCluster.startSet();
     sourceCluster.initiate();
@@ -60,9 +60,8 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
                            .optimes.lastCommittedOpTime.ts;
 
     const magicRestoreUtils = new MagicRestoreUtils({
-        backupSource: sourcePrimary,
+        rst: sourceCluster,
         pipeDir: MongoRunner.dataDir,
-        isPit: true,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
 
@@ -100,8 +99,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
-    let expectedConfig =
-        assert.commandWorked(sourcePrimary.adminCommand({replSetGetConfig: 1})).config;
+    let expectedConfig = magicRestoreUtils.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(sourcePrimary.port) + 2);
     let restoreConfiguration = {

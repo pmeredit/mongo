@@ -51,8 +51,7 @@ function runTest(pit) {
     let awaitIndexBuild = IndexBuildTest.startIndexBuild(primary, "test.a", {x: 1});
     IndexBuildTest.waitForIndexBuildToScanCollection(db, collName, "x_1");
 
-    const magicRestoreUtils = new MagicRestoreUtils(
-        {backupSource: primary, pipeDir: MongoRunner.dataDir, insertHigherTermOplogEntry: false});
+    const magicRestoreUtils = new MagicRestoreUtils({rst: rst, pipeDir: MongoRunner.dataDir});
 
     magicRestoreUtils.takeCheckpointAndOpenBackup();
 
@@ -73,7 +72,7 @@ function runTest(pit) {
     assert.commandWorked(
         primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
 
-    let expectedConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
+    let expectedConfig = magicRestoreUtils.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
@@ -100,7 +99,6 @@ function runTest(pit) {
     primary = rst.getPrimary();
     magicRestoreUtils.postRestoreChecks({
         node: primary,
-        expectedConfig: expectedConfig,
         dbName: dbName,
         collName: collName,
         expectedOplogCountForNs: 5,

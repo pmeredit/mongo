@@ -70,7 +70,7 @@ function runTest(insertHigherTermOplogEntry) {
     session3.commitTransaction_forTesting();
 
     const magicRestoreUtils = new MagicRestoreUtils({
-        backupSource: primary,
+        rst: rst,
         pipeDir: MongoRunner.dataDir,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
@@ -88,14 +88,14 @@ function runTest(insertHigherTermOplogEntry) {
     // Commit the unprepared transaction which will be truncated by non-PIT restore.
     session2.commitTransaction_forTesting();
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, dbName + "." + coll, 4, "i");
+    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 4);
     let {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
     // 'e', 'f', 'g' inserts + commitTransaction + commitTransaction.
     assert.eq(entriesAfterBackup.length, 5);
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
-    let expectedConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
+    let expectedConfig = magicRestoreUtils.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(
@@ -164,7 +164,6 @@ function runTest(insertHigherTermOplogEntry) {
 
     magicRestoreUtils.postRestoreChecks({
         node: primary,
-        expectedConfig: expectedConfig,
         dbName: dbName,
         collName: coll,
         // The transaction entries are in an applyOps which does not get counted here.

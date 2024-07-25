@@ -43,7 +43,7 @@ function runTest(updateAutoCreds) {
                            .optimes.lastCommittedOpTime.ts;
 
     const magicRestoreUtils = new MagicRestoreUtils({
-        backupSource: sourcePrimary,
+        rst: sourceCluster,
         pipeDir: MongoRunner.dataDir,
     });
     magicRestoreUtils.takeCheckpointAndOpenBackup();
@@ -84,8 +84,7 @@ function runTest(updateAutoCreds) {
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 
-    let expectedConfig =
-        assert.commandWorked(sourcePrimary.adminCommand({replSetGetConfig: 1})).config;
+    let expectedConfig = magicRestoreUtils.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(sourcePrimary.port) + 2);
 
@@ -125,7 +124,6 @@ function runTest(updateAutoCreds) {
 
     magicRestoreUtils.postRestoreChecks({
         node: destPrimary,
-        expectedConfig: expectedConfig,
         dbName: dbName,
         collName: coll,
         expectedOplogCountForNs: 7,
@@ -172,9 +170,9 @@ function runTest(updateAutoCreds) {
     // The writes to the auth collections should not have been written to the oplog. If we updated
     // automation credentials, the initial inserts should exist in the oplog from the snapshot.
     magicRestoreUtils.assertOplogCountForNamespace(
-        destPrimary, "admin.system.roles", updateAutoCreds ? 1 : 0);
+        destPrimary, {ns: "admin.system.roles"}, updateAutoCreds ? 1 : 0);
     magicRestoreUtils.assertOplogCountForNamespace(
-        destPrimary, "admin.system.users", updateAutoCreds ? 1 : 0);
+        destPrimary, {ns: "admin.system.users"}, updateAutoCreds ? 1 : 0);
 
     sourceCluster.stopSet();
     destinationCluster.stopSet();
