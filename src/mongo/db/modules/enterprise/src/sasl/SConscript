@@ -238,7 +238,7 @@ else:
         LIBDEPS=[
             "$BUILD_DIR/mongo/base",
             "$BUILD_DIR/mongo/client/clientdriver_network",
-            "$BUILD_DIR/mongo/client/cyrus_sasl_client",
+            "$BUILD_DIR/mongo/client/sasl_client",
             "$BUILD_DIR/mongo/db/auth/auth",
             "$BUILD_DIR/mongo/db/auth/authmocks",
             "$BUILD_DIR/mongo/db/auth/saslauth",

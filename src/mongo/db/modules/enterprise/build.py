@@ -63,6 +63,9 @@ def configure(conf, env):
 
     env["MONGO_ENTERPRISE_FEATURES"] = selected_features
 
+    if "sasl" in env["MONGO_ENTERPRISE_FEATURES"]:
+        env["MONGO_BUILD_SASL_CLIENT"] = True
+
     # Compute a path to use for including files that are generated in the build directory.
     # Computes: $BUILD_DIR/mongo/db/modules/<enterprise_module_name>/src
     src_include_path = os.path.join("$BUILD_DIR", str(env.Dir(root).Dir("src"))[4:])
