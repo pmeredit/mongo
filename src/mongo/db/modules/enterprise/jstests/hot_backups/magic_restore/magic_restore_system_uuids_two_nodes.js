@@ -12,9 +12,6 @@ import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
-jsTestLog("Temporarily skipping test.");
-quit();
-
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {
     jsTestLog("Temporarily skipping test for Windows variants. See SERVER-86034.");
@@ -39,52 +36,34 @@ const db = primary.getDB(dbName);
 ['a', 'b', 'c'].forEach(
     key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
 
-const magicRestoreUtils = [];
-const expectedConfigs = [];
-const ports = [];
-nodes.forEach((node, idx) => {
-    magicRestoreUtils.push(new MagicRestoreUtils(
-        {backupSource: node, pipeDir: MongoRunner.dataDir, backupDbPathSuffix: `_${idx}`}));
-    magicRestoreUtils[idx].takeCheckpointAndOpenBackup();
-    expectedConfigs.push(assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config);
-    ports.push(node.port);
-});
+const magicRestoreUtil = new MagicRestoreUtils({rst: rst, pipeDir: MongoRunner.dataDir});
+magicRestoreUtil.takeCheckpointAndOpenBackup();
 
 ['e', 'f', 'g'].forEach(
     key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
 
-nodes.forEach((_, idx) => magicRestoreUtils[idx].copyFilesAndCloseBackup());
+magicRestoreUtil.copyFilesAndCloseBackup();
 rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
 
 const rolesCollUuid = UUID();
 const userCollUuid = UUID();
 
-nodes.forEach((_, idx) => {
-    let restoreConfiguration = {
-        "nodeType": "replicaSet",
-        "replicaSetConfig": expectedConfigs[idx],
-        "maxCheckpointTs": magicRestoreUtils[idx].getCheckpointTimestamp(),
-        "systemUuids": [
-            {"ns": "admin.system.roles", "uuid": rolesCollUuid},
-            {"ns": "admin.system.users", "uuid": userCollUuid}
-        ],
-    };
-    restoreConfiguration =
-        magicRestoreUtils[idx].appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
-
-    magicRestoreUtils[idx].writeObjsAndRunMagicRestore(
-        restoreConfiguration, [], {"replSet": jsTestName()});
-});
+let expectedConfig = magicRestoreUtil.getExpectedConfig();
+let restoreConfiguration = {
+    "nodeType": "replicaSet",
+    "replicaSetConfig": expectedConfig,
+    "maxCheckpointTs": magicRestoreUtil.getCheckpointTimestamp(),
+    "systemUuids": [
+        {"ns": "admin.system.roles", "uuid": rolesCollUuid},
+        {"ns": "admin.system.users", "uuid": userCollUuid}
+    ],
+};
+restoreConfiguration = magicRestoreUtil.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+magicRestoreUtil.writeObjsAndRunMagicRestore(restoreConfiguration, [], {"replSet": jsTestName()});
 
 // Restart the destination replica set.
-rst = new ReplSetTest({
-    nodes: [
-        {dbpath: magicRestoreUtils[0].getBackupDbPath(), port: ports[0]},
-        {dbpath: magicRestoreUtils[1].getBackupDbPath(), port: ports[1]}
-    ]
-});
-nodes = rst.startSet(
-    {dbpath: magicRestoreUtils[0].getBackupDbPath().slice(0, -1) + "$node", noCleanData: true});
+rst = new ReplSetTest({nodes: [{port: rst.ports[0]}, {port: rst.ports[1]}]});
+nodes = rst.startSet({dbpath: magicRestoreUtil.getBackupDbPath(), noCleanData: true});
 rst.awaitNodesAgreeOnPrimary();
 // Make sure that all nodes have installed the config before moving on.
 primary = rst.getPrimary();
@@ -94,9 +73,8 @@ assert.soonNoExcept(() => isConfigCommitted(primary));
 nodes.forEach((node, idx) => {
     jsTestLog(`Verifying node ${idx}`);
     node.getDB(dbName).getMongo().setSecondaryOk();
-    magicRestoreUtils[idx].postRestoreChecks({
+    magicRestoreUtil.postRestoreChecks({
         node: node,
-        expectedConfig: expectedConfigs[idx],
         dbName: dbName,
         collName: coll,
         expectedOplogCountForNs: 3,
