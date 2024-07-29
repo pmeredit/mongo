@@ -297,7 +297,6 @@ void Executor::updateStats() {
     }
     _streamStats = std::move(newStats);
 
-
     _metricManager->takeSnapshot();
 
     if (const auto* source = dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
@@ -348,7 +347,9 @@ Executor::RunStatus Executor::runOnce() {
             break;
         }
 
+        // TODO: Update stats less often to reduce the amount of cpu spent on this.
         updateStats();
+
         updateContextFeatureFlags();
 
         for (auto& sampler : _outputSamplers) {

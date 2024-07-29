@@ -282,13 +282,6 @@ function badMongoDLQAsyncError() {
     });
     assert.commandWorked(result);
 
-    assert.commandWorked(db.runCommand({
-        streams_testOnlyInsert: '',
-        tenantId: TEST_TENANT_ID,
-        name: spName,
-        documents: [{value: 2}]
-    }));
-
     assert.soon(() => {
         const result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
