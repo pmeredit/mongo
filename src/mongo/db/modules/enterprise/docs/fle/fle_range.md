@@ -79,12 +79,13 @@ For example, in illustration above, we may choose to exclude levels 2 and 4 (mar
 Notice, that the lowest level (aka "leaf") can never be skipped. Skipping levels begins from
 the top.
 
-Sparsity is represented as a number from 1 to 4, where:
+Sparsity is represented as a number from 1 to 8, where:
 
 - sparsity = 1 - all levels stored
 - sparsity = 2 - every 2nd level skipped
 - sparsity = 3 - every 2nd and 3rd level skipped
 - sparsity = 4 - every 2nd, 3rd, and 4th levels skipped
+- ... and so on.
 
 ### Trim factor
 
