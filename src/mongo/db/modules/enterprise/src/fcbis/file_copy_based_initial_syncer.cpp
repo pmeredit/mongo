@@ -938,6 +938,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                                const Fetcher::QueryResponseStatus& dataStatus,
                                Fetcher::NextAction* nextAction,
                                BSONObjBuilder* getMoreBob) {
+        stdx::lock_guard<Latch> lock(_mutex);
         // Throw out any accumulated results on error
         if (!dataStatus.isOK()) {
             *fetchStatus = dataStatus.getStatus();
