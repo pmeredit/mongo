@@ -71,7 +71,7 @@ public:
         ASSERT(groupStage);
 
         WindowAwareGroupOperator::Options options{
-            WindowAwareOperator::Options{.sendWindowCloseSignal = true}};
+            WindowAwareOperator::Options{.sendWindowSignals = true}};
         options.documentSource = groupStage.get();
         auto groupOperator =
             std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(options));
@@ -115,7 +115,8 @@ public:
 
         // Send the window close message(s) to the group.
         for (Date_t windowToClose : windowsToClose) {
-            StreamControlMsg closeWindowMsg{.windowCloseSignal = windowToClose.asInt64()};
+            StreamControlMsg closeWindowMsg{
+                .windowCloseSignal = streams::WindowCloseMsg{Value(), windowToClose.asInt64()}};
             groupOperator->onControlMsg(0, std::move(closeWindowMsg));
         }
 
@@ -345,7 +346,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
     auto group1Stage = createGroupStage(fromjson(group1Spec));
     ASSERT(group1Stage);
     WindowAwareGroupOperator::Options options(WindowAwareOperator::Options{
-        std::make_unique<WindowAssigner>(windowOptions), true /* sendWindowCloseSignal */});
+        std::make_unique<WindowAssigner>(windowOptions), true /* sendWindowSignals */});
     options.documentSource = group1Stage.get();
     auto group1 = std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(options));
 
@@ -361,12 +362,12 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
             .get());
     ASSERT_TRUE(sortStage);
     WindowAwareSortOperator::Options sortOptions{
-        WindowAwareOperator::Options{.sendWindowCloseSignal = true}};
+        WindowAwareOperator::Options{.sendWindowSignals = true}};
     sortOptions.documentSource = sortStage.get();
     auto sort = std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
 
     WindowAwareGroupOperator::Options group2Options(
-        WindowAwareOperator::Options{.sendWindowCloseSignal = true});
+        WindowAwareOperator::Options{.sendWindowSignals = true});
     auto group2Stage = createGroupStage(fromjson(group2Spec));
     group2Options.documentSource = group2Stage.get();
     ASSERT(group2Stage);
@@ -438,7 +439,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
 
         ASSERT(msg.controlMsg);
         ASSERT(msg.controlMsg->windowCloseSignal);
-        ASSERT_EQ(windowStartTime, *msg.controlMsg->windowCloseSignal);
+        ASSERT_EQ(windowStartTime, msg.controlMsg->windowCloseSignal->windowStartTime);
     }
     auto msg = results.front();
     results.pop_front();

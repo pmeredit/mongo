@@ -168,6 +168,32 @@ struct CheckpointControlMsg {
     }
 };
 
+// The control message sent through the DAG to indicate which windows to close.
+struct WindowCloseMsg {
+    // If provided, indicates which partition contains the session window to close.
+    mongo::Value partition;
+    // For tumbling/hopping windows, indicates start boundary of the window. For session
+    // windows, indicates the minimum timestamp in window.
+    int64_t windowStartTime{0};
+    // For session windows, indicates the maximum timestamp in window.
+    int64_t windowEndTime{0};
+    // For session windows, indicates the unique identifier for window.
+    int64_t windowId{0};
+};
+
+// This is only used for session windows.
+// The control message sent through the DAG to indicate which windows to merge.
+struct SessionWindowMergeMsg {
+    // Indicates which partition contains the session windows to merge.
+    mongo::Value partition;
+    // Indicates the minimum timestamp for the merged window.
+    int64_t minTimestampMs;
+    // Indicates the maximum timestamp for the merged window.
+    int64_t maxTimestampMs;
+    // Indicates the window ids of windows to be merged.
+    std::vector<int64_t> windowsToMerge;
+};
+
 // Encapsulates any control messages we want to send from an operator to the next operator.
 struct StreamControlMsg {
     boost::optional<WatermarkControlMsg> watermarkMsg;
@@ -178,8 +204,12 @@ struct StreamControlMsg {
     // This is currently only used in the inner pipeline of a window stage.
     bool eofSignal{false};
 
-    // If set, this specifies the start time (in millis) of the window that should be closed.
-    boost::optional<int64_t> windowCloseSignal;
+    // For tumbling/hopping windows, this specifies the start time (in millis) of the window that
+    // should be closed. For session windows, this specifies the partition, window id, and expected
+    // bounds of the window to be closed.
+    boost::optional<WindowCloseMsg> windowCloseSignal;
+    // If set, this specifies the identifiers for windows to merge.
+    boost::optional<SessionWindowMergeMsg> windowMergeSignal;
 
     bool empty() const {
         return *this == StreamControlMsg{};

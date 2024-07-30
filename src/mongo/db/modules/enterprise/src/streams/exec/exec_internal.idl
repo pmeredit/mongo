@@ -7,6 +7,7 @@ global:
 
 imports:
     - "mongo/db/basic_types.idl"
+    - "mongo/db/pipeline/value.idl"
 
 enums:
     StreamMetaSourceType:
@@ -139,6 +140,17 @@ structs:
             end:
                 description: "Window end timestamp"
                 type: date
+                optional: true
+            # The partition field is only populated for session windows.
+            partition:
+                # TODO(SERVER-92473): Project partition into the document _stream_meta.
+                description: "Value identifier for partition"
+                type: Value
+                optional: true
+            # Window ID doesn't get projected to _stream_meta.
+            windowID:
+                description: "Integer identifier for session window"
+                type: int
                 optional: true
 
     StreamMeta:

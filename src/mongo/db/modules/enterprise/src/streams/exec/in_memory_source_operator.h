@@ -47,6 +47,7 @@ public:
 private:
     friend class InMemorySourceSinkOperatorTest;
     friend class WindowOperatorTest;
+    friend class SessionWindowAwareOperatorTest;
 
     std::string doGetName() const override {
         return "InMemorySourceOperator";

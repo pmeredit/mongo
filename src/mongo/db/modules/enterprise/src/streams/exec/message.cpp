@@ -75,7 +75,10 @@ BSONObj StreamControlMsg::toBSONForLogging() const {
         builder.append("watermarkStatus", watermarkMsg->watermarkStatus);
     }
     if (windowCloseSignal) {
-        builder.append("windowCloseSignal", *windowCloseSignal);
+        builder.append("windowCloseSignal.Partition", windowCloseSignal->partition.toString());
+        builder.append("windowCloseSignal.WindowStartTime", windowCloseSignal->windowStartTime);
+        builder.append("windowCloseSignal.WindowEndTime", windowCloseSignal->windowEndTime);
+        builder.append("windowCloseSignal.WindowId", windowCloseSignal->windowId);
     }
     return builder.obj();
 }

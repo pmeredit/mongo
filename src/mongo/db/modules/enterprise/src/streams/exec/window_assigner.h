@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/util.h"
 
 namespace streams {
@@ -15,20 +16,21 @@ namespace streams {
 class WindowAssigner {
 public:
     struct Options {
-        int size;
-        mongo::StreamTimeUnitEnum sizeUnit;
-        int slide;
-        mongo::StreamTimeUnitEnum slideUnit;
+        int size{-1};
+        mongo::StreamTimeUnitEnum sizeUnit{mongo::StreamTimeUnitEnum::Millisecond};
+        int slide{-1};
+        mongo::StreamTimeUnitEnum slideUnit{mongo::StreamTimeUnitEnum::Millisecond};
         int offsetFromUtc{0};
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
         int64_t allowedLatenessMs{0};
+
         boost::optional<mongo::StreamTimeUnitEnum> idleTimeoutUnit;
         boost::optional<int> idleTimeoutSize;
     };
 
     WindowAssigner(Options options)
         : _options(std::move(options)),
-          _windowSizeMs(toMillis(_options.sizeUnit, _options.size)),
+          _windowSizeMs(toMillis(options.sizeUnit, options.size)),
           _windowSlideMs(toMillis(_options.slideUnit, _options.slide)),
           _windowOffsetMs(calculateOffsetMs(_options.offsetUnit, _options.offsetFromUtc)) {
         if (_options.idleTimeoutUnit) {
@@ -39,11 +41,14 @@ public:
         }
     }
 
+    virtual ~WindowAssigner() = default;
+
     // Returns the start time of the oldest window that this docTime is in.
     int64_t toOldestWindowStartTime(int64_t docTime) const;
 
     // Returns true if a window should be closed at this watermark time.
-    bool shouldCloseWindow(int64_t windowStartTime, int64_t inputWatermarkMinusLateness) const;
+    virtual bool shouldCloseWindow(int64_t windowStartTime,
+                                   int64_t inputWatermarkMinusLateness) const;
 
     // Gets the window end time from a window start time.
     int64_t getWindowEndTime(int64_t windowStartTime) const;

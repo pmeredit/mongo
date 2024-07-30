@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mongo/db/exec/document_value/value_comparator.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_storage.h"
@@ -11,6 +12,7 @@
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/session_window_assigner.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/window_assigner.h"
 
@@ -43,13 +45,17 @@ public:
         // into window close events.
         std::unique_ptr<WindowAssigner> windowAssigner;
 
-        // If true, this instance will send window close signals downstream. It is set to true
+        // If true, this instance will send window close/merge signals downstream. It is set to true
         // whenever there is another stateful window aware operator downstream (like in the
         // $window[$group, $sort] case).
-        bool sendWindowCloseSignal{false};
+        bool sendWindowSignals{false};
+        bool isSessionWindow{false};
     };
 
-    WindowAwareOperator(Context* context) : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1) {}
+    WindowAwareOperator(Context* context)
+        : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
+          _sessionWindows(mongo::ValueComparator::kInstance.makeUnorderedValueMap<
+                          boost::container::small_vector<std::unique_ptr<Window>, 1>>()) {}
 
 protected:
     // Tracks stats for one window.
@@ -68,6 +74,15 @@ protected:
         Window(mongo::StreamMeta streamMetaTemplate)
             : streamMetaTemplate(std::move(streamMetaTemplate)) {}
 
+        virtual void doMerge(Window* other) {
+            MONGO_UNREACHABLE;
+        }
+
+        void merge(Window* other) {
+            doMerge(other);
+            stats.numInputDocs += other->stats.numInputDocs;
+        }
+
         // The streamMetaTemplate for this window. This streamMeta is applied to all output
         // docs for this window.
         mongo::StreamMeta streamMetaTemplate;
@@ -78,6 +93,30 @@ protected:
         // Stats for this window.
         PerWindowStats stats;
 
+        int64_t getWindowID() {
+            return *streamMetaTemplate.getWindow()->getWindowID();
+        }
+
+        const mongo::Value& getPartition() {
+            return *streamMetaTemplate.getWindow()->getPartition();
+        }
+
+        int64_t getStartMs() {
+            return (*streamMetaTemplate.getWindow()->getStart()).toMillisSinceEpoch();
+        }
+
+        int64_t getEndMs() {
+            return (*streamMetaTemplate.getWindow()->getEnd()).toMillisSinceEpoch();
+        }
+
+        void setStartMs(int64_t start) {
+            streamMetaTemplate.getWindow()->setStart(mongo::Date_t::fromMillisSinceEpoch(start));
+        }
+
+        void setEndMs(int64_t end) {
+            streamMetaTemplate.getWindow()->setEnd(mongo::Date_t::fromMillisSinceEpoch(end));
+        }
+
         // creationTimer for this window
         mongo::Timer creationTimer;
     };
@@ -87,9 +126,12 @@ protected:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) override;
+    void onDataMsgSessionWindow(int32_t inputIdx,
+                                StreamDataMsg dataMsg,
+                                boost::optional<StreamControlMsg> controlMsg);
 
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
-
+    void onControlMsgSessionWindow(int32_t inputIdx, StreamControlMsg controlMsg);
     // WindowAwareOperator has some special handling for memoryUsageBytes.
     // The memoryUsageBytes of each open window are summed.
     // The other stats (ex. numInputDocs, numDlqDocs) work the same as the other operators.
@@ -107,20 +149,40 @@ private:
 
     // Assigns the docs in the input to windows and processes each.
     void assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg);
+    void assignSessionWindowsAndProcessDataMsg(StreamDataMsg dataMsg);
 
     // Process documents for a particular window.
-    void processDocsInWindow(int64_t windowStartTime,
-                             int64_t windowEndTime,
+    void processDocsInWindow(int64_t windowStartTimestampMs,
+                             int64_t windowEndTimestampMs,
                              std::vector<StreamDocument> streamDocs,
                              bool projectMetadata);
+
+    void processDocsInSessionWindow(mongo::Value const& partition,
+                                    std::vector<StreamDocument> streamDocs,
+                                    int64_t minTimestampMs,
+                                    int64_t maxTimestampMs,
+                                    bool projectMetadata);
 
     // Creates a Window object representing an open window.
     std::unique_ptr<Window> makeWindow(mongo::StreamMeta streamMetaTemplate);
 
     // Add a new window or get an existing window.
-    Window* addOrGetWindow(int64_t windowStartTime,
-                           int64_t windowEndTime,
+    Window* addOrGetWindow(int64_t windowStartTimestampMs,
+                           int64_t windowEndTimestampMs,
                            boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
+
+    // Add a new window or get an existing window.
+    Window* addOrGetSessionWindow(mongo::Value const& partition,
+                                  int64_t minTimestampMs,
+                                  int64_t maxTimestampMs,
+                                  boost::optional<int32_t> windowID,
+                                  boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
+
+    Window* mergeSessionWindows(
+        boost::container::small_vector<std::unique_ptr<Window>, 1>& partitionWindows,
+        int64_t newStartTimestampMs,
+        int64_t newEndTimestampMs,
+        boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
 
     // Called when a window is closed. Sends the window output to the next operator.
     void closeWindow(Window* window);
@@ -160,9 +222,12 @@ private:
 
     // Process a watermark message, which might close some windows.
     void processWatermarkMsg(StreamControlMsg controlMsg);
+    void processSessionWindowWatermarkMsg(StreamControlMsg controlMsg);
+    void processSessionWindowCloseMsg(StreamControlMsg controlMsg);
+    void processSessionWindowMergeMsg(StreamControlMsg controlMsg);
 
-    // The map of open windows. The key to the map is the window start time in millis.
     std::map<int64_t, std::unique_ptr<Window>> _windows;
+
     // The largest watermark this operator has sent.
     int64_t _maxSentWatermarkMs{0};
     // Windows before this start time are already closed.
@@ -174,6 +239,16 @@ private:
     // If this is set, the idle timeout occurs if another kIdle message is received
     // when the wall time is greater than _idleStartTime + _idleTimeoutMs + _windowSizeMs
     boost::optional<int64_t> _idleStartTime;
+
+    // These structures are just used for the session window implementation.
+    // The key is the input partition, the value is a vector of pointers to open windows.
+    mongo::ValueUnorderedMap<boost::container::small_vector<std::unique_ptr<Window>, 1>>
+        _sessionWindows;
+    // Used to track next available window ID.
+    int64_t _nextSessionWindowId{0};
+    // This is a vector of all the session windows used during watermark processing.
+    // Only used if this operator is the window assigner.
+    std::vector<Window*> _sessionWindowsVector;
 };
 
 }  // namespace streams

@@ -9,6 +9,8 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
+#include <cmath>
+#include <limits>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -71,13 +73,21 @@ void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::Docum
 
     auto state = getLimitWindow(window);
     state->numSent = limitRecord->getNumSent();
+    state->limit = _options.limit;
 }
 
 WindowAwareLimitOperator::LimitWindow* WindowAwareLimitOperator::getLimitWindow(
     WindowAwareOperator::Window* window) {
     auto limitWindow = dynamic_cast<LimitWindow*>(window);
     invariant(limitWindow);
+    limitWindow->limit = _options.limit;
     return limitWindow;
+}
+
+void WindowAwareLimitOperator::LimitWindow::doMerge(Window* other) {
+    // Merge is only supported for limit windows with max_int limit.
+    invariant(limit == std::numeric_limits<int64_t>::max() &&
+              dynamic_cast<LimitWindow*>(other)->limit == std::numeric_limits<int64_t>::max());
 }
 
 }  // namespace streams

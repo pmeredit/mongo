@@ -41,7 +41,7 @@ public:
         auto sortStage = createSortStage(std::move(spec));
         ASSERT(sortStage);
 
-        WindowAwareOperator::Options options{.sendWindowCloseSignal = false};
+        WindowAwareOperator::Options options{.sendWindowSignals = false};
         WindowAwareSortOperator::Options sortOptions{std::move(options)};
         sortOptions.documentSource = sortStage.get();
         auto sortOperator =
@@ -66,7 +66,8 @@ public:
 
         ASSERT_EQUALS(0, sortOperator->getStats().memoryUsageBytes);
         sortOperator->onDataMsg(0, std::move(dataMsg));
-        StreamControlMsg controlMsg{.windowCloseSignal = windowStartTime.toMillisSinceEpoch()};
+        StreamControlMsg controlMsg{.windowCloseSignal = WindowCloseMsg{
+                                        .windowStartTime = windowStartTime.toMillisSinceEpoch()}};
         sortOperator->onControlMsg(0, std::move(controlMsg));
 
         ASSERT_EQUALS(0, sortOperator->getStats().memoryUsageBytes);

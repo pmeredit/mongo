@@ -40,6 +40,9 @@ private:
 
         // The number of docs sent already.
         int64_t numSent{0};
+        int64_t limit{0};
+
+        void doMerge(Window* other) override;
     };
 
     void doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) override;

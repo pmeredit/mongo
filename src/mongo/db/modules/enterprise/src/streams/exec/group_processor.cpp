@@ -100,9 +100,11 @@ std::pair<mongo::Value, mongo::Value> GroupProcessor::getNextGroup() {
     return {std::move(key), Value{std::move(mergeableValues)}};
 }
 
-void GroupProcessor::addGroup(Value key, const std::vector<Value>& accumulators) {
+void GroupProcessor::addGroup(Value key,
+                              const std::vector<Value>& accumulators,
+                              bool allowDuplicateKeys) {
     auto [it, isCreated] = findOrCreateGroup(std::move(key));
-    tassert(8249933, "Found a duplicate group key.", isCreated);
+    tassert(8249933, "Found a duplicate group key.", isCreated || allowDuplicateKeys);
     for (size_t i = 0; i < accumulators.size(); i++) {
         GroupProcessorBase::accumulate(it, i, accumulators[i]);
     }

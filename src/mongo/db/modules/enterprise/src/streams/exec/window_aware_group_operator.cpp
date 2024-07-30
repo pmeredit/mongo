@@ -190,4 +190,25 @@ void WindowAwareGroupOperator::doRestoreWindowState(Window* window, Document rec
     processor->setDoingMerge(false);
 }
 
+void WindowAwareGroupOperator::GroupWindow::doMerge(Window* other) {
+    /*
+    Retrieve the mergeable key/accumulator pairs from the rightWindow, feed them into the
+    leftWindow’s processor with addGroup.
+    */
+
+    auto otherGroupState = dynamic_cast<GroupWindow*>(other);
+    auto& otherProcessor = otherGroupState->processor;
+
+    auto& thisProcessor = processor;
+
+    otherProcessor->readyGroups();
+    thisProcessor->setDoingMerge(true);
+    while (otherProcessor->hasNext()) {
+        auto [key, accumulators] = otherProcessor->getNextGroup();
+        thisProcessor->addGroup(std::move(key), accumulators.getArray(), true);
+    }
+
+    thisProcessor->setDoingMerge(false);
+}
+
 }  // namespace streams

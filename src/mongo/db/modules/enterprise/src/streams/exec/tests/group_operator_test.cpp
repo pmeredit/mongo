@@ -44,7 +44,7 @@ public:
         auto groupStage = createGroupStage(std::move(groupSpec));
         ASSERT(groupStage);
 
-        WindowAwareOperator::Options options{.sendWindowCloseSignal = false};
+        WindowAwareOperator::Options options{.sendWindowSignals = false};
         WindowAwareGroupOperator::Options groupOptions{std::move(options)};
         groupOptions.documentSource = groupStage.get();
         auto groupOperator =
@@ -68,7 +68,9 @@ public:
         }
 
         groupOperator->onDataMsg(0, std::move(dataMsg));
-        StreamControlMsg controlMsg{.windowCloseSignal = windowStartTime.toMillisSinceEpoch()};
+        StreamControlMsg controlMsg{
+            .windowCloseSignal = streams::WindowCloseMsg{
+                Value(), static_cast<int64_t>(windowStartTime.toMillisSinceEpoch())}};
         groupOperator->onControlMsg(0, std::move(controlMsg));
 
         auto messages = sink.getMessages();

@@ -1128,8 +1128,8 @@ void Planner::planGroup(mongo::DocumentSource* source) {
         baseOptions.windowAssigner =
             std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
     }
-    baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
-                                         _windowPlanningInfo->numWindowAwareStages);
+    baseOptions.sendWindowSignals = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                     _windowPlanningInfo->numWindowAwareStages);
 
     WindowAwareGroupOperator::Options options(std::move(baseOptions));
     options.documentSource = specificSource;
@@ -1149,8 +1149,8 @@ void Planner::planSort(mongo::DocumentSource* source) {
         baseOptions.windowAssigner =
             std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
     }
-    baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
-                                         _windowPlanningInfo->numWindowAwareStages);
+    baseOptions.sendWindowSignals = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                     _windowPlanningInfo->numWindowAwareStages);
 
     WindowAwareSortOperator::Options options(std::move(baseOptions));
     options.documentSource = specificSource;
@@ -1172,8 +1172,8 @@ void Planner::planLimit(mongo::DocumentSource* source) {
         baseOptions.windowAssigner =
             std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
     }
-    baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
-                                         _windowPlanningInfo->numWindowAwareStages);
+    baseOptions.sendWindowSignals = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                     _windowPlanningInfo->numWindowAwareStages);
 
     WindowAwareLimitOperator::Options options(std::move(baseOptions));
     options.limit = limitValue;

@@ -156,4 +156,17 @@ void WindowAwareSortOperator::doRestoreWindowState(Window* window, Document reco
     processor->add(sortKey, std::move(doc));
 }
 
+void WindowAwareSortOperator::SortWindow::doMerge(Window* other) {
+    auto otherSortState = dynamic_cast<SortWindow*>(other);
+    auto& otherProcessor = otherSortState->processor;
+    auto& thisProcessor = processor;
+    otherProcessor->loadingDone();
+
+    while (otherProcessor->hasNext()) {
+        auto result = otherProcessor->getNext();
+        thisProcessor->add(std::move(result.first), std::move(result.second));
+        // DLQ should be impossible here
+    }
+}
+
 }  // namespace streams

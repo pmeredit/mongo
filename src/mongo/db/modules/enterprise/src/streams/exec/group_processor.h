@@ -56,7 +56,9 @@ public:
     std::pair<mongo::Value, mongo::Value> getNextGroup();
 
     // Add a new group (key and accumulators) state. Only used by the group operator recovery path
-    void addGroup(mongo::Value key, const std::vector<mongo::Value>& accumulators);
+    void addGroup(mongo::Value key,
+                  const std::vector<mongo::Value>& accumulators,
+                  bool allowDuplicateKeys = false);
 
 private:
     GroupProcessorBase::GroupsMap::iterator _groupsIterator;

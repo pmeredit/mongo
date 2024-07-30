@@ -64,6 +64,8 @@ private:
         std::unique_ptr<GroupProcessor> processor;
         // Tracks memory usage within the processor.
         mongo::MemoryUsageHandle memoryUsageHandle;
+
+        void doMerge(Window* other) override;
     };
 
     void doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) override;

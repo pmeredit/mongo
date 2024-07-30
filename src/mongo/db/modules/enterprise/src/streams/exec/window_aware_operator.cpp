@@ -3,9 +3,11 @@
  */
 #include "streams/exec/window_aware_operator.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
+#include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 
 namespace streams {
@@ -27,22 +29,15 @@ void WindowAwareOperator::doStart() {
 void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
                                       StreamDataMsg dataMsg,
                                       boost::optional<StreamControlMsg> controlMsg) {
+    if (getOptions().isSessionWindow) {
+        onDataMsgSessionWindow(inputIdx, dataMsg, controlMsg);
+        return;
+    }
     if (getOptions().windowAssigner) {
         assignWindowsAndProcessDataMsg(std::move(dataMsg));
     } else {
-        invariant(!dataMsg.docs.empty());
-        // Validate all the docs in the dataMsg have the same windowStart and
-        // windowEnd
-        invariant(dataMsg.docs.front().streamMeta.getWindow());
         auto start = dataMsg.docs.front().streamMeta.getWindow()->getStart();
         auto end = dataMsg.docs.front().streamMeta.getWindow()->getEnd();
-        invariant(start);
-        invariant(end);
-        for (auto& doc : dataMsg.docs) {
-            invariant(doc.streamMeta.getWindow());
-            invariant(doc.streamMeta.getWindow()->getStart() == start);
-            invariant(doc.streamMeta.getWindow()->getEnd() == end);
-        }
         // Process all the docs in the data message.
         processDocsInWindow(start->toMillisSinceEpoch(),
                             end->toMillisSinceEpoch(),
@@ -51,7 +46,7 @@ void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
     }
 
     if (controlMsg) {
-        onControlMsg(/*outputIdx*/ 0, std::move(*controlMsg));
+        onControlMsg(/*inputIdx*/ 0, std::move(*controlMsg));
     }
 }
 
@@ -62,6 +57,13 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
     invariant(!(bool(controlMsg.watermarkMsg) && bool(controlMsg.windowCloseSignal)),
               "watermarkMsg and windowCloseSingal should not both be set.");
     const auto& options = getOptions();
+
+    if (options.isSessionWindow) {
+        onControlMsgSessionWindow(inputIdx, controlMsg);
+        return;
+    }
+
+    invariant(!controlMsg.windowMergeSignal, "Unexpected window merge control message.");
 
     if (controlMsg.checkpointMsg) {
         saveState(controlMsg.checkpointMsg->id);
@@ -77,14 +79,14 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
     } else if (controlMsg.windowCloseSignal) {
         invariant(!options.windowAssigner,
                   "Unexpected windowCloseSignal when windowAssigner is set.");
-        auto windowIt = _windows.find(*controlMsg.windowCloseSignal);
+        auto windowIt = _windows.find(controlMsg.windowCloseSignal->windowStartTime);
         if (windowIt != _windows.end()) {
             invariant(windowIt == _windows.begin(),
                       "Expected the minimum window to be closed first.");
             closeWindow(windowIt->second.get());
             _windows.erase(windowIt);
         }
-        if (options.sendWindowCloseSignal) {
+        if (options.sendWindowSignals) {
             sendControlMsg(0, std::move(controlMsg));
         }
     }
@@ -180,6 +182,10 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
 
 OperatorStats WindowAwareOperator::doGetStats() {
     // Add together all the memory usage and DLQ-ed docs of all the open windows.
+    if (getOptions().isSessionWindow) {
+        // TODO(SERVER-92473): Support session window stats
+        return OperatorStats{};
+    }
     int64_t memoryUsageBytes{0};
     for (auto& [startTime, window] : _windows) {
         memoryUsageBytes += window->stats.memoryUsageBytes;
@@ -446,9 +452,11 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
             // Send the results for this window.
             closeWindow(windowIt->second.get());
             windowIt = _windows.erase(windowIt);
-            if (options.sendWindowCloseSignal) {
+            if (options.sendWindowSignals) {
                 // Send a windowCloseSignal message downstream.
-                sendControlMsg(0, StreamControlMsg{.windowCloseSignal = windowStartTime});
+                sendControlMsg(0,
+                               StreamControlMsg{.windowCloseSignal = WindowCloseMsg{
+                                                    .windowStartTime = windowStartTime}});
             }
         } else {
             // The windows map is ordered, so we can stop iterating now.
@@ -502,6 +510,466 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
         int64_t numDlqBytes = _context->dlq->addMessage(std::move(bsonObjBuilder));
         // update Dlq stats
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
+    }
+}
+
+// Below method are for the $sessionWindow implementation.
+
+void WindowAwareOperator::onDataMsgSessionWindow(int32_t inputIdx,
+                                                 StreamDataMsg dataMsg,
+                                                 boost::optional<StreamControlMsg> controlMsg) {
+    if (getOptions().windowAssigner) {
+        assignSessionWindowsAndProcessDataMsg(std::move(dataMsg));
+    } else {
+        invariant(!dataMsg.docs.empty());
+        const auto& firstStreamWindow = dataMsg.docs.front().streamMeta.getWindow();
+        invariant(firstStreamWindow);
+        const auto& partition = *(firstStreamWindow->getPartition());
+        auto minTS = *(firstStreamWindow->getStart());
+        auto maxTS = *(firstStreamWindow->getEnd());
+        processDocsInSessionWindow(partition,
+                                   std::move(dataMsg.docs),
+                                   minTS.toMillisSinceEpoch(),
+                                   maxTS.toMillisSinceEpoch(),
+                                   false);
+    }
+    if (controlMsg) {
+        onControlMsg(/*inputIdx*/ 0, std::move(*controlMsg));
+    }
+}
+
+void WindowAwareOperator::onControlMsgSessionWindow(int32_t inputIdx, StreamControlMsg controlMsg) {
+    const auto& options = getOptions();
+
+    if (controlMsg.checkpointMsg) {
+        // TODO(SERVER-91882): Implement this
+        MONGO_UNREACHABLE;
+    } else if (controlMsg.watermarkMsg && options.windowAssigner) {
+        // If this is the windowAssigner (the first stateful stage in the window's inner
+        // pipeline), then use source watermark to find out what windows should be closed.
+        // Close all the windows that should be closed by this watermark.
+        processSessionWindowWatermarkMsg(std::move(controlMsg));
+    } else if (controlMsg.watermarkMsg && !options.windowAssigner) {
+        // Send the watermark msg along.
+        sendControlMsg(0, std::move(controlMsg));
+    } else if (controlMsg.windowCloseSignal) {
+        processSessionWindowCloseMsg(std::move(controlMsg));
+    } else if (controlMsg.windowMergeSignal) {
+        processSessionWindowMergeMsg(std::move(controlMsg));
+    }
+}
+
+void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg dataMsg) {
+    // TODO(SERVER-92473): Send late arriving date to the DLQ
+    struct MiniWindow {
+        std::vector<StreamDocument> docsInWindow;
+        int64_t minTS = std::numeric_limits<int64_t>::max();
+        int64_t maxTS = std::numeric_limits<int64_t>::min();
+    };
+
+    std::sort(
+        dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
+            return lhs.minEventTimestampMs < rhs.minEventTimestampMs;
+        });
+
+    const auto& options = getOptions();
+    auto assigner = dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get());
+    const auto& expr = assigner->getPartitionBy();
+    mongo::ValueUnorderedMap<MiniWindow> miniWindows =
+        mongo::ValueComparator::kInstance.makeUnorderedValueMap<MiniWindow>();
+    for (auto& doc : dataMsg.docs) {
+        // TODO(SERVER-92473): Handle exceptions here and send offending doc to DLQ.
+        mongo::Value partition = expr->evaluate(doc.doc, &expr->getExpressionContext()->variables);
+        auto partitionIt = miniWindows.find(partition);
+        if (partitionIt == miniWindows.end()) {
+            miniWindows[partition] = MiniWindow{};
+        }
+        auto& myMiniWindow = miniWindows[partition];
+
+        if (myMiniWindow.docsInWindow.empty() ||
+            assigner->shouldMergeSessionWindows(doc.minEventTimestampMs,
+                                                doc.minEventTimestampMs,
+                                                myMiniWindow.minTS,
+                                                myMiniWindow.maxTS)) {
+            myMiniWindow.minTS = std::min(myMiniWindow.minTS, doc.minEventTimestampMs);
+            myMiniWindow.maxTS = std::max(myMiniWindow.maxTS, doc.minEventTimestampMs);
+            myMiniWindow.docsInWindow.push_back(std::move(doc));
+        } else {
+            processDocsInSessionWindow(partition,
+                                       std::move(myMiniWindow.docsInWindow),
+                                       myMiniWindow.minTS,
+                                       myMiniWindow.maxTS,
+                                       _context->shouldProjectStreamMetaPriorToSinkStage());
+            myMiniWindow = MiniWindow{
+                std::vector<StreamDocument>{}, doc.minEventTimestampMs, doc.minEventTimestampMs};
+            myMiniWindow.docsInWindow.push_back(std::move(doc));
+        }
+    }
+    for (auto& pair : miniWindows) {
+        invariant(!pair.second.docsInWindow.empty());
+        processDocsInSessionWindow(std::move(pair.first),
+                                   std::move(pair.second.docsInWindow),
+                                   pair.second.minTS,
+                                   pair.second.maxTS,
+                                   _context->shouldProjectStreamMetaPriorToSinkStage());
+    }
+}
+
+void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partition,
+                                                     std::vector<StreamDocument> streamDocs,
+                                                     int64_t minTS,
+                                                     int64_t maxTS,
+                                                     bool projectStreamMeta) {
+    invariant(!streamDocs.empty());
+    const auto& firstStreamMeta = streamDocs.front().streamMeta;
+    auto window = addOrGetSessionWindow(
+        partition,
+        minTS,
+        maxTS,
+        firstStreamMeta.getWindow() ? firstStreamMeta.getWindow()->getWindowID() : boost::none,
+        firstStreamMeta.getSource() ? firstStreamMeta.getSource()->getType() : boost::none);
+    invariant(window);  // cannot be a null ptr
+
+    if (!window->status.isOK()) {
+        return;
+    }
+
+    if (projectStreamMeta) {
+        for (auto& streamDoc : streamDocs) {
+            auto newStreamMeta = updateStreamMeta(
+                streamDoc.doc.getField(*_context->streamMetaFieldName), window->streamMetaTemplate);
+            MutableDocument mutableDoc(std::move(streamDoc.doc));
+            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
+            streamDoc.doc = mutableDoc.freeze();
+        }
+    }
+
+    try {
+        doProcessDocs(window, std::move(streamDocs));
+    } catch (const DBException& e) {
+        window->status = e.toStatus();
+    }
+}
+
+WindowAwareOperator::Window* WindowAwareOperator::mergeSessionWindows(
+    boost::container::small_vector<std::unique_ptr<Window>, 1>& partitionWindows,
+    int64_t newStartTimestampMs,
+    int64_t newEndTimestampMs,
+    boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType) {
+    const auto& options = getOptions();
+    invariant(options.windowAssigner);
+
+    if (partitionWindows.empty()) {
+        // If no open windows for this session, nothing to merge.
+        return nullptr;
+    }
+
+    std::vector<int64_t> mergedWindows;
+
+    Window* destinationWindow{nullptr};
+
+    auto it = partitionWindows.begin();
+    while (it != partitionWindows.end()) {
+        auto window = it->get();
+        auto currWindowID = window->getWindowID();
+        int64_t start = window->getStartMs();
+        int64_t end = window->getEndMs();
+
+        if (dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get())
+                ->shouldMergeSessionWindows(start, end, newStartTimestampMs, newEndTimestampMs)) {
+            // If this window overlaps within gap distance of the input interval, update window
+            // bounds.
+            newStartTimestampMs = std::min(start, newStartTimestampMs);
+            newEndTimestampMs = std::max(end, newEndTimestampMs);
+
+            mergedWindows.push_back(currWindowID);
+            if (!destinationWindow) {
+                // Take the first window that can merge as the "destination" window.
+                destinationWindow = window;
+                ++it;
+                continue;
+            }
+
+            destinationWindow->merge(window);
+            updateStats(destinationWindow);
+
+            // find and delete the window being merged into the destination window from auxillary
+            // data structures.
+            auto staleIt =
+                std::find(_sessionWindowsVector.begin(), _sessionWindowsVector.end(), window);
+            invariant(staleIt != _sessionWindowsVector.end());
+            _sessionWindowsVector.erase(staleIt);
+            it = partitionWindows.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    if (!destinationWindow) {
+        // No windows were merged.
+        return nullptr;
+    }
+
+    if (options.sendWindowSignals && mergedWindows.size() > 1) {
+        // At least 1 window was merged with this interval, so send a merge signal downstream.
+        sendControlMsg(0,
+                       StreamControlMsg{.windowMergeSignal =
+                                            SessionWindowMergeMsg{destinationWindow->getPartition(),
+                                                                  newStartTimestampMs,
+                                                                  newEndTimestampMs,
+                                                                  std::move(mergedWindows)}});
+    }
+
+    // Update the min/max timestamp of the destination window.
+    destinationWindow->setStartMs(newStartTimestampMs);
+    destinationWindow->setEndMs(newEndTimestampMs);
+    return destinationWindow;
+}
+
+WindowAwareOperator::Window* WindowAwareOperator::addOrGetSessionWindow(
+    mongo::Value const& partition,
+    int64_t minTS,
+    int64_t maxTS,
+    boost::optional<int32_t> windowID,
+    boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType) {
+
+    const auto& options = getOptions();
+    auto& partitionWindows = _sessionWindows[partition];  // we want the partition to exist anyways
+
+    if (options.windowAssigner) {
+        invariant(!windowID);
+        auto destinationWindow = mergeSessionWindows(partitionWindows, minTS, maxTS, sourceType);
+
+        if (destinationWindow) {
+            return destinationWindow;
+        }
+
+        windowID = _nextSessionWindowId;
+        ++_nextSessionWindowId;
+    } else {
+        invariant(windowID);
+        auto windowIt = std::find_if(partitionWindows.begin(),
+                                     partitionWindows.end(),
+                                     [&](const std::unique_ptr<Window>& window) {
+                                         return window->getWindowID() == *windowID;
+                                     });
+        if (windowIt != partitionWindows.end()) {
+            return windowIt->get();
+        }
+    }
+
+    // The window does not already exist, so create a new one.
+    invariant(windowID);
+
+    StreamMetaSource streamMetaSource;
+    streamMetaSource.setType(sourceType);
+
+    StreamMetaWindow streamMetaWindow;
+    streamMetaWindow.setPartition(partition);
+    streamMetaWindow.setWindowID(*windowID);
+    streamMetaWindow.setStart(Date_t::fromMillisSinceEpoch(minTS));
+    streamMetaWindow.setEnd(Date_t::fromMillisSinceEpoch(maxTS));
+
+    StreamMeta streamMetaTemplate;
+    streamMetaTemplate.setSource(std::move(streamMetaSource));
+    streamMetaTemplate.setWindow(std::move(streamMetaWindow));
+
+    auto window = makeWindow(std::move(streamMetaTemplate));
+
+    if (options.windowAssigner) {
+        // Store new window in auxillary data structure used for closing windows.
+        _sessionWindowsVector.push_back(window.get());
+    }
+
+    auto ret = window.get();
+    partitionWindows.push_back(std::move(window));
+    return ret;
+}
+
+void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg controlMsg) {
+    tassert(9188000, "Expected a watermarkMsg", controlMsg.watermarkMsg);
+    const auto& watermark = *controlMsg.watermarkMsg;
+    const auto& options = getOptions();
+    tassert(9188001, "Expected to be the window assignger", options.windowAssigner);
+
+    bool isInputActive = watermark.watermarkStatus == WatermarkStatus::kActive;
+    int64_t inputWatermarkTime{0};
+    if (isInputActive) {
+        inputWatermarkTime =
+            watermark.eventTimeWatermarkMs - options.windowAssigner->getAllowedLateness();
+        if (inputWatermarkTime > _maxReceivedWatermarkMs) {
+            _maxReceivedWatermarkMs = inputWatermarkTime;
+        }
+    } else {
+        tassert(9188002,
+                "Expected a watermarkStatus of kIdle",
+                watermark.watermarkStatus == WatermarkStatus::kIdle);
+        return;
+    }
+
+    auto assigner = dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get());
+    auto sendWindowSignals = options.sendWindowSignals;
+
+    auto newEnd = std::remove_if(
+        _sessionWindowsVector.begin(),
+        _sessionWindowsVector.end(),
+        [this, inputWatermarkTime, sendWindowSignals, &assigner](Window* window) {
+            if (assigner->shouldCloseWindow(window->getEndMs(), inputWatermarkTime)) {
+                // close window
+                closeWindow(window);
+
+                auto windowID = window->getWindowID();
+                const auto& partition = window->getPartition();
+
+                if (sendWindowSignals) {
+                    sendControlMsg(
+                        0,
+                        StreamControlMsg{
+                            .windowCloseSignal = WindowCloseMsg{
+                                partition, window->getStartMs(), window->getEndMs(), windowID}});
+                }
+
+                // Remove window from open session window map.
+                auto partitionWindowsIt = _sessionWindows.find(partition);
+                invariant(partitionWindowsIt != _sessionWindows.end());
+                auto& partitionWindows = partitionWindowsIt->second;
+                auto windowIt = std::find_if(partitionWindows.begin(),
+                                             partitionWindows.end(),
+                                             [&](const std::unique_ptr<Window>& window) {
+                                                 return window->getWindowID() == windowID;
+                                             });
+                invariant(windowIt != partitionWindows.end());
+                partitionWindows.erase(windowIt);
+                if (partitionWindows.empty()) {
+                    _sessionWindows.erase(partitionWindowsIt);
+                }
+                return true;
+            }
+            return false;
+        });
+
+    // Remove closed windows from auxillary data structure.
+    _sessionWindowsVector.erase(newEnd, _sessionWindowsVector.end());
+}
+
+void WindowAwareOperator::processSessionWindowCloseMsg(StreamControlMsg controlMsg) {
+    const auto& options = getOptions();
+    invariant(!options.windowAssigner, "Unexpected windowCloseSignal when windowAssigner is set.");
+
+    auto partitionWindowsIt = _sessionWindows.find(controlMsg.windowCloseSignal->partition);
+    if (partitionWindowsIt == _sessionWindows.end()) {
+        // The target window does not exist in this operator.
+        return;
+    }
+    auto& partitionWindows = partitionWindowsIt->second;
+
+    auto windowIt =
+        std::find_if(partitionWindows.begin(),
+                     partitionWindows.end(),
+                     [&controlMsg](const std::unique_ptr<Window>& window) {
+                         return window->getWindowID() == controlMsg.windowCloseSignal->windowId;
+                     });
+
+    if (windowIt == partitionWindows.end()) {
+        // The target window does not exist in this operator.
+        /* This can happen when there is a downstream match operator that filters out all of the
+        documents in a window, so operators downstream of the match never get a dataMsg with that
+        windowId and never create a corresponding window in their open windows map. */
+        return;
+    }
+
+    windowIt->get()->setStartMs(controlMsg.windowCloseSignal->windowStartTime);
+    windowIt->get()->setEndMs(controlMsg.windowCloseSignal->windowEndTime);
+    closeWindow(windowIt->get());
+    partitionWindows.erase(windowIt);
+
+    if (partitionWindows.empty()) {
+        _sessionWindows.erase(partitionWindowsIt);
+    }
+
+    if (options.sendWindowSignals) {
+        sendControlMsg(0, std::move(controlMsg));
+    }
+}
+
+void WindowAwareOperator::processSessionWindowMergeMsg(StreamControlMsg controlMsg) {
+    const auto& options = getOptions();
+    invariant(!options.windowAssigner, "Unexpected windowMergeSignal when windowAssigner is set.");
+
+    const auto& partition = controlMsg.windowMergeSignal->partition;
+    auto minTS = controlMsg.windowMergeSignal->minTimestampMs;
+    auto maxTS = controlMsg.windowMergeSignal->maxTimestampMs;
+    auto windowsToMerge = controlMsg.windowMergeSignal->windowsToMerge;
+
+    invariant(windowsToMerge.size() >= 1);
+    auto destinationWindowId = windowsToMerge[0];
+
+    Window* destinationWindow{nullptr};
+
+    auto partitionWindowsIt = _sessionWindows.find(partition);
+    if (partitionWindowsIt == _sessionWindows.end()) {
+        // The entire partition has been filtered out, so nothing to merge.
+        /*
+        Example: the pipeline below uses eager computation, so windows will flow through
+        operators without being closed.
+        {["$sessionWindow"]:
+        {
+            pipeline: [
+                {
+                    $match: {
+                        b: 2
+                    },
+                    $group: {
+                        _id: null,
+                        allIds: {$push: "$id"}
+                    }
+                }
+            ]
+            gap: {size: NumberInt(1), unit: "hour"},
+            partitionBy: "$a"
+        }}
+        DataMsg 1 docs: [{a: 1, id: 1, b: 2, ts: 0}]
+        DataMsg 2 docs: [{a: 1, id: 2, b: 1, ts: 0}]
+
+        Both docs have the same timestamp and the same partition, so their session windows
+        should merge. However, eager computation will filter out the first doc's window in
+        the match stage, so the group operator won't store anything for partition a = 1.
+        */
+        return;
+    }
+
+    auto& partitionWindows = partitionWindowsIt->second;
+
+    for (auto windowId : windowsToMerge) {
+        auto windowIt = std::find_if(partitionWindows.begin(),
+                                     partitionWindows.end(),
+                                     [windowId](const std::unique_ptr<Window>& window) {
+                                         return window->getWindowID() == windowId;
+                                     });
+
+        // This window got filtered out.
+        if (windowIt == partitionWindows.end()) {
+            continue;
+        }
+
+        if (!destinationWindow) {
+            // Use this window as the destination window.
+            destinationWindow = windowIt->get();
+            // Set it's windowID the upstream assigner specified.
+            destinationWindow->streamMetaTemplate.getWindow()->setWindowID(destinationWindowId);
+            destinationWindow->setStartMs(minTS);
+            destinationWindow->setEndMs(maxTS);
+        } else {
+            // Merge this window into the destination window.
+            auto victimWindow = windowIt->get();
+            destinationWindow->merge(victimWindow);
+            updateStats(destinationWindow);
+            partitionWindowsIt->second.erase(windowIt);
+        }
+    }
+
+    if (options.sendWindowSignals) {
+        sendControlMsg(0, std::move(controlMsg));
     }
 }
 

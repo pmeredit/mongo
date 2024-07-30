@@ -160,6 +160,7 @@ env.Library(
         "watermark_combiner.cpp",
         "watermark_generator.cpp",
         "window_assigner.cpp",
+        "session_window_assigner.cpp",
         "window_aware_group_operator.cpp",
         "window_aware_limit_operator.cpp",
         "window_aware_operator.cpp",
