@@ -373,6 +373,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
         }
     }
 }
+
 runChangeStreamSourceTestWithFullDocumentOnly({
     expectedNumberOfDataMessages: 5,
     dbName: writeDBTwo,
@@ -1013,3 +1014,62 @@ testChangeStreamSourceLagStat();
 //  stream of events is flowing through $source.
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
+
+(function changeStreamCycle() {
+    const inDB = "db";
+    const inColl = "coll";
+    db.getSiblingDB(inDB).dropDatabase();
+    let sourceSpec = {
+        $source: {
+            connectionName: connectionName,
+            db: inDB,
+            coll: inColl,
+            timeField: {$toDate: "$fullDocument.otherTimeField"},
+            config: {fullDocument: "required"}
+        }
+    };
+    let replaceRootStage = {$replaceRoot: {newRoot: "$fullDocument"}};
+    let updateStage = {$set: {a: {$add: ["$a", 1]}}};
+    let projectStage = {$project: {"_stream_meta": 0}};
+    let mergeStage = {
+        $merge: {
+            into: {connectionName: connectionName, db: inDB, coll: inColl},
+            on: "_id",
+            whenMatched: "merge",
+            whenNotMatched: "insert",
+        }
+    };
+    const outputColl = db.getSiblingDB(outputDB)[outputCollName];
+    outputColl.drop();
+    const processorName = "sp1";
+    sp.createStreamProcessor(processorName,
+                             [sourceSpec, replaceRootStage, updateStage, projectStage, mergeStage]);
+    const processor = sp[processorName];
+    assert.commandWorked(processor.start({
+        dlq: {
+            connectionName: connectionName,
+            db: inDB,
+            coll: 'dlq',
+        },
+        featureFlags: {}
+    }));
+    db.getSiblingDB(inDB)[inColl].drop();
+    db.getSiblingDB(inDB).createCollection(inColl, {changeStreamPreAndPostImages: {enabled: true}});
+    let writeColl = db.getSiblingDB(inDB)[inColl];
+    let dlqColl = db.getSiblingDB(inDB)["dlq"];
+    assert.commandWorked(writeColl.insert({_id: 1, a: 1, otherTimeField: Date.now()}));
+    let res;
+    assert.soon(() => {
+        res = writeColl.find().toArray();
+        jsTestLog(res);
+        let dlqres = dlqColl.find().toArray();
+        if (dlqres.length > 0) {
+            jsTestLog(dlqres);
+        }
+        let stats = processor.stats();
+        jsTestLog(stats);
+        return res[0]["a"] == 5;
+    });
+
+    assert.commandWorked(processor.stop());
+}());
