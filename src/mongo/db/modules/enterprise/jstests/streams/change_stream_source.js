@@ -9,7 +9,6 @@ import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_clie
 import {
     getStats,
     listStreamProcessors,
-    sampleUntil,
     stopStreamProcessor,
     TEST_TENANT_ID,
     waitForCount
@@ -122,18 +121,16 @@ function runChangeStreamSourceTest({
     }
 
     const processorName = "changeStreamSourceProcessor";
-    sp.createStreamProcessor(processorName,
-                             [{$source: sourceSpec}, {$emit: {connectionName: '__testMemory'}}]);
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+    ]);
 
     const processor = sp[processorName];
-    let startResult = processor.start({featureFlags: {}, shouldStartSample: true});
-    assert.commandWorked(startResult);
-    const cursorId = startResult["sampleCursorId"];
-
+    assert.commandWorked(processor.start({featureFlags: {}}));
     performWrites();
 
-    let outputDocs = sampleUntil(cursorId, expectedNumberOfDataMessages, processorName);
-
+    processor.sample();
     // Get verbose stats.
     const verboseStats = getStats(processorName);
     jsTestLog(verboseStats);
@@ -142,9 +139,14 @@ function runChangeStreamSourceTest({
     assert(startingPoint);
     assert.commandWorked(processor.stop());
 
+    let res;
+    assert.soon(() => {
+        res = outputColl.find().toArray();
+        return res.length == expectedNumberOfDataMessages;
+    });
     let previousTime = null;
     let resumeTokenSet = new Set();
-    for (const doc of outputDocs) {
+    for (const doc of res) {
         assert(doc.hasOwnProperty(streamMetaFieldName ? streamMetaFieldName : "_stream_meta", doc));
 
         // Verify that the time values reported in our output documents align with what we expect.
@@ -178,13 +180,13 @@ function runChangeStreamSourceTest({
 
         // Verify that the times reported by our stream processor are increasing.
         if (previousTime) {
-            assert.gte(actualTimeValue, previousTime, outputDocs);
+            assert.gte(actualTimeValue, previousTime, res);
         }
         previousTime = actualTimeValue;
 
         // Verify that we haven't seen this change event's resume token before.
         const resumeToken = doc["_id"];
-        assert(!resumeTokenSet.has(resumeToken), outputDocs);
+        assert(!resumeTokenSet.has(resumeToken), res);
         resumeTokenSet.add(resumeToken);
     }
 }
@@ -279,8 +281,8 @@ runChangeStreamSourceTest({
 
 // Test whole cluster support.
 runChangeStreamSourceTest({
-    // The 17 documents inserted in performWrites.
-    expectedNumberOfDataMessages: 17,
+    // The 17 documents inserted in performWrites, plus the drop event.
+    expectedNumberOfDataMessages: 18,
     dbName: undefined,
     collName: undefined,
 });
@@ -322,19 +324,16 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
     ]);
 
     const processor = sp[processorName];
-    let startResult =
-        assert.commandWorked(processor.start({featureFlags: {}, shouldStartSample: true}));
-    assert.commandWorked(startResult);
-    const cursorId = startResult["sampleCursorId"];
-
+    assert.commandWorked(processor.start({featureFlags: {}}));
     performWrites();
 
-    let outputDocs = sampleUntil(cursorId, expectedNumberOfDataMessages, processorName);
-
+    processor.sample();
     assert.commandWorked(processor.stop());
+    const res = outputColl.find().toArray();
 
+    assert.eq(res.length, expectedNumberOfDataMessages);
     let previousTime = null;
-    for (const doc of outputDocs) {
+    for (const doc of res) {
         assert(doc.hasOwnProperty("_stream_meta", doc));
         assert(doc.hasOwnProperty("fullDocument") == false, doc);
         if (overrideTsField) {
@@ -367,7 +366,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
 
             // Verify that the times reported by our stream processor are increasing.
             if (previousTime) {
-                assert.gte(actualTimeValue, previousTime, outputDocs);
+                assert.gte(actualTimeValue, previousTime, res);
             }
             previousTime = actualTimeValue;
         }
