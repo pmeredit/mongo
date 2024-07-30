@@ -3167,4 +3167,45 @@ TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
     ASSERT_EQ(1000, dlqMessages[0].getField("missedWindowStartTimes").Array()[0].Long());
 }
 
+// Test a $tumblingWindow with an input batch containing one late document, and one document a few
+// hops ahead of the minimum allowed window start time.
+TEST_F(WindowOperatorTest, SERVER_92798) {
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
+    _context->checkpointStorage->registerMetrics(_executor->getMetricManager());
+    _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(_context.get());
+    _context->dlq->registerMetrics(_executor->getMetricManager());
+
+    auto pipeline = fromjson(R"(
+    { $tumblingWindow: {
+        interval: { size: 1, unit: "second" },
+        allowedLateness: { size: 0, unit: "second" },
+        pipeline:
+        [
+            { $group: {
+                _id: "$id",
+                sum: { $sum: "$value" }
+            }}
+        ]
+    }})");
+    auto [dag, source, sink] = createDag(pipeline);
+    std::vector<StreamMsgUnion> input{{
+        // send a 1000 watermark, will advance the minWindowStartTime to 1000.
+        StreamMsgUnion{
+            .controlMsg =
+                StreamControlMsg{
+                    .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
+                                                        .eventTimeWatermarkMs = 1000}}},
+        StreamMsgUnion{.dataMsg = StreamDataMsg{{// late
+                                                 generateDocMs(0, 1, 1),
+                                                 // on-time, but a few slide durations ahead of the
+                                                 // minWindowStartTime.
+                                                 generateDocMs(5000, 1, 1)}}},
+    }};
+
+    auto results = getResults(source, sink, input);
+    auto dlqMessages =
+        toVector(dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get())->getMessages());
+    ASSERT_EQ(1, dlqMessages.size());
+}
+
 }  // namespace streams

@@ -107,18 +107,24 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
     int64_t endTs = dataMsg.docs.back().minEventTimestampMs;
     int64_t nextWindowStartTs =
         options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minEventTimestampMs);
+
+    // DLQ docs that are too late to fit in any open window.
     if (nextWindowStartTs < _minWindowStartTime) {
-        // If the min window start time is after the min timestamp in this document batch, then
-        // skip all documents with a timestamp before the min window start time.
         nextWindowStartTs = _minWindowStartTime;
         while (nextWindowStartDocIdx < (int64_t)dataMsg.docs.size()) {
             const auto& doc = dataMsg.docs[nextWindowStartDocIdx];
             int64_t docTime = doc.minEventTimestampMs;
+            int64_t oldestWindowStartTime =
+                options.windowAssigner->toOldestWindowStartTime(docTime);
+            // If some documents are late, the nextWindowStartTs might need to adjusted.
+            // This is needed for the case where a late doc is followed by a doc 1+ hop ahead
+            // of the _minWindowStartTime.
+            nextWindowStartTs = std::max(_minWindowStartTime, oldestWindowStartTime);
             if (docTime < nextWindowStartTs) {
-                sendLateDocDlqMessage(doc,
-                                      options.windowAssigner->toOldestWindowStartTime(docTime));
+                sendLateDocDlqMessage(doc, oldestWindowStartTime);
                 ++nextWindowStartDocIdx;
             } else {
+                // This docs and following docs in the sorted batch might not be late.
                 break;
             }
         }
