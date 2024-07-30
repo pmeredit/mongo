@@ -277,7 +277,7 @@ env.Program(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/base/secure_allocator",
-        "$BUILD_DIR/mongo/client/sasl_client",
+        "$BUILD_DIR/mongo/client/native_sasl_client",
         "$BUILD_DIR/mongo/db/log_process_details",
         "$BUILD_DIR/mongo/db/service_context_non_d",
         "$BUILD_DIR/mongo/util/dns_query",

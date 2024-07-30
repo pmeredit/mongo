@@ -22,6 +22,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/sequence_util.h"
+#include "mongo/util/signal_handlers_synchronous.h"
 #include "mongo/util/str.h"
 #include "mongo_gssapi.h"
 
@@ -328,8 +329,70 @@ namespace {
 // the smoke test in SaslCommands.
 MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, (), ());
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
-                                     ("CyrusSaslAllocatorsAndMutexes", "CyrusSaslClientContext"))
+/*
+ * Allocator functions to be used by the SASL library, if the client
+ * doesn't initialize the library for us.
+ */
+
+// Version 2.1.26 is the first version to use size_t in the allocator signatures
+#if (SASL_VERSION_FULL >= ((2 << 16) | (1 << 8) | 26))
+typedef size_t SaslAllocSize;
+#else
+typedef unsigned long SaslAllocSize;
+#endif
+
+typedef int (*SaslCallbackFn)();
+
+void* saslOurMalloc(SaslAllocSize sz) {
+    return mongoMalloc(sz);
+}
+
+void* saslOurCalloc(SaslAllocSize count, SaslAllocSize size) {
+    void* ptr = calloc(count, size);
+    if (!ptr) {
+        reportOutOfMemoryErrorAndExit();
+    }
+    return ptr;
+}
+
+void* saslOurRealloc(void* ptr, SaslAllocSize sz) {
+    return mongoRealloc(ptr, sz);
+}
+
+/*
+ * Mutex functions to be used by the SASL library, if the client doesn't initialize the library
+ * for us.
+ */
+
+void* saslMutexAlloc(void) {
+    return new SimpleMutex;
+}
+
+int saslMutexLock(void* mutex) {
+    static_cast<SimpleMutex*>(mutex)->lock();
+    return SASL_OK;
+}
+
+int saslMutexUnlock(void* mutex) {
+    static_cast<SimpleMutex*>(mutex)->unlock();
+    return SASL_OK;
+}
+
+void saslMutexFree(void* mutex) {
+    delete static_cast<SimpleMutex*>(mutex);
+}
+
+/**
+ * Configures the SASL library to use allocator and mutex functions we specify,
+ * unless the client application has previously initialized the SASL library.
+ */
+MONGO_INITIALIZER(CyrusSaslAllocatorsAndMutexesServer)(InitializerContext*) {
+    sasl_set_alloc(saslOurMalloc, saslOurCalloc, saslOurRealloc, free);
+
+    sasl_set_mutex(saslMutexAlloc, saslMutexLock, saslMutexUnlock, saslMutexFree);
+}
+
+MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore, ("CyrusSaslAllocatorsAndMutexesServer"))
 (InitializerContext* context) {
     static const sasl_callback_t saslServerGlobalCallbacks[] = {
         {SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), nullptr},

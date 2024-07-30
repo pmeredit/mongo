@@ -27,7 +27,6 @@
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
-#include "mongo/client/cyrus_sasl_client_session.h"
 #include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
