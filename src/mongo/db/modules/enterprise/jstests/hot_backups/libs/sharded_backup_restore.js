@@ -1269,8 +1269,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         isIncrementalBackup = false,
         backupBinaryVersion = "latest"
     } = {}) {
-        // pitRestore needs larger oplog to prevent test failures due to oplog truncation.
-        const oplogSize = isPitRestore ? 1024 : 1;
+        const oplogSize = 1024;
 
         /**
          *  Setup for backup
