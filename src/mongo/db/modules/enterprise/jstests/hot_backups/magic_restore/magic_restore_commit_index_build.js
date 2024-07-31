@@ -6,17 +6,12 @@
  *      requires_persistence,
  *      requires_replication,
  *      requires_wiredtiger,
+ *      incompatible_with_windows_tls
  * ]
  */
 import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
-
-// TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
-if (_isWindows()) {
-    jsTestLog("Temporarily skipping test for Windows variants. See SERVER-86034.");
-    quit();
-}
 
 // When opening a backup cursor, only checkpointed data is backed up. However, the most up-to-date
 // size storer information is used. Thus the fast count may be inaccurate.

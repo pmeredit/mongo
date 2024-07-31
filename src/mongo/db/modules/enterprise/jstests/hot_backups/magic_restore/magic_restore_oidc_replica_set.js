@@ -3,7 +3,8 @@
  *
  * @tags: [
  *     requires_persistence,
- *     requires_wiredtiger
+ *     requires_wiredtiger,
+ *     incompatible_with_windows_tls
  * ]
  */
 
@@ -16,12 +17,6 @@ import {
     OIDCsignJWT
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
 import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
-
-// TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
-if (_isWindows()) {
-    jsTestLog("Temporarily skipping test for Windows variants. See SERVER-86034.");
-    quit();
-}
 
 const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 const keyMap = {
