@@ -56,6 +56,9 @@ private:
     int64_t _totalObjectsRead = 0;
 };
 
+const std::array<std::string, 3> approvedClusterParameters = {
+    "defaultMaxTimeMS", "querySettings", "shardedClusterCardinalityForDirectConns"};
+
 /**
  * Validates the magic restore configuration fields.
  */
@@ -100,6 +103,13 @@ void createCollectionsToRestore(
 void updateShardingMetadata(OperationContext* opCtx,
                             const RestoreConfiguration& restoreConfig,
                             repl::StorageInterface* storageInterface);
+
+/**
+ * Drops all cluster parameters that are not specifically whitelisted for restore.
+ */
+void dropNonRestoredClusterParameters(OperationContext* opCtx,
+                                      repl::StorageInterface* storageInterface);
+
 /**
  * Reads oplog entries from the BSONStreamReader and inserts them into the oplog. Each entry is
  * inserted in its own write unit of work. Note that the function will hold on to the global lock in

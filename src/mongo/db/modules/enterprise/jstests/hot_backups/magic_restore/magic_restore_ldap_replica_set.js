@@ -85,6 +85,20 @@ let configGenerator = new LDAPTestConfigGenerator();
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     const expectedDocs = db.getCollection(coll).find().toArray();
 
+    // Making sure that approved documents in config.clusterParameters collection are restored
+    // properly.
+    assert.commandWorked(primary.getDB("admin").runCommand(
+        {setClusterParameter: {defaultMaxTimeMS: {readOperations: 1}}}));
+    assert.commandWorked(primary.getDB("admin").adminCommand(
+        {setQuerySettings: {find: coll, $db: dbName, filter: {a: 15}}, settings: {reject: true}}));
+
+    primary.getDB("config").getCollection("clusterParameters").insert({
+        _id: "internalSearchOptions"
+    });
+
+    assert.gt(primary.getDB("config").getCollection("clusterParameters").find().toArray().length,
+              2);
+
     const magicRestoreUtils = new MagicRestoreUtils({
         rst: rst,
         pipeDir: MongoRunner.dataDir,
@@ -137,6 +151,9 @@ let configGenerator = new LDAPTestConfigGenerator();
 
     admin = primary.getDB("admin");
     admin.auth("siteRootAdmin", "secret");
+
+    assert.eq(primary.getDB("config").getCollection("clusterParameters").find().toArray().length,
+              2);
 
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     // The later 3 writes were truncated during magic restore.

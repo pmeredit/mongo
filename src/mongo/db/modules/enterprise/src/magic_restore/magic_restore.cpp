@@ -657,11 +657,20 @@ void updateShardingMetadata(OperationContext* opCtx,
     fassert(
         8291411,
         storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
+}
 
+void dropNonRestoredClusterParameters(OperationContext* opCtx,
+                                      repl::StorageInterface* storageInterface) {
     // Drop config.clusterParameters.
-    LOGV2(9106005, "Dropping config.clusterParameters");
-    fassert(8291412,
-            storageInterface->dropCollection(opCtx, NamespaceString::kClusterParametersNamespace));
+    LOGV2(9106005, "Deleting all non-approved parameters from config.clusterParameters");
+    auto filter = BSON("_id" << BSON("$nin" << BSON_ARRAY(approvedClusterParameters[0]
+                                                          << approvedClusterParameters[1]
+                                                          << approvedClusterParameters[2])));
+    auto status = storageInterface->deleteByFilter(
+        opCtx, NamespaceString::kClusterParametersNamespace, filter);
+    if (status != ErrorCodes::NamespaceNotFound) {
+        fassert(9195001, status);
+    }
 }
 
 Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
@@ -842,6 +851,9 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
             fassert(9106008, status);
         }
     }
+
+    // Drop non-approved cluster parameters on all nodes.
+    dropNonRestoredClusterParameters(opCtx.get(), storageInterface);
 
     // Retrieve the timestamp of the last entry in the oplog, used for setting the initial data
     // timestamp below.
