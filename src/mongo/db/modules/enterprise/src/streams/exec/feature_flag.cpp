@@ -53,6 +53,11 @@ const FeatureFlagDefinition FeatureFlags::kKafkaMaxPrefetchByteSize{
     "Maximum buffer size (in bytes) for each Kafka $source partition.",
     mongo::Value(kDataMsgMaxByteSize * 10)};
 
+const FeatureFlagDefinition FeatureFlags::kUseExecutionPlanFromCheckpoint{
+    "useExecutionPlanFromCheckpoint",
+    "Use the Execution plan stored in the checkpoint metadata.",
+    mongo::Value(false)};
+
 const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
     "maxQueueSizeBytes",
     "Maximum buffer size (in bytes) for a sink queue.",

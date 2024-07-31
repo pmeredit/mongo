@@ -64,6 +64,7 @@ for (let i = 0; i < numProcessors; ++i) {
                                   null /* interval */,
                                   "kafka",
                                   true /* useNewCheckpointing */,
+                                  true /* useRestoredExecutionPlan */,
                                   null /* writeDir */,
                                   null /* restoreDir */,
                                   db /* dbForTest */,

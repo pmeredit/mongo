@@ -13,6 +13,8 @@
 #include <regex>
 #include <snappy.h>
 
+#include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
@@ -218,6 +220,8 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     if (!_opts.hostName.empty()) {
         metadata.setHostName(StringData{_opts.hostName});
     }
+
+    metadata.setExecutionPlan(_context->executionPlan);
     metadata.setUserPipeline(_opts.userPipeline);
     std::vector<CheckpointOperatorInfo> checkpointStats;
     for (auto& [opId, stats] : _activeCheckpointSave->stats) {
@@ -288,11 +292,9 @@ bool LocalDiskCheckpointStorage::validateManifest(const mongo::Manifest& manifes
     return true;
 }
 
-LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifestInfo(
-    const fspath& manifestFile) {
-    ManifestInfo result;
-
+void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile) {
     std::string buf;
+    _restoredManifestInfo = ManifestInfo{};
     try {
         buf = readFile(manifestFile.native());
     } catch (const DBException& msg) {
@@ -320,15 +322,15 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
     // Some validity checks at a logical level
     if (!validateManifest(manifest)) {
         tasserted(ErrorCodes::InternalError, "could not validate manifest");
-        return {{}, {}};
+        return;
     }
 
-    result.checkpointId = manifest.getMetadata().getCheckpointId();
-    result.checkpointCommitTs = manifest.getMetadata().getCheckpointEndTime();
+    _restoredManifestInfo->checkpointId = manifest.getMetadata().getCheckpointId();
+    _restoredManifestInfo->checkpointCommitTs = manifest.getMetadata().getCheckpointEndTime();
 
     auto checkpointSizeBytesOpt = manifest.getMetadata().getCheckpointSizeBytes();
     if (checkpointSizeBytesOpt) {
-        result.checkpointSizeBytes = *checkpointSizeBytesOpt;
+        _restoredManifestInfo->checkpointSizeBytes = *checkpointSizeBytesOpt;
     }
 
     // TODO(SERVER-83239): For now assume that checkpointFileList and operatorRanges are always
@@ -349,9 +351,10 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
         }
         tassert(ErrorCodes::InternalError,
                 fmt::format("Duplicate file idx - {}", *fidx),
-                result.fileChecksums.find(*fidx) == result.fileChecksums.end());
+                _restoredManifestInfo->fileChecksums.find(*fidx) ==
+                    _restoredManifestInfo->fileChecksums.end());
 
-        result.fileChecksums[*fidx] = (uint32_t)checksum;
+        _restoredManifestInfo->fileChecksums[*fidx] = (uint32_t)checksum;
     }
 
     for (auto& e : *manifest.getOperatorCheckpointFileRanges()) {
@@ -375,26 +378,46 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
         }
         tassert(ErrorCodes::InternalError,
                 "Multiple entries found for operator!",
-                result.opsRangeMap.find(e.getOpid()) == result.opsRangeMap.end());
-        result.opsRangeMap[e.getOpid()] = std::move(ranges);
+                _restoredManifestInfo->opsRangeMap.find(e.getOpid()) ==
+                    _restoredManifestInfo->opsRangeMap.end());
+        _restoredManifestInfo->opsRangeMap[e.getOpid()] = std::move(ranges);
     }
 
     if (manifest.getMetadata().getOperatorStats()) {
-        result.stats = *manifest.getMetadata().getOperatorStats();
+        _restoredManifestInfo->stats = *manifest.getMetadata().getOperatorStats();
     }
 
-    result.writeDurationMs = manifest.getMetadata().getCheckpointEndTime() -
+    _restoredManifestInfo->writeDurationMs = manifest.getMetadata().getCheckpointEndTime() -
         manifest.getMetadata().getCheckpointStartTime();
 
-    return result;
+    // Populate the execution plan.
+    auto executionPlanOpt = manifest.getMetadata().getExecutionPlan();
+    // TODO(SERVER-92447): Add a tassert to check for the presence of execution plan in the
+    // checkpoint.
+    if (executionPlanOpt) {
+        for (const auto& ex : executionPlanOpt.value()) {
+            _context->executionPlan.push_back(ex.getOwned());
+        }
+    } else {
+        // TODO(SERVER-92447): Remove the else block.
+        int version = manifest.getVersion();
+        tassert(
+            ErrorCodes::InternalError,
+            fmt::format("Missing execution plan in checkpoint for manifest version {}", version),
+            version == ManifestBuilder::kOldVersion);
+    }
 }
 
 boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpointId() {
     if (_opts.restoreRootDir.empty()) {
         return boost::none;
     }
-    fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
-    return getManifestInfo(manifestFile).checkpointId;
+
+    if (!_restoredManifestInfo) {
+        populateManifestInfo(getManifestFilePath(_opts.restoreRootDir));
+    }
+
+    return _restoredManifestInfo->checkpointId;
 }
 
 // Currently, this will be called from the stream manager thread before
@@ -402,14 +425,16 @@ boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpoint
 mongo::CheckpointDescription LocalDiskCheckpointStorage::doStartCheckpointRestore(
     CheckpointId chkId) {
     invariant(!_activeRestorer);
-    fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
+    tassert(
+        ErrorCodes::InternalError, "Expected the restored ManifestInfo.", _restoredManifestInfo);
+
     auto [checkpointId,
           opsRangeMap,
           fileChecksums,
           stats,
           lastCheckpointCommitTs,
           lastCheckpointSizeBytes,
-          writeDurationMs] = getManifestInfo(manifestFile);
+          writeDurationMs] = *_restoredManifestInfo;
     // Most of the time, we will be restoring from the last committed checkpoint, so using the size
     // of the checkpoint being restored as the lastCheckpointSizeBytes should be fine
     _lastCheckpointCommitTs = lastCheckpointCommitTs;
@@ -497,6 +522,7 @@ void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,
 std::vector<mongo::CheckpointOperatorInfo>
 LocalDiskCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
     tassert(ErrorCodes::InternalError, "Expected an active restorer", _activeRestorer);
+
     return _activeRestorer->getStats();
 }
 

@@ -47,7 +47,7 @@ const startOptions = {
         // Checkpoint every five seconds.
         debugOnlyIntervalMs: 5000,
     },
-    featureFlags: {},
+    featureFlags: {useExecutionPlanFromCheckpoint: true},
 };
 
 const connectionRegistry = [
@@ -119,7 +119,7 @@ function makeMongoToKafkaStartCmd({
     jsonType = undefined,
     parseOnly = false,
 }) {
-    const processorId = `processor-coll_${collName}-to-topic`;
+    let processorId = `processor-coll_${collName}-to-topic${Math.floor(Math.random() * 10000)}`;
     const emitOptions = {
         connectionName: connName,
         topic: topicName,
@@ -147,7 +147,7 @@ function makeMongoToKafkaStartCmd({
             debugOnlyIntervalMs: 5000,
         },
         dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
-        featureFlags: {},
+        featureFlags: {useExecutionPlanFromCheckpoint: true},
     };
     if (parseOnly) {
         options.parseOnly = true;
@@ -189,7 +189,7 @@ function makeKafkaToMongoStartCmd({
             debugOnlyIntervalMs: 5000,
         },
         dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
-        featureFlags: {},
+        featureFlags: {useExecutionPlanFromCheckpoint: true},
     };
     if (parseOnly) {
         options.parseOnly = true;
@@ -328,6 +328,8 @@ function mongoToKafkaToMongo({
 } = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+    // Cleanup the source collection.
+    sourceColl1.drop();
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
     // Start kafkaToMongo, which will write from the topic to the sink collection.
@@ -405,6 +407,8 @@ function mongoToKafkaToMongo({
 function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+    // Cleanup the source collection.
+    sourceColl1.drop();
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
     // Start kafkaToMongo, which will write from the topic to the sink collection.
@@ -496,6 +500,8 @@ function mongoToKafkaToMongoGetConnectionNames() {
 function mongoToKafkaSASLSSL() {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLName);
+    // Cleanup the source collection.
+    sourceColl1.drop();
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
     // Start kafkaToMongo, which will write from the topic to the sink collection.
@@ -585,6 +591,9 @@ function mongoToDynamicKafkaTopicToMongo() {
             checkpointUtils.getCheckpointIds(TEST_TENANT_ID, kafkaToMongoProcessorId2).length > 0;
     });
     jsTestLog("Checkpointing started");
+
+    // Cleanup the source collection.
+    sourceColl1.drop();
 
     // Start the mongoToKafka streamProcessor with a dynamic topic name expression. The dynamic
     // topic expression will route the events to the two topics we created above.
@@ -685,7 +694,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
                     },
                 },
                 enableUnnestedWindow: true,
-                featureFlags: {},
+                featureFlags: {useExecutionPlanFromCheckpoint: true},
             },
             processorId: `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`,
         };
@@ -955,6 +964,8 @@ function testKafkaOffsetLag(
     {sinkKey, sinkKeyFormat, sinkHeaders, sourceKeyFormat, sourceKeyFormatError, jsonType} = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+    // Cleanup the source collection.
+    sourceColl1.drop();
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
     // Start kafkaToMongo, which will write from the topic to the sink collection.

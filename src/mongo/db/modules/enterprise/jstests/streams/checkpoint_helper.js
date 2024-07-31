@@ -152,6 +152,7 @@ export class TestHelper {
                 interval = 0,
                 sourceType = "kafka",
                 useNewCheckpointing = true,
+                useRestoredExecutionPlan = true,
                 writeDir = null,
                 restoreDir = null,
                 dbForTest = null,
@@ -225,7 +226,7 @@ export class TestHelper {
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
             checkpointOptions: checkpointOptions,
-            featureFlags: {},
+            featureFlags: {useExecutionPlanFromCheckpoint: useRestoredExecutionPlan},
             checkpointOnStart: false
         };
         this.connectionRegistry = [
@@ -464,7 +465,14 @@ export class CheckPointTestHelper extends TestHelper {
                 useNewCheckpointing = false,
                 writeDir = null,
                 restoreDir = null) {
-        super(inputDocs, pipeline, interval, sourceType, useNewCheckpointing, writeDir, restoreDir);
+        super(inputDocs,
+              pipeline,
+              interval,
+              sourceType,
+              useNewCheckpointing,
+              true,
+              writeDir,
+              restoreDir);
     }
     runWithInputSlice(endRange, firstStart = true) {
         this.sp.createStreamProcessor(this.spName, this.pipeline);
@@ -494,7 +502,7 @@ export class CheckPointTestHelper extends TestHelper {
  */
 function runTestsWithoutCheckpoint(inputDocs, middlePipeline) {
     // get the original results for the inputDocs
-    var test = new TestHelper(inputDocs, middlePipeline, 10000000, "kafka", true);
+    var test = new TestHelper(inputDocs, middlePipeline, 10000000, "kafka", true, true);
     test.run();
     waitForCount(test.outputColl, 1, 60);
     waitWhenThereIsMoreData(test.outputColl);

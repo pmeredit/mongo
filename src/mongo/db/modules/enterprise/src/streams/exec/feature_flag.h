@@ -35,6 +35,7 @@ class FeatureFlags {
 public:
     static const FeatureFlagDefinition kCheckpointDurationInMs;
     static const FeatureFlagDefinition kKafkaMaxPrefetchByteSize;
+    static const FeatureFlagDefinition kUseExecutionPlanFromCheckpoint;
     static const FeatureFlagDefinition kMaxQueueSizeBytes;
 };
 
