@@ -20,7 +20,7 @@
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
-#include "mongo/db/query/sbe_stage_builder_helpers.h"
+#include "mongo/db/query/stage_builder/sbe/sbe_stage_builder_helpers.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/unittest/assert.h"
