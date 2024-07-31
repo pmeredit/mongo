@@ -69,6 +69,7 @@ rst.awaitNodesAgreeOnPrimary();
 primary = rst.getPrimary();
 rst.waitForConfigReplication(primary);
 assert.soonNoExcept(() => isConfigCommitted(primary));
+rst.awaitReplication();
 
 nodes.forEach((node, idx) => {
     jsTestLog(`Verifying node ${idx}`);

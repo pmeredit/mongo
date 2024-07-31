@@ -23,8 +23,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
-import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardedMagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
@@ -37,11 +36,13 @@ if (_isWindows()) {
     quit();
 }
 
+// TODO SERVER-87225: Enable fast count on validate when operations applied during a restore are
+// counted correctly.
+TestData.skipEnforceFastCountOnValidate = true;
+
 function runTest(insertHigherTermOplogEntry) {
     jsTestLog("Running PIT magic restore with insertHigherTermOplogEntry: " +
               insertHigherTermOplogEntry);
-    const numShards = 2;
-    const numNodes = 2;
     // Setting priorities on the second node because assertConfigIsCorrect checks terms:
     // With only 2 nodes, it might happen that both nodes try to run for primary at the same time
     // and vote for themselves, which would increase the term.
@@ -72,7 +73,6 @@ function runTest(insertHigherTermOplogEntry) {
     const coll = "coll";
     const fullNs = dbName + "." + coll;
     jsTestLog("Setting up sharded collection " + fullNs);
-    const clusterId = st.s.getCollection('config.version').findOne().clusterId;
     assert(st.adminCommand({enableSharding: dbName, primaryShard: st.shard0.shardName}));
     assert(st.adminCommand({shardCollection: fullNs, key: {numForPartition: 1}}));
 
@@ -88,25 +88,14 @@ function runTest(insertHigherTermOplogEntry) {
     let expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
     assert.eq(expectedDocs.length, 4);
 
-    // The last entries in magicRestoreUtilsArray are for the config servers.
-    const magicRestoreUtilsArray = [];
-
-    const allNodesIncludingConfig = MagicRestoreUtils.getAllNodes(numShards + 1, numNodes);
-    const allNodesExcludingConfig = allNodesIncludingConfig.slice(0, -numNodes);
+    const shardingRestoreTest = new ShardedMagicRestoreTest({
+        st: st,
+        pipeDir: MongoRunner.dataDir,
+        insertHigherTermOplogEntry: insertHigherTermOplogEntry
+    });
 
     jsTestLog("Taking checkpoints and opening backup cursors");
-
-    for (const [rsIndex, nodeIndex] of allNodesIncludingConfig) {
-        magicRestoreUtilsArray.push(new MagicRestoreUtils({
-            backupSource: rsIndex < numShards ? st["rs" + rsIndex].nodes[nodeIndex]
-                                              : st.configRS.nodes[nodeIndex],
-            pipeDir: MongoRunner.dataDir,
-            insertHigherTermOplogEntry: insertHigherTermOplogEntry,
-            backupDbPathSuffix: `${rsIndex}_${nodeIndex}`
-        }));
-
-        magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex].takeCheckpointAndOpenBackup();
-    }
+    shardingRestoreTest.takeCheckpointsAndOpenBackups();
 
     // On first run the state is 'started' until some databases are dropped and then 'completed' on
     // the next one.
@@ -145,181 +134,69 @@ function runTest(insertHigherTermOplogEntry) {
 
     jsTestLog("Getting backup cluster dbHashes");
     // expected DBs are admin, config and db
-    const dbHashes =
-        MagicRestoreUtils.getDbHashes(st, numShards, numNodes, 3 /* expectedDBCount */);
+    shardingRestoreTest.storePreRestoreDbHashes();
 
-    // We store all the last oplog entry timestamps for each node so we can compare them to the
-    // stable timestamp for each node later. Even though all nodes are consistent up to a particular
-    // point in time (the maximum value of these oplog entries), each individual node's stable
-    // timestamp will be the latest oplog entry in its oplog.
-    const lastOplogEntryTss = [];
-    let maxLastOplogEntryTs = new Timestamp(0, 0);
-    const entriesAfterBackups = [];
-    for (const [rsIndex, nodeIndex] of allNodesExcludingConfig) {
-        const node = st["rs" + rsIndex].nodes[nodeIndex];
-        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
+    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreUtil) => {
+        magicRestoreUtil.rst.nodes.forEach((node) => {
+            // We inserted 8 documents and have 2 shards, so 4 per shard.
+            magicRestoreUtil.assertOplogCountForNamespace(
+                node, {ns: dbName + "." + coll, op: "i"}, 4);
 
-        // We inserted 8 documents and have 2 shards, so 4 per shard.
-        magicRestoreUtils.assertOplogCountForNamespace(node, dbName + "." + coll, 4, "i");
+            let {entriesAfterBackup} = magicRestoreUtil.getEntriesAfterBackup(node);
+            // There might be operations after the backup from periodic jobs such as rangeDeletions
+            // or ensureMajorityPrimaryAndScheduleDbTask, so we filter those out for the comparison
+            // but still pass them into magic restore as additional oplog entries to apply.
+            const filteredEntriesAfterBackup = entriesAfterBackup.filter(
+                elem => (elem.ns != "config.rangeDeletions" &&
+                         elem.o != "ensureMajorityPrimaryAndScheduleDbTask"));
 
-        let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(node);
-        lastOplogEntryTss.push(lastOplogEntryTs);
-        jsTestLog(`Computed lastOplogEntryTs ${tojson(lastOplogEntryTs)} for node ${
-            nodeIndex} of shard ${rsIndex}`);
-        if (timestampCmp(lastOplogEntryTs, maxLastOplogEntryTs) > 0) {
-            maxLastOplogEntryTs = lastOplogEntryTs;
-        }
+            // Includes the 2 addOrRemoveShardInProgress entries generated by
+            // transitionToDedicatedConfigServer.
+            assert.eq(filteredEntriesAfterBackup.length,
+                      4,
+                      `filteredEntriesAfterBackup = ${
+                          tojson(filteredEntriesAfterBackup)} is not of length 4`);
+        });
+    });
 
-        // There might be operations after the backup from periodic jobs such as rangeDeletions
-        // or ensureMajorityPrimaryAndScheduleDbTask, so we filter those out for the comparison but
-        // still pass them into magic restore as additional oplog entries to apply.
-        const filteredEntriesAfterBackup =
-            entriesAfterBackup.filter(elem => (elem.ns != "config.rangeDeletions" &&
-                                               elem.o != "ensureMajorityPrimaryAndScheduleDbTask"));
-
-        // Includes the 2 addOrRemoveShardInProgress entries generated by
-        // transitionToDedicatedConfigServer.
-        assert.eq(filteredEntriesAfterBackup.length,
-                  4,
-                  `filteredEntriesAfterBackup = ${
-                      tojson(filteredEntriesAfterBackup)} is not of length 4`);
-
-        entriesAfterBackups.push(entriesAfterBackup);
-    }
-
-    // Update the maxLastOplogEntryTs with the config server nodes lastOplogEntryTs.
-    for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
-        const node = st.configRS.nodes[nodeIndex];
-        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * numShards + nodeIndex];
-
-        let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(node);
-        lastOplogEntryTss.push(lastOplogEntryTs);
-        jsTestLog(
-            `Computed lastOplogEntryTs ${tojson(lastOplogEntryTs)} for config sever ${nodeIndex}`);
-        if (timestampCmp(lastOplogEntryTs, maxLastOplogEntryTs) > 0) {
-            maxLastOplogEntryTs = lastOplogEntryTs;
-        }
-
-        entriesAfterBackups.push(entriesAfterBackup);
-    }
-    jsTestLog("Computed maxLastOplogEntryTs: " + tojson(maxLastOplogEntryTs));
-
-    // Compute maxCheckpointTs from the shards and config servers.
-    let maxCheckpointTs = magicRestoreUtilsArray[0].getCheckpointTimestamp();
-    for (const [rsIndex, nodeIndex] of allNodesIncludingConfig) {
-        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
-        magicRestoreUtils.copyFiles();
-        const ts = magicRestoreUtils.getCheckpointTimestamp();
-        if (timestampCmp(ts, maxCheckpointTs) > 0) {
-            maxCheckpointTs = ts;
-        }
-    }
-    jsTestLog("Computed maxCheckpointTs: " + tojson(maxCheckpointTs));
-
-    jsTestLog("Extending backup cursors");
-    for (const [rsIndex, nodeIndex] of allNodesIncludingConfig) {
-        magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex].extendAndCloseBackup(
-            rsIndex < numShards ? st["rs" + rsIndex].nodes[nodeIndex]
-                                : st.configRS.nodes[nodeIndex],
-            maxCheckpointTs);
-    }
-
-    const expectedConfigs = [];
-    for (let i = 0; i < numShards + 1; i++) {
-        const primary = i < numShards ? st["rs" + i].getPrimary() : st.configRS.getPrimary();
-        let expectedConfig =
-            assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
-        expectedConfigs.push(expectedConfig);
-    }
-
-    const ports = [];
-    for (const [rsIndex, nodeIndex] of allNodesIncludingConfig) {
-        ports.push(rsIndex < numShards ? st["rs" + rsIndex].getPort(nodeIndex)
-                                       : st.configRS.getPort(nodeIndex));
-    }
-
+    shardingRestoreTest.findMaxCheckpointTsAndExtendBackupCursors();
+    shardingRestoreTest.setPointInTimeTimestamp();
+    shardingRestoreTest.setUpShardingRenamesAndIdentityDocs();
     jsTestLog("Stopping all nodes");
     st.stop({noCleanData: true});
 
-    const shardingRename = [];
-    const shardIdentityDocuments = [];
-    for (let i = 0; i < numShards; i++) {
-        shardingRename.push({
-            sourceShardName: st["shard" + i].shardName,
-            destinationShardName: st["shard" + i].shardName.replace("-rs", "-dst-rs"),
-            destinationShardConnectionString: st["shard" + i].host.replace("-rs", "-dst-rs")
-        });
-        shardIdentityDocuments.push({
-            clusterId: clusterId,
-            shardName: shardingRename[i].destinationShardName,
-            configsvrConnectionString: st.configRS.getURL()
-        });
-    }
-    shardIdentityDocuments.push({
-        clusterId: clusterId,
-        shardName: "config",
-        configsvrConnectionString: st.configRS.getURL()
-    });
+    jsTestLog("Running magic restore");
+    shardingRestoreTest.runMagicRestore();
 
-    jsTestLog("Running Magic Restore with shardingRename = " + tojson(shardingRename));
-    for (const [rsIndex, nodeIndex] of allNodesIncludingConfig) {
-        let restoreConfiguration = {
-            "nodeType": rsIndex < numShards ? "shard" : "configServer",
-            "replicaSetConfig": expectedConfigs[rsIndex],
-            "maxCheckpointTs": maxCheckpointTs,
-            "pointInTimeTimestamp": maxLastOplogEntryTs,  // Restore to the max timestamp of the
-                                                          // last oplog entry of the shards.
-            "shardingRename": shardingRename,
-            "shardIdentityDocument": shardIdentityDocuments[rsIndex]
-        };
+    jsTestLog("Starting config server restore");
+    const configUtils = shardingRestoreTest.getConfigRestoreTest();
+    configUtils.rst.startSet(
+        {restart: true, dbpath: configUtils.getBackupDbPath(), noCleanData: true, configsvr: ""});
 
-        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
-        restoreConfiguration =
-            magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
-        magicRestoreUtils.writeObjsAndRunMagicRestore(
-            restoreConfiguration,
-            entriesAfterBackups[numNodes * rsIndex + nodeIndex],
-            {"replSet": jsTestName() + (rsIndex < numShards ? "-rs" + rsIndex : "-configRS")});
-    }
-
-    jsTestLog("Starting restore config server");
-    // Get the last numNodes ports and turn them into a list of {"port": port}.
-    const configsvr = new ReplSetTest({nodes: ports.slice(-numNodes).map(port => ({port}))});
-    configsvr.startSet({
-        dbpath: MagicRestoreUtils.parameterizeDbpath(
-            magicRestoreUtilsArray[numNodes * numShards].getBackupDbPath()),
-        noCleanData: true,
-        replSet: jsTestName() + "-configRS",
-        configsvr: ""
-    });
-
-    configsvr.awaitNodesAgreeOnPrimary();
+    configUtils.rst.awaitNodesAgreeOnPrimary();
     // Make sure that all nodes have installed the config before moving on.
-    let primary = configsvr.getPrimary();
-    configsvr.waitForConfigReplication(primary);
+    let primary = configUtils.rst.getPrimary();
+    configUtils.rst.waitForConfigReplication(primary);
     assert.soonNoExcept(() => isConfigCommitted(primary));
-
     // We should be in dedicated config server mode and only have 2 entries since we did the
     // transition during PIT restore.
     shardEntries = primary.getDB("config").getCollection("shards").find().toArray();
     assert.eq(shardEntries.length, 2);
 
     // Check each node in the config server replica set.
-    for (let nodeIndex = 0; nodeIndex < numNodes; nodeIndex++) {
-        jsTestLog(`Checking config server ${nodeIndex}`);
-        const node = configsvr.nodes[nodeIndex];
-        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * numShards + nodeIndex];
-
-        magicRestoreUtils.postRestoreChecks({
+    configUtils.rst.nodes.forEach((node) => {
+        node.setSecondaryOk();
+        // Even though all nodes are consistent up to a particular point in time (the maximum
+        // value of these oplog entries), each individual node's stable timestamp will be the
+        // latest oplog entry in its oplog.
+        configUtils.postRestoreChecks({
             node: node,
-            expectedConfig: expectedConfigs[numShards],
             dbName: dbName,
             collName: coll,
             // We don't expect the config server to have data in db.coll.
             expectedOplogCountForNs: 0,
             opFilter: "i",
             expectedNumDocsSnapshot: 0,
-            shardLastOplogEntryTs: lastOplogEntryTss[numNodes * numShards + nodeIndex],
         });
 
         let entries = node.getDB("config").getCollection("databases").find().toArray();
@@ -343,54 +220,38 @@ function runTest(insertHigherTermOplogEntry) {
                 assert.includes(historyEntry["shard"], jsTestName() + "-dst");
             }
         }
-    }
+    });
 
-    const replicaSets = [];
-    for (let rsIndex = 0; rsIndex < numShards; rsIndex++) {
-        jsTestLog("Starting restore shard " + rsIndex);
-        // Restart the destination replica set.
-        const rst = new ReplSetTest({
-            nodes:
-                ports.slice(numNodes * rsIndex, numNodes * rsIndex + numNodes).map(port => ({port}))
-        });
-        rst.startSet({
-            dbpath: MagicRestoreUtils.parameterizeDbpath(
-                magicRestoreUtilsArray[numNodes * rsIndex].getBackupDbPath()),
+    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreUtil, idx) => {
+        jsTestLog("Starting restore shard " + idx);
+        magicRestoreUtil.rst.startSet({
+            restart: true,
+            dbpath: magicRestoreUtil.getBackupDbPath(),
             noCleanData: true,
             shardsvr: "",
-            replSet: jsTestName() + "-rs" + rsIndex
         });
-        rst.awaitNodesAgreeOnPrimary();
+        magicRestoreUtil.rst.awaitNodesAgreeOnPrimary();
         // Make sure that all nodes have installed the config before moving on.
-        let primary = rst.getPrimary();
-        rst.waitForConfigReplication(primary);
+        let primary = magicRestoreUtil.rst.getPrimary();
+        magicRestoreUtil.rst.waitForConfigReplication(primary);
         assert.soonNoExcept(() => isConfigCommitted(primary));
 
-        replicaSets.push(rst);
-    }
-
-    for (const [rsIndex, nodeIndex] of allNodesExcludingConfig) {
-        jsTestLog(`Checking node ${nodeIndex} of shard ${rsIndex}`);
-        const node = replicaSets[rsIndex].nodes[nodeIndex];
-        node.setSecondaryOk();
-
-        const magicRestoreUtils = magicRestoreUtilsArray[numNodes * rsIndex + nodeIndex];
-        const restoredDocs =
-            node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
-        assert.eq(restoredDocs, expectedDocs.slice(4 * rsIndex, 4 * rsIndex + 4));
-
-        magicRestoreUtils.postRestoreChecks({
-            node: node,
-            expectedConfig: expectedConfigs[rsIndex],
-            dbName: dbName,
-            collName: coll,
-            // We inserted 8 documents and have 2 shards, so 4 per shard.
-            expectedOplogCountForNs: 4,
-            opFilter: "i",
-            expectedNumDocsSnapshot: 4,
-            shardLastOplogEntryTs: lastOplogEntryTss[numNodes * rsIndex + nodeIndex],
+        magicRestoreUtil.rst.nodes.forEach((node) => {
+            node.setSecondaryOk();
+            const restoredDocs =
+                node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
+            // Each shard should have half the total number of documents.
+            assert.eq(restoredDocs.length, expectedDocs.length / 2);
+            magicRestoreUtil.postRestoreChecks({
+                node: node,
+                dbName: dbName,
+                collName: coll,
+                expectedOplogCountForNs: 4,
+                opFilter: "i",
+                expectedNumDocsSnapshot: 4,
+            });
         });
-    }
+    });
 
     jsTestLog("Getting restore cluster dbHashes");
     // Excluding admin.system.version, config.shards, config.actionlog, config.rangeDeletions,
@@ -399,21 +260,22 @@ function runTest(insertHigherTermOplogEntry) {
         "system.version",
         "shards",
         "actionlog",
+        "clusterParameters",
         "rangeDeletions",
+        "mongos",
         "cache.databases",
         "cache.collections",
         "databases",  // Renaming shards affects the "primary" field of documents in that collection
         "chunks",     // Renaming shards affects the "shard" field of documents in that collection
+        "cache.chunks.config.system.sessions",
         `cache.chunks.${dbName}.${coll}`
     ];
-    MagicRestoreUtils.checkDbHashes(
-        dbHashes, [...replicaSets, configsvr], excludedCollections, numShards, numNodes);
+    shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
 
     jsTestLog("Stopping restore nodes");
-    for (let i = 0; i < numShards; i++) {
-        replicaSets[i].stopSet();
-    }
-    configsvr.stopSet();
+    shardingRestoreTest.getShardRestoreTests().forEach(
+        (magicRestoreUtils) => { magicRestoreUtils.rst.stopSet(); });
+    configUtils.rst.stopSet();
 }
 
 // Run PIT restore twice, with one run performing a no-op oplog entry insert with a higher term.
