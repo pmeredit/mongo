@@ -123,6 +123,25 @@ TEST(MagicRestore, BSONStreamReaderEmptyBSON) {
     ASSERT_THROWS_CODE(OplogEntry(readBson), mongo::DBException, ErrorCodes::IDLFailedToParse);
 }
 
+TEST(MagicRestore, BSONStreamReaderSizeLarge) {
+    // Insert a BSON greater than the max external document size.
+    // The max internal size (BSONObjMaxInternalSize) is higher so we expect no failure.
+    auto mock = MockStream();
+    auto obj = BSON("_id" << std::string(BSONObjMaxUserSize + 1, 'x'));
+    mock << obj;
+
+    auto reader = mongo::magic_restore::BSONStreamReader(mock.stream());
+    ASSERT(reader.hasNext());
+    auto bsonObj = reader.getNext();
+    ASSERT_BSONOBJ_EQ(obj, bsonObj);
+    ASSERT_GT(obj.objsize(), BSONObjMaxUserSize + 1);
+
+    ASSERT_EQUALS(reader.getTotalBytesRead(), obj.objsize());
+    ASSERT_EQUALS(reader.getTotalObjectsRead(), 1);
+    mock.setStreamState(std::ios::eofbit);
+    ASSERT(!reader.hasNext());
+}
+
 DEATH_TEST(MagicRestore, BSONStreamReaderNegativeSize, "Parsed invalid BSON length") {
     // Insert a negative BSON size by inserting -11 into the first four bytes of the stream.
     char negativeSize[4] = {static_cast<char>((-11 >> 0) & 0xFF),
@@ -149,12 +168,13 @@ DEATH_TEST(MagicRestore, BSONStreamReaderSmallSize, "Parsed invalid BSON length"
 }
 
 DEATH_TEST(MagicRestore, BSONStreamReaderSizeTooLarge, "Parsed invalid BSON length") {
-    // Insert a BSON size greater than the max document size by inserting 16777217 into the first
+    // Insert a BSON size greater than the max internal document size by inserting into the first
     // four bytes of the stream.
-    char bigSize[4] = {static_cast<char>((16777217 >> 0) & 0xFF),
-                       static_cast<char>((16777217 >> 8) & 0xFF),
-                       static_cast<char>((16777217 >> 16) & 0xFF),
-                       static_cast<char>((16777217 >> 24) & 0xFF)};
+    const int size = BSONObjMaxInternalSize + 1;
+    char bigSize[4] = {static_cast<char>((size >> 0) & 0xFF),
+                       static_cast<char>((size >> 8) & 0xFF),
+                       static_cast<char>((size >> 16) & 0xFF),
+                       static_cast<char>((size >> 24) & 0xFF)};
 
     std::stringstream stream(std::string(bigSize, 4));
     auto reader = mongo::magic_restore::BSONStreamReader(stream);

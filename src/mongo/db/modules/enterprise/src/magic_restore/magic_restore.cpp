@@ -48,7 +48,7 @@ namespace magic_restore {
 
 
 BSONStreamReader::BSONStreamReader(std::istream& stream) : _stream(stream) {
-    _buffer = std::make_unique<char[]>(BSONObjMaxUserSize);
+    _buffer = std::make_unique<char[]>(BSONObjMaxInternalSize);
 }
 
 bool BSONStreamReader::hasNext() {
@@ -70,7 +70,7 @@ BSONObj BSONStreamReader::getNext() {
 
     // The BSON length is always little endian.
     const std::int32_t bsonLength = ConstDataView(_buffer.get()).read<LittleEndian<std::int32_t>>();
-    if (bsonLength < BSONObj::kMinBSONLength || bsonLength > BSONObjMaxUserSize) {
+    if (bsonLength < BSONObj::kMinBSONLength || bsonLength > BSONObjMaxInternalSize) {
         // Error out on invalid length values. Otherwise let invalid BSON data fail in future steps.
         LOGV2_FATAL(
             8290501, "Parsed invalid BSON length in stream", "BSONLength"_attr = bsonLength);

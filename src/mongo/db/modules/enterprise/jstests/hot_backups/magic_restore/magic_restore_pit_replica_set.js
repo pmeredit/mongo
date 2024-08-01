@@ -1,9 +1,9 @@
 /*
  * Tests a PIT replica set restore with magic restore. The test does the following:
  *
- * - Starts a replica set, inserts some initial data, and opens a backup cursor.
- * - Writes additional data that will be truncated by magic restore, since the writes occur after
- *   the checkpoint timestamp.
+ * - Starts a replica set, inserts some initial data and opens a backup cursor.
+ * - Writes additional data (with one document close to the max size) that will be truncated by
+ *   magic restore, since the writes occur after the checkpoint timestamp.
  * - Copies data files to the restore dbpath and closes the backup cursor.
  * - Writes a restore configuration object and the source oplog entries from after the checkpoint
  *   timestamp to a named pipe via the mongo shell.
@@ -37,9 +37,14 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     const dbName = "db";
     const coll = "coll";
 
+    // Define the maximum size variables.
+    const bsonMaxUserSize =
+        assert.commandWorked(sourcePrimary.getDB(dbName).hello()).maxBsonObjectSize;
+    assert.eq(bsonMaxUserSize, 16 * 1024 * 1024);
+
     const sourceDb = sourcePrimary.getDB(dbName);
     // Insert some data to restore. This data will be reflected in the restored node.
-    ['a', 'b', 'c'].forEach(
+    ["a", "b", "c"].forEach(
         key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
 
     // Create a user whose password will be changed after taking the backup.
@@ -80,11 +85,12 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
     // restore, so they will be reinserted and reflected in the final state of the data.
-    ['e',
-     'f',
-     'g',
-     'h']
+    ["e",
+     "f",
+     "g"]
         .forEach(key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
+    assert.commandWorked(
+        sourceDb.getCollection(coll).insert({"h": "x".repeat(bsonMaxUserSize - 30)}));
     assert.eq(sourceDb.getCollection(coll).find().toArray().length, 7);
 
     const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
@@ -143,14 +149,14 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     }
 
     // The original node still maintains the history store, so point-in-time reads will succeed.
-    let res = sourcePrimary.getDB("db").runCommand(
-        {find: "coll", readConcern: {level: "snapshot", atClusterTime: snapshotTs}});
+    let res = sourcePrimary.getDB(dbName).runCommand(
+        {find: coll, readConcern: {level: "snapshot", atClusterTime: snapshotTs}});
     assert.commandWorked(res);
     assert.eq(res.cursor.firstBatch.length, 3);
 
     let diff = DataConsistencyChecker.getDiff(
-        sourcePrimary.getDB("db").getCollection("coll").find().sort({_id: 1}),
-        destPrimary.getDB("db").getCollection("coll").find().sort({_id: 1}));
+        sourcePrimary.getDB(dbName).getCollection(coll).find().sort({_id: 1}),
+        destPrimary.getDB(dbName).getCollection(coll).find().sort({_id: 1}));
 
     assert.eq(diff,
               {docsWithDifferentContents: [], docsMissingOnFirst: [], docsMissingOnSecond: []});
