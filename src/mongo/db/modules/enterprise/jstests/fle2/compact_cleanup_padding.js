@@ -6,7 +6,8 @@
  * assumes_read_preference_unchanged,
  * directly_against_shardsvrs_incompatible,
  * assumes_unsharded_collection,
- * requires_fcv_81
+ * requires_fcv_81,
+ * incompatible_slow_machine
  * ]
  */
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
