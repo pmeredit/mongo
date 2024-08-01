@@ -8,8 +8,8 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/api_parameters.h"
 #include "mongo/db/commands.h"
-#include "mongo/db/commands/bulk_write_common.h"
-#include "mongo/db/explain_gen.h"
+#include "mongo/db/commands/query_cmd/bulk_write_common.h"
+#include "mongo/db/commands/query_cmd/explain_gen.h"
 
 #include "../query_analysis/query_analysis.h"
 
