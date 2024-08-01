@@ -255,7 +255,9 @@ std::tuple<Status, int> openLDAPBindFunction(
                                    LDAP_OPERATIONS_ERROR);
         }
 
-        if (!status.isOK()) {
+        if (status.isOK()) {
+            LOGV2_DEBUG(9297100, 1, "LDAP bind succeeded", attrs);
+        } else {
             LOGV2_ERROR(24055,
                         "Failed to bind to LDAP",
                         "ldapURL"_attr = url,
@@ -784,10 +786,6 @@ Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
     // network call.
     ldapBindDelay.execute([&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
-    auto [status, code] = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, this);
-    if (!status.isOK()) {
-        return status;
-    }
     // OpenLDAP needs to know how to bind to strange servers it gets referals to from the
     // target server.
     int err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPRebindFunction, this);
@@ -796,6 +794,12 @@ Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
                       str::stream()
                           << "Unable to set rebind proc, with error: " << ldap_err2string(err));
     }
+
+    auto [status, code] = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, this);
+    if (!status.isOK()) {
+        return status;
+    }
+
     _boundUser = _bindOptions->bindDN;
     userAcquisitionStatsHandle.recordTimerEnd();
     return Status::OK();
