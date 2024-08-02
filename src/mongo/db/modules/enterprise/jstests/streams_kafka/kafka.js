@@ -6,8 +6,8 @@ import {
 import {
     getStats,
     listStreamProcessors,
+    sampleUntil,
     sanitizeDoc,
-    startSample,
     TEST_TENANT_ID,
     waitForCount,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -148,6 +148,7 @@ function makeMongoToKafkaStartCmd({
         },
         dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
         featureFlags: {useExecutionPlanFromCheckpoint: true},
+        shouldStartSample: true
     };
     if (parseOnly) {
         options.parseOnly = true;
@@ -225,28 +226,15 @@ function makeSureKafkaTopicCreated(coll, topicName, connName, count = 1) {
     // Start mongoToKafka, which will read from 'coll' and write to the Kafka topic.
     const startCmd = makeMongoToKafkaStartCmd({collName: coll.getName(), topicName, connName});
     jsTestLog(startCmd);
-    assert.commandWorked(db.runCommand(startCmd));
+    let startResult = db.runCommand(startCmd);
+    assert.commandWorked(startResult);
+    const cursorId = startResult["sampleCursorId"];
+
     for (let i = 0; i < count; i++) {
         coll.insert({a: i - 1});
     }
 
-    // Start a sample on the stream processor.
-    let result = startSample(mongoToKafkaName);
-    assert.commandWorked(result);
-    const cursorId = result["id"];
-    // Insert events and wait for an event to be output, using sample.
-    const getMoreCmd = {
-        streams_getMoreStreamSample: cursorId,
-        tenantId: TEST_TENANT_ID,
-        name: mongoToKafkaName
-    };
-    let sampledDocs = [];
-    while (sampledDocs.length < 1) {
-        result = db.runCommand(getMoreCmd);
-        assert.commandWorked(result);
-        assert.eq(result["cursor"]["id"], cursorId);
-        sampledDocs = sampledDocs.concat(result["cursor"]["nextBatch"]);
-    }
+    sampleUntil(cursorId, count, mongoToKafkaName);
 
     // Stop mongoToKafka to flush the Kafka $emit output.
     stopStreamProcessor(mongoToKafkaName);

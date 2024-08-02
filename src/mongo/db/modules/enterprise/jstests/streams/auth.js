@@ -122,7 +122,11 @@ const docs = [
 const writeColl = db[writeCollName];
 assert.commandWorked(writeColl.insertMany(docs));
 
-processor.runGetMoreSample(db);
+assert.soon(() => {
+    const docs = outputColl.find({}).toArray();
+    return docs.length == 2;
+});
+
 assert.commandWorked(db.runCommand(processor.makeStopCmd()));
 
 const projection = {

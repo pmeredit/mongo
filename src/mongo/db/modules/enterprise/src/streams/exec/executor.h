@@ -46,7 +46,7 @@ public:
         OperatorDag* operatorDag{nullptr};
         CheckpointCoordinator* checkpointCoordinator{nullptr};
         // Sleep duration when source is idle.
-        int32_t sourceIdleSleepDurationMs{2000};
+        int32_t sourceIdleSleepDurationMs{100};
         // Sleep duration when source is not idle.
         // This is currently always zero except when a sample data source is used.
         int32_t sourceNotIdleSleepDurationMs{0};

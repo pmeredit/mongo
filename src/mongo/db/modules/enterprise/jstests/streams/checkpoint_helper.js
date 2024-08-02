@@ -189,6 +189,7 @@ export class TestHelper {
         }
         this.tenantId = "jstests-tenant";
         this.outputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.outputCollName];
+        this.outputColl.drop();
         this.inputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.inputCollName];
         this.dlqColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.dlqCollName];
 
@@ -317,6 +318,7 @@ export class TestHelper {
         if (idsOnDisk.length > 0) {
             this.startOptions.checkpointOptions.localDisk.restoreDirectory =
                 `${this.restoreDir}/${this.tenantId}/${this.processorId}/${idsOnDisk[0]}`;
+            this.checkpointUtil.flushedIds = idsOnDisk;
         } else {
             this.startOptions.checkpointOptions.localDisk.restoreDirectory = null;
         }
