@@ -838,7 +838,6 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
                                                   &magicRestoreTimeElapsedBuilder);
         updateShardingMetadata(opCtx.get(), restoreConfig, storageInterface);
     } else {
-        // TODO SERVER-91185: Test this logic in a targeted jstest.
         // The data files may be from an old shard node, and we want to restore a replica set node.
         // We should ensure the shard identity document has been removed.
         LOGV2(9106007, "Attempting to delete old shard identity document on replica set node");
