@@ -114,7 +114,7 @@ public:
      * Returns list of files fetched from the backupCursor.
      * For testing only.
      */
-    const BackupFileMetadataCollection& getBackupCursorFiles_forTest() {
+    const BackupFileMetadataCollection& getBackupCursorFiles_ForTest() {
         return *_syncingFilesState.backupCursorFiles;
     }
 
@@ -122,7 +122,7 @@ public:
      * Returns list of files fetched from extended the backupCursor.
      * For testing only.
      */
-    StringSet getExtendedBackupCursorFiles_forTest() {
+    StringSet getExtendedBackupCursorFiles_ForTest() {
         return _syncingFilesState.extendedCursorFiles;
     }
 
@@ -130,7 +130,7 @@ public:
         return _getPathRelativeTo(path, basePath);
     }
 
-    void setOldStorageFilesToBeDeleted_forTest(const std::vector<std::string>& oldFiles) {
+    void setOldStorageFilesToBeDeleted_ForTest(const std::vector<std::string>& oldFiles) {
         _syncingFilesState.oldStorageFilesToBeDeleted = oldFiles;
     }
 

@@ -250,14 +250,14 @@ BackupCursorState BackupCursorService::openBackupCursor(
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled() && !options.disableIncrementalBackup) {
         std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
-        for (std::string& filePath : eseFiles) {
+        for (std::string& filename : eseFiles) {
             boost::system::error_code errorCode;
-            const std::uint64_t fileSize = boost::filesystem::file_size(filePath, errorCode);
+            const std::uint64_t fileSize = boost::filesystem::file_size(filename, errorCode);
 
             using namespace fmt::literals;
             uassert(31318,
                     "Failed to get a file's size. Filename: {} Error: {}"_format(
-                        filePath, errorCode.message()),
+                        filename, errorCode.message()),
                     !errorCode);
 
             // The database instance backing the encryption at rest data simply returns filenames
@@ -266,7 +266,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
             eseBackupBlocks.push_back(BackupBlock(opCtx,
                                                   boost::none /* nss */,
                                                   boost::none /* uuid */,
-                                                  filePath,
+                                                  filename,
                                                   0 /* offset */,
                                                   fileSize,
                                                   fileSize));
@@ -314,15 +314,15 @@ void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID&
     _closeBackupCursor(opCtx, backupId, lk);
 }
 
-void BackupCursorService::addFile(const UUID& backupId, std::string filePath) {
+void BackupCursorService::addFilename(const UUID& backupId, std::string filename) {
     stdx::lock_guard<Latch> lk(_mutex);
     tassert(57807, "_activeBackupId should equal backupId", _activeBackupId == backupId);
-    _returnedFilePaths.insert(filePath);
+    _returnedFilenames.insert(filename);
 }
 
-bool BackupCursorService::isFileReturnedByCursor(const UUID& backupId, std::string filePath) {
+bool BackupCursorService::isFileReturnedByCursor(const UUID& backupId, std::string filename) {
     stdx::lock_guard<Latch> lk(_mutex);
-    return _activeBackupId == backupId && _returnedFilePaths.contains(filePath);
+    return _activeBackupId == backupId && _returnedFilenames.contains(filename);
 }
 
 BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
@@ -378,7 +378,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // Copy filenames from `filesToBackup` to `returnedFilenames`.
     std::copy(filesToBackup.begin(),
               filesToBackup.end(),
-              std::inserter(_returnedFilePaths, _returnedFilePaths.end()));
+              std::inserter(_returnedFilenames, _returnedFilenames.end()));
 
     return {filesToBackup};
 }
@@ -405,6 +405,6 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     _state = kInactive;
     _activeBackupId = boost::none;
     _replTermOfActiveBackup = boost::none;
-    _returnedFilePaths.clear();
+    _returnedFilenames.clear();
 }
 }  // namespace mongo

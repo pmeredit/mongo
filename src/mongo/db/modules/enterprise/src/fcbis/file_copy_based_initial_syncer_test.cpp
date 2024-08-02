@@ -1395,7 +1395,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnly) {
     // 'fileBasedInitialSyncMaxLagSec'.
     expectSuccessfulReplSetGetStatusCall(
         Timestamp(cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
-    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_forTest(),
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                              cursorDataMock.backupCursorFiles));
 
     expectSuccessfulKillBackupCursorCall();
@@ -1506,7 +1506,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
     expectSuccessfulBackupCursorCall();
     // Raise failure after opening the backup cursor.
     expectFailedReplSetGetStatusCall();
-    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_forTest(),
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                              cursorDataMock.backupCursorFiles));
 
     {
@@ -1591,9 +1591,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursors) {
     timeStamp = Timestamp(timeStamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0);
     expectSuccessfulReplSetGetStatusCall(timeStamp);
 
-    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_forTest(),
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                              cursorDataMock.backupCursorFiles));
-    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getExtendedBackupCursorFiles_forTest(),
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getExtendedBackupCursorFiles_ForTest(),
                              cursorDataMock.extendedCursorFiles));
 
     expectSuccessfulKillBackupCursorCall();
@@ -1636,7 +1636,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
     // 'fileBasedInitialSyncMaxLagSec'.
     expectSuccessfulReplSetGetStatusCall(
         Timestamp(cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
-    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_forTest(),
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                              cursorDataMock.backupCursorFiles));
 
     expectSuccessfulKillBackupCursorCall();
@@ -1803,7 +1803,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, DeleteOldStorageFilesPhase) {
     hangBeforeDeletingOldStorageFilesFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
 
     // Override the files to be deleted with the files we added to the dbpath.
-    fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_forTest(
+    fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_ForTest(
         cursorDataMock.getAllRemoteFilesRelativePath());
 
     // After we finish deleting the old storage files, we need to ensure that the delete marker was
@@ -1860,7 +1860,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, WatchdogIsPausedDuringStorageChange) {
     cursorDataMock.validateInitialSyncDummyDirectoryExistence(true /*shouldExist*/);
 
     // Override the files to be deleted with the files we added to the dbpath.
-    fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_forTest(
+    fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_ForTest(
         cursorDataMock.getAllRemoteFilesRelativePath());
 
     // Let initial sync work until before pausing watchdog.
@@ -2113,7 +2113,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
         // 'fileBasedInitialSyncMaxLagSec'.
         expectSuccessfulReplSetGetStatusCall(Timestamp(
             cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
-        ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_forTest(),
+        ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                                  cursorDataMock.backupCursorFiles));
 
         expectSuccessfulKillBackupCursorCall();
@@ -2277,9 +2277,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
         timeStamp = Timestamp(timeStamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0);
         expectSuccessfulReplSetGetStatusCall(timeStamp);
 
-        ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_forTest(),
+        ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                                  cursorDataMock.backupCursorFiles));
-        ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getExtendedBackupCursorFiles_forTest(),
+        ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getExtendedBackupCursorFiles_ForTest(),
                                  cursorDataMock.extendedCursorFiles));
 
         expectSuccessfulKillBackupCursorCall();

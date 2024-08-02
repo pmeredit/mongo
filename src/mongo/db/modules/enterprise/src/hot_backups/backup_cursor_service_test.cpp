@@ -2,6 +2,7 @@
  * Copyright (C) 2018-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "mongo/platform/basic.h"
 
 #include "backup_cursor_service.h"
 
@@ -12,7 +13,6 @@
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/devnull/devnull_kv_engine.h"
 #include "mongo/db/storage/storage_engine_impl.h"
-#include "mongo/db/storage/storage_options.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/uuid.h"
 
@@ -37,7 +37,6 @@ public:
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
     std::unique_ptr<BackupCursorService> _backupCursorService;
-    std::string backupRootPath = storageGlobalParams.dbpath;
 };
 
 TEST_F(BackupCursorServiceTest, TestTypicalFsyncLifetime) {
@@ -74,7 +73,7 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     std::deque<BackupBlock> backupBlocks = uassertStatusOK(
         backupCursorState.streamingCursor.get()->getNextBatch(_opCtx.get(), 1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
-    ASSERT_EQUALS(backupRootPath + "/testFile.txt", backupBlocks.front().absoluteFilePath());
+    ASSERT_EQUALS("filename.wt", backupBlocks.front().filePath());
     ASSERT_EQUALS(0, backupBlocks.front().offset());
     ASSERT_EQUALS(0, backupBlocks.front().length());
     ASSERT_EQUALS(0, backupBlocks.front().fileSize());
@@ -86,7 +85,7 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     backupBlocks = uassertStatusOK(
         backupCursorState.streamingCursor.get()->getNextBatch(_opCtx.get(), 1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
-    ASSERT_EQUALS(backupRootPath + "/testFile.txt", backupBlocks.front().absoluteFilePath());
+    ASSERT_EQUALS("filename.wt", backupBlocks.front().filePath());
     ASSERT_EQUALS(0, backupBlocks.front().offset());
     ASSERT_EQUALS(0, backupBlocks.front().length());
     ASSERT_EQUALS(0, backupBlocks.front().fileSize());
@@ -163,9 +162,8 @@ TEST_F(BackupCursorServiceTest, TestSuccessfulExtend) {
     auto extendTo = Timestamp(100, 1);
     auto backupCursorExtendState =
         _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
-    ASSERT_EQUALS(1u, backupCursorExtendState.absoluteFilePaths.size());
-    ASSERT_EQUALS(backupRootPath + "/journal/WiredTigerLog.999",
-                  backupCursorExtendState.absoluteFilePaths[0]);
+    ASSERT_EQUALS(1u, backupCursorExtendState.filenames.size());
+    ASSERT_EQUALS("journal/WiredTigerLog.999", backupCursorExtendState.filenames[0]);
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
 }
@@ -189,17 +187,16 @@ TEST_F(BackupCursorServiceTest, TestFilenameCheckWithExtend) {
     auto extendTo = Timestamp(100, 1);
     _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
 
-    ASSERT(_backupCursorService->isFileReturnedByCursor(
-        backupId, backupRootPath + "/journal/WiredTigerLog.999"));
+    ASSERT(_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
 
     // Check incorrect filename.
-    ASSERT_FALSE(_backupCursorService->isFileReturnedByCursor(
-        backupId, backupRootPath + "/journal/NotWiredTigerLog.999"));
+    ASSERT_FALSE(
+        _backupCursorService->isFileReturnedByCursor(backupId, "journal/NotWiredTigerLog.999"));
 
     // Check incorrect backupId.
     auto wrongBackupId = UUID::gen();
-    ASSERT_FALSE(_backupCursorService->isFileReturnedByCursor(
-        wrongBackupId, backupRootPath + "/journal/WiredTigerLog.999"));
+    ASSERT_FALSE(
+        _backupCursorService->isFileReturnedByCursor(wrongBackupId, "journal/WiredTigerLog.999"));
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
 }
@@ -211,13 +208,11 @@ TEST_F(BackupCursorServiceTest, TestFilenamesClearedOnClose) {
     auto extendTo = Timestamp(100, 1);
     _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
 
-    ASSERT(_backupCursorService->isFileReturnedByCursor(
-        backupId, backupRootPath + "/journal/WiredTigerLog.999"));
+    ASSERT(_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
 
     // Closing the backup cursor should clear the tracked filenames.
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
-    ASSERT(!_backupCursorService->isFileReturnedByCursor(
-        backupId, backupRootPath + "/journal/WiredTigerLog.999"));
+    ASSERT(!_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
 
     // Opening another backup cursor should still track filenames.
     backupCursorState = _backupCursorService->openBackupCursor(
@@ -226,8 +221,7 @@ TEST_F(BackupCursorServiceTest, TestFilenamesClearedOnClose) {
     extendTo = Timestamp(100, 1);
     _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
 
-    ASSERT(_backupCursorService->isFileReturnedByCursor(
-        backupId, backupRootPath + "/journal/WiredTigerLog.999"));
+    ASSERT(_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
 }

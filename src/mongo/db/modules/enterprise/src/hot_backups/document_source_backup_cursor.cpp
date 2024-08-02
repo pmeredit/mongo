@@ -82,7 +82,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
 
         Document doc;
         if (backupBlock.offset() == 0 && backupBlock.length() == 0) {
-            doc = {{"filename", backupBlock.absoluteFilePath()},
+            doc = {{"filename", backupBlock.filePath()},
                    {"fileSize", static_cast<long long>(backupBlock.fileSize())},
                    {"required", backupBlock.isRequired()},
                    {"ns",
@@ -91,7 +91,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
                                      : ""},
                    {"uuid", uuidStr}};
         } else {
-            doc = {{"filename", backupBlock.absoluteFilePath()},
+            doc = {{"filename", backupBlock.filePath()},
                    {"fileSize", static_cast<long long>(backupBlock.fileSize())},
                    {"offset", static_cast<long long>(backupBlock.offset())},
                    {"length", static_cast<long long>(backupBlock.length())},
@@ -105,7 +105,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
 
         auto svcCtx = pExpCtx->opCtx->getServiceContext();
         auto backupCursorService = BackupCursorHooks::get(svcCtx);
-        backupCursorService->addFile(_backupCursorState.backupId, backupBlock.absoluteFilePath());
+        backupCursorService->addFilename(_backupCursorState.backupId, backupBlock.filePath());
 
         _backupBlocks.pop_front();
         return std::move(doc);
