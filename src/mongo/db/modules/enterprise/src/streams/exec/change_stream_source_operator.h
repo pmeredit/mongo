@@ -203,6 +203,10 @@ private:
     // rest of the OperatorDAG.
     std::queue<DocBatch> _changeEvents;
 
+    // Set to true when the background thread gets an empty response from the changestream
+    // server, and false when a change event is read from the server.
+    mongo::Atomic<bool> _isIdle{false};
+
     // Tracks an exception that needs to be returned to the caller.
     std::exception_ptr _exception;
 

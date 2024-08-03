@@ -299,6 +299,15 @@ export function getDefaultSp() {
     ]);
 }
 
+export function commonTestSetup() {
+    const sp = getDefaultSp();
+    const inputColl = db.getSiblingDB(test.dbName)[test.inputCollName];
+    const outputColl = db.getSiblingDB(test.dbName)[test.outputCollName];
+    inputColl.drop();
+    outputColl.drop();
+    return [sp, inputColl, outputColl];
+}
+
 export function getAtlasStreamProcessorHandle(uri) {
     const m = new Mongo(uri);
     const dbForTest = m.getDB("admin");

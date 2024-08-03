@@ -4,12 +4,16 @@
  * ]
  */
 import {assertErrorCode} from "jstests/aggregation/extras/utils.js";
-import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {
+    commonTestSetup,
+    Streams,
+    test
+} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     listStreamProcessors,
     sampleUntil,
     startSample,
-    TEST_TENANT_ID
+    TEST_TENANT_ID,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function runAll() {
@@ -363,6 +367,67 @@ function runAll() {
 
         innerTest(kafkaSourceType);
         innerTest(changestreamSourceType);
+    }());
+
+    /**
+     * This test is for small windows (200ms) with a small idleTimeout (200ms).
+     * In SERVER-93117 we realized a window like could cause some documents to be DLQ-ed due to
+     * lateness.
+     */
+    (function testWindowSmallIdleTimeout() {
+        // Start a streamProcessor.
+        const [sp, inputColl, outputColl] = commonTestSetup();
+        const spName = "windowSmallIdleTimeout";
+        sp.createStreamProcessor(spName, [
+            {
+                $source: {
+                    connectionName: test.atlasConnection,
+                    db: test.dbName,
+                    coll: test.inputCollName
+                }
+            },
+            {
+                $tumblingWindow: {
+                    interval: {unit: "ms", size: NumberInt(200)},
+                    idleTimeout: {unit: "ms", size: NumberInt(200)},
+                    allowedLateness: {unit: "second", size: NumberInt(0)},
+                    pipeline: [{$group: {_id: null, count: {$count: {}}}}]
+                }
+            },
+            {$project: {_id: 0}},
+            {
+                $merge: {
+                    into: {
+                        connectionName: test.atlasConnection,
+                        db: test.dbName,
+                        coll: test.outputCollName
+                    }
+                }
+            },
+        ]);
+        sp[spName].start();
+
+        // Insert 100 documents, sleeping for 2 seconds in between a few of them.
+        const numDocs = 100;
+        for (let i = 0; i < numDocs; i++) {
+            inputColl.insertOne({a: i});
+            if (i % 25 == 0) {
+                sleep(2000);
+            }
+        }
+
+        // Wait for all messages to be processoed.
+        assert.soon(() => {
+            const stats = sp[spName].stats();
+            return numDocs == stats.inputMessageCount;
+        });
+        const stats = sp[spName].stats();
+        // Validate no messages are DLQ-ed.
+        assert.eq(0, stats.dlqMessageCount);
+
+        // Stop the streamProcessor.
+        sp[spName].stop();
+        assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
     }());
 }
 

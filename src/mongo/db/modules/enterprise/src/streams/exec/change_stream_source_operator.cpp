@@ -505,9 +505,9 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
             _state.setStartingPoint(
                 std::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
         }
-        if (_options.sendIdleMessages) {
-            // If _options.sendIdleMessages is set, always send a kIdle watermark when
-            // there are 0 docs in the batch.
+        if (_options.sendIdleMessages && _isIdle.load()) {
+            // If _options.sendIdleMessages is set, send a kIdle watermark when
+            // there are 0 docs in the batch and the background thread has set _isIdle.
             StreamControlMsg msg{
                 .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
             _lastControlMsg = msg;
@@ -616,6 +616,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 
     // Return early if we didn't read a change event or resume token.
     if (!changeEvent && !eventResumeToken) {
+        _isIdle.store(true);
         return false;
     }
 
@@ -634,6 +635,11 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _queueSizeGauge->incBy(1);
             _queueByteSizeGauge->incBy(docSize);
             _consumerStats += {.memoryUsageBytes = docSize};
+            // We saw a change event, so mark isIdle false.
+            _isIdle.store(false);
+        } else {
+            // We did not see a change event, so mark isIdle as true.
+            _isIdle.store(true);
         }
         if (eventResumeToken) {
             activeBatch.lastResumeToken = std::move(*eventResumeToken);
