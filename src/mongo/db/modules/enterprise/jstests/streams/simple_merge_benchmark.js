@@ -218,9 +218,9 @@ function benchmark() {
     aggWhenMatchOutputColl.drop();
 }
 
-const debugBuild = db.adminCommand("buildInfo").debug;
-if (!debugBuild && !_isAddressSanitizerActive() && !_isThreadSanitizerActive() &&
-    !_isLeakSanitizerActive() && !_isLeakSanitizerActive()) {
+const buildInfo = db.getServerBuildInfo();
+if (!buildInfo.isDebug() && !buildInfo.isAddressSanitizerActive() &&
+    !buildInfo.isThreadSanitizerActive() && !buildInfo.isLeakSanitizerActive()) {
     // Don't run this on debug builds or sanitizer builds in Evergreen, it takes too long.
     benchmark();
 }
