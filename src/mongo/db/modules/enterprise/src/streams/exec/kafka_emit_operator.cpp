@@ -116,6 +116,7 @@ void KafkaEmitOperator::Connector::testConnection() {
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
+    _deliveryCb = std::make_unique<DeliveryReportCallback>(_context);
 
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
@@ -132,6 +133,16 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     setConf("topic.metadata.refresh.interval.ms", "-1");
     // Set the event callback.
     setConf("event_cb", _eventCbImpl.get());
+
+    if (_context->featureFlags) {
+        auto useDeliveryCallback =
+            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
+                .getBool();
+        if (useDeliveryCallback && *useDeliveryCallback) {
+            // Set the delivery callback, used during flush to detect connectivity errors.
+            setConf("dr_cb", _deliveryCb.get());
+        }
+    }
 
     // Set the resolve callback.
     if (_options.gwproxyEndpoint) {
@@ -206,6 +217,11 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                 sendOutputToSamplers(std::move(msg));
             }
         } catch (const DBException& e) {
+            if (e.code() == ErrorCodes::StreamProcessorKafkaConnectionError) {
+                // Error out for connection exceptions.
+                spasserted(_eventCbImpl->appendRecentErrorsToStatus(e.toStatus()));
+            }
+            // For all other exceptions, send a message to the DLQ.
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
             numDlqBytes += _context->dlq->addMessage(
@@ -217,6 +233,16 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
                       .numDlqBytes = numDlqBytes});
+
+    if (_context->featureFlags) {
+        auto useDeliveryCallback =
+            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
+                .getBool();
+        if (useDeliveryCallback && *useDeliveryCallback) {
+            // Call poll to serve any queued callbacks.
+            _producer->poll(_options.flushTimeout.count());
+        }
+    }
 }
 
 namespace {
@@ -508,7 +534,8 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         if (headers != nullptr) {
             delete headers;
         }
-        uasserted(8720704, "Failed to emit to topic {} due to error: {}"_format(topicName, err));
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                  "Failed to emit to topic {} due to error: {}"_format(topicName, err));
     }
 }
 
@@ -571,7 +598,30 @@ void KafkaEmitOperator::doFlush() {
                                err,
                                RdKafka::err2str(err))}));
     }
+    auto deliveryStatus = _deliveryCb->getStatus();
+    if (!deliveryStatus.isOK()) {
+        spasserted(_eventCbImpl->appendRecentErrorsToStatus(std::move(deliveryStatus)));
+    }
+
     LOGV2_DEBUG(74687, 0, "KafkaEmitOperator flush complete", "context"_attr = _context);
+}
+
+void KafkaEmitOperator::DeliveryReportCallback::dr_cb(RdKafka::Message& message) {
+    if (message.err()) {
+        LOGV2_INFO(8853604,
+                   "KafkaEmitOperator encountered delivery error",
+                   "error"_attr = message.errstr(),
+                   "context"_attr = _context);
+        stdx::unique_lock lock(_mutex);
+        _status = Status{
+            ErrorCodes::StreamProcessorKafkaConnectionError,
+            fmt::format("Kafka $emit encountered error {}: {}", message.err(), message.errstr())};
+    }
+}
+
+mongo::Status KafkaEmitOperator::DeliveryReportCallback::getStatus() const {
+    stdx::unique_lock lock(_mutex);
+    return _status;
 }
 
 };  // namespace streams

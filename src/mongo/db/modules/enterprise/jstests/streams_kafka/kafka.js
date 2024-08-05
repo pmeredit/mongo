@@ -855,8 +855,11 @@ function runKafkaTest(kafka, testFn, partitionCount = 1) {
     // Clear any previous persistent state so that the test starts with a clean slate.
     dropCollections();
     kafka.start(partitionCount);
+    const funcStr = testFn.toString();
     try {
+        jsTestLog(`Running: ${funcStr}`);
         testFn();
+        jsTestLog(`Passed: ${funcStr}`);
     } finally {
         kafka.stop();
     }
@@ -923,23 +926,26 @@ function testKafkaAsyncError() {
 
     // Crash the Kafka broker.
     kafkaThatWillFail.stop();
-    // Eventually the SP should go into an error state.
+
     assert.soon(() => {
-        // TODO(SERVER-89760): Figure out a reliable way to detect this that doesn't fail the
-        // processor after idleness.
-        return true;
-        // let result = listStreamProcessors();
+        // Kafka $emit errors are detected during flush. Write some data so checkpoints and flushes
+        // happen and we detect the error.
+        sourceColl1.insert({a: 1});
+        let result = listStreamProcessors();
+        let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
+        jsTestLog(mongoToKafka);
+        return mongoToKafka.status == "error" &&
+            mongoToKafka.error.reason.includes("Kafka $emit encountered error") &&
+            mongoToKafka.error.reason.includes(
+                "Connect to ipv4#127.0.0.1:9092 failed: Connection refused");
+
+        // TODO(SERVER-89760): Figure out a reliable way to detect source connection failure.
         // let kafkaToMongo = result.streamProcessors.filter(s => s.name == kafkaToMongoName)[0];
-        // let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
-        // jsTestLog(result);
-        // return kafkaToMongo.status == "error" && mongoToKafka.status == "error" &&
+        // return kafkaToMongo.status == "error" &&
         //     kafkaToMongo.error.reason.includes("Kafka $source partition 0 encountered error") &&
         //     kafkaToMongo.error.reason.includes(
-        //         "Connect to ipv4#127.0.0.1:9092 failed: Connection refused") &&
-        //     mongoToKafka.error.reason.includes("Kafka $emit encountered error") &&
-        //     mongoToKafka.error.reason.includes(
         //         "Connect to ipv4#127.0.0.1:9092 failed: Connection refused");
-    }, "expected both processors to end in error");
+    }, "expected mongoToKafka processor to go into failed state");
 
     // Now stop both stream processors.
     stopStreamProcessor(kafkaToMongoName);

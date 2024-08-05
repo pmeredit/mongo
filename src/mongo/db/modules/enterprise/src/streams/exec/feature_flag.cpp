@@ -64,4 +64,10 @@ const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
     // 128 MB default
     mongo::Value::createIntOrLong(128 * 1024 * 1024)};
 
+const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
+    "kafkaEmitUserDeliveryCallback",
+    "If true, Kafka $emit uses a delivery callback to detect connection errors.",
+    // Enabled by default.
+    mongo::Value(true)};
+
 }  // namespace streams

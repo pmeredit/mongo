@@ -179,13 +179,26 @@ Future<void> Executor::start() {
             try {
                 LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
                 _options.operatorDag->stop();
-                _context->dlq->stop();
-                _testOnlyDocsQueue.closeConsumerEnd();
                 LOGV2_INFO(76433, "stopped operator dag", "context"_attr = _context);
             } catch (...) {
                 auto status = exceptionToSPStatus();
                 LOGV2_WARNING(75901,
                               "encountered exception while stopping OperatorDag",
+                              "context"_attr = _context,
+                              "errorCode"_attr = status.code(),
+                              "reason"_attr = status.reason(),
+                              "unsafeErrorMessage"_attr = status.unsafeReason());
+            }
+
+            try {
+                LOGV2_INFO(8853600, "stopping DLQ", "context"_attr = _context);
+                _context->dlq->stop();
+                _testOnlyDocsQueue.closeConsumerEnd();
+                LOGV2_INFO(8853601, "stopped DLQ", "context"_attr = _context);
+            } catch (...) {
+                auto status = exceptionToSPStatus();
+                LOGV2_WARNING(8853602,
+                              "encountered exception while stopping DLQ",
                               "context"_attr = _context,
                               "errorCode"_attr = status.code(),
                               "reason"_attr = status.reason(),

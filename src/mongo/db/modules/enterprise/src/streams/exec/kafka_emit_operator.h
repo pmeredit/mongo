@@ -133,6 +133,25 @@ private:
         ConnectionStatus _connectionStatus;
     };
 
+    // Used to detect connection/timeout errors in sending a message to Kafka.
+    class DeliveryReportCallback : public RdKafka::DeliveryReportCb {
+    public:
+        DeliveryReportCallback(Context* context) : _context(context) {}
+
+        // Callback function invoked by librdkafka.
+        void dr_cb(RdKafka::Message& message) override;
+        // Get the status stored by this instance. The status is set to an error
+        // when librdkafka runs into an error sending a message.
+        mongo::Status getStatus() const;
+
+    private:
+        Context* _context{nullptr};
+
+        // Protects the members below.
+        mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("DeliveryReportCb::mutex");
+        mongo::Status _status{mongo::Status::OK()};
+    };
+
     void processStreamDoc(const StreamDocument& streamDoc);
 
     RdKafka::Headers* createKafkaHeaders(const StreamDocument& streamDoc, std::string topicName);
@@ -146,9 +165,12 @@ private:
     Options _options;
     // Used to print librdkafka logs.
     std::unique_ptr<KafkaEventCallback> _eventCbImpl;
+    // Used to receive delivery reports after flush calls.
+    std::unique_ptr<DeliveryReportCallback> _deliveryCb;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
     std::unique_ptr<Connector> _connector;
+
     // Hold topic objects.
     mongo::StringMap<std::unique_ptr<RdKafka::Topic>> _topicCache;
     // Default is to output to "any partition".

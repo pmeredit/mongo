@@ -37,6 +37,7 @@ public:
     static const FeatureFlagDefinition kKafkaMaxPrefetchByteSize;
     static const FeatureFlagDefinition kUseExecutionPlanFromCheckpoint;
     static const FeatureFlagDefinition kMaxQueueSizeBytes;
+    static const FeatureFlagDefinition kKafkaEmitUseDeliveryCallback;
 };
 
 }  // namespace streams
