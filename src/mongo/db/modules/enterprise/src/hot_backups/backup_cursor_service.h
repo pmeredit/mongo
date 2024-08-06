@@ -89,6 +89,11 @@ public:
 
     void addFilename(const UUID& backupId, std::string filename) override;
 
+    /**
+     * This is only called by the serverStatus command which gathers FTDC data. All operations with
+     * _state could be relaxed atomics but given that this isn't a performance path we use regular
+     * atomics.
+     */
     bool isBackupCursorOpen() const override;
 
     UUID getBackupId_forTest() {
@@ -100,9 +105,10 @@ private:
 
     enum State { kInactive, kFsyncLocked, kBackupCursorOpened };
 
-    // This mutex serializes all access into this class.
+    // This mutex serializes all access into this class. Except for isBackupCursorOpen which doesn't
+    // need to lock.
     mutable Mutex _mutex = MONGO_MAKE_LATCH("BackupCursorService::_mutex");
-    State _state = kInactive;
+    AtomicWord<State> _state{kInactive};
     // When state is `kBackupCursorOpened`, _activeBackupId contains an UUID which uniquely
     // identifies the active backup cursor. Otherwise it is boost::none.
     boost::optional<UUID> _activeBackupId = boost::none;

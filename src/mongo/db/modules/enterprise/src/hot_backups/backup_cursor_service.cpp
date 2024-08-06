@@ -92,19 +92,19 @@ void populateMetadataFromCursor(
 
 void BackupCursorService::fsyncLock(OperationContext* opCtx) {
     stdx::lock_guard<Latch> lk(_mutex);
-    uassert(50885, "The node is already fsyncLocked.", _state != kFsyncLocked);
+    uassert(50885, "The node is already fsyncLocked.", _state.load() != kFsyncLocked);
     uassert(50884,
             "The existing backup cursor must be closed before fsyncLock can succeed.",
-            _state != kBackupCursorOpened);
+            _state.load() != kBackupCursorOpened);
     uassertStatusOK(opCtx->getServiceContext()->getStorageEngine()->beginBackup(opCtx));
-    _state = kFsyncLocked;
+    _state.store(kFsyncLocked);
 }
 
 void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
     stdx::lock_guard<Latch> lk(_mutex);
-    uassert(50888, "The node is not fsyncLocked.", _state == kFsyncLocked);
+    uassert(50888, "The node is not fsyncLocked.", _state.load() == kFsyncLocked);
     opCtx->getServiceContext()->getStorageEngine()->endBackup(opCtx);
-    _state = kInactive;
+    _state.store(kInactive);
 }
 
 BackupCursorState BackupCursorService::openBackupCursor(
@@ -137,10 +137,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
     }
 
     stdx::lock_guard<Latch> lk(_mutex);
-    uassert(50887, "The node is currently fsyncLocked.", _state != kFsyncLocked);
+    uassert(50887, "The node is currently fsyncLocked.", _state.load() != kFsyncLocked);
     uassert(50886,
             "The existing backup cursor must be closed before $backupCursor can succeed.",
-            _state != kBackupCursorOpened);
+            _state.load() != kBackupCursorOpened);
 
     // Open a checkpoint cursor on the catalog.
     std::unique_ptr<SeekableRecordCursor> catalogCursor;
@@ -165,7 +165,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
         streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(opCtx, options));
     }
 
-    _state = kBackupCursorOpened;
+    _state.store(kBackupCursorOpened);
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
     LOGV2(6858300,
@@ -384,14 +384,13 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
 }
 
 bool BackupCursorService::isBackupCursorOpen() const {
-    stdx::lock_guard<Latch> lk(_mutex);
-    return _state == State::kBackupCursorOpened;
+    return _state.load() == State::kBackupCursorOpened;
 }
 
 void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
                                              const UUID& backupId,
                                              WithLock) {
-    uassert(50880, "There is no backup cursor to close.", _state == kBackupCursorOpened);
+    uassert(50880, "There is no backup cursor to close.", _state.load() == kBackupCursorOpened);
     uassert(50879,
             str::stream() << "Can only close the running backup cursor. To close: " << backupId
                           << " Running: " << *_activeBackupId,
@@ -402,7 +401,7 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
         fassert(50934, encHooks->endNonBlockingBackup());
     }
     LOGV2(24203, "Closed backup cursor", "backupId"_attr = backupId);
-    _state = kInactive;
+    _state.store(kInactive);
     _activeBackupId = boost::none;
     _replTermOfActiveBackup = boost::none;
     _returnedFilenames.clear();
