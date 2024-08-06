@@ -60,18 +60,19 @@ export class LDAPFSM {
         }
 
         this.states = {
-            normal: function normal(conn, configuredServers, workload, timeout) {
+            normal: function normal(
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where all configured LDAP servers are running without delays.
                 jsTestLog('Running in the normal state');
                 configuredServers.forEach(
                     ldapServer => updateLDAPServerDelayWithPossibleRestart(ldapServer, 0));
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             },
             partialConfiguredSlow: function partialSlow(
-                conn, configuredServers, workload, timeout) {
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where any one of the configured LDAP servers is responding
                 // slowly (but within timeout). All other LDAP servers are running without delay.
                 jsTestLog('Running in the partialConfiguredSlow state');
@@ -86,10 +87,11 @@ export class LDAPFSM {
                 }
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             },
-            allConfiguredSlow: function allSlow(conn, configuredServers, workload, timeout) {
+            allConfiguredSlow: function allSlow(
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where both configured LDAP servers are responding slowly (but
                 // within timeout).
                 jsTestLog('Running in the allConfiguredSlow state');
@@ -97,11 +99,11 @@ export class LDAPFSM {
                                               ldapServer, Math.floor(timeout / 2)));
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             },
             partialConfiguredTimeout: function partialTimeout(
-                conn, configuredServers, workload, timeout) {
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where any one of the configured LDAP server is providing
                 // responses after the timeout.
                 jsTestLog('Running in the partialConfiguredTimeout state');
@@ -116,10 +118,11 @@ export class LDAPFSM {
                 }
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             },
-            allConfiguredTimeout: function allTimeout(conn, configuredServers, workload, timeout) {
+            allConfiguredTimeout: function allTimeout(
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where all configured LDAP servers are timing out before
                 // responding.
                 jsTestLog('Running in the allConfiguredTimeout state');
@@ -127,10 +130,11 @@ export class LDAPFSM {
                                               ldapServer, (timeout * 2)));
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             },
-            failover: function failover(conn, configuredServers, workload, timeout) {
+            failover: function failover(
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where one configured LDAP server is totally down but the other
                 // one is running.
                 jsTestLog('Running in the failover state');
@@ -148,11 +152,11 @@ export class LDAPFSM {
                 }
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             },
             totalConfiguredOutage: function totalOutage(
-                conn, configuredServers, workload, timeout) {
+                conn, configuredServers, workload, timeout, ldapPooledConnectionRefreshTime) {
                 // Represents a state where all configured LDAP servers are down and unreachable.
                 jsTestLog('Running in the totalConfiguredOutage state');
                 configuredServers.forEach(ldapServer => {
@@ -162,7 +166,7 @@ export class LDAPFSM {
                 });
 
                 // Sleep to give the cluster time to automatically refresh its connection pool.
-                sleep(5000);
+                sleep(ldapPooledConnectionRefreshTime);
                 workload(conn);
             }
         };
@@ -243,6 +247,10 @@ export class LDAPFSM {
         this.iterations = iterations;
         this.timeout = Math.floor(configGenerator.ldapTimeoutMS / 1000);
 
+        this.ldapPooledConnectionRefreshTime =
+            configGenerator.ldapConnectionPoolHostRefreshIntervalMillis +
+            configGenerator.ldapTimeoutMS;
+
         const seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
         Random.setRandomSeed(seed);
     }
@@ -253,7 +261,11 @@ export class LDAPFSM {
         for (let i = 0; i < this.iterations; i++) {
             const stateFn = this.states[currentState];
             const workloadFn = this.workloads[currentState];
-            stateFn(this.st.s0, this.configuredServers, workloadFn, this.timeout);
+            stateFn(this.st.s0,
+                    this.configuredServers,
+                    workloadFn,
+                    this.timeout,
+                    this.ldapPooledConnectionRefreshTime);
 
             // Derive the next state.
             currentState =

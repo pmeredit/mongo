@@ -108,5 +108,12 @@ const workloads = {
     },
 };
 
-const fsm = new LDAPFSM({}, workloads, 30);
+const shardingOptions = {
+    setParameter: {
+        ldapEnableOpenLDAPLogging: true,
+        logComponentVerbosity: tojson({accessControl: 4, network: {connectionPool: 4}})
+    }
+};
+const fsm = new LDAPFSM(shardingOptions, workloads, 30);
+
 fsm.run();
