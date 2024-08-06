@@ -1036,8 +1036,9 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
          *      - For every document in `config.collections` with {primary: sourceShardName}:
          *          - Set primary from sourceShardName to destShardName
          *      - For every document in `config.shards`:
+         *          - Stash document
          *          - Remove the document
-         *          - Insert new document with:
+         *          - Insert document with modified:
          *              - _id: destShardName
          *              - hosts: based on the destShardRsId and the hostname:ports of the
          *                       destination cluster.
@@ -1064,10 +1065,10 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             assert.commandWorked(configDb.chunks.update(
                 {shard: sourceShardName},
                 {$set: {shard: destShardName, history: []}, $unset: {onCurrentShardSince: ""}}));
-            assert.commandWorked(configDb.shards.insert({
-                _id: destShardName,
-                host: destReplSetName + "/localhost:" + restoredNodePorts[i],
-            }));
+
+            shards[i]._id = destShardName;
+            shards[i].host = destReplSetName + "/localhost:" + restoredNodePorts[i];
+            assert.commandWorked(configDb.shards.insert(shards[i]));
         }
 
         jsTestLog("New config.shards: " + tojson(configDb.shards.find().sort({_id: 1}).toArray()));
