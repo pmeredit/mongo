@@ -31,7 +31,8 @@ function runAdminCommand(conn, command) {
     return res;
 }
 
-function launchCluster(useConnectionPooling, configGenerator, delay) {
+function launchCluster(
+    useConnectionPooling, configGenerator, delay, disableCacheInvalidation = false) {
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
     TestData.skipCheckOrphans = true;
     TestData.skipCheckDBHashes = true;
@@ -49,6 +50,14 @@ function launchCluster(useConnectionPooling, configGenerator, delay) {
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     const shardingConfig = configGenerator.generateShardingConfig();
     shardingConfig.other.writeConcernMajorityJournalDefault = false;
+
+    // runChangeLDAPQueryBindTest() will fail if the UserCacheInvalidation job runs while the lookup
+    // call to the config server from mongos is being made. This is because the call will be
+    // invalidated, and a reattempt will use the new invalid LDAP parameters. We set the interval to
+    // the maximum value to prevent this job from occurring during the test.
+    if (disableCacheInvalidation) {
+        shardingConfig.other.mongosOptions.setParameter.userCacheInvalidationIntervalSecs = 86400;
+    }
 
     // Launch sharded cluster with the above LDAP config.
     const st = new ShardingTest(shardingConfig);
@@ -126,7 +135,8 @@ function runChangeLDAPServerTest(useConnectionPooling) {
 
 function runChangeLDAPQueryBindTest(useConnectionPooling) {
     const configGenerator = new LDAPTestConfigGenerator();
-    const st = launchCluster(useConnectionPooling, configGenerator, 0);
+    const st = launchCluster(
+        useConnectionPooling, configGenerator, 0, true /** disableCacheInvalidation */);
     const mongos = st.s0;
     const configPrimary = st.configRS.getPrimary();
     const isReplicaSetEndpointActive = st.isReplicaSetEndpointActive();
