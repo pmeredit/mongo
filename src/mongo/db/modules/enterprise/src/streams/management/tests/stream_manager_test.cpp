@@ -191,12 +191,10 @@ public:
     }
 
     // Used to act like the streams Agent and flush committed checkpoints.
-    void flushUntilStopped(CheckpointStorage* storage,
+    void flushUntilStopped(std::string writeRootDir,
                            StreamManager* manager,
                            const std::string processorId,
                            const std::string tenantId) {
-        auto localDiskStorage = dynamic_cast<LocalDiskCheckpointStorage*>(storage);
-
         auto deadline = Date_t::now() + Minutes{1};
         while (Date_t::now() < deadline) {
             // Checkpoint if the processor has been stopped.
@@ -212,7 +210,7 @@ public:
             // Find the committed checkpoints in ascending order.
             std::vector<std::tuple<CheckpointId, std::filesystem::path>> checkpointsToFlush;
             for (const auto& dirEntry :
-                 std::filesystem::recursive_directory_iterator(localDiskStorage->writeRootDir())) {
+                 std::filesystem::recursive_directory_iterator(writeRootDir)) {
                 if (dirEntry.path().filename() == "MANIFEST") {
                     auto checkpointPath = dirEntry.path().parent_path();
                     auto checkpointIdStr = checkpointPath.filename().string();
@@ -907,8 +905,11 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         updateContextFeatureFlags(processorInfo, tFeatureFlags);
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
+        std::string writeRootDir = dynamic_cast<LocalDiskCheckpointStorage*>(
+                                       processorInfo->context->checkpointStorage.get())
+                                       ->writeRootDir();
         stdx::thread flusherThread([&]() {
-            flushUntilStopped(processorInfo->context->checkpointStorage.get(),
+            flushUntilStopped(writeRootDir,
                               streamManager.get(),
                               request.getProcessorId().toString(),
                               request.getTenantId().toString());
