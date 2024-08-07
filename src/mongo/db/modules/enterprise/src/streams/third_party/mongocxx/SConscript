@@ -222,11 +222,11 @@ env.Library(
         "dist/mongoc/mongoc-write-concern.c",
     ],
     LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/third_party/shim_icu",
-        "$BUILD_DIR/third_party/shim_libbson",
+        "$BUILD_DIR/third_party/icu4c-57.1/source/icu_i18n",
+        "$BUILD_DIR/third_party/libbson/bson",
         "$BUILD_DIR/third_party/shim_libmongocrypt",
-        "$BUILD_DIR/third_party/shim_snappy",
-        "$BUILD_DIR/third_party/shim_zstd",
+        "$BUILD_DIR/third_party/snappy/snappy",
+        "$BUILD_DIR/third_party/zstandard/zstd",
     ],
     SYSLIBDEPS=[
         "sasl2",
@@ -256,7 +256,7 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/util/boost_assert_shim",
-        "$BUILD_DIR/third_party/shim_libbson",
+        "$BUILD_DIR/third_party/libbson/bson",
     ],
 )
 
@@ -358,6 +358,6 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/util/boost_assert_shim",
-        "$BUILD_DIR/third_party/shim_libbson",
+        "$BUILD_DIR/third_party/libbson/bson",
     ],
 )
