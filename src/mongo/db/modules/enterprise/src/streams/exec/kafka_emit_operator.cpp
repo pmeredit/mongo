@@ -174,8 +174,8 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     // - Finally, we configure the maximum number of documents to the default, which is 100k. We
     // don't expect to hit this as this is relatively high compared to the maximum memory limit.
     setConf("queue.buffering.max.ms", "1000");
-    setConf("queue.buffering.max.kbytes", "16384");
-    setConf("queue.buffering.max.messages", "100000");
+    setConf("queue.buffering.max.kbytes", std::to_string(_options.queueBufferingMaxKBytes));
+    setConf("queue.buffering.max.messages", std::to_string(_options.queueBufferingMaxMessages));
     // This is the maximum time librdkafka may use to deliver a message (including retries).
     // Set to 10 seconds.
     setConf("message.timeout.ms", "30000");
@@ -204,17 +204,38 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     int64_t numDlqBytes{0};
     int64_t numOutputDocs{0};
     int64_t numOutputBytes{0};
+    bool shouldPoll{false};
+    int64_t numDocsSinceLastPoll{0};
+    int64_t numBytesSinceLastPoll{0};
+    if (_context->featureFlags) {
+        auto useDeliveryCallback =
+            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
+                .getBool();
+        shouldPoll = useDeliveryCallback && *useDeliveryCallback;
+    }
+
     bool samplersPresent = samplersExist();
     for (auto& streamDoc : dataMsg.docs) {
         try {
             processStreamDoc(streamDoc);
             incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
             numOutputDocs++;
-            numOutputBytes += streamDoc.doc.memUsageForSorter();
+            numDocsSinceLastPoll++;
+            auto bytes = streamDoc.doc.memUsageForSorter();
+            numOutputBytes += bytes;
+            numBytesSinceLastPoll += bytes;
             if (samplersPresent) {
                 StreamDataMsg msg;
                 msg.docs.push_back(streamDoc);
                 sendOutputToSamplers(std::move(msg));
+            }
+            if (shouldPoll &&
+                (numDocsSinceLastPoll > _options.queueBufferingMaxMessages / 2 ||
+                 numBytesSinceLastPoll > _options.queueBufferingMaxKBytes / 2)) {
+                // Call poll to serve any queued callbacks.
+                _producer->poll(0 /* timeoutMs */);
+                numDocsSinceLastPoll = 0;
+                numBytesSinceLastPoll = 0;
             }
         } catch (const DBException& e) {
             if (e.code() == ErrorCodes::StreamProcessorKafkaConnectionError) {
@@ -233,16 +254,6 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
                       .numDlqBytes = numDlqBytes});
-
-    if (_context->featureFlags) {
-        auto useDeliveryCallback =
-            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
-                .getBool();
-        if (useDeliveryCallback && *useDeliveryCallback) {
-            // Call poll to serve any queued callbacks.
-            _producer->poll(_options.flushTimeout.count());
-        }
-    }
 }
 
 namespace {

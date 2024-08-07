@@ -37,6 +37,10 @@ public:
         // Note: we should keep this in sync with the max queue buffer setting,
         // which is currently 16MB.
         mongo::Milliseconds flushTimeout{mongo::Minutes(1)};
+        // queue.buffering.max.kbytes setting.
+        int queueBufferingMaxKBytes{16384};
+        // queue.buffering.max.messages setting.
+        int queueBufferingMaxMessages{100000};
         // Partition to write to. If not specified, PARTITION_UA is supplied to librdkafka,
         // which will write to random partitions. Explicit partition is currently only
         // used in testing.

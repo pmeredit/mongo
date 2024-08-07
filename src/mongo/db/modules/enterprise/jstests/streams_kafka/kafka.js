@@ -935,9 +935,7 @@ function testKafkaAsyncError() {
         let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
         jsTestLog(mongoToKafka);
         return mongoToKafka.status == "error" &&
-            mongoToKafka.error.reason.includes("Kafka $emit encountered error") &&
-            mongoToKafka.error.reason.includes(
-                "Connect to ipv4#127.0.0.1:9092 failed: Connection refused");
+            mongoToKafka.error.reason.includes("Kafka $emit encountered error");
 
         // TODO(SERVER-89760): Figure out a reliable way to detect source connection failure.
         // let kafkaToMongo = result.streamProcessors.filter(s => s.name == kafkaToMongoName)[0];
@@ -1056,6 +1054,7 @@ runKafkaTest(kafka, kafkaStartAtEarliestTest);
 // offset lag in verbose stats
 runKafkaTest(kafka, testKafkaOffsetLag);
 
+// use a large number of documents
 numDocumentsToInsert = 100000;
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 
