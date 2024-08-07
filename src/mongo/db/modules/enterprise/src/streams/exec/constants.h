@@ -19,6 +19,7 @@ constexpr const char kEmitStageName[] = "$emit";
 constexpr const char kMergeStageName[] = "$merge";
 constexpr char kTumblingWindowStageName[] = "$tumblingWindow";
 constexpr char kHoppingWindowStageName[] = "$hoppingWindow";
+constexpr char kSessionWindowStageName[] = "$sessionWindow";
 constexpr const char kLookUpStageName[] = "$lookup";
 constexpr const char kGroupStageName[] = "$group";
 constexpr const char kSortStageName[] = "$sort";

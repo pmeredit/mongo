@@ -34,6 +34,11 @@ std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceHoppingWindowStub:
     return {make_intrusive<DocumentSourceHoppingWindowStub>(expCtx, elem.Obj().copy())};
 }
 
+std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceSessionWindowStub::createFromBson(
+    BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
+    return {make_intrusive<DocumentSourceSessionWindowStub>(expCtx, elem.Obj().copy())};
+}
+
 
 REGISTER_INTERNAL_DOCUMENT_SOURCE(tumblingWindow,
                                   LiteParsedDocumentSourceDefault::parse,
@@ -43,6 +48,11 @@ REGISTER_INTERNAL_DOCUMENT_SOURCE(tumblingWindow,
 REGISTER_INTERNAL_DOCUMENT_SOURCE(hoppingWindow,
                                   LiteParsedDocumentSourceDefault::parse,
                                   DocumentSourceHoppingWindowStub::createFromBson,
+                                  true);
+
+REGISTER_INTERNAL_DOCUMENT_SOURCE(sessionWindow,
+                                  LiteParsedDocumentSourceDefault::parse,
+                                  DocumentSourceSessionWindowStub::createFromBson,
                                   true);
 
 }  // namespace streams

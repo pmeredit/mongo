@@ -182,13 +182,19 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
 
 OperatorStats WindowAwareOperator::doGetStats() {
     // Add together all the memory usage and DLQ-ed docs of all the open windows.
-    if (getOptions().isSessionWindow) {
-        // TODO(SERVER-92473): Support session window stats
-        return OperatorStats{};
-    }
     int64_t memoryUsageBytes{0};
-    for (auto& [startTime, window] : _windows) {
-        memoryUsageBytes += window->stats.memoryUsageBytes;
+
+    if (getOptions().isSessionWindow) {
+        for (const auto& [partition, partitionWindows] : _sessionWindows) {
+            for (const auto& window : partitionWindows) {
+                memoryUsageBytes += window->stats.memoryUsageBytes;
+            }
+            memoryUsageBytes += partition.getApproximateSize();
+        }
+    } else {
+        for (auto& [startTime, window] : _windows) {
+            memoryUsageBytes += window->stats.memoryUsageBytes;
+        }
     }
     _stats.memoryUsageBytes = memoryUsageBytes;
     return _stats;

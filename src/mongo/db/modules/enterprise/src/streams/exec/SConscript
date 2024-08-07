@@ -223,3 +223,19 @@ env.Benchmark(
         "tests/streams_test_utils",
     ],
 )
+
+
+env.Benchmark(
+    target="streams_session_window_stress_bm",
+    source=[
+        "session_window_stress_bm.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/service_context_non_d",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "streams_operators",
+        "tests/streams_test_utils",
+    ],
+)

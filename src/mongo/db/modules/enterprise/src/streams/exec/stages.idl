@@ -504,6 +504,21 @@ structs:
                 type: StreamTimeDuration
                 optional: true
 
+    SessionWindowOptions:
+        description: "$sessionWindow stage options"
+        strict: true
+        fields:
+            gap:
+                description: "Defines the gap between sessions."
+                type: StreamTimeDuration
+            pipeline:
+                description: "The inner pipeline of the window."
+                type: pipeline
+            partitionBy:
+                description: "Expression for the partition."
+                type:
+                    variant: [object, string]
+
     ValidateOptions:
         description: "$validate stage options"
         strict: true

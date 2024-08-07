@@ -26,7 +26,8 @@ bool isSinkStage(mongo::StringData name) {
 }
 
 bool isWindowStage(mongo::StringData name) {
-    return name == kTumblingWindowStageName || name == kHoppingWindowStageName;
+    return name == kTumblingWindowStageName || name == kHoppingWindowStageName ||
+        name == kSessionWindowStageName;
 }
 
 bool isLookUpStage(mongo::StringData name) {
@@ -45,6 +46,12 @@ bool isWindowAwareStage(mongo::StringData name) {
     static const stdx::unordered_set<StringData> windowAwareStages{
         {kGroupStageName, kSortStageName, kLimitStageName}};
     return windowAwareStages.contains(name);
+}
+
+bool isBlockingWindowAwareStage(mongo::StringData name) {
+    static const stdx::unordered_set<StringData> blockingWindowAwareStages{
+        {kGroupStageName, kSortStageName}};
+    return blockingWindowAwareStages.contains(name);
 }
 
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,
@@ -211,6 +218,13 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                                          << StreamMetaWindow::kEndFieldName)
                               .ss.str()),
                 Value(*internalStreamMeta.getWindow()->getEnd()));
+        }
+        if (internalStreamMeta.getWindow()->getPartition()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kWindowFieldName << "."
+                                         << StreamMetaWindow::kPartitionFieldName)
+                              .ss.str()),
+                *internalStreamMeta.getWindow()->getPartition());
         }
     }
     return newStreamMeta.freeze();

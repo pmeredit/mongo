@@ -70,4 +70,7 @@ const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
     // Enabled by default.
     mongo::Value(true)};
 
+const FeatureFlagDefinition FeatureFlags::kEnableSessionWindow{
+    "enableSessionWindow", "If true, the $sessionWindow stage is enabled.", mongo::Value(false)};
+
 }  // namespace streams

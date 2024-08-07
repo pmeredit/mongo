@@ -227,10 +227,16 @@ public:
         return std::move(queueToVector(sink.getMessages()));
     }
 
-    void validateDocIds(auto msg, auto expectedIds) {
+    void validateDocIds(auto msg, auto expectedIds, bool shouldSort = false) {
         auto arr = msg.dataMsg.get().docs[0].doc.getField("allIds").getArray();
 
         ASSERT_EQUALS(arr.size(), expectedIds.size());
+
+        if (shouldSort) {
+            std::sort(arr.begin(), arr.end(), [](const mongo::Value& a, const mongo::Value& b) {
+                return a.coerceToInt() < b.coerceToInt();
+            });
+        }
 
         auto it = arr.begin();
         for (auto id : expectedIds) {
@@ -314,12 +320,12 @@ TEST_F(SessionWindowAwareOperatorTest, NoMerge_OneWindow) {
 
     result = testLimitMatchGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds((result[0]), std::vector<int>{0, 1});
+    validateDocIds((result[0]), std::vector<int>{0, 1}, true);
     validateWindowBounds((*result.begin()), leftTS, myTS);
 
     result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds((result[0]), std::vector<int>{0, 1});
+    validateDocIds((result[0]), std::vector<int>{0, 1}, true);
     validateWindowBounds((*result.begin()), leftTS, myTS);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
@@ -357,12 +363,12 @@ TEST_F(SessionWindowAwareOperatorTest, MergeLeft_OneWindow) {
 
     result = testLimitMatchGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds((result[0]), std::vector<int>{0, 1});
+    validateDocIds((result[0]), std::vector<int>{0, 1}, true);
     validateWindowBounds((result[0]), leftTS, myTS);
 
     result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds((result[0]), std::vector<int>{0, 1});
+    validateDocIds((result[0]), std::vector<int>{0, 1}, true);
     validateWindowBounds((result[0]), leftTS, myTS);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
@@ -405,14 +411,14 @@ TEST_F(SessionWindowAwareOperatorTest, MergeRight_OneWindow) {
     ASSERT_EQUALS(result.size(), 2);
     validateDocIds(result[0], std::vector<int>{0});
     validateWindowBounds(result[0], leftTS, leftTS);
-    validateDocIds(result[1], std::vector<int>{2, 1});
+    validateDocIds(result[1], std::vector<int>{1, 2}, true);
     validateWindowBounds(result[1], rightTS, myTS);
 
     result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 2);
     validateDocIds(result[0], std::vector<int>{0});
     validateWindowBounds(result[0], leftTS, leftTS);
-    validateDocIds(result[1], std::vector<int>{2, 1});
+    validateDocIds(result[1], std::vector<int>{1, 2}, true);
     validateWindowBounds(result[1], rightTS, myTS);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
@@ -420,6 +426,89 @@ TEST_F(SessionWindowAwareOperatorTest, MergeRight_OneWindow) {
     validateDocIds(result[0], std::vector<int>{0});
     validateWindowBounds(result[0], leftTS, leftTS);
     validateDocIds(result[1], std::vector<int>{1, 2});
+    validateWindowBounds(result[1], rightTS, myTS);
+}
+
+// yes filtering out, merge left
+TEST_F(SessionWindowAwareOperatorTest, MergeLeftFilteredOut_OneWindow) {
+    std::vector<StreamDocument> inputDocs;
+    std::vector<StreamDocument> inputDocs1;
+
+    auto leftTS = 1;
+    auto rightTS = leftTS + gapMs + 1;
+    auto myTS = leftTS + 1;
+
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 0}")});
+    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
+    inputDocs.back().minEventTimestampMs = rightTS;
+
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
+    inputDocs1.back().minEventTimestampMs = myTS;
+
+    std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
+        StreamDataMsg{.docs = std::move(inputDocs)},
+        StreamDataMsg{.docs = std::move(inputDocs1)},
+        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, rightTS}}};
+
+    auto result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds((result[0]), std::vector<int>{1}, true);
+    validateWindowBounds((result[0]), leftTS, myTS);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds((result[0]), std::vector<int>{1}, true);
+    validateWindowBounds((result[0]), leftTS, myTS);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds((result[0]), std::vector<int>{1});
+    validateWindowBounds((result[0]), leftTS, myTS);
+}
+
+// yes filtering out, merge right
+TEST_F(SessionWindowAwareOperatorTest, MergeRightFilteredOut_OneWindow) {
+    std::vector<StreamDocument> inputDocs;
+    std::vector<StreamDocument> inputDocs1;
+
+    auto leftTS = 1;
+    auto rightTS = leftTS + gapMs + 1;
+    auto myTS = rightTS + 1;
+
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
+    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
+    inputDocs.back().minEventTimestampMs = rightTS;
+
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
+    inputDocs1.back().minEventTimestampMs = myTS;
+
+    std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
+        StreamDataMsg{.docs = std::move(inputDocs)},
+        StreamDataMsg{.docs = std::move(inputDocs1)},
+        StreamControlMsg{.watermarkMsg =
+                             WatermarkControlMsg{WatermarkStatus::kActive, myTS + gapMs}}};
+
+    auto result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], leftTS, leftTS);
+    validateDocIds(result[1], std::vector<int>{1}, true);
+    validateWindowBounds(result[1], rightTS, myTS);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], leftTS, leftTS);
+    validateDocIds(result[1], std::vector<int>{1}, true);
+    validateWindowBounds(result[1], rightTS, myTS);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], leftTS, leftTS);
+    validateDocIds(result[1], std::vector<int>{1});
     validateWindowBounds(result[1], rightTS, myTS);
 }
 
@@ -453,18 +542,66 @@ TEST_F(SessionWindowAwareOperatorTest, MergeMultipleDisjoint_OneWindow) {
 
     result = testLimitMatchGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds(result[0], std::vector<int>{0, 2, 1});
+    validateDocIds(result[0], std::vector<int>{0, 1, 2}, true);
     validateWindowBounds(result[0], leftTS, rightTS);
 
     result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds(result[0], std::vector<int>{0, 2, 1});
+    validateDocIds(result[0], std::vector<int>{0, 1, 2}, true);
     validateWindowBounds(result[0], leftTS, rightTS);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
     validateDocIds(result[0], std::vector<int>{0, 1, 2});
     validateWindowBounds(result[0], leftTS, rightTS);
+}
+
+// no filtering out, merge multiple neighbors that are spanned by 1 window
+TEST_F(SessionWindowAwareOperatorTest, MergeMultipleSpan_OneWindow) {
+    std::vector<StreamDocument> inputDocs;
+    std::vector<StreamDocument> inputDocs1;
+
+    auto leftTS = 1;
+    auto rightTS = leftTS + gapMs + 1;
+    auto myTS = (leftTS + rightTS) / 2;
+
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
+    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 3}")});
+    inputDocs.back().minEventTimestampMs = rightTS;
+
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
+    inputDocs1.back().minEventTimestampMs = leftTS - 1;
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
+    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
+    inputDocs1.back().minEventTimestampMs = rightTS + 1;
+
+    std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
+        StreamDataMsg{.docs = std::move(inputDocs)},
+        StreamDataMsg{.docs = std::move(inputDocs1)},
+        StreamControlMsg{.watermarkMsg =
+                             WatermarkControlMsg{WatermarkStatus::kActive, rightTS + 1 + gapMs}}};
+
+    auto result = testSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1, 2, 3, 4});
+    validateWindowBounds(result[0], leftTS - 1, rightTS + 1);
+
+    result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1, 2, 3, 4}, true);
+    validateWindowBounds(result[0], leftTS - 1, rightTS + 1);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1, 2, 3, 4}, true);
+    validateWindowBounds(result[0], leftTS - 1, rightTS + 1);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1, 2, 3, 4});
+    validateWindowBounds(result[0], leftTS - 1, rightTS + 1);
 }
 
 // closing but nothing to close bc empty map
@@ -475,6 +612,12 @@ TEST_F(SessionWindowAwareOperatorTest, CloseEmptyMap) {
         StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 1}}};
 
     auto result = testSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+
+    result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 0);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
@@ -500,6 +643,39 @@ TEST_F(SessionWindowAwareOperatorTest, WatermarkWithinGap) {
     auto result = testSortGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 0);
 
+    result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+}
+
+// closing but nothing to close bc everything filtered out (also tests case where entire partition
+// filtered out)
+TEST_F(SessionWindowAwareOperatorTest, CloseEmptyMapFilteredOut) {
+    std::vector<StreamDocument> inputDocs;
+
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 0}")});
+    inputDocs.back().minEventTimestampMs = 0;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 1}")});
+    inputDocs.back().minEventTimestampMs = gapMs + 1;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
+    inputDocs.back().minEventTimestampMs = 2 * gapMs + 1;
+
+    std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
+        StreamDataMsg{.docs = std::move(inputDocs)},
+        StreamControlMsg{.watermarkMsg =
+                             WatermarkControlMsg{WatermarkStatus::kActive, 3 * gapMs + 1}}};
+
+    auto result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 0);
+
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 0);
 }
@@ -517,20 +693,34 @@ TEST_F(SessionWindowAwareOperatorTest, OneMergeeFilteredOut) {
     inputDocs.back().minEventTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
     inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 3}")});
+    inputDocs.back().minEventTimestampMs = rightTS + gapMs + 1;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
     inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
+    inputDocs1.back().minEventTimestampMs = myTS + gapMs - 1;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
         StreamDataMsg{.docs = std::move(inputDocs1)},
-        StreamControlMsg{.watermarkMsg =
-                             WatermarkControlMsg{WatermarkStatus::kActive, rightTS + gapMs}}};
+        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                             rightTS + 2 * gapMs + 1}}};
 
-    auto result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    auto result = testLimitMatchGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
-    validateDocIds(result[0], std::vector<int>{0, 1});
-    validateWindowBounds(result[0], leftTS, rightTS);
+    validateDocIds(result[0], std::vector<int>{0, 1, 3, 4}, true);
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1, 3, 4}, true);
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1, 3, 4});
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
 }
 
 // merging but match operator filters out destination window
@@ -561,18 +751,24 @@ TEST_F(SessionWindowAwareOperatorTest, DestinationMergeeFilteredOut) {
         StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
                                                              rightTS + gapMs * 2 + 1}}};
 
-    auto result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    auto result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{1, 2, 3, 4}, true);
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{1, 2, 3, 4}, true);
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 1);
     validateDocIds(result[0], std::vector<int>{1, 2, 3, 4});
     validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
-
-    result = testLimitMatchGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 1);
-    validateDocIds(result[0], std::vector<int>{2, 3, 1, 4});
-    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
 }
 
-// merging but match operator filters out all windows
+// merging but match operator filters out all windows (also tests case where entire partition
+// filtered out)
 TEST_F(SessionWindowAwareOperatorTest, AllMergeesFilteredOut) {
     std::vector<StreamDocument> inputDocs;
     std::vector<StreamDocument> inputDocs1;
@@ -585,21 +781,34 @@ TEST_F(SessionWindowAwareOperatorTest, AllMergeesFilteredOut) {
     inputDocs.back().minEventTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
     inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 3}")});
+    inputDocs.back().minEventTimestampMs = rightTS + gapMs + 1;
 
-    inputDocs1.push_back(Document{fromjson("{a: 1, b: 2, id: 1}")});
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
     inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
+    inputDocs1.back().minEventTimestampMs = myTS + gapMs - 1;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
         StreamDataMsg{.docs = std::move(inputDocs1)},
-        StreamControlMsg{.watermarkMsg =
-                             WatermarkControlMsg{WatermarkStatus::kActive, rightTS + gapMs}}};
+        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                             rightTS + 2 * gapMs + 1}}};
 
-    auto result = testLimitMatchSortGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 0);
+    auto result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{1, 4}, true);
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
 
-    result = testLimitMatchGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 0);
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{1, 4}, true);
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
+
+    result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{1, 4});
+    validateWindowBounds(result[0], leftTS, rightTS + gapMs + 1);
 }
 
 // input data is across multiple partitions (and multiple windows exist at once)
@@ -641,6 +850,28 @@ TEST_F(SessionWindowAwareOperatorTest, MultiplePartitions) {
     validateWindowBounds(result[0], 0, 0);
     validateDocIds(result[1], std::vector<int>{1});
     validateWindowBounds(result[1], 1, 1);
+
+    result = testLimitMatchGroupPipeline(windowOptions, messages);
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) -> bool {
+        return lhs.dataMsg.get().docs[0].streamMeta.getWindow()->getPartition()->coerceToInt() <
+            rhs.dataMsg.get().docs[0].streamMeta.getWindow()->getPartition()->coerceToInt();
+    });
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0}, true);
+    validateWindowBounds(result[0], 0, 0);
+    validateDocIds(result[1], std::vector<int>{1}, true);
+    validateWindowBounds(result[1], 1, 1);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) -> bool {
+        return lhs.dataMsg.get().docs[0].streamMeta.getWindow()->getPartition()->coerceToInt() <
+            rhs.dataMsg.get().docs[0].streamMeta.getWindow()->getPartition()->coerceToInt();
+    });
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0}, true);
+    validateWindowBounds(result[0], 0, 0);
+    validateDocIds(result[1], std::vector<int>{1}, true);
+    validateWindowBounds(result[1], 1, 1);
 }
 
 // multiple sessions open for a partition and all get closed by the same watermark
@@ -666,6 +897,20 @@ TEST_F(SessionWindowAwareOperatorTest, MultipleSessionsClosed) {
     validateWindowBounds(result[1], gapMs + 1000, gapMs + 1000);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], 0, 0);
+    validateDocIds(result[1], std::vector<int>{1});
+    validateWindowBounds(result[1], gapMs + 1000, gapMs + 1000);
+
+    result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], 0, 0);
+    validateDocIds(result[1], std::vector<int>{1});
+    validateWindowBounds(result[1], gapMs + 1000, gapMs + 1000);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 2);
     validateDocIds(result[0], std::vector<int>{0});
     validateWindowBounds(result[0], 0, 0);
@@ -699,6 +944,20 @@ TEST_F(SessionWindowAwareOperatorTest, OpenClosePartition) {
     validateWindowBounds(result[1], 0, 0);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], 0, 0);
+    validateDocIds(result[1], std::vector<int>{1});
+    validateWindowBounds(result[1], 0, 0);
+
+    result = testLimitMatchGroupPipeline(windowOptions, messages);
+    ASSERT_EQUALS(result.size(), 2);
+    validateDocIds(result[0], std::vector<int>{0});
+    validateWindowBounds(result[0], 0, 0);
+    validateDocIds(result[1], std::vector<int>{1});
+    validateWindowBounds(result[1], 0, 0);
+
+    result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
     ASSERT_EQUALS(result.size(), 2);
     validateDocIds(result[0], std::vector<int>{0});
     validateWindowBounds(result[0], 0, 0);

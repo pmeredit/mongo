@@ -105,4 +105,22 @@ protected:
     }
 };
 
+class DocumentSourceSessionWindowStub final : public DocumentSourceWindowStub {
+public:
+    constexpr static char kStageName[] = "$sessionWindow";
+
+    DocumentSourceSessionWindowStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                                    mongo::BSONObj bsonOptions)
+        : DocumentSourceWindowStub(expCtx, kStageName, bsonOptions) {}
+
+
+    static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(
+        mongo::BSONElement elem, const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx);
+
+protected:
+    const char* getSourceName() const override {
+        return kStageName;
+    }
+};
+
 }  // namespace streams

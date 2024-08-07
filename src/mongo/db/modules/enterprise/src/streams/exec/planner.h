@@ -15,6 +15,7 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/pipeline_rewriter.h"
+#include "streams/exec/session_window_assigner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_assigner.h"
 
@@ -70,11 +71,22 @@ private:
     // Encapsulates state for a $window stage being planned.
     struct WindowPlanningInfo {
         mongo::DocumentSource* stubDocumentSource{nullptr};
-        WindowAssigner::Options windowingOptions;
+        std::unique_ptr<WindowAssigner> windowAssigner;
         // Tracks the number of window-aware stages in the inner pipeline of the window stage.
         size_t numWindowAwareStages{0};
+        // Tracks the number of blocking window-aware stages in the inner pipeline of the window
+        // stage.
+        size_t numBlockingWindowAwareStages{0};
         // Tracks the number of window-aware stages that have been planned so far.
         size_t numWindowAwareStagesPlanned{0};
+        // Set to true if window's inner pipeline contains a stream_meta dependency before or at the
+        // first blocking operator.
+        bool streamMetaDependencyBeforeOrAtFirstBlocking{false};
+        // Set to true if window's inner pipeline contains a limit operator before the first
+        // blocking operator.
+        bool limitBeforeFirstBlocking = false;
+        // Set to true if session window.
+        bool isSessionWindow = false;
     };
 
     // Encapsulates state for $lookup stages in a pipeline.
@@ -112,10 +124,16 @@ private:
     void planMergeSink(const mongo::BSONObj& spec);
     void planEmitSink(const mongo::BSONObj& spec);
 
+
     // Methods that are used to plan a window stage.
-    // Both return a BSONObj that represents the optimized window stage.
+    // All return a BSONObj that represents the optimized window stage.
     mongo::BSONObj planTumblingWindow(mongo::DocumentSource* source);
     mongo::BSONObj planHoppingWindow(mongo::DocumentSource* source);
+    mongo::BSONObj planSessionWindow(mongo::DocumentSource* source);
+
+    // Utility methods that are used to create dummy operators for session windows.
+    void prependDummyLimitOperator(mongo::Pipeline* pipeline);
+
     // Helper method to create a serialized representation of a window stage with an optimized inner
     // pipeline.
     mongo::BSONObj serializedWindowStage(const std::string& stageName,

@@ -26,6 +26,7 @@ bool isLookUpStage(mongo::StringData name);
 bool isEmitStage(mongo::StringData name);
 bool isMergeStage(mongo::StringData name);
 bool isWindowAwareStage(mongo::StringData name);
+bool isBlockingWindowAwareStage(mongo::StringData name);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 

@@ -38,6 +38,7 @@ public:
     static const FeatureFlagDefinition kUseExecutionPlanFromCheckpoint;
     static const FeatureFlagDefinition kMaxQueueSizeBytes;
     static const FeatureFlagDefinition kKafkaEmitUseDeliveryCallback;
+    static const FeatureFlagDefinition kEnableSessionWindow;
 };
 
 }  // namespace streams

@@ -16,6 +16,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/change_stream_options_gen.h"
+#include "mongo/db/feature_flag.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/namespace_string.h"
@@ -130,6 +131,7 @@ enum class StageType {
     kMerge,
     kTumblingWindow,
     kHoppingWindow,
+    kSessionWindow,
     kValidate,
     kLookUp,
     kGroup,
@@ -162,6 +164,7 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$merge", {StageType::kMerge, true, false}},
         {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
         {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
+        {"$sessionWindow", {StageType::kSessionWindow, true, false}},
         {"$validate", {StageType::kValidate, true, true}},
         {"$lookup", {StageType::kLookUp, true, true}},
         {"$group", {StageType::kGroup, false, true}},
@@ -367,7 +370,6 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
             str::stream() << ChangeStreamSourceOptions::kTsFieldOverrideFieldName
                           << " cannot be empty",
             !options.timestampOutputFieldName.empty());
-
     options.timestampExtractor = timestampExtractor;
     return options;
 }
@@ -900,7 +902,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
 
 BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
-    dassert(windowSource);
+    invariant(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
 
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
@@ -926,7 +928,8 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
 
     _windowPlanningInfo.emplace();
     _windowPlanningInfo->stubDocumentSource = source;
-    _windowPlanningInfo->windowingOptions = std::move(windowingOptions);
+    _windowPlanningInfo->windowAssigner =
+        std::make_unique<WindowAssigner>(std::move(windowingOptions));
 
     std::vector<mongo::BSONObj> ownedPipeline;
     bool needMaintainStreamMeta = true;
@@ -1023,7 +1026,8 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
 
     _windowPlanningInfo.emplace();
     _windowPlanningInfo->stubDocumentSource = source;
-    _windowPlanningInfo->windowingOptions = std::move(windowingOptions);
+    _windowPlanningInfo->windowAssigner =
+        std::make_unique<WindowAssigner>(std::move(windowingOptions));
 
     std::vector<mongo::BSONObj> ownedPipeline;
     bool needMaintainStreamMeta = true;
@@ -1070,6 +1074,108 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
         _context->checkpointInterval = kSlowCheckpointInterval;
     }
     return serializedWindowStage(kHoppingWindowStageName, bsonOptions, std::move(executionPlan));
+}
+
+void Planner::prependDummyLimitOperator(mongo::Pipeline* pipeline) {
+    invariant(_windowPlanningInfo);
+    pipeline->addInitialSource(
+        DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
+    ++_windowPlanningInfo->numWindowAwareStages;
+}
+
+BSONObj Planner::planSessionWindow(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceSessionWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
+
+    auto options = SessionWindowOptions::parse(IDLParserContext("sessionWindow"), bsonOptions);
+
+    auto gap = options.getGap();
+    boost::intrusive_ptr<mongo::Expression> partitionBy =
+        parseStringOrObjectExpression(_context->expCtx, options.getPartitionBy());
+
+    SessionWindowAssigner::Options windowingOptions(WindowAssigner::Options{});
+
+    windowingOptions.gapSize = gap.getSize();
+    windowingOptions.gapUnit = gap.getUnit();
+    windowingOptions.partitionBy = partitionBy;
+
+    _windowPlanningInfo.emplace();
+    _windowPlanningInfo->stubDocumentSource = source;
+    _windowPlanningInfo->windowAssigner =
+        std::make_unique<SessionWindowAssigner>(std::move(windowingOptions));
+    _windowPlanningInfo->isSessionWindow = true;
+
+    std::vector<mongo::BSONObj> ownedPipeline;
+    bool needMaintainStreamMeta = true;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+        if (stageName == DocumentSourceGroup::kStageName) {
+            needMaintainStreamMeta = false;
+        }
+    }
+
+    // Window stages will destroy all the stream metadata if the metadata has not been projected
+    // into the documents, so we need to project stream metadata prior to sink stage. The only
+    // exception is $group because in that case the documents are reshaped and we are not
+    // responsible for keeping the original metadata contents.
+    if (needMaintainStreamMeta) {
+        _context->projectStreamMetaPriorToSinkStage = true;
+    }
+
+    auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
+
+    if (_options.shouldOptimize) {
+        if (_windowPlanningInfo->numBlockingWindowAwareStages == 0) {
+            // If there's either no window aware stages, prepend dummy sort operator.
+            // You need a blocking window aware operator (i.e. sort) in the pipeline so that
+            // _stream_meta.window.start/end values are finalized by the time the document is
+            // output.
+            uassert(ErrorCodes::InvalidOptions,
+                    "The $sessionWindow.pipeline isn't supported, there must be a $group or $sort "
+                    "in the pipeline.",
+                    false);
+        } else if (_windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking) {
+            // Else, if there is a read dependency on stream meta before the first blocking, prepend
+            // dummy sort. A blocking operator must precede any operator with a _stream_meta
+            // dependency so that the _stream_meta.window.start/end values are finalized by the time
+            // they are read.
+            uassert(ErrorCodes::InvalidOptions,
+                    "The $sessionWindow.pipeline isn't supported, the pipeline cannot use "
+                    "_stream_meta.window until after the first $group or $sort.",
+                    false);
+        } else if (_windowPlanningInfo->limitBeforeFirstBlocking) {
+            // Else, if there's a limit operator before the first blocking window aware operator,
+            // prepend dummy sort. A blocking operator must precede a limit operator with limit <
+            // INF for window merge to work.
+            uassert(ErrorCodes::InvalidOptions,
+                    "The $sessionWindow.pipeline isn't supported, there cannot be a $limit before "
+                    "the first $group or $sort.",
+                    false);
+        } else if (!isWindowAwareStage(pipeline->getSources().front()->getSourceName())) {
+            // Else, if the first operator is NOT window aware, prepend dummy limit
+            // If the first operator has a filtering effect (ex. match), a limit operator with limit
+            // = INF needs to precede it so documents are not filtered out before they effect
+            // session window boundaries.
+            prependDummyLimitOperator(pipeline.get());
+        }
+    }
+
+    auto optimizedPipeline = planPipeline(*pipeline, std::move(pipelineRewriter));
+
+    invariant(_windowPlanningInfo->numWindowAwareStages ==
+              _windowPlanningInfo->numWindowAwareStagesPlanned);
+    _windowPlanningInfo.reset();
+    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
+    if (val) {
+        _context->checkpointInterval = std::chrono::milliseconds(val.get());
+    } else {
+        _context->checkpointInterval = kSlowCheckpointInterval;
+    }
+    return serializedWindowStage(
+        kSessionWindowStageName, bsonOptions, std::move(optimizedPipeline));
 }
 
 mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
@@ -1135,12 +1241,10 @@ void Planner::planGroup(mongo::DocumentSource* source) {
     ++_windowPlanningInfo->numWindowAwareStagesPlanned;
 
     WindowAwareOperator::Options baseOptions;
-    if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
-        baseOptions.windowAssigner =
-            std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
-    }
+    baseOptions.windowAssigner = std::move(_windowPlanningInfo->windowAssigner);
     baseOptions.sendWindowSignals = (_windowPlanningInfo->numWindowAwareStagesPlanned <
                                      _windowPlanningInfo->numWindowAwareStages);
+    baseOptions.isSessionWindow = _windowPlanningInfo->isSessionWindow;
 
     WindowAwareGroupOperator::Options options(std::move(baseOptions));
     options.documentSource = specificSource;
@@ -1156,12 +1260,10 @@ void Planner::planSort(mongo::DocumentSource* source) {
     ++_windowPlanningInfo->numWindowAwareStagesPlanned;
 
     WindowAwareOperator::Options baseOptions;
-    if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
-        baseOptions.windowAssigner =
-            std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
-    }
+    baseOptions.windowAssigner = std::move(_windowPlanningInfo->windowAssigner);
     baseOptions.sendWindowSignals = (_windowPlanningInfo->numWindowAwareStagesPlanned <
                                      _windowPlanningInfo->numWindowAwareStages);
+    baseOptions.isSessionWindow = _windowPlanningInfo->isSessionWindow;
 
     WindowAwareSortOperator::Options options(std::move(baseOptions));
     options.documentSource = specificSource;
@@ -1179,12 +1281,10 @@ void Planner::planLimit(mongo::DocumentSource* source) {
     ++_windowPlanningInfo->numWindowAwareStagesPlanned;
 
     WindowAwareOperator::Options baseOptions;
-    if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
-        baseOptions.windowAssigner =
-            std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
-    }
+    baseOptions.windowAssigner = std::move(_windowPlanningInfo->windowAssigner);
     baseOptions.sendWindowSignals = (_windowPlanningInfo->numWindowAwareStagesPlanned <
                                      _windowPlanningInfo->numWindowAwareStages);
+    baseOptions.isSessionWindow = _windowPlanningInfo->isSessionWindow;
 
     WindowAwareLimitOperator::Options options(std::move(baseOptions));
     options.limit = limitValue;
@@ -1218,6 +1318,12 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
         for (const auto& stage : pipeline->getSources()) {
             if (isWindowAwareStage(stage->getSourceName())) {
                 ++_windowPlanningInfo->numWindowAwareStages;
+                if (isBlockingWindowAwareStage(stage->getSourceName())) {
+                    ++_windowPlanningInfo->numBlockingWindowAwareStages;
+                } else if (stage->getSourceName() == kLimitStageName) {
+                    _windowPlanningInfo->limitBeforeFirstBlocking |=
+                        _windowPlanningInfo->numBlockingWindowAwareStages == 0;
+                }
             }
         }
     }
@@ -1225,22 +1331,24 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
     // Analyze dependencies of stream metadata. We need to project stream meta prior to the sink
     // stage if there is explict dependency..
     if (_context->streamMetaFieldName) {
+        int blockingWindowAwareOperators = 0;
+        bool hasStreamMetaDependency = false;
         for (const auto& stage : pipeline->getSources()) {
             DepsTracker deps;
             auto depsState = stage->getDependencies(&deps);
             if (depsState == DepsTracker::State::NOT_SUPPORTED) {
                 // If the dependency checking is not supported, we assume there is stream metadata
                 // dependency to be safe.
-                _context->projectStreamMetaPriorToSinkStage = true;
+                hasStreamMetaDependency = true;
             } else {
                 if (deps.needWholeDocument) {
                     // If the stage references $$ROOT then this flag will be set and we should see
                     // it as depending on stream metadata.
-                    _context->projectStreamMetaPriorToSinkStage = true;
+                    hasStreamMetaDependency = true;
                 }
                 for (const auto& field : deps.fields) {
                     if (FieldPath(field).front() == *_context->streamMetaFieldName) {
-                        _context->projectStreamMetaPriorToSinkStage = true;
+                        hasStreamMetaDependency = true;
                         break;
                     }
                 }
@@ -1249,11 +1357,21 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
             if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kNotSupported) {
                 // If the modified path checking is not supported, we assume there is stream
                 // metadata dependency to be safe.
-                _context->projectStreamMetaPriorToSinkStage = true;
+                hasStreamMetaDependency = true;
             } else if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet) {
                 if (modPaths.canModify(FieldPath(*_context->streamMetaFieldName))) {
-                    _context->projectStreamMetaPriorToSinkStage = true;
+                    hasStreamMetaDependency = true;
                 }
+            }
+
+            _context->projectStreamMetaPriorToSinkStage |= hasStreamMetaDependency;
+
+            if (isBlockingWindowAwareStage(stage->getSourceName())) {
+                ++blockingWindowAwareOperators;
+            }
+            if (_windowPlanningInfo && hasStreamMetaDependency &&
+                blockingWindowAwareOperators <= 1) {
+                _windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking = true;
             }
         }
     }
@@ -1405,6 +1523,18 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
             }
             case StageType::kHoppingWindow: {
                 optimizedPipeline.push_back(planHoppingWindow(stage.get()));
+                break;
+            }
+            case StageType::kSessionWindow: {
+                auto featureFlags = _context->featureFlags;
+                auto sessionWindowEnabled = featureFlags
+                    ? featureFlags->getFeatureFlagValue(FeatureFlags::kEnableSessionWindow)
+                          .getBool()
+                    : boost::none;
+                uassert(ErrorCodes::InvalidOptions,
+                        "Unsupported stage: $sessionWindow",
+                        sessionWindowEnabled && *sessionWindowEnabled);
+                optimizedPipeline.push_back(planSessionWindow(stage.get()));
                 break;
             }
             case StageType::kLookUp: {
@@ -1615,11 +1745,22 @@ mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipel
                 FieldPath(
                     (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
         } else if (isWindowStage(stageName)) {
-            auto windowPipeline = stageName == kTumblingWindowStageName
-                ? TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), specBson)
-                      .getPipeline()
-                : HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), specBson)
-                      .getPipeline();
+            std::vector<mongo::BSONObj> windowPipeline;
+            if (stageName == kTumblingWindowStageName) {
+                windowPipeline =
+                    TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), specBson)
+                        .getPipeline();
+            } else if (stageName == kHoppingWindowStageName) {
+                windowPipeline =
+                    HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), specBson)
+                        .getPipeline();
+            } else {
+                invariant(stageName == kSessionWindowStageName);
+                windowPipeline =
+                    SessionWindowOptions::parse(IDLParserContext("sessionWindow"), specBson)
+                        .getPipeline();
+            }
+
             for (const auto& windowStage : windowPipeline) {
                 uassert(mongo::ErrorCodes::InvalidOptions,
                         str::stream() << "Stage must contain a single object spec: " << windowStage,

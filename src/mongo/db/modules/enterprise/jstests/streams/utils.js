@@ -32,12 +32,13 @@ export function verifyDocsEqual(
  * @param {*} input is an array of documents
  * @param {*} output is an array of documents
  */
-export function verifyInputEqualsOutput(input, output) {
+export function verifyInputEqualsOutput(
+    input, output, ignoreFields = ["_id", "_ts", "_stream_meta"]) {
     assert.eq(input.length, output.length);
     for (let i = 0; i < input.length; i += 1) {
         const inputDoc = input[i];
         const outputDoc = output[i];
-        if (!documentEq(inputDoc, outputDoc, false, null, ["_id", "_ts", "_stream_meta"])) {
+        if (!documentEq(inputDoc, outputDoc, true, null, ignoreFields)) {
             assert(false, `${tojson(inputDoc)} does not equal ${tojson(outputDoc)}`);
         }
     }
