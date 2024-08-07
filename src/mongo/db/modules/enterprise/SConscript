@@ -179,8 +179,8 @@ if env.TargetOSIs("windows"):
     if "sasl" in env["MONGO_ENTERPRISE_FEATURES"]:
         libs += [
             {
-                "files": ["libsasl.dll", "libsasl.pdb"],
-                "component": "windows-sasl-lib",
+                "files": ["sasl2.dll", "sasl2.pdb"],
+                "component": "common",
                 "components_extra": [
                     "mongo",
                     "shell",
