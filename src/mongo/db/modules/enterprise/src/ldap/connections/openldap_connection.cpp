@@ -566,11 +566,11 @@ void OpenLDAPConnection::initTraits() {
                 traits.tlsPackage = tlsPackage.getValue();
             }
 
-#ifdef HAVE_MOZNSS_COMPATIBILITY
+#ifdef LDAP_OPT_X_TLS_MOZNSS_COMPATIBILITY
             using LDAPOptionMozNSSCpt =
                 LDAPOptionGeneric<LDAP_OPT_X_TLS_MOZNSS_COMPATIBILITY, int, 0>;
-            auto mozNSSCompatValue = pimpl->getOption<LDAPOptionConnectAsync>(
-                "OpenLDAPConnection::initTraits", "Getting valur of MozNSS compat");
+            auto mozNSSCompatValue = pimpl->getOption<LDAPOptionMozNSSCpt>(
+                "OpenLDAPConnection::initTraits", "Getting value of MozNSS compat");
             traits.mozNSSCompat = mozNSSCompatValue.getValue() > 0;
 #endif
             optionsBuilder.append("mozNSSCompat", traits.mozNSSCompat);

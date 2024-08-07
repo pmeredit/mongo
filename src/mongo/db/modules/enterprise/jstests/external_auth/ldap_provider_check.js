@@ -1,6 +1,5 @@
 // Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
 // is not installed on that variant.
-// @tags: [incompatible_with_atlas_environment]
 
 import {findMatchingLogLines} from "jstests/libs/log.js";
 import {
@@ -63,13 +62,25 @@ configGenerator.startMockupServer();
 const opts = configGenerator.generateMongodConfig();
 
 runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
+    // Our Amazon Linux 1/2 Evergreen hosts do not have libldap_r.so. Skip this test for them.
+    if (osRelease.id === "amzn" && osRelease.ver !== 2022 && osRelease.ver !== 2023) {
+        return;
+    }
+
     assert(ldapAPIInfo);
     assert.eq(null, w7818800);
     if (osRelease.id == "ubuntu") {
         assert.eq("GnuTLS", ldapAPIInfo.attr.options.tlsPackage);
-    } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
+    } else if (osRelease.id == "rhel") {
         assert(ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" ||
                ldapAPIInfo.attr.options.tlsPackage == "MozNSS");
+
+        // libldap using OpenSSL on RHEL 7 should have the MozNSS shim included
+        // and detected.
+        if ((osRelease.id === "rhel" && osRelease.ver === 7) &&
+            ldapAPIInfo.attr.options.tlsPackage === "OpenSSL") {
+            assert(ldapAPIInfo.attr.options.mozNSSCompat);
+        }
     }
     assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
     assert.eq(null, w24052);
@@ -111,7 +122,11 @@ runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
             assert.eq(null, w24052);
             assert.eq(null, w5661701);
 
-            if (ldapAPIInfo.attr.options.mozNSSCompat) {
+            // libldap using OpenSSL on RHEL 7 and Amazon Linux 2 should have the MozNSS shim
+            // included and detected.
+            if ((osRelease.id === "rhel" && osRelease.ver === 7) ||
+                (osRelease.id === "amzn" && osRelease.ver === 2)) {
+                assert(ldapAPIInfo.attr.options.mozNSSCompat);
                 assert.neq(null, w5661703, "must warn that only libldap_r is safe with NSS shim");
             } else {
                 assert.eq(null, w5661703);
