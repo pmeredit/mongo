@@ -363,7 +363,7 @@ export class TestHelper {
                 // Get the committed checkpoint directories by looking for manifest files.
                 .filter((checkpointDir) => {
                     let manifestFile =
-                        listFiles(checkpointDir.name).find(file => file.name.includes("MANIFEST"));
+                        listFiles(checkpointDir.name).find(file => file.name.endsWith("MANIFEST"));
                     return manifestFile !== null;
                 })
                 // Retrieve the checkpointID from each directory.
