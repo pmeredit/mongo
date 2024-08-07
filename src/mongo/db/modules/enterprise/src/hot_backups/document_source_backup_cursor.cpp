@@ -105,7 +105,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
 
         auto svcCtx = pExpCtx->opCtx->getServiceContext();
         auto backupCursorService = BackupCursorHooks::get(svcCtx);
-        backupCursorService->addFilename(_backupCursorState.backupId, backupBlock.filePath());
+        backupCursorService->addFile(_backupCursorState.backupId, backupBlock.filePath());
 
         _backupBlocks.pop_front();
         return std::move(doc);

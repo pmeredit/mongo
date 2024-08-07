@@ -80,9 +80,9 @@ bool DocumentSourceBackupFile::backupSessionIsValid() const {
     auto backupCursorService = BackupCursorHooks::get(svcCtx);
 
     auto backupId = _backupFileSpec.getBackupId();
-    auto fileName = _backupFileSpec.getFile().toString();
+    auto filePath = _backupFileSpec.getFile().toString();
 
-    return backupCursorService->isFileReturnedByCursor(backupId, fileName);
+    return backupCursorService->isFileReturnedByCursor(backupId, filePath);
 }
 
 void DocumentSourceBackupFile::checkBackupSessionStillValid() const {

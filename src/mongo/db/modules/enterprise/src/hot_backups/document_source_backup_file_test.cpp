@@ -79,7 +79,7 @@ public:
 
         // Call `getNext()` once, to retrieve the metadata document.
         _backupCursorStage->getNext();
-        // Get 'filename.wt'.
+        // Get 'testFile.txt'.
         _backupCursorStage->getNext();
 
         auto svcCtx = _opCtx->getClient()->getServiceContext();
@@ -113,7 +113,7 @@ public:
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
     // This file path will be returned by the backup cursor to the backupFile stage.
-    std::string fileToBackup = storageGlobalParams.dbpath + "/filename.wt";
+    std::string fileToBackup = storageGlobalParams.dbpath + "/testFile.txt";
     // The _backupCursorStage must be kept around while the backup file is being retrieved.
     boost::intrusive_ptr<DocumentSource> _backupCursorStage;
 };

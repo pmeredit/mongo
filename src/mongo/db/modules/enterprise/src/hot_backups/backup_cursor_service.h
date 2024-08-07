@@ -85,9 +85,9 @@ public:
                                                const UUID& backupId,
                                                const Timestamp& extendTo) override;
 
-    bool isFileReturnedByCursor(const UUID& backupId, std::string filename) override;
+    bool isFileReturnedByCursor(const UUID& backupId, boost::filesystem::path filePath) override;
 
-    void addFilename(const UUID& backupId, std::string filename) override;
+    void addFile(const UUID& backupId, boost::filesystem::path filePath) override;
 
     /**
      * This is only called by the serverStatus command which gathers FTDC data. All operations with
@@ -115,7 +115,7 @@ private:
     boost::optional<long long> _replTermOfActiveBackup = boost::none;
 
     // Tracks the filenames returned by the open backup cursor or backup cursor extension.
-    stdx::unordered_set<std::string> _returnedFilenames;
+    stdx::unordered_set<std::string> _returnedFilePaths;
 };
 
 }  // namespace mongo

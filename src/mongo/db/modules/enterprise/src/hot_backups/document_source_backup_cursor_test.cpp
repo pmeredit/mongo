@@ -18,6 +18,7 @@
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/devnull/devnull_kv_engine.h"
 #include "mongo/db/storage/storage_engine_impl.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/unittest.h"
 
@@ -71,7 +72,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
     // Call `getNext()` once, to retrieve the metadata document.
     backupCursorStage->getNext();
 
-    // Get 'filename.wt'.
+    // Get 'testFile.txt'.
     backupCursorStage->getNext();
 
     auto svcCtx = _opCtx->getClient()->getServiceContext();
@@ -79,9 +80,13 @@ TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
 
     auto backupId = backupCursorService->getBackupId_forTest();
 
-    ASSERT(backupCursorService->isFileReturnedByCursor(backupId, "filename.wt"));
-    ASSERT_FALSE(backupCursorService->isFileReturnedByCursor(UUID::gen(), "filename.wt"));
-    ASSERT_FALSE(backupCursorService->isFileReturnedByCursor(backupId, "notfilename.wt"));
+    auto backupFilePath = boost::filesystem::path(storageGlobalParams.dbpath) / "testFile.txt";
+    auto invalidBackupFilePath =
+        boost::filesystem::path(storageGlobalParams.dbpath) / "notTestFile.txt";
+
+    ASSERT(backupCursorService->isFileReturnedByCursor(backupId, backupFilePath));
+    ASSERT_FALSE(backupCursorService->isFileReturnedByCursor(UUID::gen(), backupFilePath));
+    ASSERT_FALSE(backupCursorService->isFileReturnedByCursor(backupId, invalidBackupFilePath));
 }
 
 // Tests that the serialization behaves as we expect. Mostly this is important for testing the query

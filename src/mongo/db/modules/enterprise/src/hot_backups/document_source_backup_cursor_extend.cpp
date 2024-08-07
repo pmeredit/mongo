@@ -34,10 +34,10 @@ DocumentSourceBackupCursorExtend::DocumentSourceBackupCursorExtend(
           pExpCtx->mongoProcessInterface->extendBackupCursor(pExpCtx->opCtx, backupId, extendTo)) {}
 
 DocumentSource::GetNextResult DocumentSourceBackupCursorExtend::doGetNext() {
-    if (!_backupCursorExtendState.filenames.empty()) {
-        Document doc = {{"filename", _backupCursorExtendState.filenames.front()},
+    if (!_backupCursorExtendState.filePaths.empty()) {
+        Document doc = {{"filename", _backupCursorExtendState.filePaths.front()},
                         {"required", true}};
-        _backupCursorExtendState.filenames.pop_front();
+        _backupCursorExtendState.filePaths.pop_front();
         return {std::move(doc)};
     }
 
