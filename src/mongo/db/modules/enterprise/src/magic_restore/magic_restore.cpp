@@ -128,8 +128,10 @@ void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader)
     // oplog entries that require traversing a prevOpTime chain, such as in transactions, since
     // these traversals read from the oplog. These reads will respect the visibility timestamp.
     const bool orderedCommit = true;
-    uassertStatusOK(oplog.getCollection()->getRecordStore()->oplogDiskLocRegister(
-        opCtx, latestOplogTs, orderedCommit));
+    auto oplogRs = oplog.getCollection()->getRecordStore();
+    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
+    uassertStatusOK(
+        storageEngine->oplogDiskLocRegister(opCtx, oplogRs, latestOplogTs, orderedCommit));
     // When logging the BSONStreamReader metrics for oplog entries, account for the restore
     // configuration document.
     LOGV2(8290702,
@@ -684,25 +686,26 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
     oplogEntry.setOpTime(opTime);
     oplogEntry.setWallClockTime(lastOplogEntry["wall"].Date() + Seconds(1));
 
-    writeConflictRetry(
-        opCtx,
-        "Inserting higher term no-op oplog entry for magic restore",
-        NamespaceString::kRsOplogNamespace,
-        [&opCtx, &msgObj, &opTime, &oplogEntry] {
-            WriteUnitOfWork wuow(opCtx);
-            AutoGetOplogFastPath oplog(opCtx, OplogAccessMode::kWrite);
-            uassertStatusOK(
-                collection_internal::insertDocument(opCtx,
-                                                    oplog.getCollection(),
-                                                    InsertStatement{oplogEntry.toBSON()},
-                                                    /*opDebug=*/nullptr));
-            wuow.commit();
-            // We need to move the oplog visibility forward for the no-op as some tests need to read
-            // the document.
-            const bool orderedCommit = true;
-            uassertStatusOK(oplog.getCollection()->getRecordStore()->oplogDiskLocRegister(
-                opCtx, opTime.getTimestamp(), orderedCommit));
-        });
+    writeConflictRetry(opCtx,
+                       "Inserting higher term no-op oplog entry for magic restore",
+                       NamespaceString::kRsOplogNamespace,
+                       [&opCtx, &msgObj, &opTime, &oplogEntry] {
+                           WriteUnitOfWork wuow(opCtx);
+                           AutoGetOplogFastPath oplog(opCtx, OplogAccessMode::kWrite);
+                           uassertStatusOK(collection_internal::insertDocument(
+                               opCtx,
+                               oplog.getCollection(),
+                               InsertStatement{oplogEntry.toBSON()},
+                               /*opDebug=*/nullptr));
+                           wuow.commit();
+                           // We need to move the oplog visibility forward for the no-op as some
+                           // tests need to read the document.
+                           const bool orderedCommit = true;
+                           auto oplogRs = oplog.getCollection()->getRecordStore();
+                           auto engine = opCtx->getServiceContext()->getStorageEngine();
+                           uassertStatusOK(engine->oplogDiskLocRegister(
+                               opCtx, oplogRs, opTime.getTimestamp(), orderedCommit));
+                       });
     return opTime.getTimestamp();
 }
 
