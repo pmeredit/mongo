@@ -51,8 +51,6 @@ enums:
             Error: "error"
             # streamProcessor is stopping, after which it will be removed from memory.
             Stopping: "stopping"
-            # streamProcessor is fully stopped.
-            Stopped: "stopped"
 
 structs:
     StreamError:

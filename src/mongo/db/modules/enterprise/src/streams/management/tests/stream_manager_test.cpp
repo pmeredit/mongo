@@ -86,11 +86,6 @@ public:
                             std::string tenantId,
                             std::string name,
                             mongo::Status status) {
-        {
-            stdx::lock_guard<Latch> lk(streamManager->_mutex);
-            auto spInfo = streamManager->tryGetProcessorInfo(lk, tenantId, name);
-            streamManager->transitionToState(lk, spInfo, mongo::StreamStatusEnum::Stopping);
-        }
         streamManager->onExecutorShutdown(tenantId, name, status);
     }
 
@@ -551,7 +546,6 @@ TEST_F(StreamManagerTest, GetStats) {
 
     auto finalStats =
         stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName).getStats();
-    ASSERT_EQ(StreamStatusEnum::Stopped, finalStats.getStatus());
     finalStats.setStatus(StreamStatusEnum::Running);
     ASSERT_BSONOBJ_EQ(finalStats.toBSON(), statsReply.toBSON());
 }
@@ -763,10 +757,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
     ASSERT(
         streamProcessorExists(streamManager.get(), kTestTenantId1, request.getName().toString()));
-    auto finalStats =
-        stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString())
-            .getStats();
-    ASSERT_EQ(StreamStatusEnum::Error, finalStats.getStatus());
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, request.getName().toString());
     ASSERT(
         !streamProcessorExists(streamManager.get(), kTestTenantId1, request.getName().toString()));
 }
