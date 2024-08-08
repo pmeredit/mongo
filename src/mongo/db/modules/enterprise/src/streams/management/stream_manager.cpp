@@ -473,6 +473,15 @@ void StreamManager::transitionToState(mongo::WithLock,
                         processorInfo->streamStatus == StreamStatusEnum::Error);
             processorInfo->streamStatus = newStatus;
             return;
+        case StreamStatusEnum::Stopped:
+            uassert(mongo::ErrorCodes::InternalError,
+                    str::stream() << "Unexpected state transition: "
+                                  << StreamStatus_serializer(processorInfo->streamStatus) << " -> "
+                                  << StreamStatus_serializer(newStatus),
+                    processorInfo->streamStatus == StreamStatusEnum::Stopping ||
+                        processorInfo->streamStatus == StreamStatusEnum::Error);
+            processorInfo->streamStatus = newStatus;
+            return;
     }
 }
 
@@ -987,8 +996,9 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
                 str::stream() << "stream processor does not exist: " << name,
                 it != tenantInfo->second->processors.end());
         uassert(mongo::ErrorCodes::InternalError,
-                "Stream Processor expected to be in stopping state",
-                it->second->streamStatus == StreamStatusEnum::Stopping);
+                "Stream Processor expected to be in stopped or error state",
+                it->second->streamStatus == StreamStatusEnum::Stopped ||
+                    it->second->streamStatus == StreamStatusEnum::Error);
         processorInfo = std::move(it->second);
         tenantInfo->second->processors.erase(it);
     }
@@ -1032,7 +1042,8 @@ void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCom
             str::stream() << "Unexpected tenantId (" << request.getTenantId() << " vs "
                           << processorInfo->context->tenantId << ")",
             request.getTenantId() == processorInfo->context->tenantId);
-    if (processorInfo->streamStatus == StreamStatusEnum::Stopping) {
+    if (processorInfo->streamStatus == StreamStatusEnum::Stopping ||
+        processorInfo->streamStatus == StreamStatusEnum::Stopped) {
         const auto& executorStatus = processorInfo->executorStatus;
         LOGV2_INFO(9151101,
                    "Stream processor is already being stopped",
@@ -1040,7 +1051,10 @@ void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCom
                    "stopReason"_attr = stopReasonToString(stopReason),
                    "stopStatus"_attr = executorStatus ? executorStatus->reason() : "");
     } else {
-        transitionToState(lk, processorInfo, StreamStatusEnum::Stopping);
+        if (processorInfo->streamStatus != StreamStatusEnum::Error) {
+            // If not already in error status, put the stream processor in stopping status.
+            transitionToState(lk, processorInfo, StreamStatusEnum::Stopping);
+        }
         const auto& executorStatus = processorInfo->executorStatus;
         LOGV2_INFO(75911,
                    "Stopping stream processor",
@@ -1491,8 +1505,9 @@ void StreamManager::onExecutorShutdown(std::string tenantId, std::string name, S
     if (!processorInfo->executorStatus || processorInfo->executorStatus->isOK()) {
         processorInfo->executorStatus = std::move(status);
     }
-    if (processorInfo->streamStatus == StreamStatusEnum::Running &&
-        !processorInfo->executorStatus->isOK()) {
+    if (processorInfo->executorStatus->isOK()) {
+        transitionToState(lk, processorInfo, StreamStatusEnum::Stopped);
+    } else {
         transitionToState(lk, processorInfo, StreamStatusEnum::Error);
     }
 }
