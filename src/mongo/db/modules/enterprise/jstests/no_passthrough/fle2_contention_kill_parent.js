@@ -8,18 +8,20 @@
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {waitForCurOpByFilter} from "jstests/libs/curop_helpers.js";
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 import {findMatchingLogLine} from "jstests/libs/log.js";
 
 const COMMENT_STR = "op_to_kill";
 
 function runContentionTest(db, conn, failpointName, operationName, parallelFunction) {
-    // Setup a failpoint that hangs in insert
-    let preResponse = assert.commandWorked(
-        db.adminCommand({configureFailPoint: failpointName, mode: "alwaysOn"}));
-    jsTestLog(preResponse);
+    // Setup a failpoint that hangs in operation.
+    let fp = configureFailPoint(conn, failpointName);
 
     // Start one operation
     let operationOne = startParallelShell(parallelFunction, conn.port);
+
+    // Wait for our operation to hit the fail point.
+    fp.wait();
 
     const obj = {"command.comment": COMMENT_STR};
     const commandName = "command." + operationName;
@@ -39,12 +41,7 @@ function runContentionTest(db, conn, failpointName, operationName, parallelFunct
     });
 
     // Unblock the operation
-    let postResponse =
-        assert.commandWorked(db.adminCommand({configureFailPoint: failpointName, mode: "off"}));
-    jsTestLog(postResponse);
-
-    // Make sure we hit the failpoint
-    assert.gt(postResponse.count, preResponse.count);
+    fp.off();
 
     // Wait for the the parallel shell
     operationOne({checkExitSuccess: false});
