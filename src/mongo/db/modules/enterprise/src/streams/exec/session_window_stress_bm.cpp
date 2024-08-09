@@ -110,7 +110,7 @@ protected:
         // Get the max timestamp per partition and overall max timestamp.
         int64_t overallMaxTs{0};
         ValueUnorderedMap<int64_t> maxTsPerPartition =
-            mongo::ValueComparator().makeUnorderedValueMap<int64_t>();
+            mongo::ValueComparator::kInstance.makeUnorderedValueMap<int64_t>();
         for (const auto& msg : msgs) {
             for (const auto& doc : msg.docs) {
                 auto partition = doc.doc["partition"];
@@ -142,7 +142,8 @@ protected:
     WindowAwareGroupOperator* makeSessionWindow10MinuteGap() {
         // TODO(SERVER-91881): Change this to use the planner.
 
-        auto spec = fromjson(_innerPipeline).firstElement().Obj();
+        auto bson = fromjson(_innerPipeline);
+        auto spec = bson.firstElement().Obj();
         auto specElem = spec.firstElement();
         boost::intrusive_ptr<DocumentSource> groupStage =
             DocumentSourceGroup::createFromBson(specElem, _context->expCtx);
