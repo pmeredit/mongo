@@ -521,8 +521,10 @@ function testLargeDocumentEmitToTimeSeries() {
         opStats = getOperatorStats("TimeseriesEmitOperator");
         return opStats["dlqMessageCount"] == 2;
     });
-    assert.eq(opStats["inputMessageCount"], 5);
-    assert.eq(opStats["outputMessageCount"], 3);
+
+    assert.soon(() => {
+        return (opStats["inputMessageCount"] == 5) && (opStats["outputMessageCount"] == 3);
+    });
 
     stopStreamProcessor('timeseriesTest');
 }
