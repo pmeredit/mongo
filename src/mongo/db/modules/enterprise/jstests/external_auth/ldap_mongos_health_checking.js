@@ -1,16 +1,14 @@
 /**
  * Integration test for LDAP health checker in Mongos.
+ * Responsible for checking that mongos remains operational even
+ * when the LDAP health checker detects LDAP downtime.
+ * Enforces some loose bounds around the number of successful and failed
+ * LDAP health checks when the LDAP server is flaky.
  */
 
 import {
-    disableFirewallFromServer,
-    enableFirewallFromServer,
-    isAnyUbuntu,
-    isFirewallEnabledFromServer,
-} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js";
-import {
-    baseLDAPUrls
-} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+    MockLDAPServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";
 
 // Increment this for the real stress test, value is low for the Evergreen.
 const kIterations = 2;
@@ -31,9 +29,23 @@ const kProgressMonitorDeadlineSec = (kLdapTimeout / 1000) * 2 + 10;
 const kAfterAllTestsSleep = kLdapTimeout + 100;
 
 const ldapTestServers = function() {
+    // Start 3 mock LDAP servers.
+    const mockServerHandles = [
+        new MockLDAPServer(
+            'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif'),
+        new MockLDAPServer(
+            'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif'),
+        new MockLDAPServer(
+            'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif')
+    ];
+    const mockServers =
+        mockServerHandles.map((mockServerHandle) => { return mockServerHandle.getHostAndPort(); })
+            .join();
+    mockServerHandles.forEach((mockServerHandle) => { mockServerHandle.start(); });
     return {
         "OpenLDAP": {
-            "ldapServers": baseLDAPUrls[0],
+            "ldapServers": mockServers,
+            "ldapServerHandles": mockServerHandles,
             "ldapTransportSecurity": "none",
             "ldapBindMethod": "simple",
             "ldapQueryUser": "cn=ldapz_admin,ou=Users,dc=10gen,dc=cc",
@@ -48,9 +60,9 @@ const ldapTestServers = function() {
 }();
 
 const runTestSuite = function(ldapTestServer) {
-    const ldapServersArray = ldapTestServer["ldapServers"].split(',');
+    const ldapServerHandles = ldapTestServer["ldapServerHandles"];
 
-    var st = new ShardingTest({
+    const st = new ShardingTest({
         shards: 1,
         config: 1,
         mongos: [{
@@ -82,8 +94,8 @@ const runTestSuite = function(ldapTestServer) {
         const shellArgs = ['ps', '-e'];
         const rc = _runMongoProgram.apply(null, shellArgs);
         assert.eq(rc, 0);
-        var lines = rawMongoProgramOutput();
-        var found;
+        const lines = rawMongoProgramOutput();
+        let found;
         lines.split('\n').forEach((line) => {
             const match = line.match(/[' ']+([0-9]+).*mongos.*/i);
             if (match) {
@@ -93,32 +105,32 @@ const runTestSuite = function(ldapTestServer) {
         return found;
     })();
 
-    // If there is more than one server, disable all but one server with firewall.
+    // If there is more than one LDAP server, stop all but one LDAP server.
     // If there is only one server skip this test.
-    const testWithPartiallyDisabledFirewall = function() {
-        if (ldapServersArray.length <= 1 || !isAnyUbuntu) {
+    const testWithOneResponsiveLDAPServer = function() {
+        if (ldapServerHandles.length <= 1) {
             return;
         }
-        const indexToNotBlock = Math.floor(Math.random() * ldapServersArray.length);
-        const serversToBlock = ldapServersArray.slice(0, indexToNotBlock)
-                                   .concat(ldapServersArray.slice(indexToNotBlock + 1));
+        const indexToNotBlock = Math.floor(Math.random() * ldapServerHandles.length);
+        const serversToBlock = ldapServerHandles.slice(0, indexToNotBlock)
+                                   .concat(ldapServerHandles.slice(indexToNotBlock + 1));
 
-        serversToBlock.forEach((serverName) => { enableFirewallFromServer(serverName); });
-        sleep(10000);  // Let mongos to run with firewall.
+        serversToBlock.forEach((blockedServerHandle) => { blockedServerHandle.stop(); });
+        sleep(10000);  // Let mongos to run with blocked LDAP server.
         // The timeout for each request is 8 sec. In each health check, one thread
-        // will succeed and one timeout before the firewall is enabled.
+        // will succeed and one timeout before the LDAP server is stopped.
 
         // Mongos should be functional.
         assert.commandWorked(st.s0.adminCommand({"ping": 1}));
 
-        serversToBlock.forEach((serverName) => { disableFirewallFromServer(serverName); });
+        serversToBlock.forEach((blockedServerHandle) => { blockedServerHandle.start(); });
     };
 
-    const testWithFullyDisabledFirewall = function() {
-        ldapServersArray.forEach((serverName) => { enableFirewallFromServer(serverName); });
-        sleep(Math.random() * 10000);  // Let mongos to run with firewall.
+    const testWithNoResponsiveLDAPServers = function() {
+        ldapServerHandles.forEach((serverHandle) => { serverHandle.stop(); });
+        sleep(10000);  // Let mongos run with unresponsive LDAP servers.
 
-        ldapServersArray.forEach((serverName) => { disableFirewallFromServer(serverName); });
+        ldapServerHandles.forEach((serverHandle) => { serverHandle.start(); });
 
         // Mongos should be functional.
         assert.commandWorked(st.s0.adminCommand({"ping": 1}));
@@ -128,7 +140,7 @@ const runTestSuite = function(ldapTestServer) {
         clearRawMongoProgramOutput();
         // /smaps could be unavailable, first print the /status
         const statusShellArgs = ['ls', '/proc/' + processId + '/status'];
-        var rc = _runMongoProgram.apply(null, statusShellArgs);
+        let rc = _runMongoProgram.apply(null, statusShellArgs);
         if (rc != 0) {
             jsTestLog(`Process status unavailable for pid ${processId}`);
             // List /proc for debug.
@@ -143,8 +155,8 @@ const runTestSuite = function(ldapTestServer) {
             jsTestLog(`/proc/${processId}/smaps not available`);
             return;
         }
-        var lines = rawMongoProgramOutput();
-        var totalKb = 0;
+        const lines = rawMongoProgramOutput();
+        let totalKb = 0;
         lines.split('\n').forEach((line) => {
             const match = line.match(/[' ']+Pss:[' ']+([0-9]+).*kB.*/i);
             if (match) {
@@ -162,8 +174,8 @@ const runTestSuite = function(ldapTestServer) {
             jsTestLog(`/proc/${processId}/fd/ not available`);
             return;
         }
-        var lines = rawMongoProgramOutput();
-        var totalFds = lines.split('\n').length;
+        const lines = rawMongoProgramOutput();
+        const totalFds = lines.split('\n').length;
         jsTestLog(`Total files open ${totalFds}`);
     };
 
@@ -171,7 +183,7 @@ const runTestSuite = function(ldapTestServer) {
     // on Enterprise builds only.
     const checkServerStats = function() {
         while (true) {
-            let result =
+            const result =
                 assert.commandWorked(st.s0.adminCommand({serverStatus: 1, health: {details: true}}))
                     .health;
             print(`Server status: ${tojson(result)}`);
@@ -186,46 +198,41 @@ const runTestSuite = function(ldapTestServer) {
         }
     };
     try {
-        if (isAnyUbuntu) {
-            for (var i = 0; i < kIterations; ++i) {
-                testWithPartiallyDisabledFirewall();
-                if (i % 10 == 0) {
-                    printMemoryForProcess(mongosProcessId);
-                    printFdCount(mongosProcessId);
-                }
+        for (let i = 0; i < kIterations; ++i) {
+            testWithOneResponsiveLDAPServer();
+            if (i % 10 == 0) {
+                printMemoryForProcess(mongosProcessId);
+                printFdCount(mongosProcessId);
             }
-            for (var i = 0; i < kIterations; ++i) {
-                testWithFullyDisabledFirewall();
-                if (i % 10 == 0) {
-                    printMemoryForProcess(mongosProcessId);
-                    printFdCount(mongosProcessId);
-                }
+        }
+        for (let i = 0; i < kIterations; ++i) {
+            testWithNoResponsiveLDAPServers();
+            if (i % 10 == 0) {
+                printMemoryForProcess(mongosProcessId);
+                printFdCount(mongosProcessId);
             }
         }
     } finally {
-        // If we hit an assertion above, make sure firewall from each server is disabled
-        if (isAnyUbuntu) {
-            ldapServersArray.forEach((serverName) => {
-                // If firewall from server is not already disabled, disable it
-                while (isFirewallEnabledFromServer(serverName)) {
-                    disableFirewallFromServer(serverName);
-                }
-            });
-        }
+        // If we hit an assertion above, make sure the LDAP server is restarted.
+        ldapServerHandles.forEach((serverHandle) => {
+            // If LDAP server is not running, start it back up.
+            if (!serverHandle.isRunning()) {
+                serverHandle.start();
+            }
+        });
     }
 
-    sleep(kAfterAllTestsSleep);  // Let all health checker threads stuck because of firewall to
-                                 // terminate.
+    sleep(kAfterAllTestsSleep);  // Let all health checker threads stuck because of blocked LDAP
+                                 // server to terminate.
     assert.commandWorked(st.s0.adminCommand({"ping": 1}));
-    if (isAnyUbuntu) {
-        printMemoryForProcess(mongosProcessId);
-        printFdCount(mongosProcessId);
-    }
+    printMemoryForProcess(mongosProcessId);
+    printFdCount(mongosProcessId);
     checkServerStats();
 
     try {
-        jsTestLog('Shutting down the sharded cluster');
+        jsTestLog('Shutting down the sharded cluster and all LDAP servers used by it.');
         st.stop();
+        ldapServerHandles.forEach((serverHandle) => { serverHandle.stop(); });
     } catch (err) {
         jsTestLog(`Error during shutdown ${err}`);
     }
