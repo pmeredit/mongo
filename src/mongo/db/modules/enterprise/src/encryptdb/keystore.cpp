@@ -15,6 +15,7 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/util/lru_cache.h"
 #include "mongo/util/string_map.h"
+#include "mongo/util/synchronized_value.h"
 #include "symmetric_crypto.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
@@ -25,7 +26,9 @@ namespace {
 // Symmetric key IDs which have been stored during this process instance.
 // By being stored, we know it's a new key, and not one which has been incremented.
 constexpr std::size_t kStoredKeyCacheSize = 1024;
-LRUCache<SymmetricKeyId, bool> storedKeys(kStoredKeyCacheSize);
+using ESEKeystoreCache =
+    synchronized_value<LRUCache<SymmetricKeyId, bool>, RawSynchronizedValueMutexPolicy>;
+ESEKeystoreCache storedKeys{LRUCache<SymmetricKeyId, bool>{kStoredKeyCacheSize}};
 
 struct KeystoreRecordViewV0 {
     using WTKeyType = const char*;
@@ -133,8 +136,9 @@ public:
 
     // V0 keystores have no numeric IDs, therefore ignore it in caching storage state.
     bool keyStoredThisProcess(const SymmetricKeyId& keyId) const final {
-        auto it = storedKeys.cfind(SymmetricKeyId(keyId.name()));
-        return (it != storedKeys.cend()) && it->second;
+        auto cache = storedKeys.synchronize();
+        auto it = cache->cfind(SymmetricKeyId(keyId.name()));
+        return (it != cache->cend()) && it->second;
     }
 
 private:
@@ -170,13 +174,13 @@ public:
     void insert(const UniqueSymmetricKey& key, boost::optional<uint32_t> rolloverId) override {
         KeystoreRecordViewV0 view(key);
         dataStoreSession()->insert(view.id.rawData(), view.toTuple());
-        storedKeys.add(SymmetricKeyId(key->getKeyId().name()), true);
+        storedKeys->add(SymmetricKeyId(key->getKeyId().name()), true);
     }
 
     void update(iterator it, const UniqueSymmetricKey& key) override {
         KeystoreRecordViewV0 view(key);
         dataStoreSession()->update(it.cursor(), view.toTuple());
-        storedKeys.add(SymmetricKeyId(key->getKeyId().name()), true);
+        storedKeys->add(SymmetricKeyId(key->getKeyId().name()), true);
     }
 
     uint32_t getRolloverId(WTDataStoreCursor& cursor) const override {
@@ -255,8 +259,10 @@ public:
     std::uint32_t getRolloverId() const override;
 
     bool keyStoredThisProcess(const SymmetricKeyId& keyId) const final {
-        auto it = storedKeys.cfind(keyId);
-        return (it != storedKeys.cend()) && it->second;
+        auto cache = storedKeys.synchronize();
+
+        auto it = cache->cfind(keyId);
+        return (it != cache->cend()) && it->second;
     }
 
 private:
@@ -340,7 +346,7 @@ public:
             fassert(51172, inserted);
         }
 
-        storedKeys.add(keyId, true);
+        storedKeys->add(keyId, true);
 
         // We don't worry about dbNameToKeyIdOldest mapping here because this key
         // will never have been used in a V0 page.
@@ -366,7 +372,7 @@ public:
         view.initializationCount = key->getInitializationCount();
 
         dataStoreSession()->update(it.cursor(), view.toTuple());
-        storedKeys.add(keyId, true);
+        storedKeys->add(keyId, true);
     }
 
     uint32_t getRolloverId(WTDataStoreCursor& cursor) const override {
