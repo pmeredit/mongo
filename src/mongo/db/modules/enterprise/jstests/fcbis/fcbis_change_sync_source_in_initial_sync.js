@@ -4,6 +4,7 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
+TestData.skipEnforceFastCountOnValidate = true;
 const rst = new ReplSetTest({
     nodes: [{}, {rsConfig: {priority: 0}}],
 });

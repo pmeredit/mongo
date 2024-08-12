@@ -16,6 +16,7 @@ import {
     waitForNewlyAddedRemovalForNodeToBeCommitted,
 } from "jstests/replsets/rslib.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = jsTestName();
 const dbName = "testdb";
 const collName = "testcoll";

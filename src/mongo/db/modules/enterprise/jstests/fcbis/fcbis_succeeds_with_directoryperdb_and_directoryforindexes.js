@@ -5,6 +5,7 @@
 function runTest(options) {
     jsTestLog("Running test with " + tojson(options));
 
+    TestData.skipEnforceFastCountOnValidate = true;
     const rst = new ReplSetTest({name: jsTestName(), nodes: [options]});
     rst.startSet();
     rst.initiate();

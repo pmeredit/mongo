@@ -3,6 +3,8 @@
  * a valid sync source within numInitialSyncConnectAttempts.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
+
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = "fallback_to_logical_initial_sync";
 const rst = new ReplSetTest({
     name: testName,

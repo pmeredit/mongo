@@ -9,6 +9,7 @@
  */
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = "fcbis_succeeds_with_backup_cursor_checkpoint_conflict";
 const rst = new ReplSetTest({
     name: testName,

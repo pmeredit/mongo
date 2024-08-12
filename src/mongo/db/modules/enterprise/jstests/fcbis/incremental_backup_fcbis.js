@@ -16,6 +16,7 @@ const coll1Name = "coll1";
 const coll2Name = "coll2";
 const testName = TestData.testName;
 
+TestData.skipEnforceFastCountOnValidate = true;
 const rst = new ReplSetTest({
     name: testName,
     nodeOptions: {

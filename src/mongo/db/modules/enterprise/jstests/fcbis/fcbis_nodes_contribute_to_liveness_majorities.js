@@ -13,6 +13,7 @@
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {reconfig, waitForState} from "jstests/replsets/rslib.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const name = jsTestName();
 const rst = new ReplSetTest({
     name,

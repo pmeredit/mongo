@@ -21,6 +21,7 @@ const testName = jsTestName();
 const dbName = "testdb";
 const collName = "testcoll";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const rst = new ReplSetTest({
     name: testName,
     nodes: [{}, {}, {rsConfig: {priority: 0}}],

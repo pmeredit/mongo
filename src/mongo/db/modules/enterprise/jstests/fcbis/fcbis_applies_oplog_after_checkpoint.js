@@ -3,6 +3,8 @@
  * when no extensions are used.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
+
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = TestData.testName;
 const rst = new ReplSetTest({
     name: testName,

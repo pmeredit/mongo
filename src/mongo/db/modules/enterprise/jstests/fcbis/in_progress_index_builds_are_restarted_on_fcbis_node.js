@@ -10,6 +10,7 @@
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const dbName = "test";
 const collName = "coll";
 const indexNames = ["_id_", "a_1", "b_1", "c_1", "d_1"];

@@ -13,6 +13,7 @@ import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {checkWriteConcernTimedOut} from "jstests/libs/write_concern_util.js";
 import {reconfig} from "jstests/replsets/rslib.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = jsTestName();
 const rst = new ReplSetTest({name: testName, nodes: [{}, {rsConfig: {priority: 0}}]});
 rst.startSet();

@@ -28,6 +28,7 @@ const encryptedNodeOptions = {
     }
 };
 
+TestData.skipEnforceFastCountOnValidate = true;
 const rst = new ReplSetTest({name: testName, nodes: [encryptedNodeOptions]});
 rst.startSet();
 rst.initiate();

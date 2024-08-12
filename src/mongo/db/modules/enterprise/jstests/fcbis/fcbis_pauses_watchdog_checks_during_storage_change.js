@@ -15,6 +15,7 @@ function getWatchDogCheckGeneration(node) {
 }
 
 clearRawMongoProgramOutput();
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = TestData.testName;
 const rst = new ReplSetTest({
     name: testName,

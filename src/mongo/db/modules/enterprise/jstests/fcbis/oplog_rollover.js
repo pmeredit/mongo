@@ -5,4 +5,5 @@
  */
 import {oplogRolloverTest} from "jstests/replsets/libs/oplog_rollover_test.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 oplogRolloverTest("wiredTiger", "fileCopyBased");

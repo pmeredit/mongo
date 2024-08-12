@@ -7,6 +7,7 @@ import {
     testPreservingRecordIdsDuringInitialSync,
 } from "jstests/libs/replicated_record_ids_utils.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 testPreservingRecordIdsDuringInitialSync(/*initSyncMethod*/ "fileCopyBased",
                                          /*beforeCloningFP*/ "fCBISHangAfterOpeningBackupCursor",
                                          /*afterCloningFP*/ "fCBISHangAfterFileCloning");

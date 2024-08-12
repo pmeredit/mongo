@@ -10,6 +10,7 @@
  */
 
 function runDowngradeTest(downgradeFCV) {
+    TestData.skipEnforceFastCountOnValidate = true;
     const rst = new ReplSetTest({
         nodes: 2,
     });

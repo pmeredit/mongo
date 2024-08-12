@@ -7,6 +7,7 @@ import {
     validateReplicaSetBackupCursor
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const testName = "fcbis";
 const rst = new ReplSetTest({
     name: testName,

@@ -6,6 +6,7 @@
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 function runTest(failpoint) {
+    TestData.skipEnforceFastCountOnValidate = true;
     const testName = "fcbis_fails_if_sync_source_restarts_while_backup_cursor_is_open";
     const rst = new ReplSetTest({
         name: testName,

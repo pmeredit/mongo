@@ -11,6 +11,7 @@
 
 import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
 
+TestData.skipEnforceFastCountOnValidate = true;
 const replTest = new ReplSetTest({
     nodes: 2,
 });
