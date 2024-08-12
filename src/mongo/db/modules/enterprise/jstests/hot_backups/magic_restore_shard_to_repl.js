@@ -157,6 +157,7 @@ function runTest(insertHigherTermOplogEntry) {
         "system.version",
         "shards",
         "actionlog",
+        "clusterParameters",
         "rangeDeletions",
         "cache.databases",
         "cache.collections",
@@ -181,7 +182,7 @@ function runTest(insertHigherTermOplogEntry) {
     assert.commandWorked(st.s.adminCommand({addShard: rst.getURL(), name: rst.name}));
 
     // Those are affected by the addShard so ignoring them, they matched above.
-    excludedCollections.push("clusterParameters", "transactions", "system.sessions");
+    excludedCollections.push("transactions", "system.sessions");
     shardingRestoreTest.shardRestoreTests[0].checkPostRestoreDbHashes(excludedCollections);
 
     jsTestLog("Stopping restore nodes");
