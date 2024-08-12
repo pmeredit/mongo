@@ -9,6 +9,8 @@
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
 
+const oplogSizeMB = 1000;
+
 const rst = new ReplSetTest({
     nodes: [
         {},
@@ -20,7 +22,7 @@ const rst = new ReplSetTest({
             },
         },
     ],
-    oplogSize: 100,
+    oplogSize: oplogSizeMB,
 });
 rst.startSet();
 rst.initiate();
