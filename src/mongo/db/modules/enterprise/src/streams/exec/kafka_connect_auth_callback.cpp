@@ -37,6 +37,11 @@ constexpr int kSocketTimeoutSecs = 10;
 constexpr int kMaxResponseTimeoutSecs = 3;
 constexpr int kMaxEpollEvents = 1;
 
+// Error constants for user facing errors.
+constexpr const char kErrorVPCPeerNotResponding[] =
+    "VPC Proxy for Kafka connection is not available, aborting";
+constexpr const char kErrorEncryptionKeyInvalid[] = "VPC proxy encryption key is invalid";
+
 };  // namespace
 
 namespace streams {
@@ -79,6 +84,7 @@ SymmetricKey KafkaConnectAuthCallback::buildKey(const std::string& plainKey) {
                         decodedString.size() == key->size());
                 std::copy(decodedString.begin(), decodedString.end(), key->begin());
             } catch (const ExceptionFor<ErrorCodes::FailedToParse>& e) {
+                addUserFacingError(kErrorEncryptionKeyInvalid);
                 uasserted(ErrorCodes::InternalError,
                           str::stream() << "Encryption key is invalid: " << e.what());
             }
@@ -384,6 +390,7 @@ int KafkaConnectAuthCallback::connectCbImpl(int sockfd,
             LOGV2_ERROR(780018,
                         "KafkaConnectAuthCallback failed to connect to proxy",
                         "context"_attr = _context);
+            addUserFacingError(kErrorVPCPeerNotResponding);
             return -1;
         }
         LOGV2_INFO(780019, "KafkaConnectAuthCallback socket is ready", "context"_attr = _context);
@@ -399,6 +406,7 @@ int KafkaConnectAuthCallback::connectCbImpl(int sockfd,
                     "KafkaConnectAuthCallback failed to get proxy greeting, giving up",
                     "context"_attr = _context,
                     "exception"_attr = e.what());
+        addUserFacingError(kErrorVPCPeerNotResponding);
         return -1;
     }
 

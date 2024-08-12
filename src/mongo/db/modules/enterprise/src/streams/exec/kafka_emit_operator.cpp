@@ -96,20 +96,43 @@ void KafkaEmitOperator::Connector::testConnection() {
         RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
             false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
         std::unique_ptr<RdKafka::Metadata> deleter(metadata);
+
+        // Check for errors emitted by registered callbacks.
+        boost::optional<std::string> errors = getVerboseCallbackErrorsIfExists();
+
         uassert(
             8141701,
-            "$emit to Kafka topic encountered error while connecting, kafka error code: {}"_format(
-                kafkaErrorCode),
+            "$emit to Kafka topic encountered error while connecting, kafka error code: {} messages: {}"_format(
+                kafkaErrorCode, errors ? *errors : RdKafka::err2str(kafkaErrorCode)),
             kafkaErrorCode == RdKafka::ERR_NO_ERROR);
     } else {
         RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
             true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
         std::unique_ptr<RdKafka::Metadata> deleter(metadata);
-        uassert(8141702,
-                "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(
-                    kafkaErrorCode),
-                kafkaErrorCode == RdKafka::ERR_NO_ERROR);
+
+        // Check for errors emitted by registered callbacks.
+        boost::optional<std::string> errors = getVerboseCallbackErrorsIfExists();
+
+        uassert(
+            8141702,
+            "$emit to Kafka topic encountered error while connecting, kafka error code: {} messages: {}"_format(
+                kafkaErrorCode, errors ? *errors : RdKafka::err2str(kafkaErrorCode)),
+            kafkaErrorCode == RdKafka::ERR_NO_ERROR);
     }
+}
+
+boost::optional<std::string> KafkaEmitOperator::Connector::getVerboseCallbackErrorsIfExists() {
+    // Any error that _resolveCbImpl returns will be fatal, so it's not
+    // necessary to accumulate errors from _connectCbImpl if we error
+    // in the resolver, we can return them immediately.
+    if (_options.kafkaResolveCallback && _options.kafkaResolveCallback->hasErrors()) {
+        return _options.kafkaResolveCallback->getAllErrorsAsString();
+    }
+    if (_options.kafkaConnectAuthCallback && _options.kafkaConnectAuthCallback->hasErrors()) {
+        return _options.kafkaConnectAuthCallback->getAllErrorsAsString();
+    }
+
+    return boost::none;
 }
 
 
@@ -560,6 +583,8 @@ void KafkaEmitOperator::doStart() {
     options.producer = _producer.get();
     options.metadataQueryTimeout = _options.metadataQueryTimeout;
     options.kafkaEventCallback = _eventCbImpl.get();
+    options.kafkaConnectAuthCallback = _connectCbImpl;
+    options.kafkaResolveCallback = _resolveCbImpl;
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
 }

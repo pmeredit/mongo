@@ -371,6 +371,20 @@ int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
     return startOffset;
 }
 
+boost::optional<std::string> KafkaPartitionConsumer::getVerboseCallbackErrorsIfExists() {
+    // Any error that _resolveCbImpl returns will be fatal, so it's not
+    // necessary to accumulate errors from _connectCbImpl if we error
+    // in the resolver, we can return them immediately.
+    if (_resolveCbImpl && _resolveCbImpl->hasErrors()) {
+        return _resolveCbImpl->getAllErrorsAsString();
+    }
+    if (_connectCbImpl && _connectCbImpl->hasErrors()) {
+        return _connectCbImpl->getAllErrorsAsString();
+    }
+
+    return boost::none;
+}
+
 void KafkaPartitionConsumer::connectToSource() {
     boost::optional<int64_t> numPartitions;
 
@@ -380,6 +394,8 @@ void KafkaPartitionConsumer::connectToSource() {
 
     std::unique_ptr<RdKafka::Metadata> metadataOwner(metadata);
     if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
+        const boost::optional<std::string> formattedErrors = getVerboseCallbackErrorsIfExists();
+
         LOGV2_ERROR(77179,
                     "{partition}: could not load metadata for the topic: {error}",
                     "context"_attr = _context,
@@ -390,7 +406,10 @@ void KafkaPartitionConsumer::connectToSource() {
                   fmt::format("Could not connect to the Kafka topic with "
                               "kafka error code: {}, message: {}.",
                               resp,
-                              RdKafka::err2str(resp)));
+                              // If the upstream callbacks generated an error, in this case, the
+                              // error string rdkafka associates with the error code won't be
+                              // useful, so display our generated error stack instead.
+                              formattedErrors ? formattedErrors.get() : RdKafka::err2str(resp)));
     } else if (metadata->topics()->at(0)->partitions()->empty()) {
         LOGV2_ERROR(77178,
                     "topic does not exist",

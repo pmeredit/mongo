@@ -171,6 +171,9 @@ private:
     // KafkaSourceDocument.
     KafkaSourceDocument processMessagePayload(RdKafka::Message& message);
 
+    // Get verbose stats from network callbacks to display in user error messages.
+    boost::optional<std::string> getVerboseCallbackErrorsIfExists();
+
     // Adds the given document to _activeDocBatch. If any DocVecs in _activeDocBatch
     // reached their maximum size of Options.maxNumDocsToReturn, it also moves them to
     // _finalizedDocBatch.
@@ -209,8 +212,8 @@ private:
     // mutex.
     mongo::MemoryUsageHandle _memoryUsageHandle;
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-    std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
-    std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
+    std::unique_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
+    std::unique_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
 };
 
 }  // namespace streams

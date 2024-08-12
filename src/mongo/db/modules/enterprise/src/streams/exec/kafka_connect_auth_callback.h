@@ -11,6 +11,7 @@
 
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/crypto/symmetric_key.h"
+#include "streams/exec/kafka_callback_base.h"
 
 namespace streams {
 
@@ -20,7 +21,7 @@ struct Context;
 // for VPC peering sessions.  The full technical design for this authentication flow
 // can be found here:
 // https://docs.google.com/document/d/1gu4sJsiNE-K5yKNIThcUNApo7bsVj5zY1GVqhPF_64g
-class KafkaConnectAuthCallback : public RdKafka::ConnectCb {
+class KafkaConnectAuthCallback : public RdKafka::ConnectCb, public KafkaCallbackBase {
 public:
     KafkaConnectAuthCallback(Context* context,
                              std::string operatorName,

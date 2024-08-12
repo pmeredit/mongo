@@ -107,6 +107,8 @@ private:
             mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
             // Event callback.
             KafkaEventCallback* kafkaEventCallback{nullptr};
+            std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;
+            std::shared_ptr<KafkaConnectAuthCallback> kafkaConnectAuthCallback;
         };
 
         Connector(Options options);
@@ -121,6 +123,9 @@ private:
 
         // Returns the current connection status.
         ConnectionStatus getConnectionStatus();
+
+        // Get verbose stats from network callbacks to display in user error messages.
+        boost::optional<std::string> getVerboseCallbackErrorsIfExists();
 
     private:
         void setConnectionStatus(ConnectionStatus status);
@@ -187,7 +192,7 @@ private:
     ConnectionStatus _connectionStatus;
 
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-    std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
-    std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
+    std::shared_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
+    std::shared_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
 };
 }  // namespace streams
