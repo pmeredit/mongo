@@ -8,3 +8,21 @@ exports_files(
         "*.cpp",
     ]),
 )
+
+mongo_cc_library(
+    name = "streams_util",
+    srcs = [
+        "exception.cpp",
+        "metric_manager.cpp",
+        "metrics.cpp",
+    ],
+    hdrs = [
+        "exception.h",
+        "metric_manager.h",
+        "metrics.h",
+        "//src/mongo/util:histogram.h",
+    ],
+    deps = [
+        "//src/mongo:base",
+    ],
+)
