@@ -14,7 +14,8 @@ if env.TargetOSIs("windows"):
         target="cyrus_sasl_windows_test_plugin",
         source=["cyrus_sasl_windows_test_plugin.cpp"],
         LIBDEPS_NO_INHERIT=[
-            "$BUILD_DIR/third_party/shim_allocator",
+            "$BUILD_DIR/third_party/tcmalloc/tcmalloc",
+            "$BUILD_DIR/third_party/gperftools/tcmalloc_minimal",
         ],
         AIB_COMPONENT="dist-test",
     )
