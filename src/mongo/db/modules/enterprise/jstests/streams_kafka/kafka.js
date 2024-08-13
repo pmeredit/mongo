@@ -383,6 +383,12 @@ function mongoToKafkaToMongo({
             delete outputDoc._id;
             assert.docEq(input[i], outputDoc, outputDoc);
         }
+
+        // Verify that KafkaConsumerOperator is reporting non-zero maxMemoryUsage.
+        let statsResult = getStats(kafkaToMongoName);
+        const sourceStats = statsResult.operatorStats[0];
+        assert.eq('KafkaConsumerOperator', sourceStats.name);
+        assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
     }
 
     // Stop the streamProcessors.

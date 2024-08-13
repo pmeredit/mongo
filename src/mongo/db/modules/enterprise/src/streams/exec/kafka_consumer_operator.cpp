@@ -962,6 +962,7 @@ OperatorStats KafkaConsumerOperator::doGetStats() {
     for (auto& consumerInfo : _consumers) {
         stats += consumerInfo.consumer->getStats();
     }
+    _stats.setMemoryUsageBytes(stats.memoryUsageBytes);
     return stats;
 }
 

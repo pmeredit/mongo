@@ -50,6 +50,11 @@ struct OperatorStats {
     // lastTimeSpentUpdated timer to be able to decay previous value.
     mongo::Timer lastTimeSpentUpdated;
 
+    void setMemoryUsageBytes(int64_t bytes) {
+        memoryUsageBytes = bytes;
+        maxMemoryUsageBytes = std::max(maxMemoryUsageBytes, memoryUsageBytes);
+    }
+
     OperatorStats& operator+=(const OperatorStats& other) {
         numInputDocs += other.numInputDocs;
         numInputBytes += other.numInputBytes;

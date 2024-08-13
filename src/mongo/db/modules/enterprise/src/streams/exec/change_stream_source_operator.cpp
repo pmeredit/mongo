@@ -200,7 +200,7 @@ OperatorStats ChangeStreamSourceOperator::doGetStats() {
         // Always expose memory usage from the memory usage handle so that
         // the sum of each operator's memory usage equals the stream processor's
         // memory aggregator memory usage.
-        stats.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes();
+        stats.setMemoryUsageBytes(_memoryUsageHandle.getCurrentMemoryUsageBytes());
     }
 
     return stats;

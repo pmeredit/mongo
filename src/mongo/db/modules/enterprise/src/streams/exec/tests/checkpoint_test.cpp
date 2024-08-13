@@ -725,7 +725,6 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
         ASSERT_EQ(0, stats.getInputBytes());
         ASSERT_EQ(0, stats.getOutputBytes());
         ASSERT_EQ(0, stats.getDlqDocs());
-        ASSERT_EQ(0, stats.getStateSize());
     }
     // Verify the stats in checkpoint1, $source.
     workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[1]);
@@ -737,7 +736,6 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     ASSERT_EQ(1, stats.getOutputDocs());
     ASSERT_GT(stats.getInputBytes(), 0);
     ASSERT_EQ(0, stats.getDlqDocs());
-    ASSERT_EQ(0, stats.getStateSize());
     // Verify the stats in checkpoint2, $source.
     workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[2]);
     opInfo = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
@@ -747,7 +745,6 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     ASSERT_EQ(2, stats.getOutputDocs());
     ASSERT_GT(stats.getInputBytes(), 0);
     ASSERT_EQ(0, stats.getDlqDocs());
-    ASSERT_EQ(0, stats.getStateSize());
 
     // Verify the stats in checkpoint1 and checkpoint2 for the $group, for checkpoints 1 and 2.
     // During each of these checkpoints there is one open window.

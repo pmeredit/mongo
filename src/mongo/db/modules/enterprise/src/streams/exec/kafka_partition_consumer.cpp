@@ -258,7 +258,6 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             while (!_activeDocBatch.empty()) {
                 dassert(!_activeDocBatch.docVecs.empty());
                 auto docVec = _activeDocBatch.popDocVec();
-                _memoryUsageHandle.add(docVec.getByteSize());
                 _finalizedDocBatch.pushDocVec(std::move(docVec));
             }
         }
@@ -279,7 +278,9 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 }
 
 OperatorStats KafkaPartitionConsumer::doGetStats() {
-    return OperatorStats{.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes()};
+    OperatorStats stats;
+    stats.setMemoryUsageBytes(_memoryUsageHandle.getCurrentMemoryUsageBytes());
+    return stats;
 }
 
 std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
@@ -526,12 +527,12 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
     int32_t numActiveDocVecs{0};
     {
         stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
+        int64_t prevSize = _activeDocBatch.size();
+        int64_t prevByteSize = _activeDocBatch.getByteSize();
+
         if (_activeDocBatch.docVecs.empty()) {
             _activeDocBatch.emplaceDocVec(_options.maxNumDocsToReturn);
         }
-
-        int64_t prevSize = _activeDocBatch.size();
-        int64_t prevByteSize = _activeDocBatch.getByteSize();
 
         // Assert that there is capacity available in the last DocVec.
         auto& activeDocVec = _activeDocBatch.docVecs.back();
@@ -546,6 +547,7 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
 
         int64_t newSize = _activeDocBatch.size();
         int64_t newByteSize = _activeDocBatch.getByteSize();
+        _memoryUsageHandle.add(newByteSize - prevByteSize);
         _options.queueSizeGauge->incBy(newSize - prevSize);
         _options.queueByteSizeGauge->incBy(newByteSize - prevByteSize);
     }
@@ -566,7 +568,6 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
             }
 
             auto docVec = _activeDocBatch.popDocVec();
-            _memoryUsageHandle.add(docVec.getByteSize());
             _finalizedDocBatch.pushDocVec(std::move(docVec));
         }
     }
