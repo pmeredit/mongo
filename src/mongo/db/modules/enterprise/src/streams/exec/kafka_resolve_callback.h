@@ -9,7 +9,7 @@
 #include <rdkafkacpp.h>
 #include <string>
 
-#include "streams/exec/kafka_callback_base.h"
+#include "mongo/stdx/condition_variable.h"
 
 namespace {
 using AddrInfoPtr = std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)>;
@@ -25,7 +25,7 @@ struct Context;
 // names passed in the TLS client hello message.  This should only be used
 // (in general) for TLS enabled connections, as this won't do anything
 // useful for plaintext connections.
-class KafkaResolveCallback : public RdKafka::ResolveCb, public KafkaCallbackBase {
+class KafkaResolveCallback : public RdKafka::ResolveCb {
 public:
     KafkaResolveCallback(Context* context, std::string operatorName, std::string targetProxy);
     // Called by librdkafka.

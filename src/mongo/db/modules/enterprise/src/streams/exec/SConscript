@@ -125,7 +125,6 @@ env.Library(
         "kafka_emit_operator.cpp",
         "kafka_resolve_callback.cpp",
         "kafka_connect_auth_callback.cpp",
-        "kafka_callback_base.cpp",
         "kafka_event_callback.cpp",
         "kafka_partition_consumer.cpp",
         "log_dead_letter_queue.cpp",
