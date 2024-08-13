@@ -8,3 +8,23 @@ exports_files(
         "*.cpp",
     ]),
 )
+
+mongo_cc_library(
+    name = "gssapi_helpers",
+    srcs = [
+        "gssapi_helpers.cpp",
+    ],
+    hdrs = [
+        "gssapi_helpers.h",
+    ],
+    linkopts = [
+        "-lgssapi_krb5",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//src/mongo:base",
+    ],
+)
