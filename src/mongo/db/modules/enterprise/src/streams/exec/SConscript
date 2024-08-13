@@ -85,6 +85,7 @@ env.Library(
         "document_timestamp_extractor.cpp",
         "event_deserializer.cpp",
         "json_event_deserializer.cpp",
+        "source_buffer_manager.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
