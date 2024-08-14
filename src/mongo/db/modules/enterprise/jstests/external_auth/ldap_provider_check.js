@@ -1,7 +1,7 @@
 // Excluded from AL2 Atlas Enterprise build variant since it depends on libldap_r, which
 // is not installed on that variant.
 
-import {findMatchingLogLines} from "jstests/libs/log.js";
+import {iterateMatchingLogLines} from "jstests/libs/log.js";
 import {
     LDAPTestConfigGenerator,
     setupTest
@@ -9,7 +9,7 @@ import {
 
 function getLogLine(globalLog, id) {
     const fieldMatcher = {id: id};
-    const lines = [...findMatchingLogLines(globalLog.log, fieldMatcher)];
+    const lines = [...iterateMatchingLogLines(globalLog.log, fieldMatcher)];
     assert(lines.length <= 1);
     return lines.length == 0 ? null : JSON.parse(lines[0]);
 }

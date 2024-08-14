@@ -6,7 +6,6 @@
  * Validates that we print a stop reason in the stream processor stop logs.
  */
 
-import {findMatchingLogLines} from "jstests/libs/log.js";
 import {getDefaultSp, test} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
 import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
