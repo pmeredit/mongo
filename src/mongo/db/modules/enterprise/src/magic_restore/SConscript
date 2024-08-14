@@ -5,8 +5,8 @@ env.Library(
     target="magic_restore",
     source=[
         "magic_restore.cpp",
-        "magic_restore_options.idl",
-        "magic_restore_structs.idl",
+        "magic_restore_options_gen.cpp",
+        "magic_restore_structs_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/catalog/collection_crud",

@@ -46,7 +46,7 @@ env = ldapconf.Finish()
 env.Library(
     target="ldap_parameters",
     source=[
-        "ldap_parameters.idl",
+        "ldap_parameters_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/server_base",
@@ -78,7 +78,7 @@ env.Library(
     target="ldap_manager",
     source=[
         "ldap_manager.cpp",
-        "ldap_options.idl",
+        "ldap_options_gen.cpp",
         "ldap_options.cpp",
     ],
     LIBDEPS_PRIVATE=[
@@ -96,7 +96,7 @@ env.Library(
         "ldap_manager_impl.cpp",
         "ldap_runtime_parameters.cpp",
         "ldap_runner_impl.cpp",
-        "ldap_runtime_parameters.idl",
+        "ldap_runtime_parameters_gen.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/db/auth/auth",
@@ -112,7 +112,7 @@ env.Library(
 env.Library(
     target="ldap_options_mongod",
     source=[
-        "ldap_options_mongod.idl",
+        "ldap_options_mongod_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/util/options_parser/options_parser",
@@ -182,7 +182,7 @@ env.Library(
     target="mongo_ldap",
     source=[
         "authz_manager_external_state_ldap.cpp",
-        "ldap_user_cache_poller.idl",
+        "ldap_user_cache_poller_gen.cpp",
         "ldap_user_cache_poller.cpp",
     ],
     LIBDEPS_PRIVATE=[
@@ -265,7 +265,7 @@ env.Program(
     source=[
         "ldap_tool.cpp",
         "ldap_tool_options.cpp",
-        "ldap_tool_options.idl",
+        "ldap_tool_options_gen.cpp",
     ]
     + env.WindowsResourceFile("ldap_tool.rc"),
     AIB_COMPONENT="mongoldap",

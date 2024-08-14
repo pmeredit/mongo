@@ -35,7 +35,7 @@ env.Library(
     target="kerberos_tool",
     source=[
         "kerberos_tool_options.cpp",
-        "kerberos_tool_options.idl",
+        "kerberos_tool_options_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",

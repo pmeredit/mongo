@@ -7,7 +7,7 @@ env = env.Clone()
 env.Library(
     target="streams_ops_idl",
     source=[
-        "stream_ops.idl",
+        "stream_ops_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",

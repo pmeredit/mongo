@@ -33,7 +33,7 @@ env.SConscript(dirs=["tests"], exports=["env"])
 env.Library(
     target="streams_stages_idl",
     source=[
-        "stages.idl",
+        "stages_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
@@ -47,8 +47,8 @@ env.Library(
 env.Library(
     target="streams_exec_internal_idl",
     source=[
-        "exec_internal.idl",
-        "checkpoint_data.idl",
+        "exec_internal_gen.cpp",
+        "checkpoint_data_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
@@ -60,7 +60,7 @@ env.Library(
 env.Library(
     target="streams_exec_common_idl",
     source=[
-        "common.idl",
+        "common_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
@@ -72,7 +72,7 @@ env.Library(
 env.Library(
     target="streams_config_idl",
     source=[
-        "config.idl",
+        "config_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/server_base",

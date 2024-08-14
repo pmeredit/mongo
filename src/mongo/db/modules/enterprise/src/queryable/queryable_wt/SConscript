@@ -13,7 +13,7 @@ env.Library(
         "blockstore_fs.cpp",
         "queryable_wt_init.cpp",
         "queryable_global_options.cpp",
-        "queryable_global_options.idl",
+        "queryable_global_options_gen.cpp",
     ],
     LIBDEPS_DEPENDENTS=[
         "$BUILD_DIR/mongo/db/mongod_initializers",

@@ -84,9 +84,9 @@ if ssl_provider == "openssl":
             "identity_provider.cpp",
             "idp_jwks_refresher.cpp",
             "idp_manager.cpp",
-            "oidc_commands.idl",
+            "oidc_commands_gen.cpp",
             "oidc_commands.cpp",
-            "oidc_parameters.idl",
+            "oidc_parameters_gen.cpp",
             "sasl_oidc_server_conversation.cpp",
         ],
         LIBDEPS_PRIVATE=[
@@ -163,7 +163,7 @@ env.Library(
         "auxprop_mongodb_internal.cpp" if env.TargetOSIs("windows") else [],
         "canon_mongodb_internal.cpp",
         "mongo_${MONGO_GSSAPI_IMPL}.cpp",
-        "sasl_aws_server_options.idl",
+        "sasl_aws_server_options_gen.cpp",
         "sasl_aws_server_conversation.cpp",
     ],
     LIBDEPS=[
@@ -181,7 +181,7 @@ env.Library(
 env.Library(
     target="auth_delay",
     source=[
-        "auth_delay.idl",
+        "auth_delay_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/auth/sasl_options",

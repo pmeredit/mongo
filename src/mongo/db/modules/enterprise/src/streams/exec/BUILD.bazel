@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -7,4 +7,50 @@ exports_files(
         "*.h",
         "*.cpp",
     ]),
+)
+
+idl_generator(
+    name = "stages_gen",
+    src = "stages.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+        "//src/mongo/db/pipeline:document_source_change_stream_gen",
+        "//src/mongo/db/pipeline:document_source_merge_gen",
+        "//src/mongo/db/pipeline:name_expression_gen",
+        "//src/mongo/db/timeseries:timeseries_gen",
+    ],
+)
+
+idl_generator(
+    name = "exec_internal_gen",
+    src = "exec_internal.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+        "//src/mongo/db/pipeline:value_gen",
+    ],
+)
+
+idl_generator(
+    name = "checkpoint_data_gen",
+    src = "checkpoint_data.idl",
+    deps = [
+        ":exec_internal_gen",
+        "//src/mongo/db:basic_types_gen",
+    ],
+)
+
+idl_generator(
+    name = "common_gen",
+    src = "common.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+    ],
+)
+
+idl_generator(
+    name = "config_gen",
+    src = "config.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+    ],
 )

@@ -18,7 +18,7 @@ env.Library(
         "mongoqd_main.cpp",
         "mongoqd_options.cpp",
         "mongoqd_options_init.cpp",
-        "mongoqd_options.idl",
+        "mongoqd_options_gen.cpp",
         "version_mongoqd.cpp",
     ],
     LIBDEPS_PRIVATE=[
