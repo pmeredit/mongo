@@ -826,8 +826,7 @@ const kMaxDynamicTargets = 100;
     assert.soon(() => {
         let result = dlqColl.find({}).toArray();
         return result.some(doc => {
-            return doc.errInfo.reason.includes(
-                "reason = Document to upsert is larger than 16777216");
+            return doc.errInfo.reason.includes("Document to upsert is larger than 16777216");
         });
     });
     assert.eq(dlqColl.count(), 1);
