@@ -15,7 +15,6 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/exec/sbe/abt/abt_lower.h"
-#include "mongo/db/exec/sbe/abt/sbe_abt_test_util.h"
 #include "mongo/db/exec/sbe/expressions/runtime_environment.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/pipeline/abt/document_source_visitor.h"
@@ -23,9 +22,6 @@
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/db/query/optimizer/explain.h"
-#include "mongo/db/query/optimizer/opt_phase_manager.h"
-#include "mongo/db/query/optimizer/utils/unit_test_utils.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/platform/random.h"
@@ -58,7 +54,6 @@ public:
 
     void runStreamProcessor(benchmark::State& state, const BSONObj& pipelineSpec);
     void runAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
-    void runSBEAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
 
     void runDeserializerBenchmark(JsonEventDeserializer deserializer, benchmark::State& state);
 
@@ -381,100 +376,6 @@ void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
     }
 }
 
-void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
-                                                     const BSONObj& pipelineSpec) {
-    QueryTestServiceContext qtServiceContext;
-    auto svcCtx = qtServiceContext.getServiceContext();
-    auto [context, _] = getTestContext(svcCtx);
-
-    // Following code to generate an SBE plan from an aggregation pipeline is copied from
-    // runSBEAST() in sbe_abt_test_util.cpp
-    // TODO: We are currently using a test utility to create an SBE plan. We should probably look
-    // into using classic query optimizer and SBE stage builder directly instead. The only reason
-    // we don't do it currently is because $addFields is not supported on this path.
-
-    auto prefixId = PrefixId::createForTests();
-    Metadata metadata{{}};
-
-    auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
-    auto pipeline = parsePipeline(bsonPipelineVector,
-                                  NamespaceString::createNamespaceString_forTest("test"),
-                                  context->opCtx.get());
-
-    ABT valueArray = createValueArray(_inputObjs);
-
-    const ProjectionName scanProjName = prefixId.getNextId("scan");
-    QueryParameterMap qp;
-    ABT tree = translatePipelineToABT(metadata,
-                                      *pipeline.get(),
-                                      scanProjName,
-                                      make<ValueScanNode>(ProjectionNameVector{scanProjName},
-                                                          boost::none,
-                                                          std::move(valueArray),
-                                                          true /*hasRID*/),
-                                      prefixId,
-                                      qp);
-    // std::cout << "SBE translated ABT: " << ExplainGenerator::explainV2(tree) << std::endl;
-
-    auto phaseManager = makePhaseManager(OptPhaseManager::getAllProdRewrites(),
-                                         prefixId,
-                                         {{}},
-                                         boost::none /*costModel*/,
-                                         DebugInfo::kDefaultForTests);
-
-    PlanAndProps planAndProps = phaseManager.optimizeAndReturnProps(std::move(tree));
-
-    SlotVarMap map;
-    boost::optional<sbe::value::SlotId> ridSlot;
-    auto runtimeEnv = std::make_unique<sbe::RuntimeEnvironment>();
-    sbe::value::SlotIdGenerator ids;
-    sbe::InputParamToSlotMap inputParamToSlotMap;
-
-    auto env = VariableEnvironment::build(planAndProps._node);
-    SBENodeLowering g{
-        env, *runtimeEnv, ids, inputParamToSlotMap, phaseManager.getMetadata(), planAndProps._map};
-    auto sbePlan = g.optimize(planAndProps._node, map, ridSlot);
-    ASSERT_EQ(1, map.size());
-    ASSERT(!ridSlot);
-    ASSERT(sbePlan != nullptr);
-
-    sbe::CompileCtx ctx(std::move(runtimeEnv));
-    sbePlan->prepare(ctx);
-
-    std::vector<sbe::value::SlotAccessor*> accessors;
-    for (auto& [name, slot] : map) {
-        accessors.emplace_back(sbePlan->getAccessor(ctx, slot));
-    }
-    // For now assert we only have one final projection.
-    ASSERT_EQ(1, accessors.size());
-
-    sbePlan->attachToOperationContext(context->opCtx.get());
-    // std::cout << "plan: " << sbe::DebugPrinter().print(*sbePlan) << std::endl;
-
-    for (auto keepRunning : state) {
-        for (int i = 0; i < kNumDataMsgs; i++) {
-            sbePlan->open(/*reOpen*/ false);
-            std::vector<BSONObj> outputObjs;
-            while (sbePlan->getNext() != sbe::PlanState::IS_EOF) {
-                auto [tag, val] = accessors.at(0)->getViewOfValue();
-                ASSERT(sbe::value::isObject(tag));
-                if (tag == sbe::value::TypeTags::Object) {
-                    BSONObjBuilder bb;
-                    sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
-                    outputObjs.push_back(bb.obj());
-                } else {
-                    // Must be a bsonObj.
-                    outputObjs.push_back(BSONObj{sbe::value::bitcastTo<const char*>(val)});
-                }
-            };
-            sbePlan->close();
-
-            ASSERT_EQ(outputObjs.size(), 1);
-            ASSERT_EQ(outputObjs[0]["TotalNumRecords"].Int(), kDocsPerMsg);
-        }
-    }
-}
-
 // The only difference between Type1 and Type2 benchmark is that Type1 use isNumber function.
 BENCHMARK_F(OperatorDagBMFixture, BM_RunStreamProcessorType1)(benchmark::State& state) {
     const auto pipelineSpec =
@@ -514,15 +415,6 @@ BENCHMARK_F(OperatorDagBMFixture, BM_RunAggregationPipelineType2)(benchmark::Sta
                                                         << _addFieldsObjs[5] << _matchObjs[0]
                                                         << _matchObjs[1] << _groupObj));
     runAggregationPipeline(state, pipelineSpec);
-}
-
-BENCHMARK_F(OperatorDagBMFixture, BM_RunSBEAggregationPipelineType2)(benchmark::State& state) {
-    const auto pipelineSpec =
-        BSON("pipeline" << BSON_ARRAY(_addFieldsObjs[0] << _addFieldsObjs[1] << _addFieldsObjs[2]
-                                                        << _addFieldsObjs[3] << _addFieldsObjs[4]
-                                                        << _addFieldsObjs[5] << _matchObjs[0]
-                                                        << _matchObjs[1] << _groupObj));
-    runSBEAggregationPipeline(state, pipelineSpec);
 }
 
 void OperatorDagBMFixture::runDeserializerBenchmark(JsonEventDeserializer deserializer,
