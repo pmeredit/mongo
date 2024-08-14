@@ -46,7 +46,7 @@ env.Library(
         "$BUILD_DIR/mongo/s/load_balancer_support",
         "$BUILD_DIR/mongo/s/mongos_initializers",
         "$BUILD_DIR/mongo/s/mongos_topology_coordinator",
-        "$BUILD_DIR/mongo/s/query/cluster_cursor_cleanup_job",
+        "$BUILD_DIR/mongo/s/query/exec/cluster_cursor_cleanup_job",
         "$BUILD_DIR/mongo/s/resource_yielders",
         "$BUILD_DIR/mongo/s/sessions_collection_sharded",
         "$BUILD_DIR/mongo/s/sharding_initialization",
