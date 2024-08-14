@@ -67,12 +67,14 @@ def configure(conf, env):
         env["MONGO_BUILD_SASL_CLIENT"] = True
 
     # Compute a path to use for including files that are generated in the build directory.
+    # Computes: $BAZEL_OUT_DIR/src/mongo/db/modules/<enterprise_module_name>/src
     # Computes: $BUILD_DIR/mongo/db/modules/<enterprise_module_name>/src
-    src_include_path = os.path.join("$BUILD_DIR", str(env.Dir(root).Dir("src"))[4:])
+    bazel_src_include_path = os.path.join("#$BAZEL_OUT_DIR", str(env.Dir(root).Dir("src")))
+    scons_src_include_path = os.path.join("$BUILD_DIR", str(env.Dir(root).Dir("src"))[4:])
 
     def injectEnterpriseModule(env, consumer=True, builder=False):
         # Inject an include path so that idl generated files can be included
-        env.Append(CPPPATH=[src_include_path])
+        env.Append(CPPPATH=[bazel_src_include_path, scons_src_include_path])
 
         # Inject an import path so that idl files can import other idl files in the enterprise repo
         # Computes: src/mongo/db/modules/<enterprise_module_name>/src

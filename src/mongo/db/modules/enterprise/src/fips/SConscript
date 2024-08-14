@@ -23,7 +23,7 @@ env.Library(
 env.Library(
     target="fips_mode_server",
     source=[
-        "fips_flag_server.idl",
+        "fips_flag_server_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/auth/auth_options",
@@ -47,7 +47,7 @@ if get_option("js-engine") != "none":
     env.Library(
         target="fips_mode_client",
         source=[
-            "fips_flag_client.idl",
+            "fips_flag_client_gen.cpp",
         ],
         LIBDEPS_PRIVATE=[
             "$BUILD_DIR/mongo/util/net/ssl_options_client",

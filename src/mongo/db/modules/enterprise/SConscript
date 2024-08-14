@@ -101,7 +101,7 @@ if "encryptdb" in env["MONGO_ENTERPRISE_FEATURES"] or "audit" in env["MONGO_ENTE
     env.Library(
         target="kmip_configuration",
         source=[
-            "src/kmip/kmip_options.idl",
+            "src/kmip/kmip_options_gen.cpp",
         ],
         LIBDEPS_PRIVATE=[
             "$BUILD_DIR/mongo/util/options_parser/options_parser",
@@ -123,7 +123,7 @@ if "encryptdb" in env["MONGO_ENTERPRISE_FEATURES"] or "audit" in env["MONGO_ENTE
             "src/encryptdb/symmetric_crypto.cpp",
             "src/encryptdb/symmetric_crypto_smoke.cpp",
             "src/encryptdb/encryption_options.cpp",
-            "src/encryptdb/encryption_options.idl",
+            "src/encryptdb/encryption_options_gen.cpp",
         ],
         LIBDEPS=[
             "$BUILD_DIR/mongo/base/secure_allocator",

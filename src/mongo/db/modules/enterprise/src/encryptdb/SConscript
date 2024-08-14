@@ -43,7 +43,7 @@ wtEnv.Library(
 env.Library(
     target="keystore_metadata",
     source=[
-        "keystore_metadata.idl",
+        "keystore_metadata_gen.cpp",
         "keystore_metadata.cpp",
     ],
     LIBDEPS=[
@@ -65,7 +65,7 @@ wtEnv.Library(
         "encrypted_data_protector.cpp",
         "encryption_key_manager.cpp",
         "wiredtiger_encryption_callbacks.cpp",
-        "encryption_key_manager.idl",
+        "encryption_key_manager_gen.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/crypto/symmetric_crypto",
@@ -90,7 +90,7 @@ env.Library(
     target="log_redact_options",
     source=[
         "log_redact_options.cpp",
-        "log_redact_options.idl",
+        "log_redact_options_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/server_base",
@@ -164,7 +164,7 @@ env.Program(
     source=[
         "decrypt_tool.cpp",
         "decrypt_tool_options.cpp",
-        "decrypt_tool_options.idl",
+        "decrypt_tool_options_gen.cpp",
     ]
     + env.WindowsResourceFile("decrypt_tool.rc"),
     AIB_COMPONENT="mongodecrypt",

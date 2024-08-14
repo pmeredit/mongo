@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -7,4 +7,46 @@ exports_files(
         "*.h",
         "*.cpp",
     ]),
+)
+
+idl_generator(
+    name = "audit_config_gen",
+    src = "audit_config.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+        "//src/mongo/idl:generic_argument_gen",
+    ],
+)
+
+idl_generator(
+    name = "audit_commands_gen",
+    src = "audit_commands.idl",
+    deps = [
+        ":audit_config_gen",
+        "//src/mongo/db:basic_types_gen",
+        "//src/mongo/idl:generic_argument_gen",
+    ],
+)
+
+idl_generator(
+    name = "audit_event_type_gen",
+    src = "audit_event_type.idl",
+)
+
+idl_generator(
+    name = "audit_header_options_gen",
+    src = "audit_header_options.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+    ],
+)
+
+idl_generator(
+    name = "audit_decryptor_options_gen",
+    src = "audit_decryptor_options.idl",
+)
+
+idl_generator(
+    name = "audit_options_gen",
+    src = "audit_options.idl",
 )

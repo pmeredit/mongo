@@ -11,7 +11,7 @@ env = env.Clone()
 env.Library(
     target="audit_config",
     source=[
-        "audit_config.idl",
+        "audit_config_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/server_base",
@@ -22,8 +22,8 @@ env.InjectThirdParty(libraries=["asio"])
 env.Library(
     target="audit_enterprise",
     source=[
-        "audit_commands.idl",
-        "audit_event_type.idl",
+        "audit_commands_gen.cpp",
+        "audit_event_type_gen.cpp",
         "audit_log.cpp",
         "audit_manager.cpp",
         "mongo/audit_application_message.cpp",
@@ -60,7 +60,7 @@ env.Library(
         "ocsf/audit_sharding.cpp",
         "ocsf/audit_shutdown.cpp",
         "ocsf/audit_user_management.cpp",
-        "ocsf/ocsf_audit_events.idl",
+        "ocsf/ocsf_audit_events_gen.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/db/audit",
@@ -101,7 +101,7 @@ env.Library(
         "audit_file_header.cpp",
         "audit_key_manager_local.cpp",
         "audit_key_manager_kmip.cpp",
-        "audit_header_options.idl",
+        "audit_header_options_gen.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition",
@@ -119,7 +119,7 @@ env.Program(
     source=[
         "audit_decryptor.cpp",
         "audit_decryptor_options.cpp",
-        "audit_decryptor_options.idl",
+        "audit_decryptor_options_gen.cpp",
     ]
     + env.WindowsResourceFile("decryptor_tool.rc"),
     AIB_COMPONENT="mongoauditdecrypt",
@@ -193,7 +193,7 @@ env.Library(
     target="audit_configuration",
     source=[
         "audit_options.cpp",
-        "audit_options.idl",
+        "audit_options_gen.cpp",
         "audit_watchdog.cpp",
     ],
     LIBDEPS=[
