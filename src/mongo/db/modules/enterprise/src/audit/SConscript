@@ -84,7 +84,6 @@ env.Library(
     ],
     LIBDEPS_DEPENDENTS=[
         "$BUILD_DIR/mongo/db/index_builds_coordinator_mongod",
-        "$BUILD_DIR/mongo/db/modules/enterprise/src/serverless/mongoqd_main",
         "$BUILD_DIR/mongo/db/mongod_main",
         "$BUILD_DIR/mongo/s/mongos_main",
     ],
