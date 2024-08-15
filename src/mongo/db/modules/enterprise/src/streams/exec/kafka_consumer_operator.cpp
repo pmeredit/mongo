@@ -958,6 +958,7 @@ BSONObj KafkaConsumerOperator::doOnCheckpointFlush(CheckpointId checkpointId) {
 }
 
 OperatorStats KafkaConsumerOperator::doGetStats() {
+    _stats.setMemoryUsageBytes(0);
     OperatorStats stats{_stats};
     for (auto& consumerInfo : _consumers) {
         stats += consumerInfo.consumer->getStats();

@@ -66,6 +66,10 @@ private:
                 return docs.size();
             }
 
+            bool empty() const {
+                return size() == 0;
+            }
+
             int64_t getByteSize() const {
                 return byteSize;
             }
@@ -175,6 +179,10 @@ private:
     // reached their maximum size of Options.maxNumDocsToReturn, it also moves them to
     // _finalizedDocBatch.
     void pushDocToActiveDocBatch(KafkaSourceDocument doc);
+
+    // Returns true if the given DocVec contains the maximum amount of input data we want a DocVec
+    // to contain.
+    bool isDocVecFull(const DocBatch::DocVec& docVec) const;
 
     std::unique_ptr<KafkaEventCallback> _eventCallback;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};

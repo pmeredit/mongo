@@ -258,6 +258,7 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             while (!_activeDocBatch.empty()) {
                 dassert(!_activeDocBatch.docVecs.empty());
                 auto docVec = _activeDocBatch.popDocVec();
+                _memoryUsageHandle.add(docVec.getByteSize());
                 _finalizedDocBatch.pushDocVec(std::move(docVec));
             }
         }
@@ -279,7 +280,10 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 
 OperatorStats KafkaPartitionConsumer::doGetStats() {
     OperatorStats stats;
-    stats.setMemoryUsageBytes(_memoryUsageHandle.getCurrentMemoryUsageBytes());
+    {
+        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+        stats.setMemoryUsageBytes(_memoryUsageHandle.getCurrentMemoryUsageBytes());
+    }
     return stats;
 }
 
@@ -539,15 +543,13 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
         dassert(activeDocVec.size() < _options.maxNumDocsToReturn);
         _activeDocBatch.pushDocToLastDocVec(std::move(doc));
 
-        if (activeDocVec.size() == _options.maxNumDocsToReturn ||
-            activeDocVec.getByteSize() >= kDataMsgMaxByteSize) {
+        if (isDocVecFull(activeDocVec)) {
             _activeDocBatch.emplaceDocVec(_options.maxNumDocsToReturn);
         }
         numActiveDocVecs = _activeDocBatch.docVecs.size();
 
         int64_t newSize = _activeDocBatch.size();
         int64_t newByteSize = _activeDocBatch.getByteSize();
-        _memoryUsageHandle.add(newByteSize - prevByteSize);
         _options.queueSizeGauge->incBy(newSize - prevSize);
         _options.queueByteSizeGauge->incBy(newByteSize - prevByteSize);
     }
@@ -559,18 +561,26 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
         stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
         while (!_activeDocBatch.docVecs.empty()) {
-            if (_activeDocBatch.docVecs.front().size() < _options.maxNumDocsToReturn &&
-                _activeDocBatch.docVecs.front().getByteSize() < kDataMsgMaxByteSize) {
-                // Avoid pushing DocVec into _finalizedDocBatch until it's full.
-                // At this point, the first DocVec still has capacity.
-                dassert(_activeDocBatch.docVecs.size() == 1);
+            // Avoid pushing DocVec into _finalizedDocBatch until it's full.
+            if (isDocVecFull(_activeDocBatch.docVecs.front())) {
+                auto docVec = _activeDocBatch.popDocVec();
+                _memoryUsageHandle.add(docVec.getByteSize());
+                _finalizedDocBatch.pushDocVec(std::move(docVec));
+            } else {
                 break;
             }
-
-            auto docVec = _activeDocBatch.popDocVec();
-            _finalizedDocBatch.pushDocVec(std::move(docVec));
         }
     }
+}
+
+bool KafkaPartitionConsumer::isDocVecFull(const DocBatch::DocVec& docVec) const {
+    if (docVec.size() >= _options.maxNumDocsToReturn) {
+        return true;
+    }
+    if (!docVec.empty() && docVec.getByteSize() >= kDataMsgMaxByteSize) {
+        return true;
+    }
+    return false;
 }
 
 void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
