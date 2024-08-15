@@ -289,7 +289,12 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
             request.setConnections({mongo::Connection(
                 "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
             request.setOptions(mongo::StartOptions{});
-            streamManager->startStreamProcessor(request);
+            try {
+                streamManager->startStreamProcessor(request);
+            } catch (const ExceptionFor<ErrorCodes::StreamProcessorDoesNotExist>&) {
+                // We allow this exception. stopStreamProcessor might get called in another thread,
+                // after the processor connects, but before the start finishes.
+            }
         }));
     }
 

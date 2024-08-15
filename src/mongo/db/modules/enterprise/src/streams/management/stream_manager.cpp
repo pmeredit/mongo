@@ -517,7 +517,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
         if (!processorInfo) {
             static constexpr char reason[] = "stream processor disappeared during start";
             LOGV2_INFO(75943, reason, "name"_attr = name);
-            return Status{mongo::ErrorCodes::Error(75932), std::string{reason}};
+            return Status{ErrorCodes::StreamProcessorDoesNotExist, std::string{reason}};
         }
 
         if (processorInfo->executor->isConnected()) {
