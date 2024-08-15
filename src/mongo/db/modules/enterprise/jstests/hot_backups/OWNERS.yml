@@ -3,3 +3,6 @@ filters:
   - "*":
     approvers:
       - 10gen/server-rss-sydney
+  - "magic_restore*":
+    approvers:
+      - 10gen/server-replication
