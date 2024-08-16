@@ -4,4 +4,4 @@ Import("env")
 
 env = env.Clone()
 
-env.SConscript(dirs=["tests"], exports=["env"])
+env.SConscript(must_exist=1, dirs=["tests"], exports=["env"])

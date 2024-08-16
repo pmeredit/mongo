@@ -12,6 +12,7 @@ wtEnv = env.Clone()
 wtEnv.InjectThirdParty(libraries=["wiredtiger"])
 
 env.SConscript(
+    must_exist=1,
     dirs=[
         "commands",
     ],

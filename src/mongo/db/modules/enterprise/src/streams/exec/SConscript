@@ -28,7 +28,7 @@ else:
         ]
     )
 
-env.SConscript(dirs=["tests"], exports=["env"])
+env.SConscript(must_exist=1, dirs=["tests"], exports=["env"])
 
 env.Library(
     target="streams_stages_idl",
