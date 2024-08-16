@@ -155,6 +155,37 @@ TEST_F(PlannerTest, OnlySupportedStages) {
                        ErrorCodes::StreamProcessorInvalidOptions);
 }
 
+TEST_F(PlannerTest, MultipleWindowsNotSupported) {
+    std::string pipeline = R"(
+[
+    { $match: { a: 1 }},
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: [
+                { $group: { _id : null, sum: {$sum: "$a"} }},
+                { $sort: { "sum" : 1 }},
+                { $limit: 5 }
+            ]
+        }
+    },
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: [
+                { $group: { _id : null, sum: {$sum: "$a"} }},
+                { $sort: { "sum" : 1 }},
+                { $limit: 5 }
+            ]
+        }
+    }
+]
+    )";
+
+    ASSERT_THROWS_CODE(addSourceSinkAndParse(pipeline),
+                       AssertionException,
+                       ErrorCodes::StreamProcessorInvalidOptions);
+}
 
 /**
 Parse a user defined pipeline with all the supported MDP mapping stages.

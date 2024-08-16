@@ -901,6 +901,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
 }
 
 BSONObj Planner::planTumblingWindow(DocumentSource* source) {
+    verifyOneWindowStage();
     auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
     invariant(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -994,6 +995,7 @@ mongo::BSONObj Planner::serializedWindowStage(const std::string& stageName,
 }
 
 BSONObj Planner::planHoppingWindow(DocumentSource* source) {
+    verifyOneWindowStage();
     auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -1084,6 +1086,7 @@ void Planner::prependDummyLimitOperator(mongo::Pipeline* pipeline) {
 }
 
 BSONObj Planner::planSessionWindow(DocumentSource* source) {
+    verifyOneWindowStage();
     auto windowSource = dynamic_cast<DocumentSourceSessionWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -1777,6 +1780,13 @@ mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipel
         }
     }
     return connectionNames;
+}
+
+void Planner::verifyOneWindowStage() {
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Only one window stage is allowed in a pipeline.",
+            !_hasWindow);
+    _hasWindow = true;
 }
 
 };  // namespace streams

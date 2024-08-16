@@ -167,8 +167,13 @@ private:
     // Helper function of plan() that does all the work.
     std::unique_ptr<OperatorDag> planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
 
+    // Helper function that throws an error if hasWindow has already been set, and sets it if not.
+    void verifyOneWindowStage();
+
     Context* _context{nullptr};
     Options _options;
+    // True if a window has been planned.
+    bool _hasWindow{false};
     // Tracks the state for a $window stage being planned.
     boost::optional<WindowPlanningInfo> _windowPlanningInfo;
     // Tracks state for $lookup stages in a pipeline. The vector has one entry for the top level
