@@ -112,11 +112,11 @@ function runTest(insertHigherTermOplogEntry) {
         val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 8);
 
-    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreUtil) => {
-        magicRestoreUtil.rst.nodes.forEach((node) => {
-            magicRestoreUtil.assertOplogCountForNamespace(
+    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
+        magicRestoreTest.rst.nodes.forEach((node) => {
+            magicRestoreTest.assertOplogCountForNamespace(
                 node, {ns: dbName + "." + coll, op: "i"}, 4);
-            let {entriesAfterBackup} = magicRestoreUtil.getEntriesAfterBackup(node);
+            let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(node);
 
             // There might be rangeDeletions ops after the backup, or a
             // ensureMajorityPrimaryAndScheduleDbTask too, filtering those out.
@@ -176,28 +176,28 @@ function runTest(insertHigherTermOplogEntry) {
         });
     });
 
-    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreUtil, idx) => {
+    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest, idx) => {
         jsTestLog("Starting restore shard " + idx);
-        magicRestoreUtil.rst.startSet({
+        magicRestoreTest.rst.startSet({
             restart: true,
-            dbpath: magicRestoreUtil.getBackupDbPath(),
+            dbpath: magicRestoreTest.getBackupDbPath(),
             noCleanData: true,
             shardsvr: "",
         });
-        magicRestoreUtil.rst.awaitNodesAgreeOnPrimary();
+        magicRestoreTest.rst.awaitNodesAgreeOnPrimary();
         // Make sure that all nodes have installed the config before moving on.
-        let primary = magicRestoreUtil.rst.getPrimary();
-        magicRestoreUtil.rst.waitForConfigReplication(primary);
+        let primary = magicRestoreTest.rst.getPrimary();
+        magicRestoreTest.rst.waitForConfigReplication(primary);
         assert.soonNoExcept(() => isConfigCommitted(primary));
 
-        magicRestoreUtil.rst.nodes.forEach((node) => {
+        magicRestoreTest.rst.nodes.forEach((node) => {
             node.setSecondaryOk();
             const restoredDocs =
                 node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
             // The later 4 writes were truncated during magic restore, so each shard should have
             // only 2.
             assert.eq(restoredDocs.length, 2);
-            magicRestoreUtil.postRestoreChecks({
+            magicRestoreTest.postRestoreChecks({
                 node: node,
                 dbName: dbName,
                 collName: coll,
@@ -227,7 +227,7 @@ function runTest(insertHigherTermOplogEntry) {
 
     jsTestLog("Stopping restore nodes");
     shardingRestoreTest.getShardRestoreTests().forEach(
-        (magicRestoreUtils) => { magicRestoreUtils.rst.stopSet(); });
+        (magicRestoreTest) => { magicRestoreTest.rst.stopSet(); });
     configUtils.rst.stopSet();
 }
 

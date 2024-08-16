@@ -9,7 +9,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 function runTest(updateAutoCreds) {
@@ -47,11 +47,11 @@ function runTest(updateAutoCreds) {
             primary.getDB("admin").getCollectionInfos({name: "system.users"})[0].info.uuid;
     }
 
-    const magicRestoreUtils = new MagicRestoreUtils({
+    const magicRestoreTest = new MagicRestoreTest({
         rst: rst,
         pipeDir: MongoRunner.dataDir,
     });
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened.
@@ -59,13 +59,13 @@ function runTest(updateAutoCreds) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 6);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
-    let {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
+    magicRestoreTest.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
+    let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(primary);
     assert.eq(entriesAfterBackup.length, 3);
 
-    magicRestoreUtils.copyFilesAndCloseBackup();
+    magicRestoreTest.copyFilesAndCloseBackup();
 
-    let expectedConfig = magicRestoreUtils.getExpectedConfig();
+    let expectedConfig = magicRestoreTest.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
@@ -83,7 +83,7 @@ function runTest(updateAutoCreds) {
     let restoreConfiguration = {
         "nodeType": "replicaSet",
         "replicaSetConfig": expectedConfig,
-        "maxCheckpointTs": magicRestoreUtils.getCheckpointTimestamp(),
+        "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
         "automationCredentials": autoCreds,
         "systemUuids": [
             {"ns": "admin.system.roles", "uuid": rolesCollUuid},
@@ -91,14 +91,14 @@ function runTest(updateAutoCreds) {
         ],
     };
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, [], {"replSet": jsTestName()});
 
     // Restart the destination replica set.
     rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
+    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
@@ -106,7 +106,7 @@ function runTest(updateAutoCreds) {
     assert.eq(restoredDocs.length, 3);
     assert.eq(restoredDocs, expectedDocs);
 
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: primary,
         dbName: dbName,
         collName: coll,
@@ -140,9 +140,9 @@ function runTest(updateAutoCreds) {
     assert(primary.getDB("admin").auth('testUser', 'password'));
     // The writes to the auth collections should not have been written to the oplog. If we updated
     // automation credentials, the initial inserts should exist in the oplog from the snapshot.
-    magicRestoreUtils.assertOplogCountForNamespace(
+    magicRestoreTest.assertOplogCountForNamespace(
         primary, {ns: "admin.system.roles"}, updateAutoCreds ? 1 : 0);
-    magicRestoreUtils.assertOplogCountForNamespace(
+    magicRestoreTest.assertOplogCountForNamespace(
         primary, {ns: "admin.system.users"}, updateAutoCreds ? 1 : 0);
     rst.stopSet();
 }

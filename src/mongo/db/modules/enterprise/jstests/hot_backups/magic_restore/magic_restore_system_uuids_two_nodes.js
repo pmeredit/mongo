@@ -9,7 +9,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
@@ -31,34 +31,34 @@ const db = primary.getDB(dbName);
 ['a', 'b', 'c'].forEach(
     key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
 
-const magicRestoreUtil = new MagicRestoreUtils({rst: rst, pipeDir: MongoRunner.dataDir});
-magicRestoreUtil.takeCheckpointAndOpenBackup();
+const magicRestoreTest = new MagicRestoreTest({rst: rst, pipeDir: MongoRunner.dataDir});
+magicRestoreTest.takeCheckpointAndOpenBackup();
 
 ['e', 'f', 'g'].forEach(
     key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
 
-magicRestoreUtil.copyFilesAndCloseBackup();
+magicRestoreTest.copyFilesAndCloseBackup();
 rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
 
 const rolesCollUuid = UUID();
 const userCollUuid = UUID();
 
-let expectedConfig = magicRestoreUtil.getExpectedConfig();
+let expectedConfig = magicRestoreTest.getExpectedConfig();
 let restoreConfiguration = {
     "nodeType": "replicaSet",
     "replicaSetConfig": expectedConfig,
-    "maxCheckpointTs": magicRestoreUtil.getCheckpointTimestamp(),
+    "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
     "systemUuids": [
         {"ns": "admin.system.roles", "uuid": rolesCollUuid},
         {"ns": "admin.system.users", "uuid": userCollUuid}
     ],
 };
-restoreConfiguration = magicRestoreUtil.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
-magicRestoreUtil.writeObjsAndRunMagicRestore(restoreConfiguration, [], {"replSet": jsTestName()});
+restoreConfiguration = magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+magicRestoreTest.writeObjsAndRunMagicRestore(restoreConfiguration, [], {"replSet": jsTestName()});
 
 // Restart the destination replica set.
 rst = new ReplSetTest({nodes: [{port: rst.ports[0]}, {port: rst.ports[1]}]});
-nodes = rst.startSet({dbpath: magicRestoreUtil.getBackupDbPath(), noCleanData: true});
+nodes = rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 rst.awaitNodesAgreeOnPrimary();
 // Make sure that all nodes have installed the config before moving on.
 primary = rst.getPrimary();
@@ -69,7 +69,7 @@ rst.awaitReplication();
 nodes.forEach((node, idx) => {
     jsTestLog(`Verifying node ${idx}`);
     node.getDB(dbName).getMongo().setSecondaryOk();
-    magicRestoreUtil.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: node,
         dbName: dbName,
         collName: coll,

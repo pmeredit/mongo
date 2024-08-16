@@ -67,13 +67,13 @@ function runTest(insertHigherTermOplogEntry) {
         val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 8);
 
-    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreUtil) => {
-        magicRestoreUtil.rst.nodes.forEach((node) => {
+    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
+        magicRestoreTest.rst.nodes.forEach((node) => {
             // We inserted 8 documents and have 1 shard, so 8 per shard.
-            magicRestoreUtil.assertOplogCountForNamespace(
+            magicRestoreTest.assertOplogCountForNamespace(
                 node, {ns: dbName + "." + coll, op: "i"}, 8);
 
-            let {entriesAfterBackup} = magicRestoreUtil.getEntriesAfterBackup(node);
+            let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(node);
             // There might be operations after the backup from periodic jobs such as rangeDeletions
             // or ensureMajorityPrimaryAndScheduleDbTask, so we filter those out for the comparison
             // but still pass them into magic restore as additional oplog entries to apply.
@@ -97,16 +97,16 @@ function runTest(insertHigherTermOplogEntry) {
 
     // We restore the nodes from the shards except the config shard, in "replicaSet" mode.
     jsTestLog("Running Magic Restore");
-    const magicRestoreUtil = shardingRestoreTest.shardRestoreTests[0];
+    const magicRestoreTest = shardingRestoreTest.shardRestoreTests[0];
     let restoreConfiguration = {
         "nodeType": "replicaSet",
-        "replicaSetConfig": magicRestoreUtil.getExpectedConfig(),
-        "maxCheckpointTs": magicRestoreUtil.getCheckpointTimestamp()
+        "replicaSetConfig": magicRestoreTest.getExpectedConfig(),
+        "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp()
     };
     restoreConfiguration =
-        magicRestoreUtil.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtil.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, [], {"replSet": jsTestName() + "-rs"});
 
     jsTestLog("Starting restore replica set");
@@ -128,14 +128,14 @@ function runTest(insertHigherTermOplogEntry) {
         const node = rst.nodes[nodeIndex];
         node.setSecondaryOk();
 
-        const magicRestoreUtil = shardingRestoreTest.shardRestoreTests[0];
+        const magicRestoreTest = shardingRestoreTest.shardRestoreTests[0];
         const restoredDocs =
             node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
         // The later 4 writes were truncated during magic restore. This test has a single shard.
         assert.eq(restoredDocs.length, 4);
         assert.eq(restoredDocs, expectedDocs);
 
-        magicRestoreUtil.postRestoreChecks({
+        magicRestoreTest.postRestoreChecks({
             node: node,
             dbName: dbName,
             collName: coll,

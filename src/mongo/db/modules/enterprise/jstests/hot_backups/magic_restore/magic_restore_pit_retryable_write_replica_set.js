@@ -12,7 +12,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 function runTest(insertHigherTermOplogEntry) {
@@ -41,13 +41,13 @@ function runTest(insertHigherTermOplogEntry) {
     // Retry the same command.
     assert.commandWorked(db.runCommand(insertCommand));
 
-    const magicRestoreUtils = new MagicRestoreUtils({
+    const magicRestoreTest = new MagicRestoreTest({
         rst: rst,
         pipeDir: MongoRunner.dataDir,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
 
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     ['e', 'f', 'g'].forEach(
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
@@ -59,14 +59,14 @@ function runTest(insertHigherTermOplogEntry) {
     // Original insert + 'e', 'f', 'g'.
     assert.eq(db.getCollection(coll).find().toArray().length, 4);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 4);
-    let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
+    magicRestoreTest.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 4);
+    let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(primary);
     // 'e', 'f', 'g' inserts.
     assert.eq(entriesAfterBackup.length, 3);
 
-    magicRestoreUtils.copyFilesAndCloseBackup();
+    magicRestoreTest.copyFilesAndCloseBackup();
 
-    let expectedConfig = magicRestoreUtils.getExpectedConfig();
+    let expectedConfig = magicRestoreTest.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(
@@ -75,19 +75,19 @@ function runTest(insertHigherTermOplogEntry) {
     let restoreConfiguration = {
         "nodeType": "replicaSet",
         "replicaSetConfig": expectedConfig,
-        "maxCheckpointTs": magicRestoreUtils.getCheckpointTimestamp(),
+        "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
         // Restore to the timestamp of the last oplog entry on the source cluster.
         "pointInTimeTimestamp": lastOplogEntryTs
     };
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, entriesAfterBackup, {"replSet": jsTestName()});
 
     // Restart the destination replica set.
     rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
+    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
     db = primary.getDB(dbName);
@@ -105,7 +105,7 @@ function runTest(insertHigherTermOplogEntry) {
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     assert.eq(restoredDocs.length, 4);
 
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: primary,
         dbName: dbName,
         collName: coll,

@@ -8,7 +8,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
@@ -270,12 +270,12 @@ function testOIDC(insertHigherTermOplogEntry) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     const expectedDocs = db.getCollection(coll).find().toArray();
 
-    const magicRestoreUtils = new MagicRestoreUtils({
+    const magicRestoreTest = new MagicRestoreTest({
         rst: rst,
         pipeDir: MongoRunner.dataDir,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened.
@@ -283,33 +283,33 @@ function testOIDC(insertHigherTermOplogEntry) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 6);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
-    const {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
+    magicRestoreTest.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
+    const {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(primary);
     assert.eq(entriesAfterBackup.length, 3);
 
-    magicRestoreUtils.copyFilesAndCloseBackup();
+    magicRestoreTest.copyFilesAndCloseBackup();
 
     // Update the roles collection after taking backup. This should get truncated by magic restore.
     assert.commandWorked(
         admin.runCommand({updateRole: "issuer1/myReadWriteRole", privileges: [], roles: []}));
 
-    const expectedConfig = magicRestoreUtils.getExpectedConfig();
+    const expectedConfig = magicRestoreTest.getExpectedConfig();
     rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
     let restoreConfiguration = {
         "nodeType": "replicaSet",
         "replicaSetConfig": expectedConfig,
-        "maxCheckpointTs": magicRestoreUtils.getCheckpointTimestamp(),
+        "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
     };
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, [], {"replSet": jsTestName()});
 
     // Restart the original replica set. We need to skip stepup on restart because that will call
     // serverStatus which requires auth.
-    rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath()},
+    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath()},
                  true /* restart */,
                  true /* skipStepUpOnRestart */);
 
@@ -322,7 +322,7 @@ function testOIDC(insertHigherTermOplogEntry) {
     assert.eq(restoredDocs.length, 3);
     assert.eq(restoredDocs, expectedDocs);
 
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: primary,
         dbName: dbName,
         collName: coll,

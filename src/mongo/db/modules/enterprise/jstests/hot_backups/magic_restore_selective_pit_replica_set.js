@@ -49,10 +49,10 @@ function runTest(nodeOptionsArg) {
     const snapshotTs = assert.commandWorked(sourcePrimary.adminCommand({replSetGetStatus: 1}))
                            .optimes.lastCommittedOpTime.ts;
 
-    const magicRestoreUtils =
-        new MagicRestoreUtils({rst: sourceCluster, pipeDir: MongoRunner.dataDir});
+    const magicRestoreTest =
+        new MagicRestoreTest({rst: sourceCluster, pipeDir: MongoRunner.dataDir});
 
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
@@ -64,16 +64,16 @@ function runTest(nodeOptionsArg) {
     assert.eq(sourceDb.getCollection(coll).find().toArray().length, 7);
     assert.eq(sourceDb.getCollection(excludedColl).find().toArray().length, 7);
 
-    const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
+    const checkpointTimestamp = magicRestoreTest.getCheckpointTimestamp();
     let {lastOplogEntryTs, entriesAfterBackup} =
-        magicRestoreUtils.getEntriesAfterBackup(sourcePrimary, namespacesToSkip);
+        magicRestoreTest.getEntriesAfterBackup(sourcePrimary, namespacesToSkip);
     // entriesAfterBackup should not include oplog entries for the excluded namespaces, so we should
     // only have 4 entries for the 8 inserts we did.
     assert.eq(entriesAfterBackup.length, 4);
 
-    magicRestoreUtils.copyFilesAndCloseBackup(namespacesToSkip);
+    magicRestoreTest.copyFilesAndCloseBackup(namespacesToSkip);
 
-    let expectedConfig = magicRestoreUtils.getExpectedConfig();
+    let expectedConfig = magicRestoreTest.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(sourcePrimary.port) + 2);
     let restoreConfiguration = {
@@ -82,17 +82,17 @@ function runTest(nodeOptionsArg) {
         "maxCheckpointTs": checkpointTimestamp,
         // Restore to the timestamp of the last oplog entry on the source cluster.
         "pointInTimeTimestamp": lastOplogEntryTs,
-        "collectionsToRestore": magicRestoreUtils.getCollectionsToRestore()
+        "collectionsToRestore": magicRestoreTest.getCollectionsToRestore()
     };
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, entriesAfterBackup, {"replSet": jsTestName()});
 
     // Start a new replica set fixture on the dbpath.
     const destinationCluster = new ReplSetTest({nodes: 1});
-    destinationCluster.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
+    destinationCluster.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     const destPrimary = destinationCluster.getPrimary();
 
@@ -100,7 +100,7 @@ function runTest(nodeOptionsArg) {
     // restored node.
     assert.eq(destPrimary.getDB("db").getCollection(excludedColl).find().toArray().length, 0);
 
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: destPrimary,
         dbName: dbName,
         collName: coll,

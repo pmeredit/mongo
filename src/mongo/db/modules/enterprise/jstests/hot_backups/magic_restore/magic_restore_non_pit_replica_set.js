@@ -15,7 +15,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 function runTest(insertHigherTermOplogEntry, testAuth) {
@@ -43,12 +43,12 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     const expectedDocs = db.getCollection(coll).find().toArray();
 
-    const magicRestoreUtils = new MagicRestoreUtils({
+    const magicRestoreTest = new MagicRestoreTest({
         rst: rst,
         pipeDir: MongoRunner.dataDir,
         insertHigherTermOplogEntry: insertHigherTermOplogEntry
     });
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened.
@@ -56,13 +56,13 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         key => { assert.commandWorked(db.getCollection(coll).insert({[key]: 1})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 6);
 
-    magicRestoreUtils.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
-    let {entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
+    magicRestoreTest.assertOplogCountForNamespace(primary, {ns: dbName + "." + coll, op: "i"}, 6);
+    let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(primary);
     assert.eq(entriesAfterBackup.length, 3);
 
-    magicRestoreUtils.copyFilesAndCloseBackup();
+    magicRestoreTest.copyFilesAndCloseBackup();
 
-    let expectedConfig = magicRestoreUtils.getExpectedConfig();
+    let expectedConfig = magicRestoreTest.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
@@ -70,18 +70,18 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     let restoreConfiguration = {
         "nodeType": "replicaSet",
         "replicaSetConfig": expectedConfig,
-        "maxCheckpointTs": magicRestoreUtils.getCheckpointTimestamp(),
+        "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
     };
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
     const magicRestoreDebugPath = MongoRunner.dataDir + "/magic_restore_debug.log";
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, [], {"replSet": jsTestName(), "logpath": magicRestoreDebugPath});
 
     // Restart the destination replica set.
     rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
+    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
 
@@ -98,7 +98,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     assert.eq(restoredDocs.length, 3);
     assert.eq(restoredDocs, expectedDocs);
 
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: primary,
         dbName: dbName,
         collName: coll,

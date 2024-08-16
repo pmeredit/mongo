@@ -9,7 +9,7 @@
  *      incompatible_with_windows_tls
  * ]
  */
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
@@ -46,28 +46,28 @@ function runTest(pit) {
     let awaitIndexBuild = IndexBuildTest.startIndexBuild(primary, "test.a", {x: 1});
     IndexBuildTest.waitForIndexBuildToScanCollection(db, collName, "x_1");
 
-    const magicRestoreUtils = new MagicRestoreUtils({rst: rst, pipeDir: MongoRunner.dataDir});
+    const magicRestoreTest = new MagicRestoreTest({rst: rst, pipeDir: MongoRunner.dataDir});
 
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     // Finish the index build, generating a 'commitIndexBuild' oplog entry.
     IndexBuildTest.resumeIndexBuilds(primary);
     awaitIndexBuild();
 
-    const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
-    let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreUtils.getEntriesAfterBackup(primary);
+    const checkpointTimestamp = magicRestoreTest.getCheckpointTimestamp();
+    let {lastOplogEntryTs, entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(primary);
     // Update config.system.indexBuilds, commitIndexBuild, drop entry from config.system.indexBuilds
     assert.eq(entriesAfterBackup.length, 3);
 
     // Assert that the commitIndexBuild entry exists.
     assert(entriesAfterBackup[1].o.commitIndexBuild);
 
-    magicRestoreUtils.copyFilesAndCloseBackup();
+    magicRestoreTest.copyFilesAndCloseBackup();
 
     assert.commandWorked(
         primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
 
-    let expectedConfig = magicRestoreUtils.getExpectedConfig();
+    let expectedConfig = magicRestoreTest.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
     rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
@@ -83,16 +83,16 @@ function runTest(pit) {
     }
 
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, pit ? entriesAfterBackup : [], {"replSet": jsTestName()});
 
     rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
+    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: primary,
         dbName: dbName,
         collName: collName,

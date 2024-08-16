@@ -9,7 +9,7 @@
  * ]
  */
 
-import {MagicRestoreUtils} from "jstests/libs/magic_restore_test.js";
+import {MagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 // TODO SERVER-87225: Enable fast count on validate when operations applied during a restore are
@@ -37,11 +37,11 @@ function runTest(updateAutoCreds) {
     const snapshotTs = assert.commandWorked(sourcePrimary.adminCommand({replSetGetStatus: 1}))
                            .optimes.lastCommittedOpTime.ts;
 
-    const magicRestoreUtils = new MagicRestoreUtils({
+    const magicRestoreTest = new MagicRestoreTest({
         rst: sourceCluster,
         pipeDir: MongoRunner.dataDir,
     });
-    magicRestoreUtils.takeCheckpointAndOpenBackup();
+    magicRestoreTest.takeCheckpointAndOpenBackup();
 
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
@@ -68,18 +68,18 @@ function runTest(updateAutoCreds) {
             sourcePrimary.getDB("admin").getCollectionInfos({name: "system.users"})[0].info.uuid;
     }
 
-    const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
+    const checkpointTimestamp = magicRestoreTest.getCheckpointTimestamp();
     let {lastOplogEntryTs, entriesAfterBackup} =
-        magicRestoreUtils.getEntriesAfterBackup(sourcePrimary);
+        magicRestoreTest.getEntriesAfterBackup(sourcePrimary);
     // When testing restore with credentials already inserted, there are six extra oplog entries.
     // The first four are the role and user auth collection and index creation entries. The
     // following two are the role write and user write.
     // These oplog entries are generated on the source before restore begins.
     assert.eq(entriesAfterBackup.length, updateAutoCreds ? 10 : 4);
 
-    magicRestoreUtils.copyFilesAndCloseBackup();
+    magicRestoreTest.copyFilesAndCloseBackup();
 
-    let expectedConfig = magicRestoreUtils.getExpectedConfig();
+    let expectedConfig = magicRestoreTest.getExpectedConfig();
     // The new node will be allocated a new port by the test fixture.
     expectedConfig.members[0].host = getHostName() + ":" + (Number(sourcePrimary.port) + 2);
 
@@ -106,18 +106,18 @@ function runTest(updateAutoCreds) {
         ],
     };
     restoreConfiguration =
-        magicRestoreUtils.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
+        magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
-    magicRestoreUtils.writeObjsAndRunMagicRestore(
+    magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, entriesAfterBackup, {"replSet": jsTestName()});
 
     // Start a new replica set fixture on the dbpath.
     const destinationCluster = new ReplSetTest({nodes: 1});
-    destinationCluster.startSet({dbpath: magicRestoreUtils.getBackupDbPath(), noCleanData: true});
+    destinationCluster.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     const destPrimary = destinationCluster.getPrimary();
 
-    magicRestoreUtils.postRestoreChecks({
+    magicRestoreTest.postRestoreChecks({
         node: destPrimary,
         dbName: dbName,
         collName: coll,
@@ -164,9 +164,9 @@ function runTest(updateAutoCreds) {
     assert(destPrimary.getDB("admin").auth('testUser', 'password'));
     // The writes to the auth collections should not have been written to the oplog. If we updated
     // automation credentials, the initial inserts should exist in the oplog from the snapshot.
-    magicRestoreUtils.assertOplogCountForNamespace(
+    magicRestoreTest.assertOplogCountForNamespace(
         destPrimary, {ns: "admin.system.roles"}, updateAutoCreds ? 1 : 0);
-    magicRestoreUtils.assertOplogCountForNamespace(
+    magicRestoreTest.assertOplogCountForNamespace(
         destPrimary, {ns: "admin.system.users"}, updateAutoCreds ? 1 : 0);
 
     sourceCluster.stopSet();
