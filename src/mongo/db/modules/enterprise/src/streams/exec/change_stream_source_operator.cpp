@@ -287,42 +287,16 @@ void ChangeStreamSourceOperator::connectToSource() {
             .increment = timestamp.getInc(), .timestamp = timestamp.getSecs()});
     }
 
-    try {
-        _clientSession.reset(new mongocxx::client_session{_client->start_session()});
-        if (_collection) {
-            _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-                _collection->watch(*_clientSession, _pipeline, _changeStreamOptions));
-        } else if (_database) {
-            _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-                _database->watch(*_clientSession, _pipeline, _changeStreamOptions));
-        } else {
-            _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-                _client->watch(*_clientSession, _pipeline, _changeStreamOptions));
-        }
-    } catch (const mongocxx::exception& e) {
-        ErrorCodes::Error code{e.code().value()};
-        if (!_pipeline.view_array().empty() && !ErrorCodes::isNetworkError(code)) {
-            // We have some special handling here when the user sets $source.config.pipeline.
-            // The pipeline gets parsed on the target server, and since the agg layer
-            // returns many different error codes for parsing errors,
-            // here we turn all errors into StreamProcessorInvalidOptions.
-            SPStatus status = mongocxxExceptionToStatus(e, *_uri, _errorPrefix);
-            status = SPStatus{Status{ErrorCodes::StreamProcessorInvalidOptions, status.toString()},
-                              status.unsafeReason()};
-            spasserted(std::move(status));
-        }
-        if (code == 19) {
-            // mongocxx throws this error code when the watch call fails to connect to the target.
-            // This is one of the places where mongocxx error codes don't align with the server
-            // error codes:
-            //   - {code: 19, name: CannotReuseObject}
-            SPStatus status = mongocxxExceptionToStatus(e, *_uri, _errorPrefix);
-            status =
-                SPStatus{Status{ErrorCodes::StreamProcessorAtlasConnectionError, status.toString()},
-                         status.unsafeReason()};
-            spasserted(std::move(status));
-        }
-        std::rethrow_exception(std::current_exception());
+    _clientSession.reset(new mongocxx::client_session{_client->start_session()});
+    if (_collection) {
+        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+            _collection->watch(*_clientSession, _pipeline, _changeStreamOptions));
+    } else if (_database) {
+        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+            _database->watch(*_clientSession, _pipeline, _changeStreamOptions));
+    } else {
+        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+            _client->watch(*_clientSession, _pipeline, _changeStreamOptions));
     }
 
     _it = mongocxx::change_stream::iterator();
@@ -401,6 +375,11 @@ void ChangeStreamSourceOperator::fetchLoop() {
         // an infinite loop. The loop creates a document that keeps getting larger. Eventually the
         // _changestream server_ will complain with a BSONObjectTooLarge error.
         status = translateCode(ErrorCodes::StreamProcessorSourceDocTooLarge);
+    } else if (status.code() == ErrorCodes::Error{19}) {
+        // mongocxx throws this error code when the watch call fails to connect to the target.
+        // This is one of the places where mongocxx error codes don't align with the server
+        // error codes.
+        status = translateCode(ErrorCodes::StreamProcessorAtlasConnectionError);
     }
 
     // If the status returned is not OK, set the error in connectionStatus.
