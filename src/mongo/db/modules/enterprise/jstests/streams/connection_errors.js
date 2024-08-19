@@ -1,6 +1,8 @@
 /**
  * @tags: [
  *  featureFlagStreams,
+ *  # TODO SERVER-93379 investigate why this test segfaults under TSAN.
+ *  tsan_incompatible,
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
