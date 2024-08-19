@@ -144,8 +144,7 @@ private:
 };
 
 KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options)
-    : KafkaPartitionConsumerBase(std::move(options)),
-      _context(context),
+    : KafkaPartitionConsumerBase(context, std::move(options)),
       _memoryUsageHandle(_context->memoryAggregator->createUsageHandle()) {
     _eventCallback = std::make_unique<KafkaEventCallback>(
         _context, fmt::format("KafkaPartitionConsumer-{}", _options.partition));
@@ -275,6 +274,8 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             _options.queueByteSizeGauge->incBy(-docVec.getByteSize());
             docs = std::move(docVec.docs);
         }
+
+        // Make sure to signal _consumerThreadWakeUpCond on all exit paths.
         _consumerThreadWakeUpCond.notify_all();
     }
     return docs;
@@ -306,6 +307,7 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("topic.metadata.refresh.interval.ms", "-1");
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
+    setConf("consume.callback.max.messages", "500");
 
     // Set the resolve callback.
     if (_options.gwproxyEndpoint) {
@@ -420,8 +422,7 @@ void KafkaPartitionConsumer::connectToSource() {
     LOGV2_INFO(9219600,
                "KafkaPartitionConsumer started",
                "context"_attr = _context,
-               "partition"_attr = partition(),
-               "maxPrefetchByteSize"_attr = _options.maxPrefetchByteSize);
+               "partition"_attr = partition());
 
     // Set the state to connected.
     stdx::lock_guard<Latch> lock(_mutex);
@@ -443,7 +444,13 @@ void KafkaPartitionConsumer::fetchLoop() {
                 return;
             }
 
-            if (_finalizedDocBatch.getByteSize() >= _options.maxPrefetchByteSize) {
+            // Report current memory usage to SourceBufferManager and allocate one page of memory
+            // from it.
+            bool allocSuccess = _context->sourceBufferManager->allocPages(
+                _sourceBufferHandle.get(),
+                _memoryUsageHandle.getCurrentMemoryUsageBytes() /* curSize */,
+                1 /* numPages */);
+            if (!allocSuccess) {
                 LOGV2_DEBUG(74678,
                             1,
                             "{partition}: waiting for consumer",
@@ -452,10 +459,8 @@ void KafkaPartitionConsumer::fetchLoop() {
                             "docsBuffered"_attr = _finalizedDocBatch.size(),
                             "bytesBuffered"_attr = _finalizedDocBatch.getByteSize(),
                             "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
-                _consumerThreadWakeUpCond.wait(fLock, [this]() {
-                    return _finalizedDocBatch.shutdown ||
-                        _finalizedDocBatch.getByteSize() < _options.maxPrefetchByteSize;
-                });
+
+                _consumerThreadWakeUpCond.wait(fLock);
                 LOGV2_DEBUG(74679,
                             1,
                             "{partition}: waking up when bytesBuffered: {bytesBuffered}"
@@ -465,6 +470,7 @@ void KafkaPartitionConsumer::fetchLoop() {
                             "numDocs"_attr = _finalizedDocBatch.numDocs,
                             "bytesBuffered"_attr = _finalizedDocBatch.getByteSize(),
                             "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
+                continue;  // Retry SourceBufferManager::allocPages().
             }
         }
 

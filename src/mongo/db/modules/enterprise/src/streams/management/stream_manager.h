@@ -7,22 +7,19 @@
 #include <memory>
 
 #include "mongo/platform/mutex.h"
-#include "mongo/stdx/condition_variable.h"
-#include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/periodic_runner.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
-#include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/memory_usage_monitor.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/output_sampler.h"
-#include "streams/exec/tenant_feature_flags.h"
+#include "streams/exec/source_buffer_manager.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {
@@ -253,12 +250,13 @@ private:
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
+    // The callback that `_memoryAggregator` invokes when the memory usage increases.
+    std::shared_ptr<KillAllMemoryUsageMonitor> _memoryUsageMonitor;
     // Memory aggregator that tracks memory usage across all active stream processors. This must be
     // placed before `_tenantProcessors` to ensure that all child `ChunkedMemoryAggregator`
     // instances are destroyed before this parent `ConcurrentMemoryAggregator` is destroyed.
     std::unique_ptr<mongo::ConcurrentMemoryAggregator> _memoryAggregator;
-    // The callback that `_memoryAggregator` invokes when the memory usage increases.
-    std::shared_ptr<KillAllMemoryUsageMonitor> _memoryUsageMonitor;
+    std::shared_ptr<SourceBufferManager> _sourceBufferManager;
     // Tracks all stream processors.
     mongo::stdx::unordered_map<std::string, std::unique_ptr<TenantInfo>> _tenantProcessors;
     // Background job that performs any background operations like state pruning.

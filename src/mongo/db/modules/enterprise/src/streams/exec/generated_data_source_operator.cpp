@@ -4,8 +4,8 @@
 
 #include "streams/exec/generated_data_source_operator.h"
 
-#include "mongo/platform/basic.h"
 #include "streams/exec/context.h"
+#include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/util.h"
 
 namespace streams {
@@ -74,6 +74,10 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
             sendControlMsg(/*outputIdx*/ 0, std::move(msg.controlMsg.get()));
         }
     }
+
+    // Report current memory usage to SourceBufferManager.
+    _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), _stats.memoryUsageBytes /* curSize */, 0 /* numPages */);
 
     if (getOptions().sendIdleMessages && emptyBatch) {
         // If _options.sendIdleMessages is set, always send a kIdle watermark when

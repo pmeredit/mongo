@@ -39,7 +39,7 @@ bool StreamDocument::operator==(const StreamDocument& other) const {
 
 BSONObj StreamDataMsg::toBSONForLogging() const {
     BSONObjBuilder builder;
-    builder.append("sizeBytes", getSizeBytes());
+    builder.append("byteSize", getByteSize());
     builder.append("docCount", (int64_t)docs.size());
     auto arrayBuilder =
         std::make_unique<BSONArrayBuilder>(BSONArrayBuilder(builder.subarrayStart("data")));

@@ -24,6 +24,7 @@
 namespace streams {
 
 class MetricManager;
+class SourceBufferManager;
 
 // Encapsulates the top-level state of a stream processor.
 struct Context {
@@ -41,6 +42,8 @@ struct Context {
     bool isEphemeral{false};
     // Memory aggregator that tracks the memory usage for this specific stream processor.
     std::shared_ptr<mongo::ChunkedMemoryAggregator> memoryAggregator;
+
+    std::shared_ptr<SourceBufferManager> sourceBufferManager;
 
     // The CheckpointId the streamProcessor was restored from.
     boost::optional<CheckpointId> restoreCheckpointId;

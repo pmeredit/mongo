@@ -10,6 +10,7 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
+#include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/test_constants.h"
 
@@ -46,6 +47,10 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
         memoryAggregator != nullptr ? memoryAggregator : globalTestMemoryAggregator.get();
     context->memoryAggregator =
         memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
+
+    SourceBufferManager::Options srcBufferOptions;
+    context->sourceBufferManager =
+        std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
 
     context->client = svcCtx->getService()->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());

@@ -22,11 +22,9 @@ namespace streams {
  */
 class FakeKafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
-    FakeKafkaPartitionConsumer(Options options)
-        : KafkaPartitionConsumerBase(std::move(options)),
+    FakeKafkaPartitionConsumer(Context* context, Options options)
+        : KafkaPartitionConsumerBase(context, std::move(options)),
           _docsPerChunk(_options.maxNumDocsToReturn) {}
-
-    FakeKafkaPartitionConsumer() : KafkaPartitionConsumerBase(Options{}) {}
 
     // Adds a batch of documents that will be returned together when getDocuments() is called.
     void addDocuments(std::vector<KafkaSourceDocument> docs);

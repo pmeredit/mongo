@@ -585,12 +585,15 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
     const mongo::StartStreamProcessorCommand& request) {
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
+    auto featureFlags =
+        StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
     LOGV2_INFO(75883,
                "About to start stream processor",
                "correlationId"_attr = request.getCorrelationId(),
                "streamProcessorName"_attr = request.getName(),
                "streamProcessorId"_attr = request.getProcessorId(),
                "tenantId"_attr = tenantId);
+
     bool shouldStopStreamProcessor = false;
     {
         stdx::lock_guard<Latch> lk(_mutex);
@@ -643,6 +646,23 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
             if (_tenantProcessors.empty()) {
                 // Recreate all Metric instances to use the new tenantId label.
                 registerTenantMetrics(lk, tenantId);
+
+                // Recreate _sourceBufferManager for the new tenantId.
+                _sourceBufferManager.reset();
+                SourceBufferManager::Options srcBufferOptions;
+                srcBufferOptions.bufferTotalSize =
+                    *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferTotalSize)
+                         .getInt();
+                srcBufferOptions.bufferPreallocationFraction =
+                    *featureFlags
+                         .getFeatureFlagValue(FeatureFlags::kSourceBufferPreallocationFraction)
+                         .getDouble();
+                srcBufferOptions.maxSourceBufferSize =
+                    *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMaxSize).getInt();
+                srcBufferOptions.pageSize =
+                    *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferPageSize).getInt();
+                _sourceBufferManager =
+                    std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
             }
         }
 
@@ -736,6 +756,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->expCtx->allowDiskUse = false;
     context->memoryAggregator =
         _memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
+    context->sourceBufferManager = _sourceBufferManager;
 
     const auto& options = request.getOptions();
     context->dlq = createDLQ(context.get(), options, context->opCtx->getServiceContext());

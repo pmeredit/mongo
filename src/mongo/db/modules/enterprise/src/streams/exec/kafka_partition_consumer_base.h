@@ -8,10 +8,11 @@
 #include <string>
 #include <vector>
 
-#include "mongo/util/duration.h"
 #include "streams/exec/connection_status.h"
+#include "streams/exec/context.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/source_buffer_manager.h"
 
 namespace streams {
 
@@ -36,8 +37,6 @@ public:
         EventDeserializer* deserializer{nullptr};
         // Maximum number of documents getDocuments() should return per call.
         int32_t maxNumDocsToReturn{500};
-        // Max number of bytes to prefetch across batches.
-        int32_t maxPrefetchByteSize{0};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
         // Timeout used for Kafka api calls.
@@ -53,13 +52,9 @@ public:
         boost::optional<std::string> gwproxyKey;
     };
 
-    KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {
-        tassert(9219601,
-                "Expected maxPrefetchByteSize greater than zero",
-                _options.maxPrefetchByteSize > 0);
-    }
+    KafkaPartitionConsumerBase(Context* context, Options options);
 
-    virtual ~KafkaPartitionConsumerBase() = default;
+    virtual ~KafkaPartitionConsumerBase();
 
     // Initializes internal state.
     // Throws an exception if any error is encountered during the initialization.
@@ -118,7 +113,9 @@ protected:
     virtual std::vector<KafkaSourceDocument> doGetDocuments() = 0;
     virtual OperatorStats doGetStats() = 0;
 
+    Context* _context{nullptr};
     const Options _options;
+    SourceBufferManager::SourceBufferHandle _sourceBufferHandle;
 };
 
 }  // namespace streams

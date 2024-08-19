@@ -9,7 +9,7 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
-#include "streams/exec/watermark_generator.h"
+#include "streams/exec/source_buffer_manager.h"
 
 namespace streams {
 
@@ -33,8 +33,6 @@ public:
         // If true, kIdle watermark messages are sent whenever 0 documents are returned
         // from the source.
         bool sendIdleMessages{false};
-        // Max number of bytes to prefetch.
-        int64_t maxPrefetchByteSize{kDataMsgMaxByteSize * 10};
     };
 
     SourceOperator(Context* context, int32_t numOutputs);
@@ -102,6 +100,8 @@ protected:
     virtual boost::optional<mongo::BSONObj> doGetLastCommittedState() {
         return boost::none;
     }
+
+    SourceBufferManager::SourceBufferHandle _sourceBufferHandle;
 
     // _lastControlMsg is updated whenever the source instance sends a watermark message.
     StreamControlMsg _lastControlMsg;

@@ -16,7 +16,9 @@ namespace streams {
 using namespace mongo;
 
 SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
-    : Operator(context, /*numInputs*/ 0, numOutputs) {}
+    : Operator(context, /*numInputs*/ 0, numOutputs) {
+    _sourceBufferHandle = _context->sourceBufferManager->registerSourceBuffer();
+}
 
 int64_t SourceOperator::runOnce() {
     _operatorTimer.unpause();

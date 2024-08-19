@@ -102,7 +102,7 @@ struct StreamDataMsg {
     std::vector<StreamDocument> docs;
     boost::optional<mongo::Timer> creationTimer;
 
-    int64_t getSizeBytes() const {
+    int64_t getByteSize() const {
         int64_t out{0};
         for (const auto& doc : docs) {
             out += doc.doc.getCurrentApproximateSize();

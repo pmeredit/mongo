@@ -34,11 +34,16 @@ private:
 class FeatureFlags {
 public:
     static const FeatureFlagDefinition kCheckpointDurationInMs;
+    // TODO: Remove this feature flag after the next prod deploy.
     static const FeatureFlagDefinition kKafkaMaxPrefetchByteSize;
     static const FeatureFlagDefinition kUseExecutionPlanFromCheckpoint;
     static const FeatureFlagDefinition kMaxQueueSizeBytes;
     static const FeatureFlagDefinition kKafkaEmitUseDeliveryCallback;
     static const FeatureFlagDefinition kEnableSessionWindow;
+    static const FeatureFlagDefinition kSourceBufferTotalSize;
+    static const FeatureFlagDefinition kSourceBufferPreallocationFraction;
+    static const FeatureFlagDefinition kSourceBufferMaxSize;
+    static const FeatureFlagDefinition kSourceBufferPageSize;
 };
 
 }  // namespace streams

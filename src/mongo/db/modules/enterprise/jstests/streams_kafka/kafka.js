@@ -3,9 +3,11 @@ import {
     flushUntilStopped,
     LocalDiskCheckpointUtil,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     getStats,
     listStreamProcessors,
+    makeRandomString,
     sampleUntil,
     sanitizeDoc,
     TEST_TENANT_ID,
@@ -71,8 +73,11 @@ const connectionRegistry = [
                     "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
             }
         }
-    }
+    },
+    {name: '__testMemory', type: 'in_memory', options: {}},
 ];
+
+const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
 const mongoToKafkaName = "mongoToKafka";
 const kafkaToMongoNamePrefix = "kafkaToMongo";
@@ -1240,3 +1245,98 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
                     }));
 
 runKafkaTest(kafka, mongoToKafkaToMongoGetConnectionNames);
+
+// Test that KafkaConsumerOperator stays within the configured memory usage limits.
+function honorSourceBufferSizeLimit() {
+    // Start a stream processor that reads from sourceColl1 and writes to the Kafka topic.
+    let processorName = 'sp';
+    sp.createStreamProcessor(processorName, [
+        {$source: {connectionName: dbConnName, db: dbName, coll: sourceColl1.getName()}},
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        {$project: {_stream_meta: 0}},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {outputFormat: 'canonicalJson'}
+            }
+        }
+    ]);
+
+    let processor = sp[processorName];
+    processor.start();
+
+    // Add 1000 input docs each of size ~1KB to the input collection.
+    let numDocs = 10000;
+    Random.setRandomSeed(42);
+    const str = makeRandomString(1000);
+    Array.from({length: numDocs}, (_, i) => i)
+        .forEach(idx => { assert.commandWorked(sourceColl1.insert({_id: idx, str: str})); });
+
+    // Wait until all the docs are emitted.
+    assert.soon(() => {
+        let statsResult = getStats(processorName);
+        return statsResult.outputMessageCount == numDocs;
+    });
+
+    processor.stop();
+
+    // Test that maxMemoryUsage reported by KafkaConsumerOperator stays within the configured limit.
+    let numProcessors = 10;
+    let featureFlags = {
+        sourceBufferTotalSize: NumberLong(500 * 1024 * 1024),
+        sourceBufferMaxSize: NumberLong(5 * 1024),
+        sourceBufferPageSize: NumberLong(1024)
+    };
+
+    // Start all the stream processors.
+    for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
+        processorName = "sp" + spIdx;
+        sp.createStreamProcessor(processorName, [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
+                    config: {auto_offset_reset: "earliest"},
+                }
+            },
+            {$emit: {connectionName: '__testMemory'}}
+        ]);
+
+        const processor = sp[processorName];
+        processor.start({featureFlags: featureFlags});
+    }
+
+    // Wait until all stream processors are done processing all the input docs.
+    assert.soon(() => {
+        let allDone = true;
+        for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
+            const processorName = "sp" + spIdx;
+            let statsResult = getStats(processorName);
+            if (statsResult.outputMessageCount < numDocs) {
+                allDone = false;
+            }
+        }
+        return allDone;
+    });
+
+    // Verify stats and stop all stream processors.
+    for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
+        const processorName = "sp" + spIdx;
+        let statsResult = getStats(processorName);
+        jsTestLog(statsResult);
+        const sourceStats = statsResult.operatorStats[0];
+        assert.eq('KafkaConsumerOperator', sourceStats.name);
+        assert.eq(sourceStats.stateSize, 0, statsResult);
+        assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
+        // KafkaPartitionConsumer sets consume.callback.max.messages to 500. So it can only enforce
+        // memory limits after reading up to 500 docs. So we need to have higher tolerance in our
+        // checks than we'd like.
+        assert.lt(sourceStats.maxMemoryUsage, 1.5 * 1024 * 1024, statsResult);
+        sp[processorName].stop();
+    }
+    sourceColl1.drop();
+}
+
+runKafkaTest(kafka, honorSourceBufferSizeLimit);

@@ -138,7 +138,7 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
                                          StreamDataMsg dataMsg,
                                          boost::optional<StreamControlMsg> controlMsg) {
     _queueSizeGauge->incBy(int64_t(dataMsg.docs.size()));
-    _queueByteSizeGauge->incBy(dataMsg.getSizeBytes());
+    _queueByteSizeGauge->incBy(dataMsg.getByteSize());
     _queue.push(Message{.data = std::move(dataMsg)});
 }
 
@@ -160,7 +160,7 @@ void QueuedSinkOperator::consumeLoop() {
                 _flushedCv.notify_all();
             } else {
                 _queueSizeGauge->incBy(-1 * int64_t(msg.data->docs.size()));
-                _queueByteSizeGauge->incBy(-1 * msg.data->getSizeBytes());
+                _queueByteSizeGauge->incBy(-1 * msg.data->getByteSize());
                 auto stats = processDataMsg(std::move(*msg.data));
 
                 stdx::lock_guard<Latch> lock(_consumerMutex);

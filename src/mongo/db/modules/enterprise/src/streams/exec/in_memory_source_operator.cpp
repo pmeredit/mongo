@@ -14,6 +14,12 @@ using namespace mongo;
 InMemorySourceOperator::InMemorySourceOperator(Context* context, Options options)
     : GeneratedDataSourceOperator(context, /* numOutputs */ 1), _options(std::move(options)) {}
 
+InMemorySourceOperator::~InMemorySourceOperator() {
+    // Report 0 memory usage to SourceBufferManager.
+    _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), 0 /* curSize */, 0 /* numPages */);
+}
+
 void InMemorySourceOperator::addDataMsg(StreamDataMsg dataMsg,
                                         boost::optional<StreamControlMsg> controlMsg) {
     addDataMsgInner(std::move(dataMsg), std::move(controlMsg));
@@ -25,8 +31,22 @@ void InMemorySourceOperator::addDataMsgInner(StreamDataMsg dataMsg,
     msg.dataMsg = std::move(dataMsg);
     msg.controlMsg = std::move(controlMsg);
 
-    stdx::unique_lock<Latch> lock(_mutex);
-    _messages.push_back(std::move(msg));
+    // Report current memory usage to SourceBufferManager and allocate one page of memory from it.
+    bool allocSuccess = _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), _stats.memoryUsageBytes /* curSize */, 1 /* numPages */);
+    uassert(ErrorCodes::InternalError,
+            "Failed to allocate a page from SourceBufferManager",
+            allocSuccess);
+    incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getByteSize()});
+
+    {
+        stdx::unique_lock<Latch> lock(_mutex);
+        _messages.push_back(std::move(msg));
+    }
+
+    // Report current memory usage to SourceBufferManager.
+    _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), _stats.memoryUsageBytes /* curSize */, 0 /* numPages */);
 }
 
 void InMemorySourceOperator::addControlMsg(StreamControlMsg controlMsg) {
@@ -44,6 +64,7 @@ void InMemorySourceOperator::addControlMsgInner(StreamControlMsg controlMsg) {
 std::vector<StreamMsgUnion> InMemorySourceOperator::getMessages(WithLock) {
     std::vector<StreamMsgUnion> msgs;
     std::swap(_messages, msgs);
+    _stats.memoryUsageBytes = 0;
     return msgs;
 }
 

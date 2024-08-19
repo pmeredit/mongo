@@ -210,8 +210,6 @@ private:
     // Connection status of the partition consumer. The background thread updates
     // this as it connects (or errors).
     ConnectionStatus _connectionStatus;
-    // Context of the streamProcessor used for logging purposes.
-    Context* _context{nullptr};
     // Memory usage handle to track queued prefetch buffer. This only tracks completed batches that
     // are added to `_finalizedDocBatch`. This should only be updated under the `_finalizedDocBatch`
     // mutex.

@@ -41,6 +41,14 @@ static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
 
 class StreamManagerTest : public AggregationContextFixture {
 public:
+    std::unique_ptr<StreamManager> createStreamManager(StreamManager::Options options) {
+        auto streamManager =
+            std::make_unique<StreamManager>(getServiceContext(), std::move(options));
+        streamManager->_sourceBufferManager =
+            std::make_shared<SourceBufferManager>(SourceBufferManager::Options{});
+        return streamManager;
+    }
+
     bool streamProcessorExists(StreamManager* streamManager,
                                std::string tenantId,
                                std::string name) {
@@ -251,8 +259,8 @@ public:
 };
 
 TEST_F(StreamManagerTest, Start) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData("name1"));
@@ -271,8 +279,7 @@ TEST_F(StreamManagerTest, Start) {
 }
 
 TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     // Start 10 stream processors asynchronously on 10 threads.
     std::vector<stdx::thread> startThreads;
@@ -327,8 +334,7 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopAfterConnection) {
 }
 
 TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     // Start a stream processor asynchronously and make it sleep for 10s while establishing
     // connections.
@@ -389,8 +395,7 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
 }
 
 TEST_F(StreamManagerTest, StartTimesOut) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     // Start a stream processor asynchronously and make it sleep for 15s while establishing
     // connections.
@@ -431,8 +436,7 @@ TEST_F(StreamManagerTest, StartTimesOut) {
 }
 
 TEST_F(StreamManagerTest, StopTimesOut) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
@@ -480,9 +484,9 @@ TEST_F(StreamManagerTest, StopTimesOut) {
 }
 
 TEST_F(StreamManagerTest, GetStats) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
     const std::string streamName = "name1";
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
@@ -556,11 +560,11 @@ TEST_F(StreamManagerTest, GetStats) {
 }
 
 TEST_F(StreamManagerTest, GetStats_Kafka) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
     const std::string streamName = "sp1";
     const int32_t partitionCount = 12;
 
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
@@ -634,9 +638,9 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
 }
 
 TEST_F(StreamManagerTest, GetMetrics) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
     const std::string streamProcessorName = "sp1";
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamProcessorName));
@@ -666,8 +670,8 @@ TEST_F(StreamManagerTest, GetMetrics) {
 }
 
 TEST_F(StreamManagerTest, List) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
     StartStreamProcessorCommand request1;
     request1.setTenantId(StringData(kTestTenantId1));
     request1.setName(StringData("name1"));
@@ -719,8 +723,8 @@ TEST_F(StreamManagerTest, List) {
 }
 
 TEST_F(StreamManagerTest, ErrorHandling) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData("name1"));
@@ -769,8 +773,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
 
 // Verifies that checkpointing is disabled for sources other than Kafka and Changestream.
 TEST_F(StreamManagerTest, DisableCheckpoint) {
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
@@ -811,10 +814,9 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
 }
 
 TEST_F(StreamManagerTest, TestOnlyInsert) {
-    const std::string streamName = "name1";
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    const std::string streamName = "name1";
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
@@ -869,8 +871,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         auto writeDir =
             fmt::format("/tmp/stream_manager_test/checkpointwritedir/{}", UUID::gen().toString());
         std::filesystem::create_directories(writeDir);
-        auto streamManager =
-            std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+        auto streamManager = createStreamManager(StreamManager::Options{});
         StartStreamProcessorCommand request;
         request.setTenantId(StringData(kTestTenantId1));
         request.setName(StringData("name1"));
@@ -1030,7 +1031,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     std::string sp3 = "sp3";
 
     StreamManager::Options options{.memoryLimitBytes = 2 * kMemoryUsageBatchSize};
-    auto streamManager = std::make_unique<StreamManager>(getServiceContext(), std::move(options));
+    auto streamManager = createStreamManager(std::move(options));
     StartStreamProcessorCommand request1;
     request1.setTenantId(StringData(kTestTenantId1));
     request1.setName(StringData(sp1));
@@ -1185,8 +1186,7 @@ TEST_F(StreamManagerTest, SingleTenancy) {
     ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
     auto pipeline = pipelineBson["pipeline"];
 
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options());
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     std::string sp1{"sp1"};
     std::string sp2{"sp2"};
@@ -1228,8 +1228,7 @@ TEST_F(StreamManagerTest, MultiTenancy) {
     auto pipeline = pipelineBson["pipeline"];
 
     mongo::streams::gStreamsAllowMultiTenancy = true;
-    auto streamManager =
-        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    auto streamManager = createStreamManager(StreamManager::Options{});
 
     std::string sp1{"sp1"};
     std::string sp2{"sp2"};

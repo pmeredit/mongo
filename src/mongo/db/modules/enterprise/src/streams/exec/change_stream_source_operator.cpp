@@ -164,6 +164,13 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
 ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
     // '_changeStreamThread' must not be running on shutdown.
     dassert(!_changeStreamThread.joinable());
+
+    std::queue<DocBatch> emptyQueue;
+    std::swap(_changeEvents, emptyQueue);
+
+    // Report 0 memory usage to SourceBufferManager.
+    _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), 0 /* curSize */, 0 /* numPages */);
 }
 
 mongo::Seconds ChangeStreamSourceOperator::getChangeStreamLag() const {
@@ -229,6 +236,11 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
                       _options.clientOptions.collection ? *_options.clientOptions.collection : ""));
     }
 
+    ScopeGuard guard([&] {
+        // Make sure to signal _changeStreamThreadCond on all exit paths.
+        _changeStreamThreadCond.notify_all();
+    });
+
     // Early return if there are no change events to return.
     if (_changeEvents.empty()) {
         return DocBatch(/*capacity*/ 0);
@@ -246,7 +258,6 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     _queueByteSizeGauge->incBy(-batch.getByteSize());
     _consumerStats += {.memoryUsageBytes = -batch.getByteSize()};
     _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
-    _changeStreamThreadCond.notify_all();
     return batch;
 }
 
@@ -329,25 +340,28 @@ void ChangeStreamSourceOperator::fetchLoop() {
                     break;
                 }
 
-                if (_consumerStats.memoryUsageBytes >= _options.maxPrefetchByteSize) {
+                // Report current memory usage to SourceBufferManager and allocate one page of
+                // memory from it.
+                bool allocSuccess = _context->sourceBufferManager->allocPages(
+                    _sourceBufferHandle.get(),
+                    _consumerStats.memoryUsageBytes /* curSize */,
+                    1 /* numPages */);
+                if (!allocSuccess) {
                     LOGV2_DEBUG(7788501,
                                 1,
                                 "Change stream $source sleeping when bytesBuffered: "
                                 "{bytesBuffered}",
                                 "context"_attr = _context,
                                 "bytesBuffered"_attr = _consumerStats.memoryUsageBytes);
-                    _changeStreamThreadCond.wait(lock, [this]() {
-                        // Wait until either the SP is shutdown or there is capacity for events
-                        // in the last DocVec.
-                        return _shutdown ||
-                            _consumerStats.memoryUsageBytes < _options.maxPrefetchByteSize;
-                    });
+
+                    _changeStreamThreadCond.wait(lock);
                     LOGV2_DEBUG(
                         7788502,
                         1,
                         "Change stream $source waking up when bytesBuffered: {bytesBuffered}",
                         "context"_attr = _context,
                         "bytesBuffered"_attr = _consumerStats.memoryUsageBytes);
+                    continue;  // Retry SourceBufferManager::allocPages().
                 }
             }
 

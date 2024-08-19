@@ -6,7 +6,6 @@
 
 #include <queue>
 
-#include "mongo/stdx/condition_variable.h"
 #include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
@@ -27,6 +26,8 @@ public:
     };
 
     InMemorySourceOperator(Context* context, Options options);
+
+    ~InMemorySourceOperator() override;
 
     /**
      * Adds a data message and an optional control message to this operator.

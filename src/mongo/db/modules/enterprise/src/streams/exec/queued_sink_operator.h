@@ -56,7 +56,7 @@ protected:
                 return 1;
             }
 
-            auto size = msg.data->getSizeBytes();
+            auto size = msg.data->getByteSize();
             if (size > maxSizeBytes) {
                 // ProducerConsumerQueue will throw ProducerConsumerQueueBatchTooLarge if a single
                 // item is larger than the max queue size. We want to allow a single large

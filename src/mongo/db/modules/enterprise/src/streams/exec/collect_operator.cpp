@@ -34,7 +34,7 @@ void CollectOperator::doSinkOnDataMsg(int32_t inputIdx,
     msg.controlMsg = std::move(controlMsg);
 
     if (msg.dataMsg) {
-        _memoryUsageHandle.add(msg.dataMsg->getSizeBytes());
+        _memoryUsageHandle.add(msg.dataMsg->getByteSize());
     }
     sendOutputToSamplers(msg.dataMsg.get());
     _messages.push_back(std::move(msg));

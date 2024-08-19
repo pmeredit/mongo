@@ -62,7 +62,7 @@ const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
     "maxQueueSizeBytes",
     "Maximum buffer size (in bytes) for a sink queue.",
     // 128 MB default
-    mongo::Value::createIntOrLong(128 * 1024 * 1024)};
+    mongo::Value::createIntOrLong(128L * 1024 * 1024)};
 
 const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
     "kafkaEmitUserDeliveryCallback",
@@ -72,5 +72,29 @@ const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
 
 const FeatureFlagDefinition FeatureFlags::kEnableSessionWindow{
     "enableSessionWindow", "If true, the $sessionWindow stage is enabled.", mongo::Value(false)};
+
+const FeatureFlagDefinition FeatureFlags::kSourceBufferTotalSize{
+    "sourceBufferTotalSize",
+    "Specifies value for SourceBufferManager::Options::bufferTotalSize.",
+    // 800 MB default
+    mongo::Value::createIntOrLong(800L * 1024 * 1024)};
+
+const FeatureFlagDefinition FeatureFlags::kSourceBufferPreallocationFraction{
+    "sourceBufferPreallocationFraction",
+    "Specifies value for SourceBufferManager::Options::bufferPreallocationFraction.",
+    // 128 MB default
+    mongo::Value(0.5)};
+
+const FeatureFlagDefinition FeatureFlags::kSourceBufferMaxSize{
+    "sourceBufferMaxSize",
+    "Specifies value for SourceBufferManager::Options::maxSourceBufferSize.",
+    // 160 MB default
+    mongo::Value::createIntOrLong(160L * 1024 * 1024)};
+
+const FeatureFlagDefinition FeatureFlags::kSourceBufferPageSize{
+    "sourceBufferPageSize",
+    "Specifies value for SourceBufferManager::Options::pageSize.",
+    // 4 MB default
+    mongo::Value::createIntOrLong(4L * 1024 * 1024)};
 
 }  // namespace streams

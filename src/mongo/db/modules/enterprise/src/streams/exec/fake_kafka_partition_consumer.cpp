@@ -17,8 +17,20 @@ using namespace mongo;
 
 void FakeKafkaPartitionConsumer::addDocuments(std::vector<KafkaSourceDocument> docs) {
     stdx::lock_guard<Latch> lock(_mutex);
+
+    // Report current memory usage to SourceBufferManager and allocate one page of memory from it.
+    bool allocSuccess = _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), getStats().memoryUsageBytes /* curSize */, 1 /* numPages */);
+    uassert(ErrorCodes::InternalError,
+            "Failed to allocate a page from SourceBufferManager",
+            allocSuccess);
+
     _docs.insert(
         _docs.end(), std::make_move_iterator(docs.begin()), std::make_move_iterator(docs.end()));
+
+    // Report current memory usage to SourceBufferManager.
+    _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), getStats().memoryUsageBytes /* curSize */, 0 /* numPages */);
 }
 
 void FakeKafkaPartitionConsumer::doStart() {
@@ -53,6 +65,10 @@ std::vector<KafkaSourceDocument> FakeKafkaPartitionConsumer::doGetDocuments() {
             break;
         }
     }
+
+    // Report current memory usage to SourceBufferManager.
+    _context->sourceBufferManager->allocPages(
+        _sourceBufferHandle.get(), getStats().memoryUsageBytes /* curSize */, 0 /* numPages */);
 
     return results;
 }
