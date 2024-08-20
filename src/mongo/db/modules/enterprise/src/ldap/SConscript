@@ -44,16 +44,6 @@ else:
 env = ldapconf.Finish()
 
 env.Library(
-    target="ldap_parameters",
-    source=[
-        "ldap_parameters_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/server_base",
-    ],
-)
-
-env.Library(
     target="ldap_manager_init",
     source=[
         "ldap_manager_init.cpp",

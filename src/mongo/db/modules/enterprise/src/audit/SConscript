@@ -8,16 +8,6 @@ Import("env")
 
 env = env.Clone()
 
-env.Library(
-    target="audit_config",
-    source=[
-        "audit_config_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/server_base",
-    ],
-)
-
 env.InjectThirdParty(libraries=["asio"])
 env.Library(
     target="audit_enterprise",

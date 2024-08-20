@@ -16,3 +16,13 @@ idl_generator(
         "//src/mongo/db:basic_types_gen",
     ],
 )
+
+mongo_cc_library(
+    name = "collection_properties",
+    srcs = [
+        ":collection_properties_gen",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+    ],
+)

@@ -70,16 +70,6 @@ env.Library(
 )
 
 env.Library(
-    target="streams_config_idl",
-    source=[
-        "config_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/server_base",
-    ],
-)
-
-env.Library(
     target="streams_exec_util",
     source=[
         "document_timestamp_extractor.cpp",

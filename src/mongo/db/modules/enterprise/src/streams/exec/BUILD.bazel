@@ -54,3 +54,13 @@ idl_generator(
         "//src/mongo/db:basic_types_gen",
     ],
 )
+
+mongo_cc_library(
+    name = "streams_config_idl",
+    srcs = [
+        ":config_gen",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+    ],
+)

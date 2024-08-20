@@ -50,3 +50,13 @@ idl_generator(
     name = "audit_options_gen",
     src = "audit_options.idl",
 )
+
+mongo_cc_library(
+    name = "audit_config",
+    srcs = [
+        ":audit_config_gen",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+    ],
+)

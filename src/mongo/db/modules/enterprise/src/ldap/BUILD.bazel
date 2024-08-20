@@ -41,3 +41,13 @@ idl_generator(
     name = "ldap_tool_options_gen",
     src = "ldap_tool_options.idl",
 )
+
+mongo_cc_library(
+    name = "ldap_parameters",
+    srcs = [
+        ":ldap_parameters_gen",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+    ],
+)

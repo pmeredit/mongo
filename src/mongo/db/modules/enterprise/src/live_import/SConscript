@@ -21,16 +21,6 @@ env.SConscript(
     ],
 )
 
-env.Library(
-    target="collection_properties",
-    source=[
-        "collection_properties_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/server_base",
-    ],
-)
-
 wtEnv.Library(
     target="export_collection",
     source=[
