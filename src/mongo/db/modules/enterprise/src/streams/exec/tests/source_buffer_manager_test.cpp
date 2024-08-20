@@ -24,13 +24,11 @@ int randomInt(mongo::PseudoRandom& random, int min, int max) {
 
 class SourceBufferManagerTest : public unittest::Test {
 public:
-    void createSourceBufferManager(SourceBufferManager::Options options) {
-        _bufMgr = std::make_unique<SourceBufferManager>(std::move(options));
-    }
+    SourceBufferManagerTest() : _metricManager(std::make_unique<MetricManager>()) {}
 
-    auto getNumSourceBuffers() const {
-        auto readLock = _bufMgr->_mutex.readLock();
-        return _bufMgr->_buffers.size();
+    void createSourceBufferManager(SourceBufferManager::Options options) {
+        options.metricManager = _metricManager.get();
+        _bufMgr = std::make_unique<SourceBufferManager>(std::move(options));
     }
 
     auto getSourceBufferInfo(SourceBufferManager::SourceBuffer* sourceBuffer) {
@@ -51,7 +49,25 @@ public:
         return _bufMgr->toPages(bytes);
     }
 
+    void assertNumSourceBuffersEquals(int64_t value) const {
+        auto readLock = _bufMgr->_mutex.readLock();
+        ASSERT_EQUALS(_bufMgr->_buffers.size(), value);
+        ASSERT_EQUALS(_bufMgr->_numSourceBuffersGauge->value(), value);
+    }
+
+    void assertPreallocatedPagesEquals(int32_t value) const {
+        auto readLock = _bufMgr->_mutex.readLock();
+        ASSERT_EQUALS(_bufMgr->_sourceBufferPreallocatedPages, value);
+        ASSERT_EQUALS(_bufMgr->_numPreallocatedPagesGauge->value(), value);
+    }
+
+    void assertAvailablePagesEquals(int32_t value) const {
+        ASSERT_EQUALS(_bufMgr->_availablePages.load(), value);
+        ASSERT_EQUALS(_bufMgr->_numAvailablePagesGauge->value(), value);
+    }
+
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<SourceBufferManager> _bufMgr;
 };
 
@@ -62,22 +78,22 @@ TEST_F(SourceBufferManagerTest, Initialization) {
     options.maxSourceBufferSize = 600;
     options.pageSize = 16;
     createSourceBufferManager(options);
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), 800 * 0.5 / 16);
-    ASSERT_EQUALS(getAvailablePages(), 800 / 16 - getSourceBufferPreallocatedPages());
+    assertPreallocatedPagesEquals(800 * 0.5 / 16);
+    assertAvailablePagesEquals(800 / 16 - getSourceBufferPreallocatedPages());
 
     // Change bufferPreallocationFraction from 0.5 to 0.7.
     options.bufferTotalSize = 850;
     options.bufferPreallocationFraction = 0.7;
     createSourceBufferManager(options);
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), ceill(850 * 0.7 / 16));
-    ASSERT_EQUALS(getAvailablePages(), ceill(850.0 / 16) - getSourceBufferPreallocatedPages());
+    assertPreallocatedPagesEquals(ceill(850 * 0.7 / 16));
+    assertAvailablePagesEquals(ceill(850.0 / 16) - getSourceBufferPreallocatedPages());
 
     // Change maxSourceBufferSize from 600 to 200.
     // Verify that maxSourceBufferSize is honored when determining the number of preallocated pages.
     options.maxSourceBufferSize = 200;
     createSourceBufferManager(options);
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), ceill(200.0 / 16));
-    ASSERT_EQUALS(getAvailablePages(), ceill(850.0 / 16) - getSourceBufferPreallocatedPages());
+    assertPreallocatedPagesEquals(ceill(200.0 / 16));
+    assertAvailablePagesEquals(ceill(850.0 / 16) - getSourceBufferPreallocatedPages());
 }
 
 TEST_F(SourceBufferManagerTest, RegisterDeregister) {
@@ -94,10 +110,9 @@ TEST_F(SourceBufferManagerTest, RegisterDeregister) {
             options.bufferTotalSize * options.bufferPreallocationFraction / handles.size())));
         numExpectedPreallocatedPages =
             std::min(numExpectedPreallocatedPages, toPages(options.maxSourceBufferSize));
-        ASSERT_EQUALS(getSourceBufferPreallocatedPages(), numExpectedPreallocatedPages);
-        ASSERT_EQUALS(getAvailablePages(),
-                      options.bufferTotalSize / options.pageSize -
-                          handles.size() * getSourceBufferPreallocatedPages());
+        assertPreallocatedPagesEquals(numExpectedPreallocatedPages);
+        assertAvailablePagesEquals(options.bufferTotalSize / options.pageSize -
+                                   handles.size() * getSourceBufferPreallocatedPages());
         ASSERT_EQUALS(options.bufferTotalSize / options.pageSize,
                       handles.size() * getSourceBufferPreallocatedPages() + getAvailablePages());
     }
@@ -110,7 +125,7 @@ TEST_F(SourceBufferManagerTest, RegisterDeregister) {
         ErrorCodes::InternalError,
         "Cannot preallocate even a single page to all the available source buffers");
 
-    ASSERT_EQUALS(getNumSourceBuffers(), 200);
+    assertNumSourceBuffersEquals(200);
 
     // Deregister all source buffers and verify that the remaining source buffers get expected
     // number of pages preallocated to them.
@@ -121,10 +136,9 @@ TEST_F(SourceBufferManagerTest, RegisterDeregister) {
             int64_t(options.bufferTotalSize * options.bufferPreallocationFraction / numHandles)));
         numExpectedPreallocatedPages =
             std::min(numExpectedPreallocatedPages, toPages(options.maxSourceBufferSize));
-        ASSERT_EQUALS(getSourceBufferPreallocatedPages(), numExpectedPreallocatedPages);
-        ASSERT_EQUALS(getAvailablePages(),
-                      options.bufferTotalSize / options.pageSize -
-                          numHandles * getSourceBufferPreallocatedPages());
+        assertPreallocatedPagesEquals(numExpectedPreallocatedPages);
+        assertAvailablePagesEquals(options.bufferTotalSize / options.pageSize -
+                                   numHandles * getSourceBufferPreallocatedPages());
         ASSERT_EQUALS(options.bufferTotalSize / options.pageSize,
                       numHandles * getSourceBufferPreallocatedPages() + getAvailablePages());
     }
@@ -138,14 +152,14 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
     options.maxSourceBufferSize = 160;
     options.pageSize = 16;
     createSourceBufferManager(options);
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), 5 /* 160 * 0.5 / 16 */);
-    ASSERT_EQUALS(getAvailablePages(), 5 /* 160 / 16 - getSourceBufferPreallocatedPages() */);
+    assertPreallocatedPagesEquals(5 /* 160 * 0.5 / 16 */);
+    assertAvailablePagesEquals(5 /* 160 / 16 - getSourceBufferPreallocatedPages() */);
 
     // Register a source buffer.
     auto handle1 = _bufMgr->registerSourceBuffer();
     auto bufferInfo1 = getSourceBufferInfo(handle1.get());
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), 5 /* 160 * 0.5 / 16 */);
-    ASSERT_EQUALS(getAvailablePages(), 5 /* 160 / 16 - getSourceBufferPreallocatedPages() */);
+    assertPreallocatedPagesEquals(5 /* 160 * 0.5 / 16 */);
+    assertAvailablePagesEquals(5 /* 160 / 16 - getSourceBufferPreallocatedPages() */);
 
     // Call allocPages() with numPages=0 to simply report curSize=0.
     ASSERT_TRUE(_bufMgr->allocPages(handle1.get(), 0 /* curSize */, 0 /* numPages */));
@@ -153,7 +167,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
         ASSERT_EQUALS(bufferInfo1->size, 0);
     }
-    ASSERT_EQUALS(getAvailablePages(), 5);
+    assertAvailablePagesEquals(5);
 
     // Call allocPages() to allocate all preallocated pages.
     for (int i = 0; i < 5; ++i) {
@@ -163,7 +177,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, (i + 1) * options.pageSize);
         }
-        ASSERT_EQUALS(getAvailablePages(), 5);
+        assertAvailablePagesEquals(5);
     }
 
     // Now call allocPages() to allocate beyond the preallocated pages.
@@ -174,7 +188,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, (i + 1) * options.pageSize);
         }
-        ASSERT_EQUALS(getAvailablePages(), 10 - i - 1);
+        assertAvailablePagesEquals(10 - i - 1);
     }
 
     // Verify that no more pages can be allocated by this source buffer.
@@ -184,10 +198,10 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
     // Register a second source buffer now.
     auto handle2 = _bufMgr->registerSourceBuffer();
     auto bufferInfo2 = getSourceBufferInfo(handle2.get());
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), 3 /* 160 * 0.5 / 2 / 16 */);
+    assertPreallocatedPagesEquals(3 /* 160 * 0.5 / 2 / 16 */);
     // Source buffer 1 already allocated 10 pages and 3 pages are now prellocated to the
     // source buffer 2. So the count of available pages should be -3.
-    ASSERT_EQUALS(getAvailablePages(), -3);
+    assertAvailablePagesEquals(-3);
 
     // Verify that no pages can be allocated by any of the source buffers until source buffer 1
     // deallocates the extra pages it allocated.
@@ -203,9 +217,9 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, (9 - i) * options.pageSize);
         }
-        ASSERT_EQUALS(getAvailablePages(), -3 + i + 1);
+        assertAvailablePagesEquals(-3 + i + 1);
     }
-    ASSERT_EQUALS(getAvailablePages(), 0);
+    assertAvailablePagesEquals(0);
 
     // Verify that the source buffer 1 still cannot allocate any more pages.
     ASSERT_FALSE(
@@ -219,7 +233,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
             ASSERT_EQUALS(bufferInfo2->size, (i + 1) * options.pageSize);
         }
-        ASSERT_EQUALS(getAvailablePages(), 0);
+        assertAvailablePagesEquals(0);
     }
 
     // Verify that the source buffer 1 can now deallocate one of its 7 pages and reallocate it.
@@ -232,7 +246,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, 7 * options.pageSize);
         }
-        ASSERT_EQUALS(getAvailablePages(), 0);
+        assertAvailablePagesEquals(0);
     }
 
     // Verify that the source buffer 2 cannot allocate any more pages until source buffer 1
@@ -247,7 +261,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
         ASSERT_EQUALS(bufferInfo1->size, 5 * options.pageSize);
     }
-    ASSERT_EQUALS(getAvailablePages(), 2);
+    assertAvailablePagesEquals(2);
 
     // Verify that the source buffer 2 can now allocate 2 more pages.
     for (int i = 3; i < 5; ++i) {
@@ -258,7 +272,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             ASSERT_EQUALS(bufferInfo2->size, (i + 1) * options.pageSize);
         }
     }
-    ASSERT_EQUALS(getAvailablePages(), 0);
+    assertAvailablePagesEquals(0);
 
     // Verify that both source buffers can now deallocate one of their pages and reallocate them.
     for (int i = 0; i < 5; ++i) {
@@ -279,7 +293,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
             stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
             ASSERT_EQUALS(bufferInfo2->size, 5 * options.pageSize);
         }
-        ASSERT_EQUALS(getAvailablePages(), 0);
+        assertAvailablePagesEquals(0);
     }
 
     // Deallocate all memory to exit gracefully.
@@ -288,13 +302,13 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
         ASSERT_EQUALS(bufferInfo1->size, 0);
     }
-    ASSERT_EQUALS(getAvailablePages(), 2);
+    assertAvailablePagesEquals(2);
     _bufMgr->allocPages(handle2.get(), 0 /* curSize */, 0 /* numPages */);
     {
         stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
         ASSERT_EQUALS(bufferInfo2->size, 0);
     }
-    ASSERT_EQUALS(getAvailablePages(), 4);
+    assertAvailablePagesEquals(4);
 }
 
 TEST_F(SourceBufferManagerTest, AllocPagesAlwaysSuccessful) {
@@ -305,8 +319,8 @@ TEST_F(SourceBufferManagerTest, AllocPagesAlwaysSuccessful) {
     options.maxSourceBufferSize = 160;
     options.pageSize = 16;
     createSourceBufferManager(options);
-    ASSERT_EQUALS(getSourceBufferPreallocatedPages(), 10);
-    ASSERT_EQUALS(getAvailablePages(), 990 /* 16000 / 16 - getSourceBufferPreallocatedPages() */);
+    assertPreallocatedPagesEquals(10);
+    assertAvailablePagesEquals(990 /* 16000 / 16 - getSourceBufferPreallocatedPages() */);
 
     // Create 100 source buffers on 100 threads and make them perform a bunch of allocations and
     // deallocations while staying within 10 page per source buffer limit. Since there is enough
@@ -372,7 +386,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesAlwaysSuccessful) {
     for (auto& t : threads) {
         t.join();
     }
-    ASSERT_EQUALS(getAvailablePages(), 990);
+    assertAvailablePagesEquals(990);
 }
 
 TEST_F(SourceBufferManagerTest, AllocPagesFailsSometimes) {
@@ -459,7 +473,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesFailsSometimes) {
         for (auto& t : threads) {
             t.join();
         }
-        ASSERT_EQUALS(getAvailablePages(), origAvailablePages);
+        assertAvailablePagesEquals(origAvailablePages);
     }
 }
 

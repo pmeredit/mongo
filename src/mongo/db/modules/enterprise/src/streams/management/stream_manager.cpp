@@ -33,6 +33,7 @@
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -661,6 +662,9 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
                     *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMaxSize).getInt();
                 srcBufferOptions.pageSize =
                     *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferPageSize).getInt();
+                srcBufferOptions.metricManager = _metricManager.get();
+                srcBufferOptions.metricLabels.push_back(
+                    std::make_pair(kTenantIdLabelKey, tenantId));
                 _sourceBufferManager =
                     std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
             }

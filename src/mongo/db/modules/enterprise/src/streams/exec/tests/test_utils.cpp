@@ -48,9 +48,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->memoryAggregator =
         memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
 
-    SourceBufferManager::Options srcBufferOptions;
-    context->sourceBufferManager =
-        std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
+    context->sourceBufferManager = std::make_shared<NoOpSourceBufferManager>();
 
     context->client = svcCtx->getService()->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());

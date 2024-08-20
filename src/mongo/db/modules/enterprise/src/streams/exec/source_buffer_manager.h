@@ -8,6 +8,7 @@
 #include "mongo/platform/rwmutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/concurrency/with_lock.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 
@@ -34,6 +35,10 @@ public:
         int64_t maxSourceBufferSize{160L * 1024 * 1024};
         // Byte size of a page. Memory is allocated to source buffers in units of pages.
         int32_t pageSize{4 * 1024 * 1024};
+        // MetricManager instance with which all the metrics are registered.
+        MetricManager* metricManager{nullptr};
+        // Labels to use for the metrics.
+        MetricManager::LabelsVec metricLabels;
     };
 
     // An entity that represents a buffer created in the source operator to hold input docs.
@@ -54,15 +59,15 @@ public:
 
     SourceBufferManager(Options options);
 
-    ~SourceBufferManager();
+    virtual ~SourceBufferManager();
 
     // Registers a source buffer with this class. The returned handle should be kept alive as long
     // as the caller intends to allocate memory for its source buffer.
-    SourceBufferHandle registerSourceBuffer();
+    virtual SourceBufferHandle registerSourceBuffer();
 
     // Deregisters a source buffer with this class. The source buffer should not have any memory
     // allocated to it when this method is called.
-    void deregisterSourceBuffer(SourceBuffer* sourceBuffer);
+    virtual void deregisterSourceBuffer(SourceBuffer* sourceBuffer);
 
     // Attempts to allocates a few pages for the given source buffer. Caller can also use this
     // method to simply report its current accurate memory usage and not allocate any pages.
@@ -72,11 +77,15 @@ public:
     // buffer.
     // 'numPages' specifies the number of pages to allocate for the given source buffer. Currently,
     // we only support 0 or 1 value for this param.
-    bool allocPages(SourceBuffer* sourceBuffer, int64_t curSize, int32_t numPages);
+    virtual bool allocPages(SourceBuffer* sourceBuffer, int64_t curSize, int32_t numPages);
 
     int32_t getPageSize() const {
         return _options.pageSize;
     }
+
+protected:
+    // Test-only constructor.
+    SourceBufferManager() = default;
 
 private:
     friend class SourceBufferManagerTest;
@@ -91,6 +100,9 @@ private:
         // slightly smaller or larger.
         int64_t size{0};
     };
+
+    // Registers metrics with the given MetricManager.
+    void registerMetrics();
 
     // Recomputes the values of _sourceBufferPreallocatedPages and _availablePages after any source
     // buffers are registered or deregistered.
@@ -108,6 +120,30 @@ private:
     // Number of pages preallocated to each source buffer.
     int32_t _sourceBufferPreallocatedPages{0};
     mongo::stdx::unordered_map<SourceBuffer*, std::shared_ptr<SourceBufferInfo>> _buffers;
+    // Exports the count of source buffers.
+    std::shared_ptr<IntGauge> _numSourceBuffersGauge;
+    // Exports the count of pages preallocated to each source buffer.
+    std::shared_ptr<IntGauge> _numPreallocatedPagesGauge;
+    // Exports the count of pages available for allocation beyond the preallocated pages.
+    std::shared_ptr<IntGauge> _numAvailablePagesGauge;
+};
+
+// No-op SourceBufferManager implementation for test-only purposes.
+class NoOpSourceBufferManager : public SourceBufferManager {
+public:
+    NoOpSourceBufferManager() : SourceBufferManager() {}
+
+    ~NoOpSourceBufferManager() override = default;
+
+    SourceBufferHandle registerSourceBuffer() override {
+        return SourceBufferHandle{};
+    }
+
+    void deregisterSourceBuffer(SourceBuffer* sourceBuffer) override {}
+
+    bool allocPages(SourceBuffer* sourceBuffer, int64_t curSize, int32_t numPages) override {
+        return true;
+    }
 };
 
 }  // namespace streams

@@ -44,8 +44,7 @@ public:
     std::unique_ptr<StreamManager> createStreamManager(StreamManager::Options options) {
         auto streamManager =
             std::make_unique<StreamManager>(getServiceContext(), std::move(options));
-        streamManager->_sourceBufferManager =
-            std::make_shared<SourceBufferManager>(SourceBufferManager::Options{});
+        streamManager->_sourceBufferManager = std::make_shared<NoOpSourceBufferManager>();
         return streamManager;
     }
 

@@ -23,11 +23,16 @@ void SourceBufferManager::SourceBufferDeleter::operator()(SourceBuffer* sourceBu
 
 SourceBufferManager::SourceBufferManager(Options options) : _options(std::move(options)) {
     uassert(mongo::ErrorCodes::InvalidOptions,
-            "bufferPreallocationFraction must be in the range [0, 1]",
+            "Options.bufferPreallocationFraction must be in the range [0, 1]",
             _options.bufferPreallocationFraction >= 0 && _options.bufferPreallocationFraction <= 1);
     uassert(mongo::ErrorCodes::InvalidOptions,
-            "maxSourceBufferSize must be >= pageSize",
+            "Options.maxSourceBufferSize must be >= pageSize",
             _options.maxSourceBufferSize >= _options.pageSize);
+    uassert(mongo::ErrorCodes::InvalidOptions,
+            "Options.metricManager must not be nullptr",
+            _options.metricManager);
+
+    registerMetrics();
 
     auto writeLock = _mutex.writeLock();
     recomputePreallocatedPages(writeLock);
@@ -38,6 +43,21 @@ SourceBufferManager::~SourceBufferManager() {
     uassert(mongo::ErrorCodes::InternalError, "_buffers is not empty", _buffers.empty());
 }
 
+void SourceBufferManager::registerMetrics() {
+    _numSourceBuffersGauge =
+        _options.metricManager->registerIntGauge("source_buffer_manager_num_source_buffers",
+                                                 "Number of source buffers",
+                                                 _options.metricLabels);
+    _numPreallocatedPagesGauge = _options.metricManager->registerIntGauge(
+        "source_buffer_manager_num_preallocated_pages",
+        "Number of pages preallocated to each source buffer",
+        _options.metricLabels);
+    _numAvailablePagesGauge = _options.metricManager->registerIntGauge(
+        "source_buffer_manager_num_available_pages",
+        "Number of pages available for allocation beyond the preallocated pages",
+        _options.metricLabels);
+}
+
 SourceBufferManager::SourceBufferHandle SourceBufferManager::registerSourceBuffer() {
     // Create a SourceBuffer instance while not holding _mutex so that when an exception is
     // thrown, the SourceBuffer instance goes out of scope and gets deregistered.
@@ -46,6 +66,7 @@ SourceBufferManager::SourceBufferHandle SourceBufferManager::registerSourceBuffe
         auto writeLock = _mutex.writeLock();
         auto [it, inserted] = _buffers.emplace(handle.get(), std::make_shared<SourceBufferInfo>());
         dassert(inserted);
+        _numSourceBuffersGauge->set(_buffers.size());
 
         // Now that there is one more source buffer, recompute the number of pages preallocated to
         // each source buffer.
@@ -69,6 +90,7 @@ void SourceBufferManager::deregisterSourceBuffer(SourceBufferManager::SourceBuff
                 bufferInfo->size == 0);
     }
     _buffers.erase(it);
+    _numSourceBuffersGauge->set(_buffers.size());
 
     // Now that there is one less source buffer, recompute the number of pages preallocated to each
     // source buffer.
@@ -83,6 +105,8 @@ bool SourceBufferManager::allocPages(SourceBufferManager::SourceBuffer* sourceBu
     uassert(mongo::ErrorCodes::InternalError,
             str::stream() << "Unexpected numPages value: " << numPages,
             numPages == 0 || numPages == 1);
+
+    ScopeGuard guard([&] { _numAvailablePagesGauge->set(_availablePages.load()); });
 
     auto readLock = _mutex.readLock();
     auto it = _buffers.find(sourceBuffer);
@@ -171,6 +195,9 @@ void SourceBufferManager::recomputePreallocatedPages(const mongo::WriteRarelyRWM
             _availablePages.subtractAndFetch(pagesAllocated);
         }
     }
+
+    _numPreallocatedPagesGauge->set(_sourceBufferPreallocatedPages);
+    _numAvailablePagesGauge->set(_availablePages.load());
 }
 
 int32_t SourceBufferManager::toPages(int64_t bytes) const {
