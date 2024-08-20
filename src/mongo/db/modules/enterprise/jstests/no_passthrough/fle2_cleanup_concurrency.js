@@ -8,6 +8,8 @@
 
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 const dbName = 'fle2_cleanup_concurrency';
 const collName = "basic";

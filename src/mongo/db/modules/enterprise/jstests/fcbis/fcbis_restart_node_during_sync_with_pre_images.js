@@ -13,6 +13,7 @@ import {
 } from "jstests/libs/change_stream_util.js";
 import {assertDropAndRecreateCollection} from "jstests/libs/collection_drop_recreate.js";
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 const rst = new ReplSetTest({

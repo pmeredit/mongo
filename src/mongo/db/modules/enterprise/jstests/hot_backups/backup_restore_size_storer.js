@@ -14,6 +14,7 @@ import {
     getBackupCursorMetadata,
     openBackupCursor,
 } from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 // When opening a backup cursor, only checkpointed data is backed up. However, the most up-to-date
 // size storer information is used. Thus the fast count may be inaccurate.

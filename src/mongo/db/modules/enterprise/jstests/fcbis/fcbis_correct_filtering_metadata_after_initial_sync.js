@@ -7,6 +7,7 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {ShardingStateTest} from "jstests/sharding/libs/sharding_state_test.js";
 
 const st = new ShardingTest({config: 1, shards: {rs0: {nodes: 1}, rs1: {nodes: 2}}, mongos: 2});

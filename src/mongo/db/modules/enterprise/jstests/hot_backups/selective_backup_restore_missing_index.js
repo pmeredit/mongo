@@ -8,6 +8,7 @@
  */
 import {getUriForIndex, startMongodOnExistingPath} from "jstests/disk/libs/wt_file_helper.js";
 import {backupData} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 

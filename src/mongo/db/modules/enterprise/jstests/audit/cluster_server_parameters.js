@@ -17,6 +17,8 @@
 
 import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+
 const expectedGetSingleClusterParameterAudit = {
     requestedClusterServerParameters: "changeStreamOptions",
 };

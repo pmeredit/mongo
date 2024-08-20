@@ -7,6 +7,7 @@
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 const dbName = 'fle2_cleanup_coordinator';
 const collName = "basic";

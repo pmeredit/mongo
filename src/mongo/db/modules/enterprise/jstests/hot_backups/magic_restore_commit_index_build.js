@@ -9,6 +9,7 @@
  * ]
  */
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.

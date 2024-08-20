@@ -1,5 +1,6 @@
 // Verify {create,update,remove}{User,Role} via direct table manipulation is sent to audit log
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {AuditSpooler} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 print("START audit-crud-user-role-direct.js");

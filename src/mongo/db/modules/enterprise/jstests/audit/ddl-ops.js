@@ -1,5 +1,6 @@
 // Verify that DDL operations are correctly attributed to the initiating user.
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 import {AuditSpooler} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 

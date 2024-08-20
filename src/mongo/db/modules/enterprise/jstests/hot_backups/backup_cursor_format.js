@@ -28,6 +28,7 @@
  * ]
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const rst = new ReplSetTest({
     nodes: [

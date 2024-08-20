@@ -21,7 +21,7 @@ let checkAuditLog = function(audit) {
 };
 
 const st = MongoRunner.runShardedClusterAuditLogger(
-    {}, {setParameter: "auditAuthorizationSuccess=true", auth: null});
+    {}, {setParameter: {auditAuthorizationSuccess: true}, auth: null});
 const auditMongos = st.s0.auditSpooler();
 
 const auditShard = st.rs0.nodes[0].auditSpooler();

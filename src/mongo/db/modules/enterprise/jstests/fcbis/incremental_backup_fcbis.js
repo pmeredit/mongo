@@ -9,6 +9,7 @@
  */
 
 import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const db1Name = "incremental_backup1";
 const db2Name = "incremental_backup2";

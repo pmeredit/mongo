@@ -7,6 +7,7 @@
 
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {Thread} from "jstests/libs/parallelTester.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {setLogVerbosity} from "jstests/replsets/rslib.js";
 
 TestData.skipEnforceFastCountOnValidate = true;

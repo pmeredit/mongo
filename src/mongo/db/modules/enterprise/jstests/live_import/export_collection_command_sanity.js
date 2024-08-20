@@ -10,6 +10,8 @@
  * ]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+
 const collName = "foo";
 
 function testStandalone() {

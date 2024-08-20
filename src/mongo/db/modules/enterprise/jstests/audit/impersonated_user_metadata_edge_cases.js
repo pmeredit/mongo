@@ -1,5 +1,8 @@
 // Check processing of ImpersonatedUserMetadata
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
+
 const kInvalidValueExpectedObject = 10065;
 
 const kUserTestCases = [

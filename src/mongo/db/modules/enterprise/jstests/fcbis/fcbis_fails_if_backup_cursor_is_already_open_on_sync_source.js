@@ -5,6 +5,7 @@
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 const testName = "fcbis_fails_if_backup_cursor_is_already_open_on_sync_source";

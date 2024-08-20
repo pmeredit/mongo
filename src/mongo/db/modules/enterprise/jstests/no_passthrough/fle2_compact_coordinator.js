@@ -3,6 +3,7 @@
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 const dbName = 'txn_compact_coordinator';
 const collName = "basic";

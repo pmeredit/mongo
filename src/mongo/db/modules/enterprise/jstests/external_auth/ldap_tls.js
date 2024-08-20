@@ -5,6 +5,7 @@
  */
 
 import {isRHEL8} from "jstests/libs/os_helpers.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     defaultPwd,
     defaultUserDNSuffix,

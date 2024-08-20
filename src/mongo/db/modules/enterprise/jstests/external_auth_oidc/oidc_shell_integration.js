@@ -2,6 +2,7 @@
 // MongoURIs, the db.auth() shell wrapper method, and from the shell's command line.
 // @tags: [ requires_fcv_70 ]
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
     OIDCKeyServer

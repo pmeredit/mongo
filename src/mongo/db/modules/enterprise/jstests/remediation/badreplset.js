@@ -9,6 +9,7 @@
  * be run from evergreen.
  */
 import {Thread} from "jstests/libs/parallelTester.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 function writeLoadFunc(host, dbName, collName, shutdownLatch) {
     const nodeDB = new Mongo(host).getDB(dbName);

@@ -8,8 +8,9 @@
  * ]
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
-const rst = ReplSetTest({
+const rst = new ReplSetTest({
     nodes: 1,
     nodeOptions: {
         setParameter:

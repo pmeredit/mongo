@@ -5,6 +5,7 @@
  *  tsan_incompatible,
  * ]
  */
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     getStats,

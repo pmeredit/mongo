@@ -8,6 +8,7 @@
  * ]
  */
 import {isSUSE15SP1} from "jstests/libs/os_helpers.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {supportsFIPS} from "jstests/ssl/libs/ssl_helpers.js";
 
 // Disable test on SLES 15 SP1 because of buggy FIPS support

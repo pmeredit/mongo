@@ -1,5 +1,7 @@
 // Some library functions for LDAP authorization jstests
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     MockLDAPServer,
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";

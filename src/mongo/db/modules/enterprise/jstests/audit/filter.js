@@ -55,7 +55,7 @@ const runTest = function(audit, db, admin) {
     const m = MongoRunner.runMongodAuditLogger({
         auth: "",
         auditFilter: '{atype: "authCheck", "param.command": {$in: ["find", "insert"]}}',
-        setParameter: "auditAuthorizationSuccess=true"
+        setParameter: {auditAuthorizationSuccess: true}
     });
     const audit = m.auditSpooler();
     const db = m.getDB("test");
@@ -69,7 +69,7 @@ const runTest = function(audit, db, admin) {
 {
     const st = MongoRunner.runShardedClusterAuditLogger({}, {
         auditFilter: '{atype: "authCheck", "param.command": {$in: ["find", "insert"]}}',
-        setParameter: "auditAuthorizationSuccess=true",
+        setParameter: {auditAuthorizationSuccess: true},
         auth: null,
     });
     const auditMongos = st.s0.auditSpooler();

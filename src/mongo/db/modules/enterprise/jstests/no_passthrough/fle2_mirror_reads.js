@@ -1,6 +1,8 @@
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 const dbName = "testdb";
 const collName = "basic";

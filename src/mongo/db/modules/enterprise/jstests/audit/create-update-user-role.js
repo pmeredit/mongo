@@ -293,7 +293,7 @@ let checkAuditDB = function(audit) {
 {
     jsTest.log("START audit-create-update-user-role.js for mongos on Sharded Cluster");
     const st = MongoRunner.runShardedClusterAuditLogger(
-        {}, {setParameter: "auditAuthorizationSuccess=true"});
+        {}, {setParameter: {auditAuthorizationSuccess: true}});
     const auditMongos = st.s0.auditSpooler();
     const auditConfig = st.configRS.nodes[0].auditSpooler();
     const db = st.s0.getDB("test");

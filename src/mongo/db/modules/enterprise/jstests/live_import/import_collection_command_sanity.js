@@ -9,6 +9,8 @@
  * ]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     exportCollection
 } from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";

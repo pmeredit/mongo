@@ -12,6 +12,7 @@
  * ]
  */
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {ShardingStateTest} from "jstests/sharding/libs/sharding_state_test.js";
 
 TestData.skipEnforceFastCountOnValidate = true;

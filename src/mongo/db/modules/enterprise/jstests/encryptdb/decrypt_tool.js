@@ -12,6 +12,7 @@
 
 import {arrayEq} from "jstests/aggregation/extras/utils.js";
 import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {checkRollbackFiles} from "jstests/replsets/libs/rollback_files.js";
 import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";

@@ -2,6 +2,7 @@
  * Tests that the server chases LDAP referrals seamlessly.
  */
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     authAndVerify,
     setupTest

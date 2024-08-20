@@ -9,6 +9,7 @@
  * ]
  */
 import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 TestData.skipEnforceFastCountOnValidate = true;

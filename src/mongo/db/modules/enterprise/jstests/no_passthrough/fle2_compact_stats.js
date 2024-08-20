@@ -7,6 +7,8 @@
  */
 import {isMongos} from "jstests/concurrency/fsm_workload_helpers/server_types.js";
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 function insertInitialTestData(client, coll) {
     // Populate the EDC with sample data (6 unique values for "first")

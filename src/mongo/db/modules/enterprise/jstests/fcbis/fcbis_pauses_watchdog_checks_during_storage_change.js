@@ -6,6 +6,7 @@
  * @tags: [requires_fcv_61, requires_persistence, requires_wiredtiger]
  */
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 // Get the current watchdog check generation
 function getWatchDogCheckGeneration(node) {

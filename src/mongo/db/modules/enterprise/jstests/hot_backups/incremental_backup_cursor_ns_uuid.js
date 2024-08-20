@@ -9,6 +9,7 @@
  */
 
 import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 function checkBackup(backupCursor) {
     // Print the metadata document.

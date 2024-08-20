@@ -4,6 +4,8 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+
 TestData.skipEnforceFastCountOnValidate = true;
 const testName = "fallback_to_logical_initial_sync";
 const rst = new ReplSetTest({

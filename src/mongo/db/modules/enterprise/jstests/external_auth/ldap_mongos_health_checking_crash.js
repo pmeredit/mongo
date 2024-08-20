@@ -3,6 +3,7 @@
  * enabled and set to critical and the LDAP server is inaccessible.
  */
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     MockLDAPServer
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";

@@ -13,6 +13,7 @@ import {
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
 import {runCommandWithSecurityToken} from "jstests/libs/multitenancy_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const rst =
     new ReplSetTest({nodes: 3, nodeOptions: {auth: '', setParameter: {multitenancySupport: true}}});

@@ -13,6 +13,7 @@
 
 import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {

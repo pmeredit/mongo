@@ -1,6 +1,7 @@
 // Test basic option parsing and key loading for OIDC.
 // @tags: [ requires_fcv_70 ]
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
     OIDCgenerateBSON,

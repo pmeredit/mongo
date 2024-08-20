@@ -10,6 +10,7 @@
  * ]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     assertCollectionExists,
     copyFilesForExport,

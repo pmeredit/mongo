@@ -10,6 +10,7 @@
  */
 import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
 import {getPython3Binary} from "jstests/libs/python.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const dbName = "crud";
 

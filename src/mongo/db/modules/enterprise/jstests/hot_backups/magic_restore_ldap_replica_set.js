@@ -8,6 +8,7 @@
  */
 
 import {MagicRestoreUtils} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     authAndVerify,
     defaultPwd,

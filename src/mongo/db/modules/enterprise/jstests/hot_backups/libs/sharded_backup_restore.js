@@ -46,6 +46,9 @@ import {
     startHeartbeatThread,
 } from "jstests/libs/backup_utils.js";
 import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
+import {findChunksUtil} from "jstests/sharding/libs/find_chunks_util.js";
 import {
     openIncrementalBackupCursor
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
@@ -1434,7 +1437,6 @@ export var NoopWorker = function() {
     this.teardown = function() {};
 };
 
-import {findChunksUtil} from "jstests/sharding/libs/find_chunks_util.js";
 export var ChunkMigrator = function() {
     this.setup = function() {};
 

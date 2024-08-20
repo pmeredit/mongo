@@ -7,6 +7,8 @@
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 async function bgInsertFunc(doc) {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");

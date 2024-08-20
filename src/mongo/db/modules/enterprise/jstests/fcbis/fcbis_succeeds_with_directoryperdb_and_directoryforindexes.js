@@ -2,6 +2,8 @@
  * Tests that FCBIS succeeds with directoryperdb and wiredTigerDirectoryForIndexes set.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+
 function runTest(options) {
     jsTestLog("Running test with " + tojson(options));
 

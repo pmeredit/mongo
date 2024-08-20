@@ -9,6 +9,7 @@
  *   requires_wiredtiger,
  * ]
  */
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     copyFilesForExport,
     exportCollection,

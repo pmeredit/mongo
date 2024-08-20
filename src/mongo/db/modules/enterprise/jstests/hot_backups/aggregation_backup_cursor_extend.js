@@ -6,6 +6,7 @@
 
 import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const backupIdNotExist = UUID();
 const binData = BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAA");

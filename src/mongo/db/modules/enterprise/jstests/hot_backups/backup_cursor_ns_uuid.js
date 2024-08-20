@@ -9,6 +9,7 @@
  */
 
 import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 function runTest(nodeOptionsArg) {
     jsTestLog("runTest( nodeOptions: " + tojson(nodeOptionsArg) + " )");

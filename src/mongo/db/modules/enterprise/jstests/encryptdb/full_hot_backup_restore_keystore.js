@@ -11,6 +11,7 @@
  * database will be assigned a new key in the KeyStore when its creation is replayed.
  */
 import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     platformSupportsGCM
 } from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";

@@ -1,6 +1,7 @@
 // Invocations of {setAuditConfig: ...} with audit config cluster parameter
 // @tags: [requires_fcv_71, requires_persistence]
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {makeAuditOpts} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 import {
     assertSameTimestamp,

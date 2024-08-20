@@ -1,5 +1,8 @@
 // Helper library for testing auditing infrastructure in Mongod
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
+
 /**
  * Parses a JSON filled audit file, and provides an interface for making assertions
  * about the audit events a server emitted into it.

@@ -28,6 +28,7 @@ import {
     consumeBackupCursor,
     endBackup
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();

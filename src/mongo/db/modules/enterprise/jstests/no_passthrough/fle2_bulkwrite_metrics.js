@@ -6,6 +6,8 @@
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {BulkWriteMetricChecker} from "jstests/libs/bulk_write_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 function runTest(isMongos, cluster, bulkWrite, retryCount) {
     // We are ok with the randomness here since we clearly log the state.

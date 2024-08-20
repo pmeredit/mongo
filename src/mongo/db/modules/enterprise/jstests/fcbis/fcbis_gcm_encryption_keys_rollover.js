@@ -4,6 +4,7 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     platformSupportsGCM
 } from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";

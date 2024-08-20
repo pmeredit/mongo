@@ -10,6 +10,7 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {checkWriteConcernTimedOut} from "jstests/libs/write_concern_util.js";
 import {reconfig} from "jstests/replsets/rslib.js";
 

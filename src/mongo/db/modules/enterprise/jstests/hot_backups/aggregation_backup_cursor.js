@@ -4,6 +4,7 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     validateReplicaSetBackupCursor
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js";

@@ -4,6 +4,8 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+
 TestData.skipEnforceFastCountOnValidate = true;
 const rst = new ReplSetTest({
     nodes: [{}, {rsConfig: {priority: 0}}],

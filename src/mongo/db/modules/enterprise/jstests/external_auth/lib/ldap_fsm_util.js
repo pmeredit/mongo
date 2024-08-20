@@ -5,6 +5,7 @@
  */
 
 import {fsm} from "jstests/concurrency/fsm_libs/fsm.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     defaultUserDNSuffix,
     LDAPTestConfigGenerator,

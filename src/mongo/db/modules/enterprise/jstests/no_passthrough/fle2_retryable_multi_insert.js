@@ -11,6 +11,8 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 function countOplogEntries(primaryConn) {
     var oplog = primaryConn.getDB('local').oplog.rs;

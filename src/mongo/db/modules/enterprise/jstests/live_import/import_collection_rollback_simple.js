@@ -10,6 +10,7 @@
  * ]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
 import {
     assertCollectionExists,

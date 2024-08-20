@@ -11,6 +11,7 @@
  */
 
 import {TimeseriesTest} from "jstests/core/timeseries/libs/timeseries.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     assertCollectionExists,
     copyFilesForExport

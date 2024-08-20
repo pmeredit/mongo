@@ -10,6 +10,7 @@
  *
  */
 import {getPython3Binary} from "jstests/libs/python.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const strategyNames = [
     "majority",

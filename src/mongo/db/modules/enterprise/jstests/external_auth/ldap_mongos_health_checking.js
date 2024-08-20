@@ -6,6 +6,7 @@
  * LDAP health checks when the LDAP server is flaky.
  */
 
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {
     MockLDAPServer
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";

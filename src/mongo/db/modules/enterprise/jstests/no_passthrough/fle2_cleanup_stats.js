@@ -10,6 +10,8 @@ import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 import {
     QEStateCollectionStatsTracker
 } from "jstests/fle2/libs/qe_state_collection_stats_tracker.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 function insertInitialTestData(client, coll, tracker) {
     let nEdc = 0;

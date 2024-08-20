@@ -10,6 +10,7 @@ import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {waitForCurOpByFilter} from "jstests/libs/curop_helpers.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 import {findMatchingLogLine} from "jstests/libs/log.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const COMMENT_STR = "op_to_kill";
 

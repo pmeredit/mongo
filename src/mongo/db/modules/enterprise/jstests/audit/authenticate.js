@@ -374,7 +374,7 @@ runTestMongod({
 // Be specific about the mechanism in case the default changes
 runTestMongos({
     options: {
-        setParameter: "authenticationMechanisms=SCRAM-SHA-1",
+        setParameter: {authenticationMechanisms: "SCRAM-SHA-1"},
     },
     func: function({conn, audit}) {
         checkScram({authmech: "SCRAM-SHA-1", conn: conn, audit: audit});
@@ -383,7 +383,7 @@ runTestMongos({
 
 runTestMongos({
     options: {
-        setParameter: "authenticationMechanisms=SCRAM-SHA-256",
+        setParameter: {authenticationMechanisms: "SCRAM-SHA-256"},
     },
     func: function({conn, audit}) {
         checkScram({authmech: "SCRAM-SHA-256", conn: conn, audit: audit});
@@ -392,7 +392,7 @@ runTestMongos({
 
 runTestMongos({
     options: Object.merge(x509_options, {
-        setParameter: "authenticationMechanisms=MONGODB-X509",
+        setParameter: {authenticationMechanisms: "MONGODB-X509"},
     }),
     func: function({conn, audit}) {
         checkX509({conn: conn, audit: audit});

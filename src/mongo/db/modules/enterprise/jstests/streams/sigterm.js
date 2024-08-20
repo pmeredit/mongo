@@ -6,6 +6,7 @@
  *  featureFlagStreams,
  * ]
  */
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 

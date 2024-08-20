@@ -13,6 +13,7 @@
 
 // TODO SERVER-81069: Remove this test as it is unnecessary.
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     killPyKMIPServer,
     startPyKMIPServer

@@ -9,6 +9,7 @@
  * ]
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 // We are intentionally crashing the server, the fast count may be inaccurate.
 TestData.skipEnforceFastCountOnValidate = true;

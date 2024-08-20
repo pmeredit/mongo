@@ -4,6 +4,8 @@
  * @tags: [requires_fcv_60, requires_persistence, requires_wiredtiger]
  */
 
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+
 TestData.skipEnforceFastCountOnValidate = true;
 const testName = TestData.testName;
 const rst = new ReplSetTest({

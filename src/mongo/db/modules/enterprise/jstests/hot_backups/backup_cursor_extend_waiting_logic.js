@@ -16,6 +16,8 @@ import {
     getBackupCursorDB,
     openBackupCursor,
 } from "jstests/libs/backup_utils.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {restartServerReplication, stopServerReplication} from "jstests/libs/write_concern_util.js";
 
 const DEBUG = false;

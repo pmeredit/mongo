@@ -3,6 +3,7 @@
 import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     assertSameOID,
     kDefaultDirectConfig
