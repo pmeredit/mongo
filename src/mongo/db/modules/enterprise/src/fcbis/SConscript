@@ -60,7 +60,6 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/db/auth/authmocks",
         "$BUILD_DIR/mongo/db/index_builds_coordinator_mongod",
-        "$BUILD_DIR/mongo/db/modules/enterprise/src/hot_backups/backup_cqf_utils",
         "$BUILD_DIR/mongo/db/repl/cloner_test_fixtures",
         "$BUILD_DIR/mongo/db/repl/data_replicator_external_state_mock",
         "$BUILD_DIR/mongo/db/repl/repl_server_parameters",
