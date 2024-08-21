@@ -550,6 +550,7 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
         internalOptions.consumerGroupId =
             fmt::format("asp-{}-consumer", _context->streamProcessorId);
     }
+    _context->kafkaConsumerGroup = internalOptions.consumerGroupId;
 
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;

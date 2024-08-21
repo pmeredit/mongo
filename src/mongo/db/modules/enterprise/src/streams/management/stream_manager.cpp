@@ -1294,7 +1294,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
 
     if (verbose) {
         // If this stream processor is using a kafka source, include the kafka source's partition
-        // states.
+        // states and consumer group id.
         auto kafkaConsumerPartitionStates =
             processorInfo->executor->getKafkaConsumerPartitionStates();
         if (!kafkaConsumerPartitionStates.empty()) {
@@ -1317,6 +1317,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
             }
             reply.setKafkaPartitions(std::move(partitionStatesReply));
             reply.setKafkaTotalOffsetLag(kafkaTotalOffsetLag);
+            reply.setKafkaConsumerGroup(processorInfo->context->kafkaConsumerGroup);
         }
 
         const auto& [changeStreamState, changeStreamLag] =

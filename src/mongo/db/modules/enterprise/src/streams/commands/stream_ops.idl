@@ -203,6 +203,10 @@ structs:
                 description: watermark timestamp.
                 type: date
                 optional: true
+            kafkaConsumerGroup:
+                description: ID of the Kafka consumer group.
+                type: string
+                optional: true
             kafkaPartitions:
                 description: >
                     Only applicable to stream processors using a kafka source. This contains the current state of each

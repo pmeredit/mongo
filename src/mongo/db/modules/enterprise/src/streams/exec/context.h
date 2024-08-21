@@ -32,6 +32,7 @@ struct Context {
     std::string streamName;
     boost::optional<std::string> instanceName;
     std::string streamProcessorId;
+    boost::optional<std::string> kafkaConsumerGroup;
     mongo::stdx::unordered_map<std::string, mongo::Connection> connections;
     std::string clientName;
     mongo::ServiceContext::UniqueClient client;

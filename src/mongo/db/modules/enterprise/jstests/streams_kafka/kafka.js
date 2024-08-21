@@ -390,10 +390,16 @@ function mongoToKafkaToMongo({
         }
 
         // Verify that KafkaConsumerOperator is reporting non-zero maxMemoryUsage.
-        let statsResult = getStats(kafkaToMongoName);
-        const sourceStats = statsResult.operatorStats[0];
-        assert.eq('KafkaConsumerOperator', sourceStats.name);
-        assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
+        const kafkaToMongoStatsResult = getStats(kafkaToMongoName);
+        const kafkaSourceStats = kafkaToMongoStatsResult.operatorStats[0];
+        assert.eq('KafkaConsumerOperator', kafkaSourceStats.name);
+        assert.gt(kafkaSourceStats.maxMemoryUsage, 1000, kafkaToMongoStatsResult);
+
+        // Verify that kafkaConsumerGroup is empty for the mongoToKafka stream processor
+        const mongoToKafkaStatsResult = getStats(mongoToKafkaName);
+        const mongoSourceStats = mongoToKafkaStatsResult.operatorStats[0];
+        assert.eq(undefined, mongoSourceStats["kafkaConsumerGroup"]);
+        assert.eq('ChangeStreamConsumerOperator', mongoSourceStats.name);
     }
 
     // Stop the streamProcessors.
@@ -808,6 +814,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         jsTestLog(stats);
         assert.neq(undefined, stats["kafkaPartitions"]);
         assert.eq(1, stats["kafkaPartitions"].length);
+        assert.eq(consumerGroupId, stats["kafkaConsumerGroup"]);
 
         assert.eq(0, stats["kafkaPartitions"][0]["partition"]);
         assert.eq(input.length + numDocsBeforeStop, stats["kafkaPartitions"][0]["currentOffset"]);
