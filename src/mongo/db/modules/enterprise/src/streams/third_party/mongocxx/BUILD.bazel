@@ -1,0 +1,82 @@
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(
+    glob([
+        "*.h",
+        "*.cpp",
+    ]),
+)
+
+MONGOCXX_LOCAL_DEFINES = [
+    "MONGOC_COMPILATION",
+]
+
+MONGOCXX_TARGET_COMPATIBILITY = select({
+    "//bazel/config:linux_aarch64": [],
+    "//bazel/config:linux_x86_64": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+# TODO(SERVER-76494): Switch -isystem to -I once clang-tidy support exclusion of header paths
+MONGOCXX_COPTS = [
+    # Source file include path
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist",
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc",
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc/common",
+    # To support #include <bson.h> in mongoc source
+    "-isystemsrc/third_party/libbson/dist/src/libbson/src/bson",
+] + select({
+    # Platform specific source file include path
+    # TODO https://jira.mongodb.org/browse/SERVER-74961: Support other platforms.
+    "@platforms//cpu:x86_64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64",
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64/mongoc",
+    ],
+    "@platforms//cpu:aarch64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64",
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64/mongoc",
+    ],
+    "//conditions:default": [],
+}) + [
+    "-Wno-implicit-fallthrough",
+    "-Wno-sign-compare",
+] + select({
+    "@platforms//os:windows": [],
+    "//conditions:default": ["-Wno-deprecated"],
+})
+
+mongo_cc_library(
+    name = "bsoncxx",
+    srcs = [
+        "dist/bsoncxx/array/element.cpp",
+        "dist/bsoncxx/array/value.cpp",
+        "dist/bsoncxx/array/view.cpp",
+        "dist/bsoncxx/builder/core.cpp",
+        "dist/bsoncxx/decimal128.cpp",
+        "dist/bsoncxx/document/element.cpp",
+        "dist/bsoncxx/document/value.cpp",
+        "dist/bsoncxx/document/view.cpp",
+        "dist/bsoncxx/exception/error_code.cpp",
+        "dist/bsoncxx/json.cpp",
+        "dist/bsoncxx/oid.cpp",
+        "dist/bsoncxx/private/itoa.cpp",
+        "dist/bsoncxx/string/view_or_value.cpp",
+        "dist/bsoncxx/types.cpp",
+        "dist/bsoncxx/types/bson_value/value.cpp",
+        "dist/bsoncxx/types/bson_value/view.cpp",
+        "dist/bsoncxx/validate.cpp",
+    ] + glob([
+        "**/*.h",
+        "**/*.hpp",
+        "**/*.hh",
+    ]),
+    copts = MONGOCXX_COPTS,
+    local_defines = MONGOCXX_LOCAL_DEFINES,
+    target_compatible_with = MONGOCXX_TARGET_COMPATIBILITY,
+    deps = [
+        "//src/mongo/util:boost_assert_shim",
+        "//src/third_party/libbson:bson",
+    ],
+)

@@ -234,33 +234,6 @@ env.Library(
 )
 
 env.Library(
-    target="bsoncxx",
-    source=[
-        "dist/bsoncxx/array/element.cpp",
-        "dist/bsoncxx/array/value.cpp",
-        "dist/bsoncxx/array/view.cpp",
-        "dist/bsoncxx/builder/core.cpp",
-        "dist/bsoncxx/decimal128.cpp",
-        "dist/bsoncxx/document/element.cpp",
-        "dist/bsoncxx/document/value.cpp",
-        "dist/bsoncxx/document/view.cpp",
-        "dist/bsoncxx/exception/error_code.cpp",
-        "dist/bsoncxx/json.cpp",
-        "dist/bsoncxx/oid.cpp",
-        "dist/bsoncxx/private/itoa.cpp",
-        "dist/bsoncxx/string/view_or_value.cpp",
-        "dist/bsoncxx/types.cpp",
-        "dist/bsoncxx/types/bson_value/value.cpp",
-        "dist/bsoncxx/types/bson_value/view.cpp",
-        "dist/bsoncxx/validate.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/util/boost_assert_shim",
-        "$BUILD_DIR/third_party/libbson/bson",
-    ],
-)
-
-env.Library(
     target="mongocxx",
     source=[
         "dist/mongocxx/bulk_write.cpp",
