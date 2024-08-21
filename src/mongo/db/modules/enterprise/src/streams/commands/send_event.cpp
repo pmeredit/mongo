@@ -38,8 +38,7 @@ public:
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            streamManager->sendEvent(requestParams);
-            return Reply{};
+            return streamManager->sendEvent(requestParams);
         }
 
     private:

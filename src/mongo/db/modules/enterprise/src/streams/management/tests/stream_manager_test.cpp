@@ -241,7 +241,10 @@ public:
                 try {
                     fmt::print("Notifying checkpoint flush {}",
                                cmd.getCheckpointFlushedEvent()->getCheckpointId());
-                    manager->sendEvent(std::move(cmd));
+                    auto reply = manager->sendEvent(std::move(cmd));
+                    ASSERT(reply.getCheckpointFlushedEventReply());
+                    // Assert the verbose stats exist in the reply.
+                    ASSERT(reply.getCheckpointFlushedEventReply()->getStats().getOperatorStats());
                 } catch (const DBException& e) {
                     // StreamProcessorDoesNotExist is allowed to happen because the processor might
                     // have already stopped.

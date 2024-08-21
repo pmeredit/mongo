@@ -339,9 +339,22 @@ structs:
         description: "Response message for UpdateFeatureFlagsCommand."
         is_command_reply: true
 
+    CheckpointFlushedReply:
+        description: "Response message for SendEventCommand's for checkpoint flush events."
+        strict: false
+        fields:
+            stats:
+                description: "The stats for the processor during the sendEvent call. Set in response to checkpoint flush sendEvent calls."
+                type: GetStatsReply
+
     SendEventReply:
         description: "Response message for SendEventCommand."
         is_command_reply: true
+        fields:
+            checkpointFlushedEventReply:
+                description: "Reply to a checkpointFlushedEvent."
+                type: CheckpointFlushedReply
+                optional: true
 
     GetFeatureFlagsReply:
         description: "Response message for GetFeatureFlagsCommand."

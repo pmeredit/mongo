@@ -1565,7 +1565,7 @@ void StreamManager::stopAllStreamProcessors() {
     }
 }
 
-void StreamManager::sendEvent(const mongo::SendEventCommand& request) {
+mongo::SendEventReply StreamManager::sendEvent(const mongo::SendEventCommand& request) {
     uassert(mongo::ErrorCodes::InternalError,
             "Expected checkpointFlushed command",
             request.getCheckpointFlushedEvent());
@@ -1595,9 +1595,22 @@ void StreamManager::sendEvent(const mongo::SendEventCommand& request) {
             fmt::format("streamProcessor with ID {} does not have checkpoint storage",
                         request.getProcessorId()),
             it->second->context->checkpointStorage);
-    // Hold the StreamManager mutex while calling this (to protect against a concurrent stop).
+
+    // Hold the StreamManager mutex while calling checkpoint flush and getStats (to protect against
+    // a concurrent stop).
+
     it->second->executor->onCheckpointFlushed(
         request.getCheckpointFlushedEvent()->getCheckpointId());
+
+    mongo::GetStatsCommand cmd;
+    cmd.setVerbose(true);
+    cmd.setTenantId(request.getTenantId());
+    cmd.setProcessorId(request.getProcessorId());
+    cmd.setName(it->second->context->streamName);
+    auto stats = getStats(lk, cmd, it->second.get());
+    SendEventReply reply;
+    reply.setCheckpointFlushedEventReply(CheckpointFlushedReply{std::move(stats)});
+    return reply;
 }
 
 }  // namespace streams
