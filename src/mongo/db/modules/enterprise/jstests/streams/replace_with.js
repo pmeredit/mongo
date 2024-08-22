@@ -103,9 +103,8 @@ const doc = {
 // tests are from documentation onsite for $replaceWith
 const replaceWithFuncProject = function testReplaceWithProject(
     docs, replaceWithString, expectedResults) {
-    const pipeline = [{$project: replaceWithString}];
     runStreamProcessorOperatorTest({
-        pipeline: [{$replaceWith: replaceWithString}, {$project: {_id: 1}}],
+        pipeline: [{$replaceWith: replaceWithString}, {$project: {b: 1}}],
         spName: spName,
         verifyAction: () => {
             insertDocs(spName, docs);
@@ -119,6 +118,6 @@ const replaceWithFuncProject = function testReplaceWithProject(
 };
 
 // large document replaceWith test
-replaceWithFuncProject([doc], "$a", []);
+replaceWithFuncProject([doc], "$a", [{b: doc["a"]["b"]}]);
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
