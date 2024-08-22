@@ -678,6 +678,12 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, -1);
 
+    // Make sure partition watermarks are initialized correctly
+    auto partitionStates = _source->getPartitionStates();
+    ASSERT_EQUALS(partitionStates.at(0).watermark, -1);
+    ASSERT_EQUALS(partitionStates.at(1).watermark, -1);
+    ASSERT_EQUALS(partitionStates.at(2).watermark, -1);
+
     // Consume 5 docs each for the first two partitions.
     std::vector<std::vector<int64_t>> partitionOffsets = {
         /* p0 */ {1, 2}, /* p1 */ {1, 2, 3, 4, 5}, /* p2 */ {1, 2, 3}};
@@ -698,6 +704,12 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, 20);
 
+    // Make sure partition watermarks are correct
+    partitionStates = _source->getPartitionStates();
+    ASSERT_EQUALS(partitionStates.at(0).watermark, 20);
+    ASSERT_EQUALS(partitionStates.at(1).watermark, 24);
+    ASSERT_EQUALS(partitionStates.at(2).watermark, 23);
+
     // p0 and p1 watermark should pass p2 watermark, so p2 should be at the front of
     // the heap now.
     partitionOffsets = {/* p0 */ {3, 4}, /* p1 */ {6, 7}, /* p2 */ {}};
@@ -716,6 +728,12 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     ASSERT_EQUALS(createWatermarkControlMsg(23),  // 24 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, 23);
+
+    // Make sure partition watermarks are correct
+    partitionStates = _source->getPartitionStates();
+    ASSERT_EQUALS(partitionStates.at(0).watermark, 40);
+    ASSERT_EQUALS(partitionStates.at(1).watermark, 35);
+    ASSERT_EQUALS(partitionStates.at(2).watermark, 23);
 
     // p0 and p1 have documents available, but p2 does not. Even though p2 has the lowest
     // watermark, since it has no documents, p0 and p1 should be processed even though
@@ -738,6 +756,12 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     ASSERT_EQUALS(createWatermarkControlMsg(34), getCombinedWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, 34);
 
+    // Make sure partition watermarks are correct
+    partitionStates = _source->getPartitionStates();
+    ASSERT_EQUALS(partitionStates.at(0).watermark, 42);
+    ASSERT_EQUALS(partitionStates.at(1).watermark, 37);
+    ASSERT_EQUALS(partitionStates.at(2).watermark, 34);
+
     // Force partition 2 to go idle.
     auto& p2 = getConsumerInfo(2);
     p2.watermarkGenerator->setIdle();
@@ -756,6 +780,11 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     ASSERT_EQUALS(createWatermarkControlMsg(50),  // 51 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, 49);
+
+    // Make sure partition watermarks are correct
+    partitionStates = _source->getPartitionStates();
+    ASSERT_EQUALS(partitionStates.at(0).watermark, 49);
+    ASSERT_EQUALS(partitionStates.at(1).watermark, 50);
 
     auto p2WatermarkMsg = createWatermarkControlMsg(34);  // 35 - 1
     p2WatermarkMsg.watermarkStatus = WatermarkStatus::kIdle;
@@ -783,6 +812,12 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(58), getCombinedWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, 58);
+
+    // Make sure partition watermarks are correct
+    partitionStates = _source->getPartitionStates();
+    ASSERT_EQUALS(partitionStates.at(0).watermark, 59);
+    ASSERT_EQUALS(partitionStates.at(1).watermark, 60);
+    ASSERT_EQUALS(partitionStates.at(2).watermark, 58);
 }
 
 }  // namespace

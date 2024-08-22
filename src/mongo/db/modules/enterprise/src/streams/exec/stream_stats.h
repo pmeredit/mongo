@@ -103,7 +103,7 @@ struct StreamSummaryStats {
     int64_t numInputBytes{0};
     int64_t numOutputBytes{0};
     int64_t memoryUsageBytes{0};
-    // waternark timestamp for the operator
+    // watermark timestamp for the operator
     // right now supported only for source
     int64_t watermark{-1};
     int64_t numDlqDocs{0};
@@ -146,6 +146,9 @@ struct KafkaConsumerPartitionState {
 
     // This is the lag of the current offset from the latest offset in the broker
     boost::optional<int64_t> partitionOffsetLag;
+
+    // watermark timestamp for the partition
+    int64_t watermark{-1};
 };  // struct KafkaConsumerPartitionState
 
 }  // namespace streams

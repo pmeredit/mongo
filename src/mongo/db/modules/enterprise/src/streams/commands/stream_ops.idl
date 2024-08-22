@@ -153,6 +153,10 @@ structs:
                     The lag between the current offset and the latest offset at the broker for this topic/partition.
                 type: safeInt64
                 optional: true
+            watermark:
+                description: Watermark timestamp for the partition.
+                type: date
+                optional: true
 
     GetStatsReply:
         description: "Response message for streams_getStats command"

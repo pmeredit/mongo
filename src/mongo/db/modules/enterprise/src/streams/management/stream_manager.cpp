@@ -1307,6 +1307,9 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                 stateReply.setCurrentOffset(state.currentOffset);
                 stateReply.setCheckpointOffset(state.checkpointOffset);
                 stateReply.setPartitionOffsetLag(state.partitionOffsetLag);
+                if (state.watermark >= 0) {
+                    stateReply.setWatermark(Date_t::fromMillisSinceEpoch(state.watermark));
+                }
                 partitionStatesReply.push_back(std::move(stateReply));
                 if (!state.partitionOffsetLag) {
                     kafkaTotalOffsetLag = boost::none;

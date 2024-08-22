@@ -1076,11 +1076,17 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
             offsetLag = *brokerHighOffset - currentOffset;
         }
 
+        int64_t watermark{-1};
+        if (consumerInfo.watermarkGenerator) {
+            watermark = consumerInfo.watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+        }
+
         states.push_back(
             KafkaConsumerPartitionState{.partition = consumerInfo.partition,
                                         .currentOffset = currentOffset,
                                         .checkpointOffset = consumerInfo.checkpointOffset,
-                                        .partitionOffsetLag = offsetLag});
+                                        .partitionOffsetLag = offsetLag,
+                                        .watermark = watermark});
     }
 
     return states;

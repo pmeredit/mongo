@@ -300,7 +300,7 @@ function generateInput(count = null) {
 }
 function insertData(coll, count = null) {
     const input = generateInput(count);
-    sourceColl1.insertMany(input);
+    coll.insertMany(input);
     return input;
 }
 
