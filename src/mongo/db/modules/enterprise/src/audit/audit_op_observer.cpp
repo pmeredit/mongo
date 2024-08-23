@@ -24,8 +24,6 @@ namespace mongo {
 namespace audit {
 
 namespace {
-const auto deletingAuditConfigDecoration = OplogDeleteEntryArgs::declareDecoration<bool>();
-
 bool isAuditConfigurationSet() {
     return getGlobalAuditManager()->isConfigurationSet();
 }
@@ -167,28 +165,17 @@ void AuditOpObserver::onUpdate(OperationContext* opCtx,
     updateAuditConfig(opCtx->getClient(), doc);
 }
 
-void AuditOpObserver::aboutToDelete(OperationContext* opCtx,
-                                    const CollectionPtr& coll,
-                                    const BSONObj& doc,
-                                    OplogDeleteEntryArgs* args,
-                                    OpStateAccumulator* opAccumulator) {
-    if (isFCVUninitializedOrTooHigh()) {
-        return;
-    }
-    deletingAuditConfigDecoration(args) =
-        isAuditConfigurationSet() && isConfigNamespace(coll->ns()) && isAuditDoc(doc);
-}
-
 void AuditOpObserver::onDelete(OperationContext* opCtx,
                                const CollectionPtr& coll,
                                StmtId stmtId,
                                const BSONObj& doc,
+                               const DocumentKey& documentKey,
                                const OplogDeleteEntryArgs& args,
                                OpStateAccumulator* opAccumulator) {
     if (isFCVUninitializedOrTooHigh()) {
         return;
     }
-    if (deletingAuditConfigDecoration(args)) {
+    if (isAuditConfigurationSet() && isConfigNamespace(coll->ns()) && isAuditDoc(doc)) {
         clearAuditConfig(opCtx->getClient());
     }
 }

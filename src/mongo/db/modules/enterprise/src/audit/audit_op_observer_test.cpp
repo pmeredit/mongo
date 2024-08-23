@@ -8,6 +8,7 @@
 #include "mongo/db/catalog/create_collection.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/dbdirectclient.h"
+#include "mongo/db/op_observer/op_observer_util.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/oplog_interface_local.h"
 #include "mongo/db/repl/repl_client_info.h"
@@ -141,8 +142,8 @@ public:
         auto opCtx = cc().makeOperationContext();
         AutoGetCollection autoColl(opCtx.get(), nss, MODE_IX);
         OplogDeleteEntryArgs args;
-        observer.aboutToDelete(opCtx.get(), *autoColl, deletedDoc, &args);
-        observer.onDelete(opCtx.get(), *autoColl, 1 /* StmtId */, deletedDoc, args);
+        const auto& documentKey = getDocumentKey(*autoColl, deletedDoc);
+        observer.onDelete(opCtx.get(), *autoColl, 1 /* StmtId */, deletedDoc, documentKey, args);
     }
 
     void doDropDatabase(StringData dbname) {
