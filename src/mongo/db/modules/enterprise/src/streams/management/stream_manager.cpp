@@ -640,7 +640,12 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
                 str::stream() << "stream processor name already exists: " << name,
                 !tryGetProcessorInfo(lk, tenantId, name));
 
-        if (!mongo::streams::gStreamsAllowMultiTenancy) {
+        if (mongo::streams::gStreamsAllowMultiTenancy) {
+            // We only allow multi-tenancy on a mongostream processor in some test scenarios.
+            if (!_sourceBufferManager) {
+                createSourceBufferManager(featureFlags, "*" /* tenantIdLabel */);
+            }
+        } else {
             // Ensure all SPs running on this process belong to the same tenant ID.
             assertTenantIdIsValid(lk, tenantId);
 
@@ -650,23 +655,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
 
                 // Recreate _sourceBufferManager for the new tenantId.
                 _sourceBufferManager.reset();
-                SourceBufferManager::Options srcBufferOptions;
-                srcBufferOptions.bufferTotalSize =
-                    *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferTotalSize)
-                         .getInt();
-                srcBufferOptions.bufferPreallocationFraction =
-                    *featureFlags
-                         .getFeatureFlagValue(FeatureFlags::kSourceBufferPreallocationFraction)
-                         .getDouble();
-                srcBufferOptions.maxSourceBufferSize =
-                    *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMaxSize).getInt();
-                srcBufferOptions.pageSize =
-                    *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferPageSize).getInt();
-                srcBufferOptions.metricManager = _metricManager.get();
-                srcBufferOptions.metricLabels.push_back(
-                    std::make_pair(kTenantIdLabelKey, tenantId));
-                _sourceBufferManager =
-                    std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
+                createSourceBufferManager(featureFlags, tenantId);
             }
         }
 
@@ -713,6 +702,24 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
             });
     startReply.setSampleCursorId(sampleCursorId);
     return startReply;
+}
+
+void StreamManager::createSourceBufferManager(const StreamProcessorFeatureFlags& featureFlags,
+                                              const std::string& tenantId) {
+    tassert(9395900, "Expected _sourceBufferManager not to be set", !_sourceBufferManager);
+    SourceBufferManager::Options srcBufferOptions;
+    srcBufferOptions.bufferTotalSize =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferTotalSize).getInt();
+    srcBufferOptions.bufferPreallocationFraction =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferPreallocationFraction)
+             .getDouble();
+    srcBufferOptions.maxSourceBufferSize =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMaxSize).getInt();
+    srcBufferOptions.pageSize =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferPageSize).getInt();
+    srcBufferOptions.metricManager = _metricManager.get();
+    srcBufferOptions.metricLabels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
+    _sourceBufferManager = std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
 }
 
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfo(

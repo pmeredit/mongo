@@ -20,6 +20,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/source_buffer_manager.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {
@@ -245,6 +246,10 @@ private:
     StreamProcessorInfo* getProcessorInfo(mongo::WithLock,
                                           const std::string& tenantId,
                                           const std::string& name);
+
+    // Create the _sourceBufferManager.
+    void createSourceBufferManager(const StreamProcessorFeatureFlags& featureFlags,
+                                   const std::string& tenantIdLabel);
 
     Options _options;
     std::unique_ptr<MetricManager> _metricManager;
