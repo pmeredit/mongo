@@ -259,7 +259,8 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             while (!_activeDocBatch.empty()) {
                 dassert(!_activeDocBatch.docVecs.empty());
                 auto docVec = _activeDocBatch.popDocVec();
-                _memoryUsageHandle.add(docVec.getByteSize());
+                _stats += {.memoryUsageBytes = docVec.getByteSize()};
+                _memoryUsageHandle.set(_stats.memoryUsageBytes);
                 _finalizedDocBatch.pushDocVec(std::move(docVec));
             }
         }
@@ -269,7 +270,8 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
         if (!_finalizedDocBatch.empty()) {
             dassert(!_finalizedDocBatch.docVecs.empty());
             auto docVec = _finalizedDocBatch.popDocVec();
-            _memoryUsageHandle.add(-docVec.getByteSize());
+            _stats += {.memoryUsageBytes = -docVec.getByteSize()};
+            _memoryUsageHandle.set(_stats.memoryUsageBytes);
             _options.queueSizeGauge->incBy(-docVec.size());
             _options.queueByteSizeGauge->incBy(-docVec.getByteSize());
             docs = std::move(docVec.docs);
@@ -282,12 +284,8 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 }
 
 OperatorStats KafkaPartitionConsumer::doGetStats() {
-    OperatorStats stats;
-    {
-        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
-        stats.setMemoryUsageBytes(_memoryUsageHandle.getCurrentMemoryUsageBytes());
-    }
-    return stats;
+    stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+    return _stats;
 }
 
 std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
@@ -447,9 +445,7 @@ void KafkaPartitionConsumer::fetchLoop() {
             // Report current memory usage to SourceBufferManager and allocate one page of memory
             // from it.
             bool allocSuccess = _context->sourceBufferManager->allocPages(
-                _sourceBufferHandle.get(),
-                _memoryUsageHandle.getCurrentMemoryUsageBytes() /* curSize */,
-                1 /* numPages */);
+                _sourceBufferHandle.get(), _stats.memoryUsageBytes /* curSize */, 1 /* numPages */);
             if (!allocSuccess) {
                 LOGV2_DEBUG(74678,
                             1,
@@ -572,7 +568,8 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
             // Avoid pushing DocVec into _finalizedDocBatch until it's full.
             if (isDocVecFull(_activeDocBatch.docVecs.front())) {
                 auto docVec = _activeDocBatch.popDocVec();
-                _memoryUsageHandle.add(docVec.getByteSize());
+                _stats += {.memoryUsageBytes = docVec.getByteSize()};
+                _memoryUsageHandle.set(_stats.memoryUsageBytes);
                 _finalizedDocBatch.pushDocVec(std::move(docVec));
             } else {
                 break;

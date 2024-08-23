@@ -214,6 +214,8 @@ private:
     // are added to `_finalizedDocBatch`. This should only be updated under the `_finalizedDocBatch`
     // mutex.
     mongo::MemoryUsageHandle _memoryUsageHandle;
+    // This should only be updated under the `_finalizedDocBatch` mutex.
+    OperatorStats _stats;
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
     std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
     std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
