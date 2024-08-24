@@ -1,6 +1,6 @@
 load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
 
-package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
+package(default_visibility = ["//visibility:public"])
 
 exports_files(
     glob([
@@ -22,7 +22,6 @@ mongo_cc_library(
     srcs = [
         ":collection_properties_gen",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/db:server_base",
     ],
