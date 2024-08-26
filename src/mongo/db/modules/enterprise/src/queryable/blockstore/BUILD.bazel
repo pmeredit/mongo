@@ -1,6 +1,6 @@
 load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
 exports_files(
     glob([

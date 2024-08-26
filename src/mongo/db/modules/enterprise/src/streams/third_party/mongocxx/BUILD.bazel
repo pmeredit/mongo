@@ -1,6 +1,6 @@
 load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
 exports_files(
     glob([
@@ -75,6 +75,7 @@ mongo_cc_library(
     copts = MONGOCXX_COPTS,
     local_defines = MONGOCXX_LOCAL_DEFINES,
     target_compatible_with = MONGOCXX_TARGET_COMPATIBILITY,
+    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/util:boost_assert_shim",
         "//src/third_party/libbson:bson",
