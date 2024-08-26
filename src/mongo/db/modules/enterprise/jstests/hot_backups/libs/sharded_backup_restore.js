@@ -72,6 +72,8 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
     const collNameUnrestored = "continuous_writes_unrestored";
     let collUUIDUnrestored;
 
+    let isTimeseries = false;
+
     const pathsep = _isWindows() ? "\\" : "/";
     const restorePaths = [
         MongoRunner.dataPath + "forRestore" + pathsep + "shard0",
@@ -128,6 +130,33 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
     /////////// Helper functions for checking causal consistency of the backup ///////////
     //////////////////////////////////////////////////////////////////////////////////////
 
+    function _setupShardedTimeseriesCollectionForCausalWrites(
+        st, dbName, collName, collectionOptions) {
+        const fullNs = dbName + "." + collName;
+        const fullBucketNs = dbName + ".system.buckets." + collName;
+        const metaFieldName = collectionOptions.timeseries.metaField;
+
+        jsTestLog("Setting up sharded time-series collection " + fullNs);
+
+        st.adminCommand({enableSharding: dbName, primaryShard: st.shard0.shardName});
+
+        const mongosDB = st.s.getDB(dbName);
+        const mongosColl = mongosDB.getCollection(collName);
+        assert.commandWorked(mongosDB.createCollection(collName, collectionOptions));
+        assert.commandWorked(mongosColl.createIndex({[metaFieldName]: 1}));
+
+        st.adminCommand({shardCollection: fullNs, key: {[metaFieldName]: 1}});
+
+        // Split the collection into 4 chunks: [MinKey, -100), [-100, 0), [0, 100), [100, MaxKey).
+        st.adminCommand({split: fullBucketNs, middle: {meta: -100}});
+        st.adminCommand({split: fullBucketNs, middle: {meta: 0}});
+        st.adminCommand({split: fullBucketNs, middle: {meta: 100}});
+
+        st.adminCommand({moveChunk: fullBucketNs, find: {meta: -50}, to: st.shard1.shardName});
+        st.adminCommand({moveChunk: fullBucketNs, find: {meta: 50}, to: st.shard2.shardName});
+        st.adminCommand({moveChunk: fullBucketNs, find: {meta: 150}, to: st.shard3.shardName});
+    }
+
     function _setupShardedCollectionForCausalWrites(st, dbName, collName) {
         const fullNs = dbName + "." + collName;
         jsTestLog("Setting up sharded collection " + fullNs);
@@ -146,8 +175,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         st.adminCommand({moveChunk: fullNs, find: {numForPartition: 150}, to: st.shard3.shardName});
     }
 
-    function _startCausalWriterClient(st, collNames) {
+    function _startCausalWriterClient(st, collNames, collectionOptions) {
         jsTestLog("Starting causal writer client");
+
+        let timeField = undefined;
+        if (isTimeseries) {
+            timeField = collectionOptions.timeseries.timeField;
+        }
 
         // This 1st write goes to shard 0, 2nd goes to shard 1, ..., Nth goes to shard N-1, and
         // then N+1th goes to shard 0 again, ...
@@ -157,12 +191,18 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         // Make sure some writes are persistent on disk in order to have a meaningful checkpoint
         // to backup.
         while (docId < 100) {
+            let doc = {
+                shardId: docId % numShards,
+                numForPartition: numFallsIntoShard[docId % numShards],
+                docId: docId,
+            };
+
+            if (timeField) {
+                Object.assign(doc, {[timeField]: new Date()});
+            }
+
             for (const collName of collNames) {
-                assert.commandWorked(st.getDB(dbName)[collName].insert({
-                    shardId: docId % numShards,
-                    numForPartition: numFallsIntoShard[docId % numShards],
-                    docId: docId
-                }));
+                assert.commandWorked(st.getDB(dbName)[collName].insert(doc));
             }
             docId++;
         }
@@ -174,7 +214,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             }
         }
 
-        const writerClientCmds = function(dbName, collNamesStr, numShards) {
+        const writerClientCmds = function(dbName, collNamesStr, numShards, timeField = undefined) {
             const session = db.getMongo().startSession({causalConsistency: true});
 
             let sessionColls = [];
@@ -190,13 +230,19 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             const largeStr = "a".repeat(
                 1 * 1024 * 256);  // 256KB, give incremental backups more incremental work.
             while (1) {
+                let doc = {
+                    shardId: docId % numShards,
+                    numForPartition: numFallsIntoShard[docId % numShards],
+                    docId: docId,
+                    str: largeStr
+                };
+
+                if (timeField) {
+                    Object.assign(doc, {[timeField]: new Date()});
+                }
+
                 for (const sessionColl of sessionColls) {
-                    assert.commandWorked(sessionColl.insert({
-                        shardId: docId % numShards,
-                        numForPartition: numFallsIntoShard[docId % numShards],
-                        docId: docId,
-                        str: largeStr
-                    }));
+                    assert.commandWorked(sessionColl.insert(doc));
                 }
                 docId++;
             }
@@ -206,7 +252,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         return startMongoProgramNoConnect(
             shellPath,
             '--eval',
-            `(${writerClientCmds})("${dbName}", "${collNames}", ${numShards})`,
+            `(${writerClientCmds})("${dbName}", "${collNames}", ${numShards}, "${timeField}")`,
             st.s.host);
     }
 
@@ -252,7 +298,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
     // lastDocID is the largest docID inserted in the restored oplog entries. This ensures that the
     // data reflects the point in time the user requested (if PIT restore is specified).
     function _checkDataConsistency(
-        restoredNodePorts, lastDocID, backupBinaryVersion, isIncrementalBackup) {
+        restoredNodePorts, lastDocID, backupBinaryVersion, isIncrementalBackup, collectionOptions) {
         jsTestLog("Checking data consistency");
 
         const configRS = new ReplSetTest({
@@ -304,12 +350,22 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                 .getIndexes();
             if (isIncrementalBackup) {
                 assert.eq(3, indexes.length);
-                assert.eq({_id: 1}, indexes[0].key);
+                assert.eq((isTimeseries ? {
+                              [collectionOptions.timeseries.metaField]: 1,
+                              [collectionOptions.timeseries.timeField]: 1
+                          }
+                                        : {_id: 1}),
+                          indexes[0].key);
                 assert.eq({numForPartition: 1}, indexes[1].key);
                 assert.eq({str: 1}, indexes[2].key);
             } else {
                 assert.eq(2, indexes.length);
-                assert.eq({_id: 1}, indexes[0].key);
+                assert.eq((isTimeseries ? {
+                              [collectionOptions.timeseries.metaField]: 1,
+                              [collectionOptions.timeseries.timeField]: 1
+                          }
+                                        : {_id: 1}),
+                          indexes[0].key);
                 assert.eq({numForPartition: 1}, indexes[1].key);
             }
         }
@@ -332,6 +388,55 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             restoredShards[i].stopSet();
         }
         configRS.stopSet();
+    }
+
+    function _getLastTimeseriesDocID(restoreOplogEntries) {
+        if (!restoreOplogEntries) {
+            return undefined;
+        }
+
+        function getDocId(entry) {
+            // Bucket insert format.
+            if (entry.hasOwnProperty("o") && entry.o.hasOwnProperty("control") &&
+                entry.o.control.hasOwnProperty("max") &&
+                entry.o.control.max.hasOwnProperty("docId")) {
+                return entry.o.control.max.docId;
+            }
+
+            // DocDiff format.
+            if (entry.hasOwnProperty("o") && entry.o.hasOwnProperty("diff") &&
+                entry.o.diff.hasOwnProperty("scontrol") &&
+                entry.o.diff.scontrol.hasOwnProperty("smax") &&
+                entry.o.diff.scontrol.smax.hasOwnProperty("u") &&
+                entry.o.diff.scontrol.smax.u.hasOwnProperty("docId")) {
+                return entry.o.diff.scontrol.smax.u.docId;
+            }
+
+            return undefined;
+        }
+
+        let lastDocIdList = [];
+        let maxDocID = -1;
+        for (let entryList of Object.values(restoreOplogEntries)) {
+            // Starting from the end, find the first oplog entry containing docId.
+            for (let entry of Array.from(entryList).reverse()) {
+                let docId = getDocId(entry);
+                if (docId == undefined) {
+                    continue;
+                }
+
+                assert(entry, () => tojson(restoreOplogEntries));
+                lastDocIdList.push(entry);
+                maxDocID = Math.max(maxDocID, docId);
+                break;
+            }
+        }
+
+        jsTestLog("Last docID: " + maxDocID + ", last docIds: " + tojson(lastDocIdList));
+        if (maxDocID == -1) {
+            return undefined;
+        }
+        return maxDocID;
     }
 
     function _getLastDocID(restoreOplogEntries) {
@@ -1271,6 +1376,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         isPitRestore = false,
         isSelectiveRestore = false,
         isIncrementalBackup = false,
+        collectionOptions = {},
         backupBinaryVersion = "latest"
     } = {}) {
         const oplogSize = 1024;
@@ -1304,23 +1410,29 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             collNames.push(collNameUnrestored);
         }
 
+        isTimeseries = collectionOptions && collectionOptions.hasOwnProperty("timeseries");
+
         for (const collName of collNames) {
-            _setupShardedCollectionForCausalWrites(st, dbName, collName);
+            if (isTimeseries) {
+                _setupShardedTimeseriesCollectionForCausalWrites(
+                    st, dbName, collName, collectionOptions);
+            } else {
+                _setupShardedCollectionForCausalWrites(st, dbName, collName);
+            }
         }
 
         if (isSelectiveRestore) {
             // Store the UUID of the collection that will not be restored. This will be used during
             // the CSRS restore to make sure no config collections reference the collection.
-            collUUIDUnrestored = st.shard0.getDB(dbName)
-                                     .runCommand({
-                                         listCollections: 1,
-                                         filter: {name: collNameUnrestored, type: "collection"}
-                                     })
-                                     .cursor.firstBatch[0]
-                                     .info.uuid;
+            const ns = isTimeseries ? "system.buckets." + collNameUnrestored : collNameUnrestored;
+            collUUIDUnrestored =
+                st.shard0.getDB(dbName)
+                    .runCommand({listCollections: 1, filter: {name: ns, type: "collection"}})
+                    .cursor.firstBatch[0]
+                    .info.uuid;
         }
 
-        let writerPid = _startCausalWriterClient(st, collNames);
+        let writerPid = _startCausalWriterClient(st, collNames, collectionOptions);
 
         jsTestLog("Resetting db path");
         resetDbpath(MongoRunner.dataPath + "forRestore" + pathsep);
@@ -1374,7 +1486,8 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                         restorePointInTime = _getEarliestTopOfOplog(st, backupPointInTime);
                         restoreOplogEntries =
                             _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime);
-                        lastDocID = _getLastDocID(restoreOplogEntries);
+                        lastDocID = isTimeseries ? _getLastTimeseriesDocID(restoreOplogEntries)
+                                                 : _getLastDocID(restoreOplogEntries);
 
                         return lastDocID !== undefined;
                     }, "PIT restore prepare failed", ReplSetTest.kDefaultTimeoutMS, 1000);
@@ -1419,8 +1532,11 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         /**
          *  Check data consistency
          */
-        _checkDataConsistency(
-            restoredNodePorts, lastDocID, backupBinaryVersion, isIncrementalBackup);
+        _checkDataConsistency(restoredNodePorts,
+                              lastDocID,
+                              backupBinaryVersion,
+                              isIncrementalBackup,
+                              collectionOptions);
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";
