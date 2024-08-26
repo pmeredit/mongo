@@ -55,7 +55,7 @@ public:
     void runStreamProcessor(benchmark::State& state, const BSONObj& pipelineSpec);
     void runAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
 
-    void runDeserializerBenchmark(JsonEventDeserializer deserializer, benchmark::State& state);
+    void runDeserializerBenchmark(benchmark::State& state, JsonEventDeserializer deserializer);
 
 protected:
     std::string generateRandomString(size_t size);
@@ -77,6 +77,7 @@ protected:
     BSONObj _groupObj;
     StreamDataMsg _dataMsg;
     std::vector<BSONObj> _inputObjs;
+    std::vector<std::string> _inputDocs;
 };
 
 OperatorDagBMFixture::OperatorDagBMFixture()
@@ -205,23 +206,28 @@ void OperatorDagBMFixture::SetUp(benchmark::State& state) {
     _dataMsg = StreamDataMsg{};
     _dataMsg.docs.reserve(kDocsPerMsg);
     _inputObjs.reserve(kDocsPerMsg);
+    _inputDocs.reserve(kDocsPerMsg);
     // Generate 10 unique docs and duplicate them as many times as needed.
     for (int i = 0; i < 10; i++) {
         auto obj = generateDoc();
         _dataMsg.docs.emplace_back(Document(obj));
+        _inputDocs.emplace_back(tojson(obj));
         _inputObjs.emplace_back(std::move(obj));
     }
     for (int i = 10; i < kDocsPerMsg; i += 10) {
         std::copy_n(_dataMsg.docs.begin(), 10, std::back_inserter(_dataMsg.docs));
         std::copy_n(_inputObjs.begin(), 10, std::back_inserter(_inputObjs));
+        std::copy_n(_inputDocs.begin(), 10, std::back_inserter(_inputDocs));
     }
     invariant(_inputObjs.size() == kDocsPerMsg);
+    invariant(_inputDocs.size() == kDocsPerMsg);
     invariant(_dataMsg.docs.size() == kDocsPerMsg);
 }
 
 void OperatorDagBMFixture::TearDown(benchmark::State& state) {
     _dataMsg = StreamDataMsg{};
     _inputObjs.clear();
+    _inputDocs.clear();
     if (state.thread_index == 0) {
         setGlobalServiceContext({});
     }
@@ -417,42 +423,35 @@ BENCHMARK_F(OperatorDagBMFixture, BM_RunAggregationPipelineType2)(benchmark::Sta
     runAggregationPipeline(state, pipelineSpec);
 }
 
-void OperatorDagBMFixture::runDeserializerBenchmark(JsonEventDeserializer deserializer,
-                                                    benchmark::State& state) {
-    // Setup the input.
-    const int inputSize = 100000;
-    std::vector<std::string> input;
-    input.reserve(inputSize);
-    for (int i = 0; i < inputSize; ++i) {
-        auto obj = BSON("a" << generateRandomString(10) << "b" << generateRandomString(20) << "c"
-                            << generateRandomString(30) << "d" << generateRandomString(40) << "e"
-                            << generateRandomString(50));
-        input.push_back(tojson(obj));
-    }
-    // Setup the output buffer.
-    std::vector<BSONObj> results(inputSize);
+void OperatorDagBMFixture::runDeserializerBenchmark(benchmark::State& state,
+                                                    JsonEventDeserializer deserializer) {
+    invariant(_inputDocs.size() == kDocsPerMsg);
+    std::vector<BSONObj> results(kDocsPerMsg);
 
     // Run the benchmark.
     for (auto keepRunning : state) {
-        for (int i = 0; i < inputSize; ++i) {
-            results[i] = deserializer.deserialize(input[i].c_str(), input[i].size());
+        for (int i = 0; i < 10; ++i) {
+            for (int j = 0; j < kDocsPerMsg; ++j) {
+                const auto& doc = _inputDocs[j];
+                results[j] = deserializer.deserialize(doc.c_str(), doc.size());
+            }
         }
     }
 }
 
-BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializer)(benchmark::State& state) {
-    runDeserializerBenchmark(JsonEventDeserializer(), state);
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerSimple)(benchmark::State& state) {
+    runDeserializerBenchmark(state, JsonEventDeserializer());
 }
 
 BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerForceSlowPath)(benchmark::State& state) {
-    runDeserializerBenchmark(JsonEventDeserializer(JsonEventDeserializer::Options{
-                                 .allowBsonCxxParsing = true, .forceBsonCxxParsing = true}),
-                             state);
+    runDeserializerBenchmark(state,
+                             JsonEventDeserializer(JsonEventDeserializer::Options{
+                                 .allowBsonCxxParsing = true, .forceBsonCxxParsing = true}));
 }
 
 BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerDisableSlowPath)(benchmark::State& state) {
     runDeserializerBenchmark(
-        JsonEventDeserializer(JsonEventDeserializer::Options{.allowBsonCxxParsing = false}), state);
+        state, JsonEventDeserializer(JsonEventDeserializer::Options{.allowBsonCxxParsing = false}));
 }
 
 
