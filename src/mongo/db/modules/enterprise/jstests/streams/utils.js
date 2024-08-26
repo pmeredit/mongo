@@ -140,7 +140,7 @@ export function sanitizeDoc(doc, fieldNames = ['_ts', '_stream_meta']) {
  * The DLQ is also pre-configured with
  * {dlq: {connectionName: "db1", db: "test", coll: "dlq"}}
  */
-export function startStreamProcessor(spName, pipeline) {
+export function startStreamProcessor(spName, pipeline, assertWorked = true) {
     const uri = 'mongodb://' + db.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
@@ -164,7 +164,11 @@ export function startStreamProcessor(spName, pipeline) {
     };
 
     jsTestLog(`Starting ${spName} - \n${tojson(startCmd)}`);
-    return assert.commandWorked(db.runCommand(startCmd));
+    const result = db.runCommand(startCmd);
+    if (assertWorked) {
+        assert.commandWorked(result);
+    }
+    return result;
 }
 
 /**

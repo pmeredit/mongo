@@ -1,15 +1,18 @@
 import {
+    connectionName,
     dbName,
     generate16MBDoc,
     insertDocs,
     listStreamProcessors,
     logState,
     runStreamProcessorOperatorTest,
-    sanitizeDoc
+    sanitizeDoc,
+    startStreamProcessor
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "matchOperatorTest";
+
 // tests from /jstests/core/match_numeric_components.js
 const kDocs = [
     {_id: 0, "a": 42},
@@ -423,5 +426,23 @@ const matchVBLargeDocFunc = function testMatchVLargeDoc(docs, matchString, expec
 };
 
 matchVBLargeDocFunc([generate16MBDoc()], {b: 0}, [{b: 0}]);
+
+// stream processor engine cannot support $text queries because it doesn't create the necessary
+// index to support it
+(function testMatchWithTextQuery() {
+    jsTestLog("Running testMatchWithTextQuery");
+
+    // should fail on when starting SP because $text is not supported in a $match stage
+    const result =
+        startStreamProcessor("textDoesntWork",
+                             [
+                                 {$source: {connectionName, db: "db1", coll: "coll1"}},
+                                 {$match: {$text: {$search: "foo bar"}}},
+                                 {$merge: {into: {connectionName, db: "db2", coll: "coll2"}}}
+                             ],
+                             false /* assertWorked */);
+
+    assert.commandFailedWithCode(result, 420);
+})();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

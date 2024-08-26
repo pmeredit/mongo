@@ -2063,15 +2063,25 @@ TEST_F(PlannerTest, ExecutionPlan) {
 }
 
 // Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying
-// exceptions from agg layer due to invalid syntax.
+// exceptions from agg layer due to invalid syntax and/or options.
 TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
-    Planner planner(_context.get(), Planner::Options{});
-    KafkaConnectionOptions options1{"localhost:9092"};
-    options1.setIsTestKafka(true);
-    _context->isEphemeral = false;
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
-    auto bson = parsePipeline(R"(
+    auto runFailureTest = [&](std::string userPipeline, std::string expectedErrMsg) {
+        Planner planner(_context.get(), Planner::Options{});
+        KafkaConnectionOptions options1{"localhost:9092"};
+        options1.setIsTestKafka(true);
+        _context->isEphemeral = false;
+        _context->connections = stdx::unordered_map<std::string, Connection>{
+            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+        auto bson = parsePipeline(userPipeline);
+
+        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                    AssertionException,
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    expectedErrMsg);
+    };
+
+    // This test fails because of invalid syntax in the $match stage.
+    runFailureTest(R"(
     [
         {
             $source: {
@@ -2089,12 +2099,34 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
                 topic: "topic2"
             }
         }
-    ])");
-    ASSERT_THROWS_CODE_AND_WHAT(
-        planner.plan(bson),
-        AssertionException,
-        ErrorCodes::StreamProcessorInvalidOptions,
-        "Location15959: the match filter must be an expression in an object");
+    ])",
+                   "Location15959: the match filter must be an expression in an object");
+
+    // This test fails because users are not allowed to use the $text stage in ASP.
+    runFailureTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $match: {
+                $text: {
+                    $search: "foo bar"
+                }
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+                   "InvalidOptions: Cannot use $text in $match stage in Atlas Stream Processing.");
 }
 
 }  // namespace

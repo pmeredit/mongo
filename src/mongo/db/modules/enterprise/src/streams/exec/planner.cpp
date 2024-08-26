@@ -1446,6 +1446,9 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 optimizedPipeline.push_back(serialize(stage));
                 auto specificSource = dynamic_cast<DocumentSourceMatch*>(stage.get());
                 dassert(specificSource);
+                uassert(ErrorCodes::InvalidOptions,
+                        "Cannot use $text in $match stage in Atlas Stream Processing.",
+                        !specificSource->isTextQuery());
                 MatchOperator::Options options{.documentSource = specificSource};
                 auto oper = std::make_unique<MatchOperator>(_context, std::move(options));
                 oper->setOperatorId(_nextOperatorId++);
