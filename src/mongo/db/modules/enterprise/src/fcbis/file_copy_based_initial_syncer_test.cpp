@@ -153,7 +153,7 @@ protected:
         auto network = std::make_unique<executor::NetworkInterfaceMock>();
         _net = network.get();
         _threadPoolExecutor =
-            makeSharedThreadPoolTestExecutor(std::move(network), makeThreadPoolMockOptions());
+            makeThreadPoolTestExecutor(std::move(network), makeThreadPoolMockOptions());
         _threadPoolExecutor->startup();
 
         _storageInterface = std::make_unique<StorageInterfaceMock>();
@@ -253,7 +253,7 @@ protected:
             std::make_unique<ReplicationConsistencyMarkersMock>(),
             std::make_unique<ReplicationRecoveryMock>());
 
-        _executorProxy = std::make_unique<TaskExecutorMock>(&getExecutor());
+        _executorProxy = std::make_shared<TaskExecutorMock>(&getExecutor());
 
         _myLastOpTime = OpTime({3, 0}, 1);
 
