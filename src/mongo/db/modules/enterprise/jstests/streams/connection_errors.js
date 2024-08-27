@@ -349,7 +349,7 @@ function badKafkaEmit() {
             "foohost:9092/bootstrap: Failed to resolve 'foohost:9092': Temporary failure in name resolution") ||
             result.errmsg.includes("Failed to resolve 'foohost:9092': Name or service not known"),
         result.errmsg);
-    assert.eq(8141701, result.code);
+    assert.eq(ErrorCodes.StreamProcessorKafkaConnectionError, result.code);
 
     // Try the same thing, with a dynamic topic name.
     result = db.runCommand({
@@ -383,7 +383,7 @@ function badKafkaEmit() {
             "foohost:9092/bootstrap: Failed to resolve 'foohost:9092': Temporary failure in name resolution") ||
             result.errmsg.includes("Failed to resolve 'foohost:9092': Name or service not known"),
         result.errmsg);
-    assert.eq(8141702, result.code);
+    assert.eq(ErrorCodes.StreamProcessorKafkaConnectionError, result.code);
 }
 
 // Validate listStreamProcessors reports a meaningful error for a $source fails sometime after

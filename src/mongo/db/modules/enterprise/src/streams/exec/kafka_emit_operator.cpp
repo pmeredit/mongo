@@ -9,6 +9,7 @@
 
 #include "streams/exec/kafka_emit_operator.h"
 
+#include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/bson/bsontypes_util.h"
 #include "mongo/bson/json.h"
@@ -89,7 +90,7 @@ void KafkaEmitOperator::Connector::testConnection() {
                                                                      /*conf*/ nullptr,
                                                                      errstr)};
         if (!topic) {
-            uasserted(8141700,
+            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
                       "$emit to Kafka failed to connect to topic with error: {}"_format(errstr));
         }
 
@@ -97,7 +98,7 @@ void KafkaEmitOperator::Connector::testConnection() {
             false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
         std::unique_ptr<RdKafka::Metadata> deleter(metadata);
         uassert(
-            8141701,
+            ErrorCodes::StreamProcessorKafkaConnectionError,
             "$emit to Kafka topic encountered error while connecting, kafka error code: {}"_format(
                 kafkaErrorCode),
             kafkaErrorCode == RdKafka::ERR_NO_ERROR);
@@ -105,7 +106,7 @@ void KafkaEmitOperator::Connector::testConnection() {
         RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
             true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
         std::unique_ptr<RdKafka::Metadata> deleter(metadata);
-        uassert(8141702,
+        uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
                 "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(
                     kafkaErrorCode),
                 kafkaErrorCode == RdKafka::ERR_NO_ERROR);
