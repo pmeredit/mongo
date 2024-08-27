@@ -8,3 +8,22 @@ exports_files(
         "*.cpp",
     ]),
 )
+
+mongo_cc_library(
+    name = "blockstore",
+    srcs = [
+        "blockstore_http.cpp",
+        "list_dir.cpp",
+        "reader_writer.cpp",
+    ],
+    hdrs = [
+        "blockstore_http.h",
+        "list_dir.h",
+        "reader_writer.h",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/bson/util:bson_extract",
+        "//src/mongo/util/net:http_client",
+    ],
+)

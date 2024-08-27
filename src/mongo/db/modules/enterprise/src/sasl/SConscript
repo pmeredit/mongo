@@ -152,7 +152,7 @@ kmsEnv.CppUnitTest(
     LIBDEPS=[
         "$BUILD_DIR/mongo/client/sasl_aws_client",
         "$BUILD_DIR/mongo/client/sasl_aws_common",
-        "$BUILD_DIR/third_party/shim_libmongocrypt",
+        "$BUILD_DIR/third_party/libmongocrypt/mongocrypt",
         "sasl_aws_server",
     ],
 )
