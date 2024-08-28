@@ -7,6 +7,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/namespace_string_util.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/message.h"
@@ -26,6 +27,7 @@ int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
     if (_context->instanceName) {
         objBuilder.append("instanceName", *_context->instanceName);
     }
+    objBuilder.append("dlqTime", Date_t::now());
     auto obj = objBuilder.obj();
     LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj);
     sendOutputToSamplers(obj);

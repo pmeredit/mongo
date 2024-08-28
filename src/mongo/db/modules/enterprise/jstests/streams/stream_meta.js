@@ -59,7 +59,7 @@ function testStreamMeta({
     assertArrayEq({actual: sinkResults, expected: expectedSinkResults});
 
     // Test DLQ results.
-    const dlqResults = dlqColl.find({}, {_id: 0}).toArray();
+    const dlqResults = dlqColl.find({}, {_id: 0, dlqTime: 0}).toArray();
     for (let dlqResult of expectedDlqResults) {
         dlqResult["processorName"] = processorName;
     }

@@ -144,6 +144,12 @@ const dlqDoc =
     dlqColl.find({"doc._id": 0}).toArray().map((doc) => sanitizeDoc(doc, ['_id', '_stream_meta']));
 const dlqDocErrInfo = dlqDoc.map(doc => sanitizeDoc(doc.errInfo));
 const dlqDocFullDoc = dlqDoc.map(doc => sanitizeDoc(doc.doc));
+const expectedKeys = ["dlqTime", "processorName", "instanceName", "doc", "errInfo"];
+assert.eq(Object.keys(dlqDoc[0]).length, expectedKeys.length);
+assert.hasFields(
+    dlqDoc[0],
+    expectedKeys,
+);
 assert.eq(processorName, dlqDoc[0].processorName);
 assert.eq(instanceName, dlqDoc[0].instanceName);
 assert.eq(
