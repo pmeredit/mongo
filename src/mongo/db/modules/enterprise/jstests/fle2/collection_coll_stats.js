@@ -6,6 +6,7 @@
  * requires_collstats,
  * requires_fcv_70,
  * requires_persistence,
+ * requires_getmore,
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
