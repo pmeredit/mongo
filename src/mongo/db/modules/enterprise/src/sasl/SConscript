@@ -168,20 +168,6 @@ env.Library(
 )
 
 env.Library(
-    target="auth_delay",
-    source=[
-        "auth_delay_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/auth/sasl_options",
-        "$BUILD_DIR/mongo/db/server_base",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-    ],
-)
-
-env.Library(
     target="mongosaslservercommon",
     source=[
         "cyrus_sasl_authentication_session.cpp",

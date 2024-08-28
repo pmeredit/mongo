@@ -35,3 +35,20 @@ idl_generator(
     name = "auth_delay_gen",
     src = "auth_delay.idl",
 )
+
+mongo_cc_library(
+    name = "auth_delay",
+    srcs = [
+        ":auth_delay_gen",
+    ],
+    hdrs = [
+        ":auth_delay_gen",
+        "//src/mongo/base:error_codes_header",
+        "//src/mongo/db/auth:sasl_options.h",
+        "//src/mongo/util/version:releases_header",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/auth:sasl_options",
+    ],
+)
