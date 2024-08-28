@@ -89,7 +89,7 @@ export class MongoCryptD {
                 }
             }
             return false;
-        }, "unable to connect to mongo program on port " + conn_str, 30 * 1000);
+        }, "unable to connect to mongo program on port " + conn_str, 300 * 1000);
 
         this.conn = conn;
         print("Mongocryptd sucessfully started.");
