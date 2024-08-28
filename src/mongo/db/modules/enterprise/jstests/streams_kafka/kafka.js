@@ -254,7 +254,9 @@ function dropCollections() {
     dlqColl.drop();
 }
 
-let numDocumentsToInsert = 10000;
+const debugBuild = db.adminCommand("buildInfo").debug;
+const defaultNumDocsToInsert = debugBuild ? 100 : 1000;
+let numDocumentsToInsert = defaultNumDocsToInsert;
 function generateInput(count = null) {
     let num = numDocumentsToInsert;
     if (count != null) {
@@ -262,7 +264,7 @@ function generateInput(count = null) {
     }
     let input = [];
     for (let i = 0; i < num; i += 1) {
-        const binData = new BinData(0, (i % 1000).toString().padStart(4, "0"));
+        const binData = new BinData(0, (i % defaultNumDocsToInsert).toString().padStart(4, "0"));
         input.push({
             a: i,
             gid: i % 2,
@@ -430,7 +432,7 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
         },
         {
             $tumblingWindow: {
-                interval: {size: NumberInt(1), unit: "second"},
+                interval: {size: NumberInt(100), unit: "ms"},
                 allowedLateness: {size: NumberInt(0), unit: "second"},
                 pipeline: [nonGroupWindowStage]
             }
@@ -459,7 +461,8 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
     // kafkaToMongo reads Kafka and writes to the sink collection.
-    insertData(sourceColl1);
+    insertData(sourceColl1, 102);
+    // Sleep for a bit so the next insert will advance the watermark and close the window.
     // Verify at least one document shows up in the sink collection as expected.
     assert.soon(() => { return sinkColl1.count() > 0; });
     const results = sinkColl1.find({}).toArray();
@@ -1072,11 +1075,14 @@ runKafkaTest(kafka, kafkaStartAtEarliestTest);
 // offset lag in verbose stats
 runKafkaTest(kafka, testKafkaOffsetLag);
 
-// use a large number of documents
-numDocumentsToInsert = 100000;
+if (!debugBuild) {
+    // Use a large number of documents on release builds.
+    // This takes to long on debug builds.
+    numDocumentsToInsert = 100000;
+}
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 
-numDocumentsToInsert = 1000;
+numDocumentsToInsert = defaultNumDocsToInsert;
 runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "relaxedJson"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "canonicalJson"}));
 
