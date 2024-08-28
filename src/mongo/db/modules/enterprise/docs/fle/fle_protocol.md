@@ -620,6 +620,7 @@ f = field
 v = value
 u = or [1,r] where r = contention factor
 u == 0 if field has no contention otherwise u = random secure sample {1, .. max contention}.
+d = 136-bit (17-octet) blob of zeros
 ```
 
 Tokens:
@@ -648,6 +649,9 @@ ServerDerivedFromDataToken = HMAC(ServerTokenDerivationLevel1Token, v) = K_{f,2,
 ServerCountAndContentionFactorEncryptionToken = HMAC(ServerDerivedFromDataToken, 1) = Fs[f,2,v,1]
 ServerZerosEncryptionToken = HMAC(ServerDerivedFromDataToken, 2) = Fs[f,2,v,2]
 
+AnchorPaddingRootToken = HMAC(ESCToken, d) = Fs[f,1,2,d]
+AnchorPaddingKeyToken = HMAC(AnchorPaddingRootToken, 1) = Fs[f,1,2,d,1]
+AnchorPaddingValueToken = HMAC(AnchorPaddingRootToken, 2) = Fs[f,1,2,d,2]
 ```
 
 # Reference: Schema
@@ -783,6 +787,17 @@ Null records, also known as \bot records, store the start of the anchor records.
 }
 ```
 
+The range v2 protocol in 8.0 introduced a new type of null anchors called "padding" null anchors,
+which are also created & updated durinig cleanup. These have the same document shape as
+regular null records, except that its values are derived as such:
+
+```js
+{
+  _id: HMAC(AnchorPaddingKeyToken, 0 || 0);
+  value: Encrypt(AnchorPaddingValueToken, apos || 0);
+}
+```
+
 ### Anchor record
 
 Anchor records are sequentially numbered records. They are used to find non-anchor records. These records are created by compact. They are read during find, insert, update, compact, and cleanup.
@@ -791,6 +806,17 @@ Anchor records are sequentially numbered records. They are used to find non-anch
 {
   _id: HMAC(ESCTwiceDerivedTagToken, 0 || apos);
   value: Encrypt(ESCTwiceDerivedValueToken, 0 || cpos);
+}
+```
+
+The range v2 protocol in 8.0 introduced a new type of anchor records called "padding" anchors, which are
+also created by compact. These have the same document shape as regular anchors, except that its
+values are derived as such:
+
+```js
+{
+  _id: HMAC(AnchorPaddingKeyToken, 0 || apos);
+  value: Encrypt(AnchorPaddingValueToken, 0 || 0);
 }
 ```
 
@@ -1027,13 +1053,18 @@ In `GetRemovedTags`, in order to get the set of "stale" tags to `$pull` from the
     compactStructuredEncryptionData : "<collection name>",
     $db : "<db name>",
     compactionTokens : {
-       encryptedFieldPath : Bindata(subtype 0),
+        equalityEncryptedFieldPath : Bindata(subtype 0),
+        rangeEncryptedFieldPath : {
+            ecoc: Bindata(subtype 0),
+            anchorPaddingToken: BinData(subtype 0)
+        },
        ...
     },
 }
 ```
 
-`compactionTokens` is map of indexed encrypted paths from indexed paths to `ECOCToken`.
+`compactionTokens` maps indexed encrypted paths to either an `ECOCToken` (if equality-indexed), or
+an object containing an `ECOCToken` and an `AnchorPaddingRootToken` (if range-indexed).
 
 **Reply:**
 
@@ -1072,13 +1103,18 @@ The `cleanupStructuredEncryptionData` command can be used to compact both anchor
     cleanupStructuredEncryptionData : "<collection name>",
     $db : "<db name>",
     cleanupTokens : {
-       encryptedFieldPath : Bindata(subtype 0),
+        equalityEncryptedFieldPath : Bindata(subtype 0),
+        rangeEncryptedFieldPath : {
+            ecoc: Bindata(subtype 0),
+            anchorPaddingToken: BinData(subtype 0)
+        },
        ...
     },
 }
 ```
 
-`cleanupTokens` is map of indexed encrypted paths from indexed paths to `ECOCToken`.
+`cleanupTokens` maps indexed encrypted paths to either an `ECOCToken` (if equality-indexed), or
+an object containing an `ECOCToken` and an `AnchorPaddingRootToken` (if range-indexed).
 
 **Reply:**
 
@@ -1368,7 +1404,9 @@ compactStructuredEncryptionData:
   reply_type: CompactStructuredEncryptionDataCommandReply
   fields:
     compactionTokens:
-      description: "Map of field path to ECOCToken"
+      description: |-
+        Dictionary key/value pairs in the form: { fieldName: "ecocToken" }
+        or { fieldName: { ecoc: "ecocToken", anchorPaddingToken: "anchorPaddingToken" } }
       type: object
 
 ECOCStats:
@@ -1410,7 +1448,9 @@ cleanupStructuredEncryptionData:
   reply_type: CleanupStructuredEncryptionDataCommandReply
   fields:
     cleanupTokens:
-      description: "Map of field path to ECOCToken"
+      description: |-
+        Dictionary key/value pairs in the form: { fieldName: "ecocToken" }
+        or { fieldName: { ecoc: "ecocToken", anchorPaddingToken: "anchorPaddingToken" } }
       type: object
 
 CleanupStats:
