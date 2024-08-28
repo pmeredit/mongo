@@ -65,16 +65,3 @@ wtEnv.Library(
         "import_collection_coordinator",
     ],
 )
-
-env.Library(
-    target="import_collection_coordinator",
-    source=[
-        "import_collection_coordinator.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/catalog/commit_quorum_options",
-        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
-        "$BUILD_DIR/mongo/db/service_context",
-    ],
-)

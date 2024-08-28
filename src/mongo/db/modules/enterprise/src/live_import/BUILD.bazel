@@ -27,3 +27,19 @@ mongo_cc_library(
         "//src/mongo/db:server_base",
     ],
 )
+
+mongo_cc_library(
+    name = "import_collection_coordinator",
+    srcs = [
+        "import_collection_coordinator.cpp",
+    ],
+    hdrs = [
+        "import_collection_coordinator.h",
+    ],
+    deps = [
+        "//src/mongo:base",  # TODO(SERVER-98376): Remove.
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/catalog:commit_quorum_options",  # TODO(SERVER-98376): Remove.
+        "//src/mongo/db/repl:repl_coordinator_interface",  # TODO(SERVER-98376): Remove.
+    ],
+)
