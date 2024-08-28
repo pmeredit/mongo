@@ -36,10 +36,10 @@ void appendStorageMetadata(OperationContext* opCtx, const std::string& ident, BS
     const std::string tableUri = "table:" + ident;
     const std::string fileUri = "file:" + ident + kTableExtension;
 
-    auto tableMetadata =
-        uassertStatusOK(WiredTigerUtil::getMetadata(*WiredTigerRecoveryUnit::get(opCtx), tableUri));
-    auto fileMetadata =
-        uassertStatusOK(WiredTigerUtil::getMetadata(*WiredTigerRecoveryUnit::get(opCtx), fileUri));
+    auto tableMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(
+        *WiredTigerRecoveryUnit::get(shard_role_details::getRecoveryUnit(opCtx)), tableUri));
+    auto fileMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(
+        *WiredTigerRecoveryUnit::get(shard_role_details::getRecoveryUnit(opCtx)), fileUri));
 
     out->append(ident, BSON("tableMetadata" << tableMetadata << "fileMetadata" << fileMetadata));
 }
