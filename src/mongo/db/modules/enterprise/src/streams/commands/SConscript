@@ -43,7 +43,4 @@ env.Library(
         "../management/streams_management",
         "streams_ops_idl",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-    ],
 )

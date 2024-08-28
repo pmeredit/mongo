@@ -41,9 +41,6 @@ env.Library(
         "$BUILD_DIR/mongo/executor/scoped_task_executor",
         "$BUILD_DIR/mongo/util/progress_meter",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
         "lint-allow-bidirectional-edges",

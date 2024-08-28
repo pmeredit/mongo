@@ -43,9 +43,6 @@ if get_option("js-engine") != "none":
             "$BUILD_DIR/third_party/mozjs/mozjs",
             "../query_analysis/query_analysis",
         ],
-        LIBDEPS_DEPENDENTS=[
-            "$BUILD_DIR/mongo/shell/mongo_initializers",
-        ],
         # TODO: this tag must be used because the tcmalloc library is added
         # as public dependency for each Library: https://jira.mongodb.org/browse/SERVER-49788
         LIBDEPS_TAGS=[

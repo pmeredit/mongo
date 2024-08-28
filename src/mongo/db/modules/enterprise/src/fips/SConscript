@@ -33,10 +33,6 @@ env.Library(
         "$BUILD_DIR/mongo/util/options_parser/options_parser",
         "fips_mode_general",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-        "$BUILD_DIR/mongo/s/mongos_initializers",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-bidirectional-edges",
         "lint-allow-nonprivate-on-deps-dependents",
@@ -53,9 +49,6 @@ if get_option("js-engine") != "none":
             "$BUILD_DIR/mongo/util/net/ssl_options_client",
             "$BUILD_DIR/mongo/util/options_parser/options_parser",
             "fips_mode_general",
-        ],
-        LIBDEPS_DEPENDENTS=[
-            "$BUILD_DIR/mongo/shell/mongo_initializers",
         ],
         LIBDEPS_TAGS=[
             "lint-allow-nonprivate-on-deps-dependents",

@@ -32,9 +32,6 @@ wtEnv.Library(
         "$BUILD_DIR/mongo/db/commands/server_status_core",
         "$BUILD_DIR/mongo/db/shard_role_api",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
     ],
@@ -95,9 +92,6 @@ env.Library(
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/server_base",
         "$BUILD_DIR/mongo/util/options_parser/options_parser",
-    ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/s/mongos_initializers",
     ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",

@@ -28,9 +28,6 @@ env.Library(
         "$BUILD_DIR/mongo/db/storage/journal_flusher",
         "$BUILD_DIR/mongo/db/storage/storage_options",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
         "lint-allow-bidirectional-edges",
@@ -46,9 +43,6 @@ env.Library(
         "$BUILD_DIR/mongo/db/pipeline/docs_needed_bounds_visitor",
         "$BUILD_DIR/mongo/db/service_context",
         "hot_backups",
-    ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
     ],
 )
 

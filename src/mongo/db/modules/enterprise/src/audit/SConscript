@@ -72,11 +72,6 @@ env.Library(
         "audit_config",
         "audit_enc_comp_manager",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/index_builds_coordinator_mongod",
-        "$BUILD_DIR/mongo/db/mongod_main",
-        "$BUILD_DIR/mongo/s/mongos_main",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
         "lint-allow-bidirectional-edges",
@@ -161,10 +156,6 @@ env.Library(
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/auth/authprivilege",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/commands/mongod",
-        "$BUILD_DIR/mongo/s/commands/cluster_commands",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
     ],
@@ -195,10 +186,6 @@ env.Library(
         "$BUILD_DIR/mongo/db/server_feature_flags",
         "$BUILD_DIR/mongo/util/options_parser/options_parser",
         "$BUILD_DIR/mongo/watchdog/watchdog_register",
-    ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-        "$BUILD_DIR/mongo/s/mongos_initializers",
     ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
@@ -244,9 +231,6 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "audit_mongod",
-    ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
     ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
@@ -319,10 +303,6 @@ env.Library(
         "audit_config",
         "audit_enterprise",
         "audit_synchronize_job",
-    ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/s/commands/cluster_commands",
-        "$BUILD_DIR/mongo/s/mongos_initializers",
     ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",

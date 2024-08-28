@@ -6,6 +6,7 @@ from libdeps_tool import deptype
 
 Import("env")
 Import("ssl_provider")
+Import("have_sasl_lib")
 
 env = env.Clone()
 
@@ -21,14 +22,6 @@ if env.TargetOSIs("windows"):
     )
 
 saslconf = Configure(env)
-
-have_sasl_lib = saslconf.CheckLibWithHeader(
-    "sasl2",
-    ["stddef.h", "sasl/sasl.h"],
-    "C",
-    "sasl_version_info(0, 0, 0, 0, 0, 0);",
-    autoadd=False,
-)
 
 if not have_sasl_lib:
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
@@ -134,10 +127,6 @@ env.Library(
         "oidc_external_state_vars",
         "sasl_oidc_server" if ssl_provider == "openssl" else [],
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-        "$BUILD_DIR/mongo/s/mongos_initializers",
-    ],
 )
 
 kmsEnv = env.Clone()
@@ -187,10 +176,6 @@ env.Library(
         "$BUILD_DIR/mongo/db/auth/sasl_options",
         "$BUILD_DIR/mongo/db/server_base",
     ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-        "$BUILD_DIR/mongo/s/mongos_initializers",
-    ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
     ],
@@ -207,10 +192,6 @@ env.Library(
         "../ldap/ldap_manager",
         "../ldap/ldap_name_map",
         "mongosaslserversession",
-    ],
-    LIBDEPS_DEPENDENTS=[
-        "$BUILD_DIR/mongo/db/mongod_initializers",
-        "$BUILD_DIR/mongo/s/mongos_initializers",
     ],
     LIBDEPS_TAGS=[
         "lint-allow-nonprivate-on-deps-dependents",
