@@ -15,19 +15,19 @@
 #include "mongo/unittest/log_test.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/match_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/single_document_transformation_operator.h"
+#include "streams/exec/sort_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
-#include "streams/exec/window_aware_group_operator.h"
-#include "streams/exec/window_aware_limit_operator.h"
 #include "streams/exec/window_aware_operator.h"
-#include "streams/exec/window_aware_sort_operator.h"
 
 namespace streams {
 using namespace mongo;
@@ -56,7 +56,7 @@ public:
             DocumentSourceSort::createFromBson(fromjson(spec).firstElement(), _context->expCtx)
                 .get());
         ASSERT_TRUE(sortStage);
-        WindowAwareSortOperator::Options sortOptions{WindowAwareOperator::Options{
+        SortOperator::Options sortOptions{WindowAwareOperator::Options{
             .sendWindowSignals = canSendSignal,
             .isSessionWindow = true,
         }};
@@ -66,7 +66,7 @@ public:
         sortOptions.documentSource = sortStage.get();
         return std::make_tuple<>(
             std::move(sortStage),
-            std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions)));
+            std::make_unique<SortOperator>(_context.get(), std::move(sortOptions)));
     }
 
     auto createGroupStage(
@@ -78,7 +78,7 @@ public:
                                                 _context->expCtx)
                 .get());
         ASSERT_TRUE(groupStage);
-        WindowAwareGroupOperator::Options options(WindowAwareOperator::Options{
+        GroupOperator::Options options(WindowAwareOperator::Options{
             .sendWindowSignals = canSendSignals,
             .isSessionWindow = true,
         });
@@ -88,7 +88,7 @@ public:
         options.documentSource = groupStage.get();
         return std::make_tuple<>(
             std::move(groupStage),
-            std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(options)));
+            std::make_unique<GroupOperator>(_context.get(), std::move(options)));
     }
 
     auto createLimitStage(std::string spec,
@@ -99,7 +99,7 @@ public:
                 .get());
         ASSERT_TRUE(limitStage);
         limitStage->setLimit(std::numeric_limits<int64_t>::max());
-        WindowAwareLimitOperator::Options limitOptions{WindowAwareOperator::Options{
+        LimitOperator::Options limitOptions{WindowAwareOperator::Options{
             .sendWindowSignals = canSendSignal, .isSessionWindow = true}};
         if (windowOptions) {
             limitOptions.windowAssigner = std::make_unique<SessionWindowAssigner>(*windowOptions);
@@ -109,7 +109,7 @@ public:
 
         return std::make_tuple<>(
             std::move(limitStage),
-            std::make_unique<WindowAwareLimitOperator>(_context.get(), std::move(limitOptions)));
+            std::make_unique<LimitOperator>(_context.get(), std::move(limitOptions)));
     }
 
     auto createMatchStage(std::string spec) {

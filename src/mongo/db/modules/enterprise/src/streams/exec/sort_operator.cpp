@@ -1,7 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "streams/exec/window_aware_sort_operator.h"
+#include "streams/exec/sort_operator.h"
 
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/logv2/log.h"
@@ -25,11 +25,10 @@ namespace {
 static const int kSortOperatorMaxRecordSizeLimit = 10 * 1024 * 1024;
 }
 
-WindowAwareSortOperator::WindowAwareSortOperator(Context* context, Options options)
+SortOperator::SortOperator(Context* context, Options options)
     : WindowAwareOperator(context), _options(std::move(options)) {}
 
-void WindowAwareSortOperator::doProcessDocs(Window* window,
-                                            std::vector<StreamDocument> streamDocs) {
+void SortOperator::doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) {
     auto sortState = getSortWindow(window);
     auto& processor = sortState->processor;
     auto& sortKeyGenerator = sortState->sortKeyGenerator;
@@ -53,7 +52,7 @@ void WindowAwareSortOperator::doProcessDocs(Window* window,
     updateStats(window);
 }
 
-void WindowAwareSortOperator::doCloseWindow(Window* window) {
+void SortOperator::doCloseWindow(Window* window) {
     auto& processor = getSortWindow(window)->processor;
 
     processor->loadingDone();
@@ -89,7 +88,7 @@ void WindowAwareSortOperator::doCloseWindow(Window* window) {
     }
 }
 
-std::unique_ptr<WindowAwareOperator::Window> WindowAwareSortOperator::doMakeWindow(
+std::unique_ptr<WindowAwareOperator::Window> SortOperator::doMakeWindow(
     WindowAwareOperator::Window baseWindow) {
     auto documentSource = _options.documentSource->clone(_options.documentSource->getContext());
     auto documentSourceSort = dynamic_cast<DocumentSourceSort*>(documentSource.get());
@@ -112,7 +111,7 @@ std::unique_ptr<WindowAwareOperator::Window> WindowAwareSortOperator::doMakeWind
                                         std::move(memoryUsageHandle));
 }
 
-void WindowAwareSortOperator::doUpdateStats(Window* window) {
+void SortOperator::doUpdateStats(Window* window) {
     auto sortState = getSortWindow(window);
     auto processor = sortState->processor.get();
     auto bytes = processor->stats().memoryUsageBytes;
@@ -120,15 +119,13 @@ void WindowAwareSortOperator::doUpdateStats(Window* window) {
     window->stats.memoryUsageBytes = bytes;
 }
 
-WindowAwareSortOperator::SortWindow* WindowAwareSortOperator::getSortWindow(
-    WindowAwareOperator::Window* window) {
+SortOperator::SortWindow* SortOperator::getSortWindow(WindowAwareOperator::Window* window) {
     auto sortState = dynamic_cast<SortWindow*>(window);
     invariant(sortState);
     return sortState;
 }
 
-void WindowAwareSortOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
-                                                Window* window) {
+void SortOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) {
     auto processor = getSortWindow(window)->processor.get();
     processor->pauseLoading();
     ON_BLOCK_EXIT([&] { processor->resumeLoading(); });
@@ -140,7 +137,7 @@ void WindowAwareSortOperator::doSaveWindowState(CheckpointStorage::WriterHandle*
     }
 }
 
-void WindowAwareSortOperator::doRestoreWindowState(Window* window, Document record) {
+void SortOperator::doRestoreWindowState(Window* window, Document record) {
     auto sortState = getSortWindow(window);
     auto processor = sortState->processor.get();
     auto& sortKeyGenerator = sortState->sortKeyGenerator;
@@ -156,7 +153,7 @@ void WindowAwareSortOperator::doRestoreWindowState(Window* window, Document reco
     processor->add(sortKey, std::move(doc));
 }
 
-void WindowAwareSortOperator::SortWindow::doMerge(Window* other) {
+void SortOperator::SortWindow::doMerge(Window* other) {
     auto otherSortState = dynamic_cast<SortWindow*>(other);
     auto& otherProcessor = otherSortState->processor;
     auto& thisProcessor = processor;

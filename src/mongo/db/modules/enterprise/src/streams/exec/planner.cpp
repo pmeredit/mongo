@@ -52,12 +52,14 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
 #include "streams/exec/feature_flag.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/lookup_operator.h"
 #include "streams/exec/match_operator.h"
@@ -73,6 +75,7 @@
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
+#include "streams/exec/sort_operator.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
@@ -81,9 +84,6 @@
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/util.h"
 #include "streams/exec/validate_operator.h"
-#include "streams/exec/window_aware_group_operator.h"
-#include "streams/exec/window_aware_limit_operator.h"
-#include "streams/exec/window_aware_sort_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -1250,9 +1250,9 @@ void Planner::planGroup(mongo::DocumentSource* source) {
                                      _windowPlanningInfo->numWindowAwareStages);
     baseOptions.isSessionWindow = _windowPlanningInfo->isSessionWindow;
 
-    WindowAwareGroupOperator::Options options(std::move(baseOptions));
+    GroupOperator::Options options(std::move(baseOptions));
     options.documentSource = specificSource;
-    auto oper = std::make_unique<WindowAwareGroupOperator>(_context, std::move(options));
+    auto oper = std::make_unique<GroupOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 }
@@ -1269,9 +1269,9 @@ void Planner::planSort(mongo::DocumentSource* source) {
                                      _windowPlanningInfo->numWindowAwareStages);
     baseOptions.isSessionWindow = _windowPlanningInfo->isSessionWindow;
 
-    WindowAwareSortOperator::Options options(std::move(baseOptions));
+    SortOperator::Options options(std::move(baseOptions));
     options.documentSource = specificSource;
-    auto oper = std::make_unique<WindowAwareSortOperator>(_context, std::move(options));
+    auto oper = std::make_unique<SortOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 }
@@ -1290,9 +1290,9 @@ void Planner::planLimit(mongo::DocumentSource* source) {
                                      _windowPlanningInfo->numWindowAwareStages);
     baseOptions.isSessionWindow = _windowPlanningInfo->isSessionWindow;
 
-    WindowAwareLimitOperator::Options options(std::move(baseOptions));
+    LimitOperator::Options options(std::move(baseOptions));
     options.limit = limitValue;
-    auto oper = std::make_unique<WindowAwareLimitOperator>(_context, std::move(options));
+    auto oper = std::make_unique<LimitOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 }

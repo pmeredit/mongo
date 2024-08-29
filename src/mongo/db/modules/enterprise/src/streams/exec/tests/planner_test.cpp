@@ -36,6 +36,7 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -47,7 +48,6 @@
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
-#include "streams/exec/window_aware_limit_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -486,7 +486,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ASSERT_EQ(ops.size(), 3);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
         ASSERT_EQ(ops[1]->getName(), "LimitOperator");
-        ASSERT(dynamic_cast<WindowAwareLimitOperator*>(ops[1].get()));
+        ASSERT(dynamic_cast<LimitOperator*>(ops[1].get()));
         ASSERT_EQ(ops[2]->getName(), "LogSinkOperator");
     }
 

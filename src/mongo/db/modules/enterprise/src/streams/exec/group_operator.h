@@ -24,8 +24,7 @@ namespace streams {
 struct Context;
 
 // A "window aware" implementation of the $group stage. See the base class for more details.
-// TODO(SERVER-82922): Rename to GroupOperator.
-class WindowAwareGroupOperator : public WindowAwareOperator {
+class GroupOperator : public WindowAwareOperator {
 public:
     struct Options : public WindowAwareOperator::Options {
         Options(WindowAwareOperator::Options baseOptions)
@@ -36,7 +35,7 @@ public:
         mongo::DocumentSourceGroup* documentSource;
     };
 
-    WindowAwareGroupOperator(Context* context, Options options);
+    GroupOperator(Context* context, Options options);
 
     mongo::DocumentSourceGroup* documentSource() {
         return _options.documentSource;

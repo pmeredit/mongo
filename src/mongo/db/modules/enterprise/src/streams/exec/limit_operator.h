@@ -14,8 +14,7 @@ namespace streams {
 struct Context;
 
 // A "window aware" implementation of the $limit stage. See the base class for more details.
-// TODO(SERVER-82922): Rename to LimitOperator.
-class WindowAwareLimitOperator : public WindowAwareOperator {
+class LimitOperator : public WindowAwareOperator {
 public:
     struct Options : public WindowAwareOperator::Options {
         Options(WindowAwareOperator::Options baseOptions)
@@ -24,7 +23,7 @@ public:
         int64_t limit{0};
     };
 
-    WindowAwareLimitOperator(Context* context, Options options);
+    LimitOperator(Context* context, Options options);
 
 private:
     friend class WindowAwareOperatorTest;

@@ -21,8 +21,7 @@ namespace streams {
 struct Context;
 
 // A "window aware" implementation of the $sort stage. See the base class for more details.
-// TODO(SERVER-82922): Rename to SortOperator.
-class WindowAwareSortOperator : public WindowAwareOperator {
+class SortOperator : public WindowAwareOperator {
 public:
     struct Options : public WindowAwareOperator::Options {
         Options(WindowAwareOperator::Options baseOptions)
@@ -32,7 +31,7 @@ public:
         mongo::DocumentSourceSort* documentSource;
     };
 
-    WindowAwareSortOperator(Context* context, Options options);
+    SortOperator(Context* context, Options options);
 
     mongo::DocumentSourceSort* documentSource() {
         return _options.documentSource;

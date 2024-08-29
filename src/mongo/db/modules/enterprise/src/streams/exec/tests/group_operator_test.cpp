@@ -10,11 +10,11 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/unittest/assert.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/exec/window_aware_group_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -45,10 +45,10 @@ public:
         ASSERT(groupStage);
 
         WindowAwareOperator::Options options{.sendWindowSignals = false};
-        WindowAwareGroupOperator::Options groupOptions{std::move(options)};
+        GroupOperator::Options groupOptions{std::move(options)};
         groupOptions.documentSource = groupStage.get();
         auto groupOperator =
-            std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptions));
+            std::make_unique<GroupOperator>(_context.get(), std::move(groupOptions));
 
         // Add a InMemorySinkOperator after the GroupOperator.
         InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);

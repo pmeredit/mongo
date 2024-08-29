@@ -1,7 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "streams/exec/window_aware_limit_operator.h"
+#include "streams/exec/limit_operator.h"
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
@@ -18,11 +18,10 @@ namespace streams {
 
 using namespace mongo;
 
-WindowAwareLimitOperator::WindowAwareLimitOperator(Context* context, Options options)
+LimitOperator::LimitOperator(Context* context, Options options)
     : WindowAwareOperator(context), _options(std::move(options)) {}
 
-void WindowAwareLimitOperator::doProcessDocs(Window* window,
-                                             std::vector<StreamDocument> streamDocs) {
+void LimitOperator::doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) {
     window->stats.numInputDocs += streamDocs.size();
     auto limitWindow = getLimitWindow(window);
     invariant(_options.limit >= limitWindow->numSent);
@@ -47,13 +46,11 @@ void WindowAwareLimitOperator::doProcessDocs(Window* window,
     }
 }
 
-std::unique_ptr<WindowAwareOperator::Window> WindowAwareLimitOperator::doMakeWindow(
-    Window baseState) {
+std::unique_ptr<WindowAwareOperator::Window> LimitOperator::doMakeWindow(Window baseState) {
     return std::make_unique<LimitWindow>(std::move(baseState));
 }
 
-void WindowAwareLimitOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
-                                                 Window* window) {
+void LimitOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) {
     auto state = getLimitWindow(window);
     WindowOperatorLimitRecord limitRecord;
     WindowOperatorCheckpointRecord record;
@@ -62,7 +59,7 @@ void WindowAwareLimitOperator::doSaveWindowState(CheckpointStorage::WriterHandle
     _context->checkpointStorage->appendRecord(writer, Document{record.toBSON()});
 }
 
-void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::Document obj) {
+void LimitOperator::doRestoreWindowState(Window* window, mongo::Document obj) {
     IDLParserContext parserContext("WindowAwareLimitOperatorCheckpointRestore");
     auto record = WindowOperatorCheckpointRecord::parse(parserContext, obj.toBson());
     auto limitRecord = record.getLimitRecord();
@@ -76,15 +73,14 @@ void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::Docum
     state->limit = _options.limit;
 }
 
-WindowAwareLimitOperator::LimitWindow* WindowAwareLimitOperator::getLimitWindow(
-    WindowAwareOperator::Window* window) {
+LimitOperator::LimitWindow* LimitOperator::getLimitWindow(WindowAwareOperator::Window* window) {
     auto limitWindow = dynamic_cast<LimitWindow*>(window);
     invariant(limitWindow);
     limitWindow->limit = _options.limit;
     return limitWindow;
 }
 
-void WindowAwareLimitOperator::LimitWindow::doMerge(Window* other) {
+void LimitOperator::LimitWindow::doMerge(Window* other) {
     // Merge is only supported for limit windows with max_int limit.
     invariant(limit == std::numeric_limits<int64_t>::max() &&
               dynamic_cast<LimitWindow*>(other)->limit == std::numeric_limits<int64_t>::max());

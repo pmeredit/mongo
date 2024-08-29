@@ -20,19 +20,19 @@
 #include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/project_operator.h"
 #include "streams/exec/single_document_transformation_operator.h"
+#include "streams/exec/sort_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
-#include "streams/exec/window_aware_group_operator.h"
-#include "streams/exec/window_aware_limit_operator.h"
 #include "streams/exec/window_aware_operator.h"
-#include "streams/exec/window_aware_sort_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -70,11 +70,9 @@ public:
         auto groupStage = createGroupStage(std::move(groupSpec));
         ASSERT(groupStage);
 
-        WindowAwareGroupOperator::Options options{
-            WindowAwareOperator::Options{.sendWindowSignals = true}};
+        GroupOperator::Options options{WindowAwareOperator::Options{.sendWindowSignals = true}};
         options.documentSource = groupStage.get();
-        auto groupOperator =
-            std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(options));
+        auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(options));
 
         // Add a InMemorySinkOperator after the GroupOperator.
         InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
@@ -152,7 +150,7 @@ public:
         return {outputDocs, groupOperator->getStats()};
     }
 
-    void checkLimitWindow(WindowAwareLimitOperator* limitOperator,
+    void checkLimitWindow(LimitOperator* limitOperator,
                           int64_t windowStart,
                           int64_t expectedNumSent) const {
         auto it = limitOperator->_windows.find(windowStart);
@@ -345,10 +343,10 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
     // Create the operators: [$group, $project, $sort, $group, $inMemorySink].
     auto group1Stage = createGroupStage(fromjson(group1Spec));
     ASSERT(group1Stage);
-    WindowAwareGroupOperator::Options options(WindowAwareOperator::Options{
+    GroupOperator::Options options(WindowAwareOperator::Options{
         std::make_unique<WindowAssigner>(windowOptions), true /* sendWindowSignals */});
     options.documentSource = group1Stage.get();
-    auto group1 = std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(options));
+    auto group1 = std::make_unique<GroupOperator>(_context.get(), std::move(options));
 
     auto projectDocumentSource = DocumentSourceProject::createFromBson(
         fromjson(projectSpec).firstElement(), _context->expCtx);
@@ -361,18 +359,15 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
         DocumentSourceSort::createFromBson(fromjson(sortSpec).firstElement(), _context->expCtx)
             .get());
     ASSERT_TRUE(sortStage);
-    WindowAwareSortOperator::Options sortOptions{
-        WindowAwareOperator::Options{.sendWindowSignals = true}};
+    SortOperator::Options sortOptions{WindowAwareOperator::Options{.sendWindowSignals = true}};
     sortOptions.documentSource = sortStage.get();
-    auto sort = std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
+    auto sort = std::make_unique<SortOperator>(_context.get(), std::move(sortOptions));
 
-    WindowAwareGroupOperator::Options group2Options(
-        WindowAwareOperator::Options{.sendWindowSignals = true});
+    GroupOperator::Options group2Options(WindowAwareOperator::Options{.sendWindowSignals = true});
     auto group2Stage = createGroupStage(fromjson(group2Spec));
     group2Options.documentSource = group2Stage.get();
     ASSERT(group2Stage);
-    auto group2 =
-        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(group2Options));
+    auto group2 = std::make_unique<GroupOperator>(_context.get(), std::move(group2Options));
 
     InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
 
@@ -687,12 +682,12 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
         DocumentSourceSort::createFromBson(fromjson(sortSpec).firstElement(), _context->expCtx)
             .get());
     ASSERT_TRUE(sortStage);
-    WindowAwareSortOperator::Options sortOptions{
+    SortOperator::Options sortOptions{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     sortOptions.documentSource = sortStage.get();
-    auto sort = std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
+    auto sort = std::make_unique<SortOperator>(_context.get(), std::move(sortOptions));
     sort->setOperatorId(operatorId);
 
     // Add a InMemorySinkOperator after the SortOperator.
@@ -773,13 +768,13 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
 
     // Now, restore the checkpoint data into a new operator.
     _context->restoreCheckpointId = checkpointId;
-    WindowAwareSortOperator::Options sortOptionsRestored{
+    SortOperator::Options sortOptionsRestored{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     sortOptionsRestored.documentSource = sortStage.get();
     auto restoredSort =
-        std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptionsRestored));
+        std::make_unique<SortOperator>(_context.get(), std::move(sortOptionsRestored));
     restoredSort->setOperatorId(operatorId);
     InMemorySinkOperator restoredSink(_context.get(), 1);
     restoredSort->addOutput(&restoredSink, 0);
@@ -809,13 +804,13 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
                                               .sizeUnit = mongo::StreamTimeUnitEnum::Second,
                                               .slide = windowSize,
                                               .slideUnit = mongo::StreamTimeUnitEnum::Second};
-        WindowAwareLimitOperator::Options options(WindowAwareOperator::Options{
+        LimitOperator::Options options(WindowAwareOperator::Options{
             .windowAssigner = std::make_unique<WindowAssigner>(windowOptions)});
         options.limit = 100;
         return options;
     };
 
-    auto limit = std::make_unique<WindowAwareLimitOperator>(_context.get(), makeLimitOptions());
+    auto limit = std::make_unique<LimitOperator>(_context.get(), makeLimitOptions());
     limit->setOperatorId(limitOperatorId);
 
     // Add a InMemorySinkOperator after the LimitOperator.
@@ -845,8 +840,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
     // Restore from the previous checkpoint and verify that the restored limit window state is
     // correct.
     _context->restoreCheckpointId = checkpointId;
-    auto restoredLimit =
-        std::make_unique<WindowAwareLimitOperator>(_context.get(), makeLimitOptions());
+    auto restoredLimit = std::make_unique<LimitOperator>(_context.get(), makeLimitOptions());
     restoredLimit->setOperatorId(limitOperatorId);
     restoredLimit->addOutput(&sink, 0);
     restoredLimit->start();
@@ -870,13 +864,12 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
         }
     })";
     boost::intrusive_ptr<DocumentSourceGroup> groupStage = createGroupStage(fromjson(groupSpec));
-    WindowAwareGroupOperator::Options groupOptions{
+    GroupOperator::Options groupOptions{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     groupOptions.documentSource = groupStage.get();
-    auto groupOperator =
-        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptions));
+    auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(groupOptions));
     groupOperator->setOperatorId(operatorId);
 
     // Add a InMemorySinkOperator after the GroupOperator.
@@ -984,13 +977,13 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
 
     // Restore the checkpoint data into a new operator.
     _context->restoreCheckpointId = checkpointId;
-    WindowAwareGroupOperator::Options groupOptionsRestored{
+    GroupOperator::Options groupOptionsRestored{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     groupOptionsRestored.documentSource = groupStage.get();
     auto restoredGroup =
-        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptionsRestored));
+        std::make_unique<GroupOperator>(_context.get(), std::move(groupOptionsRestored));
     restoredGroup->setOperatorId(operatorId);
     InMemorySinkOperator restoredSink(_context.get(), 1);
     restoredGroup->addOutput(&restoredSink, 0);
@@ -1061,13 +1054,13 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     ASSERT(resultsAfterRestore[2].controlMsg);
     ASSERT(resultsAfterRestore[2].controlMsg->watermarkMsg);
 
-    WindowAwareGroupOperator::Options groupOptionsRestored2{
+    GroupOperator::Options groupOptionsRestored2{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     groupOptionsRestored2.documentSource = groupStage.get();
-    auto restoredGroup2 = std::make_unique<WindowAwareGroupOperator>(
-        _context.get(), std::move(groupOptionsRestored2));
+    auto restoredGroup2 =
+        std::make_unique<GroupOperator>(_context.get(), std::move(groupOptionsRestored2));
     restoredGroup2->setOperatorId(operatorId);
     InMemorySinkOperator restoredSink2(_context.get(), 1);
     restoredGroup2->addOutput(&restoredSink2, 0);
@@ -1129,13 +1122,12 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
                                           .slide = windowSize,
                                           .slideUnit = mongo::StreamTimeUnitEnum::Second};
     auto groupStage = createGroupStage(fromjson(groupSpec));
-    WindowAwareGroupOperator::Options groupOptions{
+    GroupOperator::Options groupOptions{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     groupOptions.documentSource = groupStage.get();
-    auto groupOperator =
-        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptions));
+    auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(groupOptions));
     groupOperator->setOperatorId(1);
 
     InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
@@ -1199,13 +1191,12 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
         DocumentSourceSort::createFromBson(fromjson(sortSpec).firstElement(), _context->expCtx)
             .get());
     ASSERT_TRUE(sortStage);
-    WindowAwareSortOperator::Options sortOptions{
+    SortOperator::Options sortOptions{
         WindowAwareOperator::Options{.windowAssigner =
                                          std::make_unique<WindowAssigner>(windowOptions)},
     };
     sortOptions.documentSource = sortStage.get();
-    auto sortOperator =
-        std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
+    auto sortOperator = std::make_unique<SortOperator>(_context.get(), std::move(sortOptions));
     sortOperator->setOperatorId(1);
 
     InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);

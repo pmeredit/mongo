@@ -16,6 +16,7 @@
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
@@ -23,7 +24,6 @@
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/window_assigner.h"
-#include "streams/exec/window_aware_group_operator.h"
 #include "streams/exec/window_aware_operator.h"
 
 namespace streams {
@@ -139,7 +139,7 @@ protected:
     }
 
     // Create an OperatorDag: [$sessionWindow[$group], no-op sink];
-    WindowAwareGroupOperator* makeSessionWindow10MinuteGap() {
+    GroupOperator* makeSessionWindow10MinuteGap() {
         // TODO(SERVER-91881): Change this to use the planner.
 
         auto bson = fromjson(_innerPipeline);
@@ -159,12 +159,11 @@ protected:
 
         auto windowAssigner = std::make_unique<SessionWindowAssigner>(windowingOptions);
 
-        WindowAwareGroupOperator::Options options{WindowAwareOperator::Options{
+        GroupOperator::Options options{WindowAwareOperator::Options{
             .windowAssigner = std::move(windowAssigner), .sendWindowSignals = true}};
         options.documentSource = dynamic_cast<DocumentSourceGroup*>(groupStage.get());
         options.isSessionWindow = true;
-        auto groupOperator =
-            std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(options));
+        auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(options));
         OperatorDag::OperatorContainer ops;
         ops.push_back(std::move(groupOperator));
         ops.push_back(std::make_unique<NoOpSinkOperator>(_context.get()));
@@ -177,7 +176,7 @@ protected:
             std::move(ops));
         _dag->start();
 
-        return dynamic_cast<WindowAwareGroupOperator*>(_dag->operators()[0].get());
+        return dynamic_cast<GroupOperator*>(_dag->operators()[0].get());
     }
 
     auto makeDocsTinyMode() {

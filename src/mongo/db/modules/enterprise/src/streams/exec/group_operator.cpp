@@ -1,7 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "streams/exec/window_aware_group_operator.h"
+#include "streams/exec/group_operator.h"
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_group.h"
@@ -24,11 +24,10 @@ namespace streams {
 
 using namespace mongo;
 
-WindowAwareGroupOperator::WindowAwareGroupOperator(Context* context, Options options)
+GroupOperator::GroupOperator(Context* context, Options options)
     : WindowAwareOperator(context), _options(std::move(options)) {}
 
-void WindowAwareGroupOperator::doProcessDocs(Window* window,
-                                             std::vector<StreamDocument> streamDocs) {
+void GroupOperator::doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) {
     auto* groupWindow = getGroupWindow(window);
     auto& processor = groupWindow->processor;
 
@@ -66,8 +65,7 @@ void WindowAwareGroupOperator::doProcessDocs(Window* window,
     updateStats(window);
 }
 
-std::unique_ptr<WindowAwareOperator::Window> WindowAwareGroupOperator::doMakeWindow(
-    Window baseState) {
+std::unique_ptr<WindowAwareOperator::Window> GroupOperator::doMakeWindow(Window baseState) {
     auto documentSource = _options.documentSource->clone(_options.documentSource->getContext());
     auto groupDocumentSource = dynamic_cast<DocumentSourceGroup*>(documentSource.get());
     invariant(groupDocumentSource);
@@ -81,7 +79,7 @@ std::unique_ptr<WindowAwareOperator::Window> WindowAwareGroupOperator::doMakeWin
                                          std::move(memoryUsageHandle));
 }
 
-void WindowAwareGroupOperator::doCloseWindow(Window* window) {
+void GroupOperator::doCloseWindow(Window* window) {
     auto& processor = getGroupWindow(window)->processor;
     int64_t curDataMsgByteSize;
 
@@ -128,7 +126,7 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
     }
 }
 
-void WindowAwareGroupOperator::doUpdateStats(Window* window) {
+void GroupOperator::doUpdateStats(Window* window) {
     auto group = getGroupWindow(window);
     auto& processor = group->processor;
     auto bytes = processor->getMemoryUsageBytes();
@@ -136,15 +134,13 @@ void WindowAwareGroupOperator::doUpdateStats(Window* window) {
     window->stats.memoryUsageBytes = bytes;
 }
 
-WindowAwareGroupOperator::GroupWindow* WindowAwareGroupOperator::getGroupWindow(
-    WindowAwareOperator::Window* window) {
+GroupOperator::GroupWindow* GroupOperator::getGroupWindow(WindowAwareOperator::Window* window) {
     auto groupState = dynamic_cast<GroupWindow*>(window);
     invariant(groupState);
     return groupState;
 }
 
-void WindowAwareGroupOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
-                                                 Window* window) {
+void GroupOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) {
     auto& processor = getGroupWindow(window)->processor;
     processor->readyGroups();
 
@@ -162,7 +158,7 @@ void WindowAwareGroupOperator::doSaveWindowState(CheckpointStorage::WriterHandle
     }
 }
 
-void WindowAwareGroupOperator::doRestoreWindowState(Window* window, Document record) {
+void GroupOperator::doRestoreWindowState(Window* window, Document record) {
     auto& processor = getGroupWindow(window)->processor;
     // Temporarily enabling the merging mode since the group accumulators state was checkpointed
     // as partial with AccumulatorState::getValue(true)
@@ -190,7 +186,7 @@ void WindowAwareGroupOperator::doRestoreWindowState(Window* window, Document rec
     processor->setDoingMerge(false);
 }
 
-void WindowAwareGroupOperator::GroupWindow::doMerge(Window* other) {
+void GroupOperator::GroupWindow::doMerge(Window* other) {
     /*
     Retrieve the mergeable key/accumulator pairs from the rightWindow, feed them into the
     leftWindow’s processor with addGroup.

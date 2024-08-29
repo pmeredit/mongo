@@ -12,8 +12,8 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
+#include "streams/exec/sort_operator.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/exec/window_aware_sort_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -42,10 +42,9 @@ public:
         ASSERT(sortStage);
 
         WindowAwareOperator::Options options{.sendWindowSignals = false};
-        WindowAwareSortOperator::Options sortOptions{std::move(options)};
+        SortOperator::Options sortOptions{std::move(options)};
         sortOptions.documentSource = sortStage.get();
-        auto sortOperator =
-            std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
+        auto sortOperator = std::make_unique<SortOperator>(_context.get(), std::move(sortOptions));
 
         // Add a InMemorySinkOperator after the SortOperator.
         InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
