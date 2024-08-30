@@ -172,15 +172,15 @@ def _wait_for_port(port: int, timeout_secs: int = 10):
 
 def _wait_for_kafka_ready(port, timeout_secs=30):
     start = time.time()
-    print(f"Waiting for Kafka to become ready to service queries")
+    print("Waiting for Kafka to become ready to service queries")
 
     while time.time() - start <= timeout_secs:
         ret = _run_process(_get_kafka_ready(port))
         if ret == 0:
-            print(f"Kafka is ready!")
+            print("Kafka is ready!")
             return
         else:
-            print(f"Kafka is still not ready")
+            print("Kafka is still not ready")
 
         if start - time.time() > timeout_secs:
             raise "Timeout elapsed while waiting for kafka to become ready"

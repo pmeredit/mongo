@@ -46,7 +46,7 @@ def configure(conf, env):
         configured_modules.append("enterprise")
     else:
         for choice in enterprise_features_option.split(","):
-            if choice in all_features and not choice in selected_features:
+            if choice in all_features and choice not in selected_features:
                 selected_features.append(choice)
             else:
                 env.ConfError(
@@ -55,9 +55,9 @@ def configure(conf, env):
                     )
                 )
 
-        if "sasl" in selected_features and not "ldap" in selected_features:
+        if "sasl" in selected_features and "ldap" not in selected_features:
             env.ConfError("the sasl enterprise feature depends on the ldap enterprise feature")
-        if "search" in selected_features and not "fle" in selected_features:
+        if "search" in selected_features and "fle" not in selected_features:
             env.ConfError("the search enterprise feature depends on the fle enterprise " "feature")
         configured_modules.extend(selected_features)
 
