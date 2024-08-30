@@ -4,9 +4,20 @@
 
 #include "streams/exec/feature_flag.h"
 #include "mongo/bson/bsontypes.h"
+#include "streams/exec/config_gen.h"
 #include "streams/exec/operator.h"
 
 namespace streams {
+
+const std::string kStreamsSppTierSP10 = "SP10";
+
+mongo::Value FeatureFlagDefinition::getDefaultValue() const {
+    auto it = tierDefaultValues.find(mongo::streams::gStreamsSppTier);
+    if (it != tierDefaultValues.end()) {
+        return it->second;
+    }
+    return defaultValue;
+}
 
 boost::optional<int64_t> FeatureFlagValue::getInt() const {
     boost::optional<int64_t> returnValue;
@@ -51,50 +62,61 @@ const FeatureFlagDefinition FeatureFlags::kCheckpointDurationInMs{
 const FeatureFlagDefinition FeatureFlags::kKafkaMaxPrefetchByteSize{
     "kafkaMaxPrefetchByteSize",
     "Maximum buffer size (in bytes) for each Kafka $source partition.",
-    mongo::Value(kDataMsgMaxByteSize * 10)};
+    mongo::Value(kDataMsgMaxByteSize * 10),
+    {}};
 
 const FeatureFlagDefinition FeatureFlags::kUseExecutionPlanFromCheckpoint{
     "useExecutionPlanFromCheckpoint",
     "Use the Execution plan stored in the checkpoint metadata.",
-    mongo::Value(false)};
+    mongo::Value(false),
+    {}};
 
 const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
     "maxQueueSizeBytes",
     "Maximum buffer size (in bytes) for a sink queue.",
     // 128 MB default
-    mongo::Value::createIntOrLong(128L * 1024 * 1024)};
+    mongo::Value::createIntOrLong(128L * 1024 * 1024),
+    {}};
 
 const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
     "kafkaEmitUserDeliveryCallback",
     "If true, Kafka $emit uses a delivery callback to detect connection errors.",
     // Enabled by default.
-    mongo::Value(true)};
+    mongo::Value(true),
+    {}};
 
 const FeatureFlagDefinition FeatureFlags::kEnableSessionWindow{
-    "enableSessionWindow", "If true, the $sessionWindow stage is enabled.", mongo::Value(false)};
+    "enableSessionWindow",
+    "If true, the $sessionWindow stage is enabled.",
+    mongo::Value(false),
+    {}};
 
 const FeatureFlagDefinition FeatureFlags::kSourceBufferTotalSize{
     "sourceBufferTotalSize",
     "Specifies value for SourceBufferManager::Options::bufferTotalSize.",
     // 800 MB default
-    mongo::Value::createIntOrLong(800L * 1024 * 1024)};
+    mongo::Value::createIntOrLong(800L * 1024 * 1024),
+    {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(160L * 1024 * 1024)}}};
 
 const FeatureFlagDefinition FeatureFlags::kSourceBufferPreallocationFraction{
     "sourceBufferPreallocationFraction",
     "Specifies value for SourceBufferManager::Options::bufferPreallocationFraction.",
     // 128 MB default
-    mongo::Value(0.5)};
+    mongo::Value(0.5),
+    {}};
 
 const FeatureFlagDefinition FeatureFlags::kSourceBufferMaxSize{
     "sourceBufferMaxSize",
     "Specifies value for SourceBufferManager::Options::maxSourceBufferSize.",
     // 160 MB default
-    mongo::Value::createIntOrLong(160L * 1024 * 1024)};
+    mongo::Value::createIntOrLong(160L * 1024 * 1024),
+    {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(32L * 1024 * 1024)}}};
 
 const FeatureFlagDefinition FeatureFlags::kSourceBufferPageSize{
     "sourceBufferPageSize",
     "Specifies value for SourceBufferManager::Options::pageSize.",
     // 4 MB default
-    mongo::Value::createIntOrLong(4L * 1024 * 1024)};
+    mongo::Value::createIntOrLong(4L * 1024 * 1024),
+    {}};
 
 }  // namespace streams

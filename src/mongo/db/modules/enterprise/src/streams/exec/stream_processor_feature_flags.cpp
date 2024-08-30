@@ -39,7 +39,7 @@ FeatureFlagValue StreamProcessorFeatureFlags::getFeatureFlagValue(
     if (it != _featureFlags.end()) {
         return it->second;
     }
-    return featureFlag.defaultValue;
+    return featureFlag.getDefaultValue();
 }
 
 int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags) {

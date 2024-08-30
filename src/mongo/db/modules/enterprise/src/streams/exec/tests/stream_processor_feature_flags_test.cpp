@@ -6,8 +6,10 @@
 
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/framework.h"
+#include "streams/exec/config_gen.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/stream_processor_feature_flags.h"
+
 
 namespace streams {
 
@@ -25,33 +27,46 @@ TEST(StreamProcessorFeatureFlags, FeatureFlagTests) {
     StreamProcessorFeatureFlags spff{featureFlags,
                                      std::chrono::time_point<std::chrono::system_clock>::min()};
 
-    FeatureFlagDefinition longValueDefinition{"longValue", "Long Value", mongo::Value(10000)};
+    FeatureFlagDefinition longValueDefinition{"longValue", "Long Value", mongo::Value(10000), {}};
     ASSERT_EQ(60000, spff.getFeatureFlagValue(longValueDefinition).getInt().get());
 
     FeatureFlagDefinition longValue3Definition{
-        "longValueMissingString", "Long Value", mongo::Value(10000)};
+        "longValueMissingString", "Long Value", mongo::Value(10000), {}};
     ASSERT_EQ(10000, spff.getFeatureFlagValue(longValue3Definition).getInt().get());
 
-    FeatureFlagDefinition boolValueDefinition{"boolValue", "Boolean Value", mongo::Value(true)};
+    FeatureFlagDefinition boolValueDefinition{"boolValue", "Boolean Value", mongo::Value(true), {}};
     ASSERT_TRUE(spff.getFeatureFlagValue(boolValueDefinition).getBool().get());
 
-    FeatureFlagDefinition doubleValueDefinition{"doubleValue", "Double Value", mongo::Value(0.0)};
+    FeatureFlagDefinition doubleValueDefinition{
+        "doubleValue", "Double Value", mongo::Value(0.0), {}};
     ASSERT_EQ(spff.getFeatureFlagValue(doubleValueDefinition).getDouble().get(), 2.2);
 
     FeatureFlagDefinition stringValueDefinition{
-        "stringValue", "String Value", mongo::Value(std::string("hello"))};
+        "stringValue", "String Value", mongo::Value(std::string("hello")), {}};
     ASSERT_EQ(spff.getFeatureFlagValue(stringValueDefinition).getString().get(), "test");
 
 
     FeatureFlagDefinition stringValue2Definition{
-        "stringValue2", "String Value", mongo::Value(std::string("hello"))};
+        "stringValue2", "String Value", mongo::Value(std::string("hello")), {}};
     ASSERT_EQ(spff.getFeatureFlagValue(stringValue2Definition).getString().get(), "true");
 
     FeatureFlagDefinition stringValueDefaultDefinition{
-        "stringValueDefault", "String Value", mongo::Value(std::string("hello"))};
+        "stringValueDefault", "String Value", mongo::Value(std::string("hello")), {}};
     ASSERT_EQ(spff.getFeatureFlagValue(stringValueDefaultDefinition).getString().get(), "hello");
     ASSERT_TRUE(spff.isOverridden(stringValue2Definition));
     ASSERT_FALSE(spff.isOverridden(stringValueDefaultDefinition));
+
+    FeatureFlagDefinition tierSpecificDefinition{
+        "tierDefault",
+        "tier Default",
+        mongo::Value(1),
+        {{"SP10", mongo::Value(2)}, {"SP30", mongo::Value(3)}}};
+    mongo::streams::gStreamsSppTier = "SP10";
+    ASSERT_EQ(spff.getFeatureFlagValue(tierSpecificDefinition).getInt().get(), 2);
+    mongo::streams::gStreamsSppTier = "SP30";
+    ASSERT_EQ(spff.getFeatureFlagValue(tierSpecificDefinition).getInt().get(), 3);
+    mongo::streams::gStreamsSppTier = "SPCanary";
+    ASSERT_EQ(spff.getFeatureFlagValue(tierSpecificDefinition).getInt().get(), 1);
 }
 
 }  // namespace streams

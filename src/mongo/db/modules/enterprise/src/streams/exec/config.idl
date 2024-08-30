@@ -30,3 +30,11 @@ server_parameters:
         cpp_varname: 'gStreamsAllowMultiTenancy'
         cpp_vartype: bool
         redact: false
+
+    streamsSppTier:
+        description: >
+            It is the tier of stream processing pod.  can be either SP10 or SP30
+        set_at: startup
+        cpp_varname: 'gStreamsSppTier'
+        cpp_vartype: std::string
+        redact: false

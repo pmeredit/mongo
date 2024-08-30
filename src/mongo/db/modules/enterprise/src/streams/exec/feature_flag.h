@@ -6,6 +6,7 @@
 #include <string>
 
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/stdx/unordered_map.h"
 
 
 namespace streams {
@@ -15,6 +16,8 @@ struct FeatureFlagDefinition {
     std::string name;
     std::string description;
     mongo::Value defaultValue;
+    mongo::stdx::unordered_map<std::string, mongo::Value> tierDefaultValues;
+    mongo::Value getDefaultValue() const;
 };
 
 // FeatureFlagValue is wrapper to mongo to return only expected type values or default value.
