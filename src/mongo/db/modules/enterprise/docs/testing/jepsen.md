@@ -426,7 +426,15 @@ See above for how to run the Jepsen Docker test locally, ensuring the `--branch`
 
 ### Merge and Update
 
-Once you can confirm that the upgrade can take place, merge your changes into 10gen/jepsen, tag it with an appropriate release, and update the branches in [evergreen/jepsen_docker/setup.sh](https://github.com/10gen/mongo/blob/master/evergreen/jepsen_docker/setup.sh).
+Once you can confirm that the upgrade can take place
+
+1. merge your changes into 10gen/jepsen
+2. tag it with an appropriate release
+   ```
+   git tag vX.Y.Z-<branch-name>
+   git push origin --tags
+   ```
+3. update the branches in [evergreen/jepsen_docker/setup.sh](../../../../../../../evergreen/jepsen_docker/setup.sh) or [evergreen/do_jepsen_setup/install_jepsen.sh](../../../../../../../evergreen/do_jepsen_setup/install_jepsen.sh)
 
 ## Typical Issues
 
