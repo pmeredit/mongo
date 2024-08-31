@@ -37,9 +37,9 @@ mongo_cc_library(
         "import_collection_coordinator.h",
     ],
     deps = [
-        "//src/mongo:base",  # TODO(SERVER-98376): Remove.
+        "//src/mongo:base",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db:service_context",
-        "//src/mongo/db/catalog:commit_quorum_options",  # TODO(SERVER-98376): Remove.
-        "//src/mongo/db/repl:repl_coordinator_interface",  # TODO(SERVER-98376): Remove.
+        "//src/mongo/db/catalog:commit_quorum_options",  # TODO(SERVER-93876): Remove.
+        "//src/mongo/db/repl:repl_coordinator_interface",  # TODO(SERVER-93876): Remove.
     ],
 )
