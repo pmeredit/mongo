@@ -918,9 +918,9 @@ static const char* kBulkWriteUpdateCmd =
                 "filter": {"ssn": 1234567890},
                 "updateMods": {
                     $set: {
-                        "ssn": 1234567890, 
-                        "user": { 
-                            "account": "secret" 
+                        "ssn": 1234567890,
+                        "user": {
+                            "account": "secret"
                         }
                     }
                 }
