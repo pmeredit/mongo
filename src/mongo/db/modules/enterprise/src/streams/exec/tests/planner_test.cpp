@@ -2129,5 +2129,73 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
                    "InvalidOptions: Cannot use $text in $match stage in Atlas Stream Processing.");
 }
 
+TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {
+    Planner planner(_context.get(), Planner::Options{});
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    auto bson = parsePipeline(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2",
+                config: "an invalid type"
+            }
+        }
+    ])");
+
+    const auto expectedWhat =
+        "TypeMismatch: BSON field '$emit.config' is the wrong type "
+        "'string', expected types '[object']";
+
+    ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                AssertionException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                expectedWhat);
+}
+
+TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
+    Planner planner(_context.get(), Planner::Options{});
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    auto bson = parsePipeline(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2",
+                config: {headers: [{k: "keyname", v: "value"}]}
+            }
+        }
+    ])");
+
+    const auto expectedWhat =
+        "TypeMismatch: BSON field '$emit.config.headers' is the wrong type "
+        "'array', expected types '[object, string']";
+
+    ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                AssertionException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                expectedWhat);
+}
+
 }  // namespace
 }  // namespace streams

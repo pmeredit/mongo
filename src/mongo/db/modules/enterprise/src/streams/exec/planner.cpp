@@ -14,6 +14,7 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/bsontypes.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/change_stream_options_gen.h"
 #include "mongo/db/feature_flag.h"
@@ -836,6 +837,23 @@ void Planner::planEmitSink(const BSONObj& spec) {
         if (connection.getType() == ConnectionTypeEnum::Kafka) {
             auto baseOptions = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                              connection.getOptions());
+
+            // TODO(SERVER-94318): This logic was added because the IDL parser throws an unclear
+            // error message (see SERVER-94317). This block can be removed once that ticket is
+            // resolved.
+            const auto kafkaConfig = sinkSpec.getField(KafkaSinkOptions::kConfigFieldName);
+            if (kafkaConfig.ok()) {
+                IDLParserContext("$emit").checkAndAssertTypes(kafkaConfig,
+                                                              std::array<BSONType, 1>{Object});
+                const auto kafkaConfigObj = kafkaConfig.Obj();
+                const auto kafkaHeader =
+                    kafkaConfigObj.getField(KafkaSinkConfigOptions::kHeadersFieldName);
+                if (kafkaHeader.ok()) {
+                    IDLParserContext("$emit.config")
+                        .checkAndAssertTypes(kafkaHeader, std::array<BSONType, 2>{Object, String});
+                }
+            }
+
             auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
             KafkaEmitOperator::Options kafkaEmitOptions;
             kafkaEmitOptions.topicName = options.getTopic();
