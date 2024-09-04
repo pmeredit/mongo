@@ -114,12 +114,22 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         magicRestoreTest.appendRestoreToHigherTermThanIfNeeded(restoreConfiguration);
 
     const magicRestoreDebugPath = MongoRunner.dataDir + "/magic_restore_debug.log";
-    magicRestoreTest.writeObjsAndRunMagicRestore(
-        restoreConfiguration,
-        entriesAfterBackup,
-        {"replSet": jsTestName(), "logpath": magicRestoreDebugPath});
 
-    // Start a new replica set fixture on the dbpath.
+    // When using the 'logpath' parameter, magic restore outputs logs to a separate log file so we
+    // can test filtering logs on the RESTORE component. However, this omits mongod logs from
+    // test output,so we explicitly print the contents of the log file to stdout for debugging
+    // purposes.
+    try {
+        magicRestoreTest.writeObjsAndRunMagicRestore(
+            restoreConfiguration,
+            entriesAfterBackup,
+            {"replSet": jsTestName(), "logpath": magicRestoreDebugPath});
+    } finally {
+        jsTestLog("Magic restore logs:");
+        cat(magicRestoreDebugPath).split("\n").forEach((line) => { print(line); });
+    }
+
+    jsTestLog("Start a new replica set fixture on the dbpath.");
     const destinationCluster = new ReplSetTest({nodes: 1});
     destinationCluster.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
