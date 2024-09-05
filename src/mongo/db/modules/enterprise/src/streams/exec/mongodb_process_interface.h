@@ -146,6 +146,12 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    void appendOperationStats(mongo::OperationContext* opCtx,
+                              const mongo::NamespaceString& nss,
+                              mongo::BSONObjBuilder* builder) const override {
+        MONGO_UNREACHABLE;
+    }
+
     mongo::BSONObj getCollectionOptions(mongo::OperationContext* opCtx,
                                         const mongo::NamespaceString& nss) override {
         MONGO_UNREACHABLE;
