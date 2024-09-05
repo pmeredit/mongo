@@ -3,17 +3,10 @@
  *
  * @tags: [
  *   requires_fcv_81,
- *   assumes_read_concern_unchanged,
- *   directly_against_shardsvrs_incompatible,
- *   assumes_read_preference_unchanged,
  * ]
  */
-import {
-    assertIsEqualityIndexedEncryptedField,
-    assertIsRangeIndexedEncryptedField,
-    EncryptedClient,
-    kSafeContentField
-} from "jstests/fle2/libs/encrypted_client_util.js";
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const DECIMAL128_MAX_SAFE_INTEGER = NumberDecimal("9999999999999999999999999999999999");  // 10^34-1
 const DECIMAL128_MIN_SAFE_INTEGER = NumberDecimal("-9999999999999999999999999999999999");
@@ -270,13 +263,13 @@ const decimal_large_domain_tests = {
     ]
 };
 
-function runTestSuite(testSuite, bsonType, typeConvertFn) {
+function runTestSuite(conn, testSuite, bsonType, typeConvertFn) {
     const dbName = "basic_crud_range";
     jsTestLog(`Running test suite for type ${bsonType}: ${tojson(testSuite)}`);
 
     for (let test of testSuite.tests) {
-        db.getSiblingDB(dbName).dropDatabase();
-        const client = new EncryptedClient(db.getMongo(), dbName);
+        conn.getDB(dbName).dropDatabase();
+        const client = new EncryptedClient(conn, dbName);
         const edb = client.getDB();
 
         assert.commandWorked(client.createEncryptionCollection("basic", {
@@ -431,25 +424,36 @@ function runTestSuite(testSuite, bsonType, typeConvertFn) {
     }
 }
 
-runTestSuite(tiny_domain_tests, "int", toNumberInt);
-runTestSuite(small_domain_tests, "int", toNumberInt);
-runTestSuite(medium_domain_tests, "int", toNumberInt);
-runTestSuite(int_large_domain_tests, "int", toNumberInt);
-runTestSuite(int_unbounded_domain_tests, "int", toNumberInt);
+{
+    const rst = new ReplSetTest({nodes: 1, nodeOptions: {verbose: 1}});
+    rst.startSet();
 
-runTestSuite(tiny_domain_tests, "long", toNumberLong);
-runTestSuite(small_domain_tests, "long", toNumberLong);
-runTestSuite(medium_domain_tests, "long", toNumberLong);
-runTestSuite(long_large_domain_tests, "long", toNumberLong);
-runTestSuite(long_unbounded_domain_tests, "long", toNumberLong);
+    rst.initiate();
+    rst.awaitReplication();
+    const conn = rst.getPrimary();
 
-runTestSuite(double_unbounded_domain_tests, "double", toNumberDouble);
-runTestSuite(double_integer_domain_tests, "double", toNumberDouble);
-runTestSuite(double_small_domain_tests, "double", toNumberDouble);
-runTestSuite(double_medium_domain_tests, "double", toNumberDouble);
-runTestSuite(double_large_domain_tests, "double", toNumberDouble);
+    runTestSuite(conn, tiny_domain_tests, "int", toNumberInt);
+    runTestSuite(conn, small_domain_tests, "int", toNumberInt);
+    runTestSuite(conn, medium_domain_tests, "int", toNumberInt);
+    runTestSuite(conn, int_large_domain_tests, "int", toNumberInt);
+    runTestSuite(conn, int_unbounded_domain_tests, "int", toNumberInt);
 
-runTestSuite(decimal_unbounded_domain_tests, "decimal", toNumberDecimal);
-runTestSuite(decimal_small_domain_tests, "decimal", toNumberDecimal);
-runTestSuite(decimal_medium_domain_tests, "decimal", toNumberDecimal);
-runTestSuite(decimal_large_domain_tests, "decimal", toNumberDecimal);
+    runTestSuite(conn, tiny_domain_tests, "long", toNumberLong);
+    runTestSuite(conn, small_domain_tests, "long", toNumberLong);
+    runTestSuite(conn, medium_domain_tests, "long", toNumberLong);
+    runTestSuite(conn, long_large_domain_tests, "long", toNumberLong);
+    runTestSuite(conn, long_unbounded_domain_tests, "long", toNumberLong);
+
+    runTestSuite(conn, double_unbounded_domain_tests, "double", toNumberDouble);
+    runTestSuite(conn, double_integer_domain_tests, "double", toNumberDouble);
+    runTestSuite(conn, double_small_domain_tests, "double", toNumberDouble);
+    runTestSuite(conn, double_medium_domain_tests, "double", toNumberDouble);
+    runTestSuite(conn, double_large_domain_tests, "double", toNumberDouble);
+
+    runTestSuite(conn, decimal_unbounded_domain_tests, "decimal", toNumberDecimal);
+    runTestSuite(conn, decimal_small_domain_tests, "decimal", toNumberDecimal);
+    runTestSuite(conn, decimal_medium_domain_tests, "decimal", toNumberDecimal);
+    runTestSuite(conn, decimal_large_domain_tests, "decimal", toNumberDecimal);
+
+    rst.stopSet();
+}
