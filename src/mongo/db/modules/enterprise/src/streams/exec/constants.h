@@ -14,6 +14,10 @@ constexpr const char kTenantIdLabelKey[] = "tenant_id";
 constexpr const char kProcessorIdLabelKey[] = "processor_id";
 constexpr const char kStatusLabelKey[] = "status";
 
+// All connections to Kafka must have the following client.id parameter set when a source/sink
+// server contains "confluent.cloud"
+constexpr const char kKafkaClientID[] = "cwc|001j000000kNci1AAC";
+
 constexpr const char kSourceStageName[] = "$source";
 constexpr const char kEmitStageName[] = "$emit";
 constexpr const char kMergeStageName[] = "$merge";

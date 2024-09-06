@@ -230,4 +230,10 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
     return newStreamMeta.freeze();
 }
 
+constexpr const char kConfluentCloud[] = "confluent.cloud";
+
+bool isConfluentBroker(const std::string& bootstrapServers) {
+    return mongo::str::contains(bootstrapServers, kConfluentCloud);
+}
+
 }  // namespace streams

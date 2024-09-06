@@ -24,6 +24,7 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/exec/util.h"
 #include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -298,7 +299,11 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
                                     << " with error: " << errstr);
         }
     };
+
     setConf("bootstrap.servers", _options.bootstrapServers);
+    if (streams::isConfluentBroker(_options.bootstrapServers)) {
+        setConf("client.id", std::string(streams::kKafkaClientID));
+    }
     // Do not log broker disconnection messages.
     setConf("log.connection.close", "false");
     // Do not refresh topic or broker metadata.

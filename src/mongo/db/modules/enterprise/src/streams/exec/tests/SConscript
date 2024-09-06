@@ -39,6 +39,17 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
+    target="streams_util_test",
+    source=[
+        "./streams_util_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+)
+
+env.CppUnitTest(
     target="sample_data_source_operator_test",
     source=[
         "sample_data_source_operator_test.cpp",

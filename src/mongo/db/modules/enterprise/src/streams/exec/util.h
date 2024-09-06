@@ -54,4 +54,7 @@ bool isRetryableStatus(const mongo::Status& status);
 mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                                  const mongo::StreamMeta& internalStreamMeta);
 
+// Determines if a list of bootstrap servers represents a confluent broker
+bool isConfluentBroker(const std::string& bootstrapServers);
+
 }  // namespace streams

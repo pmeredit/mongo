@@ -820,6 +820,10 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
         }
     };
     setConf("bootstrap.servers", _options.bootstrapServers);
+    if (streams::isConfluentBroker(_options.bootstrapServers)) {
+        setConf("client.id", std::string(streams::kKafkaClientID));
+    }
+
     setConf("log.connection.close", "false");
     setConf("topic.metadata.refresh.interval.ms", "-1");
     setConf("enable.auto.commit", "false");

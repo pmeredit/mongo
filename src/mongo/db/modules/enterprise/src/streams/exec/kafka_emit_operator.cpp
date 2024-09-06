@@ -128,6 +128,9 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         }
     };
     setConf("bootstrap.servers", _options.bootstrapServers);
+    if (streams::isConfluentBroker(_options.bootstrapServers)) {
+        setConf("client.id", std::string(streams::kKafkaClientID));
+    }
     // Do not log broker disconnection messages.
     setConf("log.connection.close", "false");
     // Do not refresh topic or broker metadata.
