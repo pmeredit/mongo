@@ -39,7 +39,6 @@ InMemorySourceOperator::Options InMemorySourceSinkOperatorTest::makeSourceOption
     return InMemorySourceOperator::Options(SourceOperator::Options{
         .timestampOutputFieldName = "_ts",
         .useWatermarks = true,
-        .allowedLatenessMs = 5000,
     });
 }
 

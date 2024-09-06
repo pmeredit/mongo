@@ -337,7 +337,6 @@ export function kafkaExample(
                 testOnlyPartitionCount: NumberInt(1),
                 // Examples of optional fields below:
                 // timeField: { $dateFromString: { dateString: '$myTsStr' }},
-                // allowedLateness: { unit: 'second', size: 1 },
                 // tsFieldName: '_myts',
             }
         },

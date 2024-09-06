@@ -28,8 +28,6 @@ public:
         std::string timestampOutputFieldName;
         // If true, watermarks are created and sent in this $source.
         bool useWatermarks{false};
-        // Allowed lateness specified in the $source.
-        int64_t allowedLatenessMs{0};
         // If true, kIdle watermark messages are sent whenever 0 documents are returned
         // from the source.
         bool sendIdleMessages{false};
