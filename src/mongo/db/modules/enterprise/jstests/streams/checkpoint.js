@@ -358,7 +358,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         inputAfterStop,
         expectedOutput,
         resultsSortDoc = null,
-        minimiumExpectedStateSize = 0,
+        minimumExpectedStateSize = 0,
         shouldHeapProfile = false,
         extraLogKeys = null,
         interval = null,
@@ -407,8 +407,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                     waitTime);
         let stats = test.stats();
 
-        // Verify there is at least the state size expected (if any).
-        assert.gte(stats["stateSize"], minimiumExpectedStateSize, "expected more state size");
+        // Verify expected state size (if any).
+        assert.gte(stats["stateSize"], minimumExpectedStateSize, "expected more state size");
         let heapProfile = null;
         if (shouldHeapProfile) {
             let result = db.serverStatus({wiredTiger: 0, storageEngine: 0, metrics: 0});
@@ -449,6 +449,11 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             heapProfileAfterCheckpoint = result["heapProfile"];
         }
         let statsAfterCheckpoint = test.stats();
+
+        // Verify expected state size (if any).
+        assert.gte(statsAfterCheckpoint["stateSize"],
+                   minimumExpectedStateSize,
+                   "expected more state size");
 
         // Wait for all the output.
         assert.neq(expectedOutput, null);
@@ -667,7 +672,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                     id: id
                 },
             ],
-            minimiumExpectedStateSize: state,
+            minimumExpectedStateSize: state,
             shouldHeapProfile: true,
             extraLogKeys: {
                 inputSize: state,
