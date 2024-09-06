@@ -1,6 +1,7 @@
 /**
  * @tags: [
  *  featureFlagStreams,
+ *  tsan_incompatible,
  * ]
  */
 
