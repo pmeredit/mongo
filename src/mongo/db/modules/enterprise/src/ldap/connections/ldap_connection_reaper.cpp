@@ -44,31 +44,38 @@ LDAPConnectionReaper::~LDAPConnectionReaper() {
     }
 }
 
-void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
+void LDAPConnectionReaper::scheduleReapOrDisconnectInline(LDAPSessionId ldapSessionId,
+                                                          reapFunc reaper) {
     // If the LDAP connection is being reaped before it is safe to spawn multiple threads, the reap
     // should occur inline rather than being scheduled in the executor. This scenario may occur if
     // the LDAP smoke test fails upon server startup, before multithreading is enabled.
     if (ThreadSafetyContext::getThreadSafetyContext()->isSingleThreaded()) {
-        LOGV2_DEBUG(5945600, 3, "Reaping connection inline");
+        LOGV2_DEBUG(5945600, 3, "Reaping connection inline", "ldapSessionId"_attr = ldapSessionId);
         reaper();
     } else {
         std::call_once(_initExecutor, [this]() { _executor->startup(); });
-        _executor->schedule([r = std::move(reaper)](Status schedStatus) {
+        _executor->schedule([ldapSessionId, r = std::move(reaper)](Status schedStatus) {
             if (schedStatus.isOK()) {
-                LOGV2_DEBUG(5945601, 3, "Reaping connection in separate thread");
+                LOGV2_DEBUG(5945601,
+                            3,
+                            "Reaping connection in separate thread",
+                            "ldapSessionId"_attr = ldapSessionId);
                 r();
             }
             // Else if we are shutdown or running inline, leak the LDAP connection since the server
             // is shutting down
-            LOGV2_DEBUG(7997800, 3, "Leaking LDAP connection since server is in shutdown");
+            LOGV2_DEBUG(7997800,
+                        3,
+                        "Leaking LDAP connection since server is in shutdown",
+                        "ldapSessionId"_attr = ldapSessionId);
         });
     }
 }
 
-void LDAPConnectionReaper::reap(LDAP* ldap) {
-    scheduleReapOrDisconnectInline([ldap] {
-        disconnectLDAPConnection(ldap);
-        LOGV2_DEBUG(5945602, 2, "LDAP connection closed");
+void LDAPConnectionReaper::reap(LDAP* ldap, LDAPSessionId ldapSessionId) {
+    scheduleReapOrDisconnectInline(ldapSessionId, [ldap, ldapSessionId] {
+        disconnectLDAPConnection(ldap, ldapSessionId);
+        LOGV2_DEBUG(5945602, 2, "LDAP connection closed", "ldapSessionId"_attr = ldapSessionId);
     });
 }
 

@@ -16,6 +16,7 @@
 #include "../ldap_connection_options.h"
 #include "../ldap_query.h"
 #include "../ldap_type_aliases.h"
+#include "ldap_session_id.h"
 
 // We must redefine our log macro, because the original LOG isn't intended to be used from headers
 #define LOGV2_LDAPLOG(ID, DLEVEL, MESSAGE, ...)                 \
@@ -100,17 +101,18 @@ private:
 template <typename S>
 class LDAPSessionHolder {
 public:
-    LDAPSessionHolder(typename S::SessionType* session) : _session(session) {}
-    LDAPSessionHolder() : _session(nullptr) {}
-    LDAPSessionHolder& operator=(typename S::SessionType* session) {
-        _session = session;
-        return *this;
-    }
+    LDAPSessionHolder(typename S::SessionType* session, LDAPSessionId ldapSessionId)
+        : _session(session), _sessionId(ldapSessionId) {}
+
+    LDAPSessionHolder() : _session(nullptr), _sessionId(getNextLDAPSessionId()) {}
 
     typename S::SessionType*& getSession() {
         return _session;
     }
 
+    LDAPSessionId getId() const {
+        return _sessionId;
+    }
 
     // Template function for making requests from ldap_get_option.
     // OptionSpec must have the following constraints:
@@ -351,6 +353,7 @@ public:
             LOGV2_LDAPLOG(4615664,
                           3,
                           "From LDAP query result, got an entry with DN: {entryDN}",
+                          "ldapSessionId"_attr = _sessionId,
                           "entryDN"_attr = S::toNativeString(entryDN));
             LDAPAttributeKeyValuesMap attributeValueMap;
 
@@ -374,6 +377,7 @@ public:
                 LOGV2_LDAPLOG(4615665,
                               3,
                               "From LDAP entry with DN {entryDN}, got attribute {attribute}",
+                              "ldapSessionId"_attr = _sessionId,
                               "entryDN"_attr = S::toNativeString(entryDN),
                               "attribute"_attr = S::toNativeString(attribute));
 
@@ -435,6 +439,11 @@ private:
         return std::move(swQuery.getValue());
     }
 
+    static LDAPSessionId getNextLDAPSessionId() {
+        static AtomicWord<LDAPSessionId> ldapSessionIdCounter(0);
+        return ldapSessionIdCounter.addAndFetch(1);
+    }
+
     struct LDAPMessageDeleter {
         void operator()(typename S::MessageType* ptr) {
             S::ldap_msgfree(ptr);
@@ -446,7 +455,11 @@ private:
                     typename S::ErrorCodeType* err,
                     TickSource* tickSource,
                     const SharedUserAcquisitionStats& userAcquisitionStats) {
-        LOGV2_LDAPLOG(4615666, 3, "Performing LDAP query: {query}", "query"_attr = query);
+        LOGV2_LDAPLOG(4615666,
+                      3,
+                      "Performing LDAP query: {query}",
+                      "ldapSessionId"_attr = _sessionId,
+                      "query"_attr = query);
         UserAcquisitionStatsHandle userAcquisitionStatsHandle(
             userAcquisitionStats.get(), tickSource, kSearch);
 
@@ -495,6 +508,8 @@ private:
     using LibraryCharPtr = typename S::LibraryCharType*;
 
     typename S::SessionType* _session;
+
+    LDAPSessionId _sessionId;
 };
 
 }  // namespace mongo

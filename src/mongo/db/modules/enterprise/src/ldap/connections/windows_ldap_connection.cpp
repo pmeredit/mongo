@@ -123,7 +123,8 @@ WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<WindowsLDAPConnectionPIMPL>()),
       _reaper(std::move(reaper)) {
-
+    LOGV2_DEBUG(
+        9339702, 3, "Creating WindowsLDAPConnection", "ldapSessionId"_attr = _pimpl->getId());
     // If the disableLDAPNativeTimeout failpoint is set, then reset _connectionOptions.timeout to
     // the value provided in the failpoint.
     disableNativeLDAPTimeout.execute([&](const BSONObj& data) {
@@ -135,7 +136,10 @@ WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
 WindowsLDAPConnection::~WindowsLDAPConnection() {
     Status status = disconnect();
     if (!status.isOK()) {
-        LOGV2_ERROR(24256, "LDAP unbind failed: {status}", "status"_attr = status);
+        LOGV2_ERROR(24256,
+                    "LDAP unbind failed: {status}",
+                    "ldapSessionId"_attr = getId(),
+                    "status"_attr = status);
     }
 }
 
@@ -361,24 +365,33 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(
     return _pimpl->query(std::move(query), &timeout, tickSource, userAcquisitionStats);
 }
 
+LDAPSessionId WindowsLDAPConnection::getId() const {
+    return _pimpl->getId();
+}
+
 Status WindowsLDAPConnection::disconnect() {
+    LOGV2_DEBUG(
+        9339703, 3, "Disconnecting WindowsLDAPConnection", "ldapSessionId"_attr = _pimpl->getId());
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
 
-    _reaper->reap(_pimpl->getSession());
+    _reaper->reap(_pimpl->getSession(), _pimpl->getId());
 
     _pimpl->getSession() = nullptr;
 
     return Status::OK();
 }
 
-void disconnectLDAPConnection(LDAP* ldap) {
-    LDAPSessionHolder<WindowsLDAPSessionParams> session(ldap);
+void disconnectLDAPConnection(LDAP* ldap, LDAPSessionId connId) {
+    LDAPSessionHolder<WindowsLDAPSessionParams> session(ldap, connId);
     auto status =
         session.resultCodeToStatus(ldap_unbind_s(ldap), "ldap_unbind_s", "unbind from LDAP");
     if (!status.isOK()) {
-        LOGV2_ERROR(5531601, "Unable to unbind from LDAP", "__error__"_attr = status);
+        LOGV2_ERROR(5531601,
+                    "Unable to unbind from LDAP",
+                    "ldapSessionId"_attr = connId,
+                    "__error__"_attr = status);
     }
 }
 

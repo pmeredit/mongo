@@ -39,6 +39,8 @@ public:
                                            SharedUserAcquisitionStats userAcquisitionStats) final;
     Status disconnect() final;
 
+    LDAPSessionId getId() const override;
+
 private:
     class WindowsLDAPConnectionPIMPL;
     std::unique_ptr<WindowsLDAPConnectionPIMPL> _pimpl;

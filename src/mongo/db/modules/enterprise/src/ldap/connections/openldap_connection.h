@@ -76,9 +76,11 @@ public:
 
     SockAddr getPeerSockAddr() const;
 
-    const boost::optional<LDAPRebindCallbackParameters>& getRebindCallbackParameters() {
+    const boost::optional<LDAPRebindCallbackParameters>& getRebindCallbackParameters() const {
         return _rebindCallbackParameters;
     }
+
+    LDAPSessionId getId() const override;
 
 private:
     class OpenLDAPConnectionPIMPL;

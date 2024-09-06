@@ -10,6 +10,7 @@
 
 #include "../ldap_connection_options.h"
 #include "../ldap_type_aliases.h"
+#include "ldap_session_id.h"
 
 namespace mongo {
 
@@ -89,6 +90,8 @@ public:
      *  @return Any errors arising from disconnecting.
      */
     virtual Status disconnect() = 0;
+
+    virtual LDAPSessionId getId() const = 0;
 
 protected:
     LDAPConnectionOptions _connectionOptions;

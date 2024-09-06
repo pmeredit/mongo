@@ -194,13 +194,14 @@ std::tuple<Status, int> openLDAPBindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
     try {
         auto* conn = static_cast<OpenLDAPConnection*>(params);
-        LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session);
+        LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session, conn->getId());
         const auto& bindOptions = conn->bindOptions();
         invariant(bindOptions);
 
         // Log the peer address if the connection has already been used; otherwise, this is still
         // unknown and will be logged by the TCP connection callback.
         logv2::DynamicAttributes attrs;
+        attrs.add("ldapSessionId", conn->getId());
         attrs.add("ldapURL", url);
         attrs.addDeepCopy("bindOptions", bindOptions->toCleanString());
 
@@ -248,6 +249,7 @@ std::tuple<Status, int> openLDAPBindFunction(
         } else {
             LOGV2_ERROR(24054,
                         "Attempted to bind to LDAP server with unrecognized bind type.",
+                        "ldapSessionId"_attr = conn->getId(),
                         "unrecognizedBindType"_attr =
                             authenticationChoiceToString(bindOptions->authenticationChoice),
                         "peerAddr"_attr = conn->getPeerSockAddr());
@@ -260,6 +262,7 @@ std::tuple<Status, int> openLDAPBindFunction(
         } else {
             LOGV2_ERROR(24055,
                         "Failed to bind to LDAP",
+                        "ldapSessionId"_attr = conn->getId(),
                         "ldapURL"_attr = url,
                         "status"_attr = status,
                         "bindOptions"_attr = bindOptions->toCleanString(),
@@ -271,6 +274,7 @@ std::tuple<Status, int> openLDAPBindFunction(
         auto* conn = static_cast<OpenLDAPConnection*>(params);
         LOGV2_ERROR(24056,
                     "Failed to bind to LDAP server",
+                    "ldapSessionId"_attr = conn->getId(),
                     "ldapURL"_attr = url,
                     "status"_attr = status,
                     "peerAddr"_attr = conn->getPeerSockAddr());
@@ -281,17 +285,17 @@ std::tuple<Status, int> openLDAPBindFunction(
 
 int openLDAPRebindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
-    const auto& rebindCallbackParameters =
-        static_cast<OpenLDAPConnection*>(params)->getRebindCallbackParameters();
+    const auto* conn = static_cast<OpenLDAPConnection*>(params);
+    const auto& rebindCallbackParameters = conn->getRebindCallbackParameters();
     invariant(rebindCallbackParameters);
 
     LOGV2_DEBUG(7915600,
                 1,
                 "Binding to LDAP server when chasing referral",
+                "ldapSessionId"_attr = conn->getId(),
                 "ldapURL"_attr = url,
-                "peerAddr"_attr = static_cast<OpenLDAPConnection*>(params)->getPeerSockAddr(),
-                "bindOptions"_attr =
-                    static_cast<OpenLDAPConnection*>(params)->bindOptions()->toCleanString());
+                "peerAddr"_attr = conn->getPeerSockAddr(),
+                "bindOptions"_attr = conn->bindOptions()->toCleanString());
 
     auto [status, code] = openLDAPBindFunction(session, url, request, msgid, params);
     if (ldapReferralFail.shouldFail() || !status.isOK()) {
@@ -301,6 +305,7 @@ int openLDAPRebindFunction(
                                        kFailedReferral);
         LOGV2_ERROR(7915601,
                     "Could not bind to LDAP server when chasing referral",
+                    "ldapSessionId"_attr = conn->getId(),
                     "ldapURL"_attr = url,
                     "status"_attr = status,
                     "peerAddr"_attr = static_cast<OpenLDAPConnection*>(params)->getPeerSockAddr(),
@@ -319,6 +324,7 @@ int openLDAPRebindFunction(
         LOGV2_DEBUG(7915602,
                     1,
                     "Successfully rebound to LDAP server when chasing referral",
+                    "ldapSessionId"_attr = conn->getId(),
                     "ldapURL"_attr = url,
                     "peerAddr"_attr = static_cast<OpenLDAPConnection*>(params)->getPeerSockAddr(),
                     "bindOptions"_attr =
@@ -462,6 +468,7 @@ int LDAPTLSConnectCallbackFunction(LDAP* ld, void* ssl, void* sslCtx, void* args
     LOGV2_DEBUG(7997802,
                 1,
                 "Establishing TLS connection to LDAP server",
+                "ldapSessionId"_attr = conn->getId(),
                 "serverAddress"_attr = conn->getPeerSockAddr(),
                 "tlsPackage"_attr = conn->getTraits().tlsPackage);
     return 0;
@@ -482,6 +489,7 @@ public:
         LOGV2_DEBUG(20163,
                     1,
                     "Established TCP connection to LDAP server",
+                    "ldapSessionId"_attr = this_->getId(),
                     "serverAddress"_attr = this_->_peer,
                     "ldapURL"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
                                          ldap_url_desc2str(srv), &ldap_memfree)
@@ -509,6 +517,7 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
       _pimpl(std::make_unique<OpenLDAPConnectionPIMPL>()),
       _reaper(std::move(reaper)),
       _tcpConnectionCallback(_pimpl->getTCPConnectionCallbacks()) {
+    LOGV2_DEBUG(9339700, 3, "Creating OpenLDAPConnection", "ldapSessionId"_attr = _pimpl->getId());
     initTraits();
 
     // If the disableLDAPNativeTimeout failpoint is set, then reset _connectionOptions.timeout to
@@ -525,7 +534,10 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
 OpenLDAPConnection::~OpenLDAPConnection() {
     Status status = disconnect();
     if (!status.isOK()) {
-        LOGV2_ERROR(24058, "LDAP unbind failed: {status}", "status"_attr = status);
+        LOGV2_ERROR(24058,
+                    "LDAP unbind failed: {status}",
+                    "ldapSessionId"_attr = getId(),
+                    "status"_attr = status);
     }
 }
 
@@ -842,7 +854,13 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(
     return _pimpl->query(std::move(query), &_timeout, tickSource, userAcquisitionStats);
 }
 
+LDAPSessionId OpenLDAPConnection::getId() const {
+    return _pimpl->getId();
+}
+
 Status OpenLDAPConnection::disconnect() {
+    LOGV2_DEBUG(
+        9339701, 3, "Disconnecting OpenLDAPConnection", "ldapSessionId"_attr = _pimpl->getId());
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
@@ -855,7 +873,7 @@ Status OpenLDAPConnection::disconnect() {
                           << ldap_err2string(ret));
     }
 
-    _reaper->reap(_pimpl->getSession());
+    _reaper->reap(_pimpl->getSession(), getId());
 
     _pimpl->getSession() = nullptr;
 
@@ -863,12 +881,15 @@ Status OpenLDAPConnection::disconnect() {
     return Status::OK();
 }
 
-void disconnectLDAPConnection(LDAP* ldap) {
+void disconnectLDAPConnection(LDAP* ldap, LDAPSessionId ldapSessionId) {
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
     // ldap_unbind_ext_s, contrary to its name, closes the connection to the server.
     int ret = ldap_unbind_ext_s(ldap, nullptr, nullptr);
     if (ret != LDAP_SUCCESS) {
-        LOGV2_ERROR(5531602, "Unable to unbind from LDAP", "__error__"_attr = ldap_err2string(ret));
+        LOGV2_ERROR(5531602,
+                    "Unable to unbind from LDAP",
+                    "ldapSessionId"_attr = ldapSessionId,
+                    "__error__"_attr = ldap_err2string(ret));
     }
 }
 

@@ -266,6 +266,7 @@ public:
                 LOGV2_DEBUG(24060,
                             1,
                             "LDAP operation completed after timeout",
+                            "ldapSessionId"_attr = anchor->getConn()->getId(),
                             "op"_attr = state->context,
                             "result"_attr = _resultToString(result));
                 return;
@@ -351,13 +352,17 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
             LOGV2_DEBUG(24061,
                         1,
                         "Connected to LDAP server",
+                        "ldapSessionId"_attr = _conn->getId(),
                         "host"_attr = _target,
                         "connectTimeElapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
             indicateUsed();
         } else {
-            LOGV2_DEBUG(
-                5885200, 1, "Failed setting up LDAP connection", "error"_attr = livenessStatus);
+            LOGV2_DEBUG(5885200,
+                        1,
+                        "Failed setting up LDAP connection",
+                        "ldapSessionId"_attr = _conn->getId(),
+                        "error"_attr = livenessStatus);
             _timingData->markFailed();
             indicateFailure(livenessStatus);
         }
@@ -387,13 +392,20 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (livenessStatus.isOK()) {
-            LOGV2_DEBUG(24062, 1, "Refreshed LDAP connection", "refreshTimeElapsed"_attr = elapsed);
+            LOGV2_DEBUG(24062,
+                        1,
+                        "Refreshed LDAP connection",
+                        "ldapSessionId"_attr = _conn->getId(),
+                        "refreshTimeElapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
             indicateSuccess();
             indicateUsed();
         } else {
-            LOGV2_DEBUG(
-                5885201, 1, "Failed refreshing LDAP connection", "error"_attr = livenessStatus);
+            LOGV2_DEBUG(5885201,
+                        1,
+                        "Failed refreshing LDAP connection",
+                        "ldapSessionId"_attr = _conn->getId(),
+                        "error"_attr = livenessStatus);
             _timingData->markFailed();
             indicateFailure(livenessStatus);
         }
@@ -441,6 +453,10 @@ public:
     Status disconnect() final;
     boost::optional<std::string> currentBoundUser() const final;
     boost::optional<const LDAPBindOptions&> bindOptions() const final;
+
+    LDAPSessionId getId() const override {
+        return _getConn()->getId();
+    }
 
 private:
     LDAPConnection* _getConn() const {
@@ -841,11 +857,14 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
                           server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
             if (swHandle.isOK()) {
                 if (state->finishLine.arriveStrongly()) {
-                    LOGV2_DEBUG(
-                        24063, 1, "Acquired connection to LDAP server", "host"_attr = server);
                     auto implPtr = static_cast<PooledLDAPConnection*>(swHandle.getValue().get());
-                    implPtr->incrementUsesCounter();
+                    LOGV2_DEBUG(24063,
+                                1,
+                                "Acquired connection to LDAP server",
+                                "ldapSessionId"_attr = implPtr->getConn()->getId(),
+                                "host"_attr = server);
 
+                    implPtr->incrementUsesCounter();
                     state->promise.emplaceValue(
                         pooledConnToWrappedConn(std::move(swHandle.getValue())));
                 } else {

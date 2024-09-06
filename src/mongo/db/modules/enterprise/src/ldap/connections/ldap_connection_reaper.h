@@ -14,6 +14,8 @@
 #include "mongo/util/concurrency/thread_pool_interface.h"
 #include "mongo/util/tick_source.h"
 
+#include "ldap_session_id.h"
+
 namespace mongo {
 
 /**
@@ -29,12 +31,12 @@ public:
      * Schedule the connection reaper to disconnect/unbind a LDAP session on a background thread if
      * multithreading is safe. Otherwise, it will disconnect inline.
      */
-    void reap(LDAP* ldap);
+    void reap(LDAP* ldap, LDAPSessionId ldapSessionId);
 
 private:
     using reapFunc = unique_function<void(void)>;
 
-    void scheduleReapOrDisconnectInline(reapFunc reaper);
+    void scheduleReapOrDisconnectInline(LDAPSessionId ldapSessionId, reapFunc reaper);
 
 private:
     std::once_flag _initExecutor;
@@ -44,6 +46,6 @@ private:
 /**
  * Per LDAP API that disconnects/unbinds a LDAP session.
  */
-void disconnectLDAPConnection(LDAP* ldap);
+void disconnectLDAPConnection(LDAP* ldap, LDAPSessionId ldapSessionId);
 
 }  // namespace mongo
