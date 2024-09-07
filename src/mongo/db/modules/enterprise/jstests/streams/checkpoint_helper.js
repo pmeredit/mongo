@@ -157,9 +157,11 @@ export class TestHelper {
                 restoreDir = null,
                 dbForTest = null,
                 targetSourceMergeDb = null,
-                useTimeField = true) {
+                useTimeField = true,
+                sinkType = "atlas") {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
+        this.sinkType = sinkType;
         this.input = input;
         // By default use the global db.
         this.targetSourceMergeDb = db;
@@ -193,7 +195,6 @@ export class TestHelper {
         this.inputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.inputCollName];
         this.dlqColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.dlqCollName];
 
-        // this.spName = "resume_from_checkpoint_test_spid";
         this.spName = uuidStr();
         this.processorId = this.spName;
         this.checkpointIntervalMs = null;  // Use the default.
@@ -280,15 +281,19 @@ export class TestHelper {
         for (let stage of middlePipeline) {
             this.pipeline.push(stage);
         }
-        this.pipeline.push({
-            $merge: {
-                into: {
-                    connectionName: this.dbConnectionName,
-                    db: this.dbName,
-                    coll: this.outputCollName
-                },
-            }
-        });
+        if (this.sinkType == 'memory') {
+            this.pipeline.push({$emit: {connectionName: '__testMemory'}});
+        } else {
+            this.pipeline.push({
+                $merge: {
+                    into: {
+                        connectionName: this.dbConnectionName,
+                        db: this.dbName,
+                        coll: this.outputCollName
+                    },
+                }
+            });
+        }
         this.sp = new Streams(this.tenantId, this.connectionRegistry, this.db);
         this.checkpointUtil =
             new LocalDiskCheckpointUtil(this.writeDir, this.tenantId, this.processorId);

@@ -52,7 +52,13 @@ function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
                               999999999 /* interval */,
                               "changestream" /* sourceType */,
                               true /*useNewCheckpointing*/,
-                              useRestoredExecutionPlan);
+                              useRestoredExecutionPlan,
+                              null,
+                              null,
+                              null,
+                              null,
+                              true,
+                              "memory");
     test.run();
 
     assert.eq(test.stats()["operatorStats"][5]["name"], "GroupOperator");
