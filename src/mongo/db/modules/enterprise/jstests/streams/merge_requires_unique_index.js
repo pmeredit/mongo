@@ -113,6 +113,7 @@ function resetOutputColl(shardKey, coll) {
             tojson(outputColl.find({a: 1}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 1; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 1);
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -154,6 +155,7 @@ function resetOutputColl(shardKey, coll) {
             tojson(outputColl.find({a: 1}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 1; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 1);
 
     // Insert one more doc to actually replace an existing doc.
     insertDocs([{a: 0, b: 0, c: 1}]);
@@ -214,6 +216,7 @@ function resetOutputColl(shardKey, coll) {
             tojson(colls[1].find({a: 1}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 1; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 1);
 
     // Insert one more doc to actually replace an existing doc.
     insertDocs([{a: 0, b: 0, c: 1}]);
@@ -320,6 +323,7 @@ function resetOutputColl(shardKey, coll) {
             tojson(outputColl.find({a: 1}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 1; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 1);
 
     // Stop the streamProcessor.
     stopStreamProcessor();

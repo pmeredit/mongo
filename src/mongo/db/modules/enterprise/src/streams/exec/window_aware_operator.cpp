@@ -266,6 +266,7 @@ void WindowAwareOperator::closeWindow(Window* window) {
         auto numDlqBytes =
             _context->dlq->addMessage(toDeadLetterQueueMsg(_context->streamMetaFieldName,
                                                            window->streamMetaTemplate,
+                                                           getName(),
                                                            std::move(window->status.reason())));
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return;
@@ -508,8 +509,10 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
     }
     if (missedWindows.size() > 0) {
         // create Dlq document
-        auto bsonObjBuilder = toDeadLetterQueueMsg(
-            _context->streamMetaFieldName, doc, std::string{"Input document arrived late."});
+        auto bsonObjBuilder = toDeadLetterQueueMsg(_context->streamMetaFieldName,
+                                                   doc,
+                                                   getName(),
+                                                   std::string{"Input document arrived late."});
         bsonObjBuilder.append(kMissedWindowsFieldName, missedWindows);
 
         // write Dlq message

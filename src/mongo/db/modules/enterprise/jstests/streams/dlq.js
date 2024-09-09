@@ -144,7 +144,7 @@ const dlqDoc =
     dlqColl.find({"doc._id": 0}).toArray().map((doc) => sanitizeDoc(doc, ['_id', '_stream_meta']));
 const dlqDocErrInfo = dlqDoc.map(doc => sanitizeDoc(doc.errInfo));
 const dlqDocFullDoc = dlqDoc.map(doc => sanitizeDoc(doc.doc));
-const expectedKeys = ["dlqTime", "processorName", "instanceName", "doc", "errInfo"];
+const expectedKeys = ["dlqTime", "processorName", "instanceName", "operatorName", "doc", "errInfo"];
 assert.eq(Object.keys(dlqDoc[0]).length, expectedKeys.length);
 assert.hasFields(
     dlqDoc[0],
@@ -159,6 +159,7 @@ assert.eq(
     }],
     dlqDocErrInfo);
 assert.eq([{"_id": 0, "ts": 0, "a": 0, "b": 0, "c": 0}], dlqDocFullDoc);
+assert.eq(dlqDoc[0].operatorName, "AddFieldsOperator");
 
 let sampledDocs = sampleUntil(cursorId, 5, processorName, 2);
 let count = 0;

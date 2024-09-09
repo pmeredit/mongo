@@ -27,8 +27,10 @@ public:
 
     BSONObjBuilder createDlqMsg() {
         Document doc{};
-        return toDeadLetterQueueMsg(
-            _context->streamMetaFieldName, doc, boost::make_optional<std::string>("foo bar"));
+        return toDeadLetterQueueMsg(_context->streamMetaFieldName,
+                                    doc,
+                                    std::string{"test"},
+                                    boost::make_optional<std::string>("foo bar"));
     }
 
 protected:

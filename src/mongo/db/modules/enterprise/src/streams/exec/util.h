@@ -33,11 +33,13 @@ int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 // Builds a DLQ message for the given StreamMeta.
 mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
                                            const mongo::StreamMeta& streamMeta,
+                                           const std::string& operatorName,
                                            boost::optional<std::string> error);
 
 // Builds a DLQ message for the given StreamDocument.
 mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
                                            const StreamDocument& streamDoc,
+                                           const std::string& operatorName,
                                            boost::optional<std::string> error);
 
 // Gets the namespace string for the given 'db' and 'coll' literals.

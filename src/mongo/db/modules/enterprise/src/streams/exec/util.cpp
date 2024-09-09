@@ -87,6 +87,7 @@ int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count) {
 
 BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
                                     const StreamMeta& streamMeta,
+                                    const std::string& operatorName,
                                     boost::optional<std::string> error) {
     BSONObjBuilder objBuilder;
     if (streamMetaFieldName) {
@@ -95,14 +96,17 @@ BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMe
     if (error) {
         objBuilder.append("errInfo", BSON("reason" << *error));
     }
+    objBuilder.append("operatorName", operatorName);
+
     return objBuilder;
 }
 
 BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
                                     const StreamDocument& streamDoc,
+                                    const std::string& operatorName,
                                     boost::optional<std::string> error) {
-    BSONObjBuilder objBuilder =
-        toDeadLetterQueueMsg(streamMetaFieldName, streamDoc.streamMeta, std::move(error));
+    BSONObjBuilder objBuilder = toDeadLetterQueueMsg(
+        streamMetaFieldName, streamDoc.streamMeta, operatorName, std::move(error));
     const int64_t maxDlqFullDocumentSizeBytes = BSONObjMaxUserSize / 2;
     if (streamDoc.doc.getApproximateSize() <= maxDlqFullDocumentSizeBytes) {
         objBuilder.append("doc", streamDoc.doc.toBson());

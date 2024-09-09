@@ -2331,6 +2331,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
                                         << BSON("start" << Date_t::fromMillisSinceEpoch(0) << "end"
                                                         << Date_t::fromMillisSinceEpoch(1000))),
                           dlqDoc["_stream_meta"].Obj());
+        ASSERT_EQ("ProjectOperator", dlqDoc["operatorName"].String());
     });
 }
 

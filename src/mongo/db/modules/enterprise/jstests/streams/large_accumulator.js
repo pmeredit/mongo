@@ -111,6 +111,8 @@ testLargeAccumulator(
         inputColl.insert({_id: 3, ts: 3, docCount: 1, docSize: 1});
 
         assert.soon(() => { return dlqColl.count() == 1; });
+        var dlqRes = dlqColl.find();
+        assert.eq(dlqRes[0].operatorName, "MergeOperator");
         assert.eq(outColl2.count(), 0);
 
         let mergeOpStats = getOperatorStats(spName, "MergeOperator");
@@ -267,6 +269,8 @@ if (!buildInfo.debug) {
             inputColl.insert({_id: 3, ts: 3, docCount: 1, docSize: 1, seed: seed});
                     
             assert.soon(() => { return dlqColl.count() == 1; });
+            var dlqRes = dlqColl.find();
+            assert.eq(dlqRes[0].operatorName, "GroupOperator");
 
             let inMemoryOpStats = getOperatorStats(spName, "InMemorySinkOperator");
             assert.eq(inMemoryOpStats["inputMessageCount"], 0);        

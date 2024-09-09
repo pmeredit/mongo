@@ -52,8 +52,8 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
                                               << " with error: " << e.what();
             invariant(nextInputDocIdx > 0);
             const auto& streamDoc = dataMsg.docs[nextInputDocIdx - 1];
-            auto numDlqBytes = _context->dlq->addMessage(
-                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
+            auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
+                _context->streamMetaFieldName, streamDoc, getName(), std::move(error)));
             incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         }
 

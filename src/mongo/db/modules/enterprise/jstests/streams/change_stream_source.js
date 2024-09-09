@@ -832,6 +832,9 @@ function testAfterInvalidateWithFullDocumentOnly() {
                     "Missing fullDocument field");
     assert.includes(res.find(doc => doc.doc.operationType == "invalidate").errInfo.reason,
                     "Missing fullDocument field");
+    for (const dlqDoc of res) {
+        assert.eq(dlqDoc.operatorName, "ChangeStreamConsumerOperator");
+    }
     // Stop the streamProcessor.
     stopStreamProcessor(spName);
     dlqColl.drop();

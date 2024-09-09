@@ -93,7 +93,8 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0},
+        operatorName: "AddFieldsOperator"
     }],
 });
 
@@ -123,7 +124,8 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0},
+        operatorName: "AddFieldsOperator"
     }],
 });
 
@@ -153,7 +155,8 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0},
+        operatorName: "AddFieldsOperator"
     }],
 });
 
@@ -177,7 +180,8 @@ testStreamMeta({
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
         },
-        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0}
+        doc: {_ts: ISODate("2024-01-01T00:00:00Z"), timestamp: "2024-01-01T00:00:00Z", a: 0},
+        operatorName: "AddFieldsOperator"
     }],
 });
 

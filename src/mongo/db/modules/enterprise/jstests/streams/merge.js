@@ -100,6 +100,9 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     // Verify that the 4 documents that caused duplicate key errors are in the DLQ.
     let res = dlqColl.find({"errInfo.reason": /a_1 dup key/}).toArray();
     assert.eq(4, res.length, dlqColl.find().toArray());
+    for (const dqlDoc of res) {
+        assert.eq(dqlDoc.operatorName, "MergeOperator");
+    }
 
     // Insert 3 more documents (2 good, 1 bad that violates unique constraint on field a) into the
     // stream. The 2 good documents have the same _id. Due to the 'keepExisting' whenMatched mode
@@ -154,6 +157,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     assert.soon(() => { return outColl.find().itcount() == 6; });
     assert.soon(() => { return dlqColl.find().itcount() == 4; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 4);
 
     // Insert 3 more documents (2 good, 1 bad that violates unique constraint on field a) into the
     // stream. The 2 good documents have the same _id. Due to the 'merge' whenMatched mode the 2
@@ -162,6 +166,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 5);
     assert.soon(() => {
         let results = outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc));
         jsTestLog(tojson(results));
@@ -241,6 +246,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     assert.soon(() => { return outColl.find().itcount() == 6; });
     assert.soon(() => { return dlqColl.find().itcount() == 4; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 4);
 
     // Insert 3 more documents (2 good, 1 bad that violates unique constraint on field a) into the
     // stream. The 2 good documents have the same _id. Due to the 'replace' whenMatched mode the
@@ -249,6 +255,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 5);
     assert.eq([{_id: 11, obj: {b: 1}}],
               outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc)));
 
@@ -299,6 +306,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => { return dlqColl.find().itcount() == 4; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 4);
     assert.soon(() => {
         return tojson([{_id: 0, a: 4}]) ==
             tojson(outColl.find({_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
@@ -317,6 +325,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => { return dlqColl.find().itcount() == 6; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 6);
     assert.soon(() => {
         return tojson([{_id: 0, a: 4}]) ==
             tojson(outColl.find({_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
@@ -370,6 +379,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
             tojson(outColl.find({a: 1}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 2; });
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 2);
 
     // Stop the streamProcessor.
     stopStreamProcessor(spName);
@@ -461,6 +471,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     });
     let res = dlqColl.find({"errInfo.reason": /a_1 dup key/}).toArray();
     assert.eq(3, res.length, `DLQ contents: ${tojson(dlqColl.find().toArray())}`);
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 3);
 
     // Stop the streamProcessor.
     stopStreamProcessor(spName);
@@ -506,6 +517,7 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     assert.soon(() => { return dlqColl.find().itcount() == 1; });
     let res = dlqColl.find({"errInfo.reason": /evaluate target namespace/}).toArray();
     assert.eq(1, res.length, `DLQ contents: ${tojson(dlqColl.find().toArray())}`);
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 1);
 
     const spStatus = listStreamProcessors();
     assert.eq("running", spStatus.streamProcessors[0].status, tojson(spStatus));
@@ -775,6 +787,7 @@ const kMaxDynamicTargets = 100;
         return result.some(doc => { return doc.errInfo.reason.includes("BSONObjectTooLarge"); });
     });
     assert.soon(() => { return outColl.count() == 1; });
+    assert.soon(() => { return dlqColl.find({"operatorName": "MergeOperator"}).itcount() == 1; });
 
     // Stop the streamProcessor.
     stopStreamProcessor(spName);
@@ -830,6 +843,7 @@ const kMaxDynamicTargets = 100;
         });
     });
     assert.eq(dlqColl.count(), 1);
+    assert.soon(() => { return dlqColl.find({"operatorName": "MergeOperator"}).itcount() == 1; });
     // Stop the streamProcessor.
     stopStreamProcessor(spName);
 })();
@@ -930,6 +944,7 @@ const kMaxDynamicTargets = 100;
             .filter(doc => doc["errInfo"]["reason"].includes("$merge write error: 'on' field 'a'"))
             .length,
         2);
+    assert.eq(dlqColl.find({"operatorName": "MergeOperator"}).itcount(), 3);
     stopStreamProcessor(spName);
 })();
 

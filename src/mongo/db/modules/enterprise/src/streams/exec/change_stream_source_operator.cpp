@@ -11,6 +11,7 @@
 #include "mongo/idl/idl_parser.h"
 #include "streams/exec/message.h"
 #include "streams/util/exception.h"
+#include <boost/optional/optional.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/document/value.hpp>
 #include <bsoncxx/json.hpp>
@@ -703,8 +704,8 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
             ts = getTimestamp(changeEventDoc, changeEventDoc);
         }
     } catch (const DBException& e) {
-        auto numDlqBytes = _context->dlq->addMessage(
-            toDeadLetterQueueMsg(_context->streamMetaFieldName, changeEventDoc, e.toString()));
+        auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
+            _context->streamMetaFieldName, changeEventDoc, getName(), e.toString()));
         incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }

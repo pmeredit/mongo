@@ -95,6 +95,7 @@ function testEmitToTimeSeriesCollection() {
     inputColl.insert(Array.from({length: 10}, (_, i) => ({_id: i + 10, ts: i})));
     inputColl.insert(Array.from({length: 10}, (_, i) => ({_id: i + 20, ts: i})));
     assert.soon(() => { return dlqColl.count() == 20; });
+    assert.eq(dlqColl.find({"operatorName": "TimeseriesEmitOperator"}).itcount(), 20);
 
     let opStats = getOperatorStats("TimeseriesEmitOperator");
     assert.soon(() => {
@@ -146,6 +147,7 @@ function testEmitToTimeSeriesMissingTimeField() {
     inputColl.insert(Array.from({length: 10}, (_, i) => ({_id: i + 10, ts: i})));
     inputColl.insert(Array.from({length: 10}, (_, i) => ({_id: i + 20, ts: i})));
     assert.soon(() => { return dlqColl.count() == 20; });
+    assert.eq(dlqColl.find({"operatorName": "TimeseriesEmitOperator"}).itcount(), 20);
 
     let opStats = getOperatorStats("TimeseriesEmitOperator");
     assert.soon(() => {
@@ -192,6 +194,7 @@ function testMissingTimeseries() {
     inputColl.insert(Array.from({length: 50}, (_, i) => ({_id: i + 150, ts: i})));
 
     assert.soon(() => { return dlqColl.count() == 100; });
+    assert.eq(dlqColl.find({"operatorName": "TimeseriesEmitOperator"}).itcount(), 100);
 
     let opStats = getOperatorStats("TimeseriesEmitOperator");
     assert.soon(() => {
@@ -243,6 +246,7 @@ function testMissingTimeseriesCollection() {
     assert.soon(() => { return timeseriesColl.count() == 100; });
     inputColl.insert(Array.from({length: 100}, (_, i) => ({_id: i + 100, ts: i})));
     assert.soon(() => { return dlqColl.count() == 100; });
+    assert.eq(dlqColl.find({"operatorName": "TimeseriesEmitOperator"}).itcount(), 100);
 
     let opStats = getOperatorStats("TimeseriesEmitOperator");
     assert.soon(() => {

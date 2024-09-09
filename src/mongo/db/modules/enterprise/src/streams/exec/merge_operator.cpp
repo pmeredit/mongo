@@ -81,8 +81,8 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to evaluate target namespace in "
                                               << getName() << " with error: " << e.what();
-            stats.numDlqBytes += _context->dlq->addMessage(
-                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
+            stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
+                _context->streamMetaFieldName, streamDoc, getName(), std::move(error)));
             ++stats.numDlqDocs;
             return boost::none;
         }
@@ -183,8 +183,8 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
             // Add all the docs to the dlq.
             for (size_t docIdx : docIndices) {
                 const auto& streamDoc = dataMsg.docs[docIdx];
-                stats.numDlqBytes += _context->dlq->addMessage(
-                    toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, error));
+                stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
+                    _context->streamMetaFieldName, streamDoc, getName(), error));
                 ++stats.numDlqDocs;
             }
             return stats;
@@ -231,7 +231,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     << "Failed to process input document in " << getName()
                     << " with error: code = " << e.codeString() << ", reason = " << e.reason();
                 stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                    _context->streamMetaFieldName, streamDoc, std::move(error)));
+                    _context->streamMetaFieldName, streamDoc, getName(), std::move(error)));
                 ++stats.numDlqDocs;
             }
         }
@@ -295,7 +295,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     << " with error: code = " << writeError->getStatus().codeString()
                     << ", reason = " << writeError->getStatus().reason();
                 stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                    _context->streamMetaFieldName, streamDoc, std::move(error)));
+                    _context->streamMetaFieldName, streamDoc, getName(), std::move(error)));
                 ++stats.numDlqDocs;
 
                 // Now reprocess the remaining docs in the current batch individually.

@@ -309,6 +309,7 @@ TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
         dlqDoc["errInfo"]["reason"].String());
 
     ASSERT_BSONOBJ_EQ(streamDocs[0].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
+    ASSERT_EQ("ProjectOperator", dlqDoc["operatorName"].String());
 }
 
 }  // namespace

@@ -516,6 +516,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
         "or an array",
         dlqDoc["errInfo"]["reason"].String());
     ASSERT_BSONOBJ_EQ(dataMsg.docs[1].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
+    ASSERT_EQ("MergeOperator", dlqDoc["operatorName"].String());
 
     mergeOperator->stop();
 }
@@ -554,6 +555,7 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     ASSERT_EQ(1, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());
     ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(), "BSONObjectTooLarge");
+    ASSERT_EQ("MergeOperator", dlqDoc["operatorName"].String());
 
     mergeOperator->stop();
 }

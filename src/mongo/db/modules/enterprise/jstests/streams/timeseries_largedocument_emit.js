@@ -92,15 +92,18 @@ function testLargeDocumentEmitToTimeSeries() {
         {_id: 6, ts: ISODate("2024-03-01T05:00:00.000Z"), docCount: 1, docSize: 1, seed: seed});
 
     assert.soon(() => { return dlqColl.count() == 2; });
+    for (const dlqDoc of dlqColl.find().toArray()) {
+        assert.eq(dlqDoc.operatorName, "TimeseriesEmitOperator");
+    }
     assert.soon(() => { return timeseriesColl.count() == 3; });
 
-    let opStats = getOperatorStats("TimeseriesEmitOperator");
     assert.soon(() => {
-        opStats = getOperatorStats("TimeseriesEmitOperator");
+        let opStats = getOperatorStats("TimeseriesEmitOperator");
         return opStats["dlqMessageCount"] == 2;
     });
 
     assert.soon(() => {
+        let opStats = getOperatorStats("TimeseriesEmitOperator");
         return (opStats["inputMessageCount"] == 5) && (opStats["outputMessageCount"] == 3);
     });
 

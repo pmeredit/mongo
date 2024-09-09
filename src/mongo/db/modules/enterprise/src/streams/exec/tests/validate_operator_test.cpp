@@ -9,6 +9,7 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "streams/exec/context.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/planner.h"
@@ -189,7 +190,14 @@ TEST_F(ValidateOperatorTest, QueryExpression) {
         auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
         ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
-    ASSERT_EQUALS(getNumDlqDocsFromOperatorDag(*dag), 5);
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(5, dlqMsgs.size());
+    while (!dlqMsgs.empty()) {
+        ASSERT_EQ("ValidateOperator", dlqMsgs.front()["operatorName"].String());
+        dlqMsgs.pop();
+    }
+
     dag->stop();
 }
 

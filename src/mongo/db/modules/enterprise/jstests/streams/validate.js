@@ -57,6 +57,7 @@ function smokeTestDLQ() {
     // Validate that 7 events are in the DLQ
     const expectedDlqCount = 7;
     assert.soon(() => { return dlqColl.count() == expectedDlqCount; });
+    assert.eq(dlqColl.find({"operatorName": "ValidateOperator"}).itcount(), expectedDlqCount);
 
     // Stop the streamProcessor.
     assert.commandWorked(sp.sp1.stop());

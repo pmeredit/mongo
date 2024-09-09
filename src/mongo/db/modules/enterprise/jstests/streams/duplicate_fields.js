@@ -42,6 +42,9 @@ simpleMergeFunc([testDoc], [{a: 1, b: 1}]);
 // verify that > 16MB doc produces a DLQ
 const doc = generate16MBDoc();
 simpleMergeFunc([doc], [doc]);
-assert.eq(db.getSiblingDB(dbName)[dlqCollName].find().itcount(), 1);
+
+const dlqMessages = db.getSiblingDB(dbName)[dlqCollName].find();
+assert.eq(dlqMessages.count(), 1);
+assert.eq(dlqMessages[0].operatorName, "MergeOperator");
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

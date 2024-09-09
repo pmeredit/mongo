@@ -336,6 +336,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     ASSERT_BSONOBJ_EQ(fromjson("{partition: 0}"), dlqDoc["doc"].Obj());
     ASSERT_TRUE(dlqDoc["errInfo"]["reason"].String().starts_with(
         "Failed to process input document with error"));
+    ASSERT_EQ("KafkaConsumerOperator", dlqDoc["operatorName"].String());
 
     // Test that processSourceDocument() works as expected when the source document was not parsed
     // successfully.
@@ -350,6 +351,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     dlqDoc = std::move(dlqMsgs.front());
     dlqMsgs.pop();
     ASSERT_EQUALS("synthetic error", dlqDoc["errInfo"]["reason"].String());
+    ASSERT_EQ("KafkaConsumerOperator", dlqDoc["operatorName"].String());
 }
 
 TEST_F(KafkaConsumerOperatorTest, DoNotDropLateDocuments) {

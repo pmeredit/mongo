@@ -37,8 +37,8 @@ void SingleDocumentTransformationOperator::doOnDataMsg(
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            numDlqBytes += _context->dlq->addMessage(
-                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
+            numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
+                _context->streamMetaFieldName, streamDoc, getName(), std::move(error)));
             ++numDlqDocs;
         }
 

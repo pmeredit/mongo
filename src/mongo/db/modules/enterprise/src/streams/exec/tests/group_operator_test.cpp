@@ -152,6 +152,7 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
         ASSERT_EQ(
             "Failed to process input document in GroupOperator with error: can't $divide by zero",
             dlqDoc["errInfo"]["reason"].String());
+        ASSERT_EQ("GroupOperator", dlqDoc["operatorName"].String());
         dlqMsgs.pop();
     }
 }
