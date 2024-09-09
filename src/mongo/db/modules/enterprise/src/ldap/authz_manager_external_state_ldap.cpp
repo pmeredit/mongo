@@ -77,12 +77,12 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
 }
 
 namespace {
-StatusWith<UserRequest> queryLDAPRolesForUserRequest(
+StatusWith<std::unique_ptr<UserRequest>> queryLDAPRolesForUserRequest(
     OperationContext* opCtx,
     const UserRequest& userReq,
     const SharedUserAcquisitionStats& userAcquisitionStats) {
     auto swRoles = LDAPManager::get(opCtx->getServiceContext())
-                       ->getUserRoles(userReq.name,
+                       ->getUserRoles(userReq.getUserName(),
                                       opCtx->getServiceContext()->getTickSource(),
                                       userAcquisitionStats);
     if (!swRoles.isOK()) {
@@ -94,9 +94,10 @@ StatusWith<UserRequest> queryLDAPRolesForUserRequest(
         return {ErrorCodes::LDAPRoleAcquisitionError, "Failed to acquire LDAP group membership"};
     }
 
-    auto newRequest = userReq;
-    newRequest.roles = std::set<RoleName>(swRoles.getValue().cbegin(), swRoles.getValue().cend());
-    return newRequest;
+    auto returnRequest = userReq.clone();
+    returnRequest->setRoles(
+        std::set<RoleName>(swRoles.getValue().cbegin(), swRoles.getValue().cend()));
+    return std::move(returnRequest);
 }
 }  // namespace
 
@@ -105,8 +106,9 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(
     const UserRequest& userReq,
     BSONObj* result,
     const SharedUserAcquisitionStats& userAcquisitionStats) {
-    const UserName& userName = userReq.name;
-    if (userName.getDB() != "$external" || userReq.roles) {
+
+    const UserName& userName = userReq.getUserName();
+    if (userName.getDB() != "$external" || userReq.getRoles()) {
         return _wrappedExternalState->getUserDescription(
             opCtx, userReq, result, userAcquisitionStats);
     }
@@ -117,15 +119,15 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(
     }
 
     return _wrappedExternalState->getUserDescription(
-        opCtx, swReq.getValue(), result, userAcquisitionStats);
+        opCtx, *swReq.getValue().get(), result, userAcquisitionStats);
 }
 
 StatusWith<User> AuthzManagerExternalStateLDAP::getUserObject(
     OperationContext* opCtx,
     const UserRequest& userReq,
     const SharedUserAcquisitionStats& userAcquisitionStats) {
-    const UserName& userName = userReq.name;
-    if (userName.getDB() != "$external" || userReq.roles) {
+    const UserName userName = userReq.getUserName();
+    if (userName.getDB() != "$external" || userReq.getRoles()) {
         return _wrappedExternalState->getUserObject(opCtx, userReq, userAcquisitionStats);
     }
 
@@ -134,7 +136,8 @@ StatusWith<User> AuthzManagerExternalStateLDAP::getUserObject(
         return swReq.getStatus();
     }
 
-    return _wrappedExternalState->getUserObject(opCtx, swReq.getValue(), userAcquisitionStats);
+    return _wrappedExternalState->getUserObject(
+        opCtx, *swReq.getValue().get(), userAcquisitionStats);
 }
 
 }  // namespace mongo

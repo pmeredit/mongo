@@ -7,6 +7,7 @@
 #include "sasl/idp_manager.h"
 #include "sasl/oidc_parameters_gen.h"
 #include "sasl/sasl_oidc_server_conversation.h"
+#include "sasl/user_request_oidc.h"
 
 #include "mongo/base/data_type_validated.h"
 #include "mongo/crypto/jwt_types_gen.h"
@@ -166,10 +167,10 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
     return {true, std::string{}};
 }
 
-UserRequest SaslOIDCServerMechanism::getUserRequest() const {
-    auto request = ServerMechanismBase::getUserRequest();
-    request.mechanismData = _mechanismData;
-    return request;
+std::unique_ptr<UserRequest> SaslOIDCServerMechanism::makeUserRequest() const {
+    auto request = ServerMechanismBase::makeUserRequest();
+    return std::make_unique<UserRequestOIDC>(
+        request->getUserName(), request->getRoles(), _mechanismData);
 }
 
 }  // namespace mongo::auth

@@ -6,13 +6,15 @@
 
 #include "authz_manager_external_state_oidc.h"
 
+#include "sasl/sasl_oidc_server_conversation.h"
+#include "sasl/user_request_oidc.h"
+
 #include "authorization_manager_factory_external_impl.h"
 #include "mongo/base/init.h"
 #include "mongo/db/auth/authorization_manager_factory.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
-#include "sasl_oidc_server_conversation.h"
 
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -24,13 +26,21 @@ Status reauthStatus(Status status) {
     return {ErrorCodes::ReauthenticationRequired, status.reason()};
 }
 
-StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequest& userReq) {
-    const auto& userName = userReq.name;
+/**
+ * Resolves roles from the oidc jwt if it is provided. Returns a new request object.
+ */
+StatusWith<std::unique_ptr<UserRequest>> translateRequest(OperationContext* opCtx,
+                                                          const UserRequest& userReq) {
+    auto returnRequest = userReq.clone();
+    const auto& userName = returnRequest->getUserName();
+
     if ((userName.getDB() != DatabaseName::kExternal.db(omitTenant)) ||
-        userReq.mechanismData.empty()) {
+        userReq.getType() != UserRequest::UserRequestType::OIDC) {
         // No mechanism data or not $external DB means this isn't an OIDC request.
-        return userReq;
+        return std::move(returnRequest);
     }
+
+    const UserRequestOIDC* oidcRequest = reinterpret_cast<const UserRequestOIDC*>(&userReq);
 
     LOGV2_DEBUG(
         7119503, 5, "Translating an OIDC user cache request for user", "user"_attr = userName);
@@ -39,11 +49,11 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
         Status(ErrorCodes::BadValue, "No identity provider found"_sd);
 
     auto swIssAndAud = crypto::JWSValidatedToken::extractIssuerAndAudienceFromCompactSerialization(
-        userReq.mechanismData);
+        oidcRequest->getJWTString());
     if (!swIssAndAud.isOK()) {
         // If the payload won't even parse then this was probably not actually OIDC mechanism
         // data.
-        return userReq;
+        return std::move(returnRequest);
     }
     // Token must have one audience, as guaranteed by the validation in OIDC SASL step 2.
     invariant(swIssAndAud.getValue().audience.size() == 1);
@@ -59,7 +69,7 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
     auto idp = std::move(swIDP.getValue());
 
     // Revalidate token.
-    auto swValidatedToken = idp->validateCompactToken(userReq.mechanismData);
+    auto swValidatedToken = idp->validateCompactToken(oidcRequest->getJWTString());
     if (!swValidatedToken.isOK()) {
         // Possibly expired or key change.
         return reauthStatus(swValidatedToken.getStatus());
@@ -88,7 +98,7 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
                     "Authorization claim is not configured for IDP, falling through to "
                     "LDAP/internal authorization",
                     "idp"_attr = idp->getIssuer());
-        return userReq;
+        return std::move(returnRequest);
     }
 
     auto swRoles = idp->getUserRoles(validatedToken, userName.tenantId());
@@ -96,17 +106,16 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
         return reauthStatus(swRoles.getStatus());
     }
 
-    // Append roles info to UserRequest and return synthetic user.
-    auto newRequest = userReq;
-    newRequest.roles = std::move(swRoles.getValue());
+    // Append roles info to UserRequest and return the same object.
+    returnRequest->setRoles(swRoles.getValue());
 
     LOGV2_DEBUG(7119504,
                 5,
                 "Translated OIDC user cache request",
-                "user"_attr = newRequest.name,
-                "roles"_attr = newRequest.roles);
+                "user"_attr = returnRequest->getUserName(),
+                "roles"_attr = returnRequest->getRoles());
 
-    return newRequest;
+    return std::move(returnRequest);
 }
 
 MONGO_INITIALIZER(RegisterAuthzManagerOIDC)(InitializerContext* context) {
@@ -124,13 +133,14 @@ Status AuthzManagerExternalStateOIDC::getUserDescription(
     const UserRequest& userReq,
     BSONObj* result,
     const SharedUserAcquisitionStats& userAcquisitionStats) {
+
     auto swRequest = translateRequest(opCtx, userReq);
     if (!swRequest.isOK()) {
         return swRequest.getStatus();
     }
 
     return _wrappedExternalState->getUserDescription(
-        opCtx, swRequest.getValue(), result, userAcquisitionStats);
+        opCtx, *swRequest.getValue().get(), result, userAcquisitionStats);
 }
 
 StatusWith<User> AuthzManagerExternalStateOIDC::getUserObject(
@@ -142,7 +152,8 @@ StatusWith<User> AuthzManagerExternalStateOIDC::getUserObject(
         return swRequest.getStatus();
     }
 
-    return _wrappedExternalState->getUserObject(opCtx, swRequest.getValue(), userAcquisitionStats);
+    return _wrappedExternalState->getUserObject(
+        opCtx, *swRequest.getValue().get(), userAcquisitionStats);
 }
 
 }  // namespace mongo::auth
