@@ -78,7 +78,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
     auto svcCtx = _opCtx->getClient()->getServiceContext();
     auto backupCursorService = static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
 
-    auto backupId = backupCursorService->getBackupId_forTest();
+    auto backupId = backupCursorService->getBackupId();
 
     auto backupFilePath = boost::filesystem::path(storageGlobalParams.dbpath) / "testFile.txt";
     auto invalidBackupFilePath =

@@ -2,14 +2,14 @@
  * Copyright (C) 2021-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <algorithm>
+#include <boost/filesystem.hpp>
 
 #include "document_source_backup_file.h"
+
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
-#include <algorithm>
-#include <boost/filesystem.hpp>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 

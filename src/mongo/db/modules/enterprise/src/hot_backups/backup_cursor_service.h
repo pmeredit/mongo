@@ -89,14 +89,11 @@ public:
 
     void addFile(const UUID& backupId, boost::filesystem::path filePath) override;
 
-    /**
-     * This is only called by the serverStatus command which gathers FTDC data. All operations with
-     * _state could be relaxed atomics but given that this isn't a performance path we use regular
-     * atomics.
-     */
-    bool isBackupCursorOpen() const override;
+    bool isBackupCursorOpen() const override {
+        return _state.load() == State::kBackupCursorOpened;
+    }
 
-    UUID getBackupId_forTest() {
+    UUID getBackupId() {
         return _activeBackupId.get();
     }
 
@@ -104,15 +101,12 @@ private:
     void _closeBackupCursor(OperationContext* opCtx, const UUID& backupId, WithLock);
 
     enum State { kInactive, kFsyncLocked, kBackupCursorOpened };
-
-    // This mutex serializes all access into this class. Except for isBackupCursorOpen which doesn't
-    // need to lock.
-    mutable Mutex _mutex = MONGO_MAKE_LATCH("BackupCursorService::_mutex");
     AtomicWord<State> _state{kInactive};
+
+    mutable Mutex _mutex = MONGO_MAKE_LATCH("BackupCursorService::_mutex");
     // When state is `kBackupCursorOpened`, _activeBackupId contains an UUID which uniquely
     // identifies the active backup cursor. Otherwise it is boost::none.
     boost::optional<UUID> _activeBackupId = boost::none;
-    boost::optional<long long> _replTermOfActiveBackup = boost::none;
 
     // Tracks the filenames returned by the open backup cursor or backup cursor extension.
     stdx::unordered_set<std::string> _returnedFilePaths;

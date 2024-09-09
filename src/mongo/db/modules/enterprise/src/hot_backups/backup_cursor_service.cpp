@@ -167,11 +167,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     _state.store(kBackupCursorOpened);
     _activeBackupId = UUID::gen();
-    _replTermOfActiveBackup = replCoord->getTerm();
     LOGV2(6858300,
           "Opened backup cursor",
           "backupId"_attr = *_activeBackupId,
-          "term"_attr = *_replTermOfActiveBackup,
+          "term"_attr = replCoord->getTerm(),
           "stableCheckpoint"_attr = checkpointTimestamp,
           "checkpointId"_attr =
               catalogCursor ? boost::make_optional(catalogCursor->getCheckpointId()) : boost::none,
@@ -384,10 +383,6 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     return {filesToBackup};
 }
 
-bool BackupCursorService::isBackupCursorOpen() const {
-    return _state.load() == State::kBackupCursorOpened;
-}
-
 void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
                                              const UUID& backupId,
                                              WithLock) {
@@ -404,7 +399,6 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     LOGV2(24203, "Closed backup cursor", "backupId"_attr = backupId);
     _state.store(kInactive);
     _activeBackupId = boost::none;
-    _replTermOfActiveBackup = boost::none;
     _returnedFilePaths.clear();
 }
 }  // namespace mongo

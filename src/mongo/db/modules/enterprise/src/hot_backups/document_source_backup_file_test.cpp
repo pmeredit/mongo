@@ -85,7 +85,7 @@ public:
         auto svcCtx = _opCtx->getClient()->getServiceContext();
         auto backupCursorService =
             static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
-        return backupCursorService->getBackupId_forTest();
+        return backupCursorService->getBackupId();
     }
 
 

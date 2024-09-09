@@ -4,10 +4,12 @@
 
 #pragma once
 
+#include <fstream>
+
 #include "backup_cursor_service.h"
 #include "hot_backups/document_source_backup_file_gen.h"
+
 #include "mongo/db/pipeline/document_source.h"
-#include <fstream>
 
 namespace mongo {
 
