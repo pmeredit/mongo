@@ -140,6 +140,9 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
     auto startingMetrics = getMetrics(executor, processorId);
     // Validate there is no latest checkpointId.
     ASSERT(!storage->getLatestCommittedCheckpointId());
+    // Validate non-existent checkpoint are ignored in onCheckpointFlushed.
+    storage->onCheckpointFlushed(CheckpointId{0});
+    ASSERT(storage->getFlushedCheckpoints().empty());
     // Create an ID, but don't commit it.
     auto id = storage->startCheckpoint();
     ASSERT_EQ(startingMetrics.numOngoing + 1, getMetrics(executor, processorId).numOngoing);
@@ -160,7 +163,7 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
     assertStatsEqual(dummyStats, opInfo);
     storage->checkpointRestored(id);
     // Create 100 empty checkpoints, commit them, validate the most recent is returned.
-    std::vector<CheckpointId> ids;
+    std::vector<CheckpointId> ids{id};
     auto lastId = id;
     for (int i = 0; i < 100; ++i) {
         auto id = storage->startCheckpoint();
@@ -175,6 +178,16 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
         assertStatsEqual(dummyStats, stats);
         ids.push_back(id);
         lastId = id;
+    }
+
+    // Validate the committed checkpoints can be flushed.
+    for (CheckpointId id : ids) {
+        storage->onCheckpointFlushed(CheckpointId{id});
+    }
+    auto flushed = storage->getFlushedCheckpoints();
+    ASSERT_EQ(ids.size(), flushed.size());
+    for (size_t idx = 0; idx < ids.size(); ++idx) {
+        ASSERT_EQ(ids[idx], flushed[idx].getId());
     }
 }
 
@@ -299,18 +312,22 @@ TEST_F(CheckpointStorageTest, UnflushedStateContainerTest) {
     auto result = container.pop(state1.first);
     ASSERT_BSONOBJ_EQ(state1.second, result);
     // checkpoint1's state should no longer be in the container.
+    ASSERT(!container.contains(state1.first));
     ASSERT_THROWS_CODE(container.pop(state1.first), DBException, ErrorCodes::InternalError);
 
     auto state2 = std::make_pair(2, BSON("a" << 2));
     container.add(state2.first, state2.second);
     // checkpoint2's state should be returned.
+    ASSERT(container.contains(state2.first));
     result = container.pop(state2.first);
     ASSERT_BSONOBJ_EQ(state2.second, result);
     // checkpoint2's state should no longer be in the container.
     ASSERT_THROWS_CODE(container.pop(state2.first), DBException, ErrorCodes::InternalError);
 
     container.add(state1.first, state1.second);
+    ASSERT(container.contains(state1.first));
     container.add(state2.first, state2.second);
+    ASSERT(container.contains(state2.first));
     // This should error, state2.first is not the oldest unflushed checkpointId.
     ASSERT_THROWS_CODE(container.pop(state2.first), DBException, ErrorCodes::InternalError);
 }

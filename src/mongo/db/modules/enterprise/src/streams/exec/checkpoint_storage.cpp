@@ -13,6 +13,8 @@
 #include "streams/exec/log_util.h"
 #include "streams/util/metric_manager.h"
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 using namespace mongo;
 using namespace std::chrono;
 namespace streams {
@@ -46,6 +48,15 @@ std::deque<mongo::CheckpointDescription> CheckpointStorage::getFlushedCheckpoint
 }
 
 void CheckpointStorage::onCheckpointFlushed(CheckpointId checkpointId) {
+    if (!_unflushedCheckpoints.contains(checkpointId)) {
+        // If mongostream crashes, and the processor is restarted on the same pod,
+        // the Agent might call notifyFlush for a checkpointId that the mongostream
+        // doesn't know about. This block is to handle that.
+        LOGV2_WARNING(9416700,
+                      "onCheckpointFlushed with unknown checkpointId",
+                      "checkpointId"_attr = checkpointId);
+        return;
+    }
     auto bson = _unflushedCheckpoints.pop(checkpointId);
     auto description = CheckpointDescription::parseOwned(
         IDLParserContext{"CheckpointStorage::notifyCheckpointFlushed"}, std::move(bson));
