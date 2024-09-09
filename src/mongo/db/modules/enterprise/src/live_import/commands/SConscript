@@ -41,22 +41,3 @@ env.Library(
         "lint-allow-nonprivate-on-deps-dependents",
     ],
 )
-
-env.Library(
-    target="vote_commit_import_collection_command",
-    source=[
-        "vote_commit_import_collection_command.cpp",
-        "vote_commit_import_collection_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/auth/auth",
-        "$BUILD_DIR/mongo/db/commands",
-        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/util/fail_point",
-        "../import_collection_coordinator",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-    ],
-)

@@ -36,3 +36,18 @@ idl_generator(
     name = "decrypt_tool_options_gen",
     src = "decrypt_tool_options.idl",
 )
+
+mongo_cc_library(
+    name = "log_redact_options",
+    srcs = [
+        "log_redact_options.cpp",
+        "log_redact_options_gen",
+    ],
+    hdrs = [
+        "log_redact_options.h",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+        "//src/mongo/util/options_parser",
+    ],
+)

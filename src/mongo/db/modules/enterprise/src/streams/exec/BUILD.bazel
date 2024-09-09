@@ -65,3 +65,42 @@ mongo_cc_library(
         "//src/mongo/db:server_base",
     ],
 )
+
+mongo_cc_library(
+    name = "streams_exec_common_idl",
+    srcs = [
+        ":common_gen",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/client:clientdriver_minimal",
+        "//src/mongo/idl:idl_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "streams_exec_internal_idl",
+    srcs = [
+        "checkpoint_data_gen",
+        "exec_internal_gen",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/client:clientdriver_minimal",
+        "//src/mongo/idl:idl_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "streams_stages_idl",
+    srcs = [
+        "stages_gen",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/client:clientdriver_minimal",
+        "//src/mongo/db/pipeline:aggregation_request_helper",
+        "//src/mongo/db/pipeline:document_sources_idl",
+        "//src/mongo/idl:idl_parser",
+    ],
+)

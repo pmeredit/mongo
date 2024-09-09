@@ -24,3 +24,45 @@ idl_generator(
         "//src/mongo/db:basic_types_gen",
     ],
 )
+
+mongo_cc_library(
+    name = "fips_mode_general",
+    srcs = [
+        "fips_flag.cpp",
+    ],
+    deps = [
+        "//src/mongo/db/auth:sasl_options",
+        "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "fips_mode_client",
+    srcs = [
+        "fips_flag_client_gen",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:js_engine_none": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":fips_mode_general",
+        "//src/mongo/util/net:ssl_options_client",
+        "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "fips_mode_server",
+    srcs = [
+        "fips_flag_server_gen",
+    ],
+    deps = [
+        "fips_mode_general",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/auth:auth_options",
+        "//src/mongo/db/auth:cluster_auth_mode",
+        "//src/mongo/util/net:ssl_options_server",
+        "//src/mongo/util/options_parser",
+    ],
+)

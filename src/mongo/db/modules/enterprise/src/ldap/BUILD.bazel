@@ -52,3 +52,166 @@ mongo_cc_library(
         "//src/mongo/db:server_base",
     ],
 )
+
+mongo_cc_library(
+    name = "ldap_manager",
+    srcs = [
+        "ldap_manager.cpp",
+        "ldap_options.cpp",
+        "ldap_options_gen",
+    ],
+    hdrs = [
+        "ldap_manager.h",
+        "ldap_options.h",
+    ],
+    deps = [
+        "ldap_query",
+        "//src/mongo/base:secure_allocator",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/auth:sasl_options",
+        "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "ldap_query",
+    srcs = [
+        "ldap_connection_options.cpp",
+        "ldap_host.cpp",
+        "ldap_query.cpp",
+        "ldap_query_config.cpp",
+    ],
+    hdrs = [
+        "ldap_connection_options.h",
+        "ldap_host.h",
+        "ldap_query.h",
+        "ldap_query_config.h",
+        "ldap_type_aliases.h",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/base:secure_allocator",
+        "//src/mongo/util:pcre_wrapper",
+        "//src/mongo/util/net:network",
+        "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "ldap_connection",
+    srcs = [
+        "ldap_resolver_cache.cpp",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection_factory.cpp",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection_helpers.cpp",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection_reaper.cpp",
+    ] + select({
+        "@platforms//os:windows": ["//src/mongo/db/modules/enterprise/src/ldap/connections:windows_ldap_connection.cpp"],
+        "//conditions:default": ["//src/mongo/db/modules/enterprise/src/ldap/connections:openldap_connection.cpp"],
+    }),
+    hdrs = [
+        "ldap_resolver_cache.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection_factory.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection_helpers.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_connection_reaper.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/connections:ldap_session_id.h",
+        "//src/mongo/util:strong_weak_finish_line.h",
+        "//src/mongo/util:tick_source_mock.h",
+    ] + select({
+        "@platforms//os:windows": ["//src/mongo/db/modules/enterprise/src/ldap/connections:windows_ldap_connection.h"],
+        "//conditions:default": ["//src/mongo/db/modules/enterprise/src/ldap/connections:openldap_connection.h"],
+    }),
+    linkopts = select({
+        "@platforms//os:windows": ["Wldap32.lib"],
+        "//conditions:default": [
+            "-lldap",
+            "-llber",
+        ],
+    }),
+    deps = [
+        "ldap_manager",
+        "ldap_parameters",
+        ":ldap_query",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/auth:user_acquisition_stats",
+        "//src/mongo/db/commands:server_status_core",
+        "//src/mongo/executor:connection_pool_executor",
+        "//src/mongo/util:alarm",
+        "//src/mongo/util:dns_query",
+        "//src/mongo/util:fail_point",
+        "//src/mongo/util/concurrency:thread_pool",
+        "//src/mongo/util/net:network",
+    ],
+)
+
+mongo_cc_library(
+    name = "ldap_manager_init",
+    srcs = [
+        "ldap_manager_init.cpp",
+    ],
+    deps = [
+        "ldap_manager_impl",
+        "ldap_parameters",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/commands:server_status_core",
+    ],
+)
+
+mongo_cc_library(
+    name = "ldap_manager_impl",
+    srcs = [
+        "ldap_manager_impl.cpp",
+        "ldap_runner_impl.cpp",
+        "ldap_runtime_parameters.cpp",
+        "ldap_runtime_parameters_gen",
+    ],
+    hdrs = [
+        "ldap_manager_impl.h",
+        "ldap_runner_impl.h",
+    ],
+    deps = [
+        "ldap_connection",
+        "ldap_manager",
+        "ldap_name_map",
+        "ldap_query",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/auth",
+        "//src/mongo/db/commands:test_commands_enabled",
+    ],
+)
+
+mongo_cc_library(
+    name = "ldap_name_map",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:internal_to_ldap_user_name_mapper.cpp",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:ldap_rewrite_rule.cpp",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:regex_rewrite_rule.cpp",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:rewrite_rule.cpp",
+    ],
+    hdrs = [
+        "ldap_runner.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:internal_to_ldap_user_name_mapper.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:ldap_rewrite_rule.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:regex_rewrite_rule.h",
+        "//src/mongo/db/modules/enterprise/src/ldap/name_mapping:rewrite_rule.h",
+        "//src/mongo/util:tick_source_mock.h",
+    ],
+    deps = [
+        "ldap_parameters",
+        "ldap_query",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/util:pcre_wrapper",
+    ],
+)
+
+mongo_cc_library(
+    name = "ldap_options_mongod",
+    srcs = [
+        "ldap_options_mongod_gen",
+    ],
+    deps = [
+        "ldap_manager_impl",
+        "//src/mongo/util/options_parser",
+    ],
+)

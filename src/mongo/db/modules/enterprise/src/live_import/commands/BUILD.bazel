@@ -37,3 +37,19 @@ idl_generator(
         "//src/mongo/util/net:hostandport_gen",
     ],
 )
+
+mongo_cc_library(
+    name = "vote_commit_import_collection_command",
+    srcs = [
+        "vote_commit_import_collection_command.cpp",
+        ":vote_commit_import_collection_gen",
+    ],
+    deps = [
+        "//src/mongo/db:commands",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/auth",
+        "//src/mongo/db/modules/enterprise/src/live_import:import_collection_coordinator",
+        "//src/mongo/db/repl:repl_coordinator_interface",
+        "//src/mongo/util:fail_point",
+    ],
+)

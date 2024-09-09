@@ -9,52 +9,6 @@ Import(
 
 env = env.Clone()
 
-env.Library(
-    target="fips_mode_general",
-    source=[
-        "fips_flag.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/auth/sasl_options",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-    ],
-)
-
-env.Library(
-    target="fips_mode_server",
-    source=[
-        "fips_flag_server_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/auth/auth_options",
-        "$BUILD_DIR/mongo/db/auth/cluster_auth_mode",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/util/net/ssl_options_server",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-        "fips_mode_general",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-bidirectional-edges",
-        "lint-allow-nonprivate-on-deps-dependents",
-    ],
-)
-
-if get_option("js-engine") != "none":
-    env.Library(
-        target="fips_mode_client",
-        source=[
-            "fips_flag_client_gen.cpp",
-        ],
-        LIBDEPS_PRIVATE=[
-            "$BUILD_DIR/mongo/util/net/ssl_options_client",
-            "$BUILD_DIR/mongo/util/options_parser/options_parser",
-            "fips_mode_general",
-        ],
-        LIBDEPS_TAGS=[
-            "lint-allow-nonprivate-on-deps-dependents",
-        ],
-    )
-
 env.CppUnitTest(
     target="fips_options_test",
     source=[

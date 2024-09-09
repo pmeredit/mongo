@@ -39,24 +39,6 @@ else:
 env = saslconf.Finish()
 
 env.Library(
-    target=[
-        "sasl_aws_server",
-    ],
-    source=[
-        "sasl_aws_server_protocol.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/connection_health_metrics_parameter",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/bson/bson_validate",
-        "$BUILD_DIR/mongo/client/sasl_aws_common",
-        "$BUILD_DIR/mongo/db/server_base",
-    ],
-)
-
-env.Library(
     target="oidc_external_state_vars",
     source=[
         "oidc_external_state_vars.cpp",
@@ -148,27 +130,6 @@ kmsEnv.CppUnitTest(
 )
 
 env.Library(
-    target="mongosaslserversession",
-    source=[
-        "auxprop_mongodb_internal.cpp" if env.TargetOSIs("windows") else [],
-        "canon_mongodb_internal.cpp",
-        "mongo_${MONGO_GSSAPI_IMPL}.cpp",
-        "sasl_aws_server_options_gen.cpp",
-        "sasl_aws_server_conversation.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/saslauth",
-        "../util/gssapi_helpers" if not env.TargetOSIs("windows") else [],
-        "sasl_aws_server",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/util/net/http_client",
-    ],
-    SYSLIBDEPS=["sasl2"] + env["MONGO_GSSAPI_LIB"],
-)
-
-env.Library(
     target="mongosaslservercommon",
     source=[
         "cyrus_sasl_authentication_session.cpp",
@@ -184,6 +145,7 @@ env.Library(
         "lint-allow-nonprivate-on-deps-dependents",
         "lint-allow-bidirectional-edges",
     ],
+    SYSLIBDEPS=["sasl2"] + env["MONGO_GSSAPI_LIB"],
 )
 
 if env.TargetOSIs("windows"):

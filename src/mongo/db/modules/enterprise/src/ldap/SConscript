@@ -44,124 +44,6 @@ else:
 env = ldapconf.Finish()
 
 env.Library(
-    target="ldap_manager_init",
-    source=[
-        "ldap_manager_init.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/commands/server_status_core",
-        "$BUILD_DIR/mongo/db/service_context",
-        "ldap_manager_impl",
-        "ldap_parameters",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-)
-
-env.Library(
-    target="ldap_manager",
-    source=[
-        "ldap_manager.cpp",
-        "ldap_options_gen.cpp",
-        "ldap_options.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base/secure_allocator",
-        "$BUILD_DIR/mongo/db/auth/sasl_options",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-        "ldap_query",
-    ],
-)
-
-env.Library(
-    target="ldap_manager_impl",
-    source=[
-        "ldap_manager_impl.cpp",
-        "ldap_runtime_parameters.cpp",
-        "ldap_runner_impl.cpp",
-        "ldap_runtime_parameters_gen.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/auth",
-        "$BUILD_DIR/mongo/db/commands/test_commands_enabled",
-        "$BUILD_DIR/mongo/db/server_base",
-        "ldap_connection",
-        "ldap_manager",
-        "ldap_name_map",
-        "ldap_query",
-    ],
-)
-
-env.Library(
-    target="ldap_options_mongod",
-    source=[
-        "ldap_options_mongod_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-        "ldap_manager_impl",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-)
-
-env.Library(
-    target="ldap_query",
-    source=[
-        "ldap_connection_options.cpp",
-        "ldap_host.cpp",
-        "ldap_query.cpp",
-        "ldap_query_config.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/base/secure_allocator",
-        "$BUILD_DIR/mongo/util/net/network",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-        "$BUILD_DIR/mongo/util/pcre_wrapper",
-    ],
-)
-
-ldap_connection_sources = [
-    "connections/ldap_connection_factory.cpp",
-    "connections/ldap_connection_helpers.cpp",
-    "connections/ldap_connection_reaper.cpp",
-    "ldap_resolver_cache.cpp",
-]
-
-if env.TargetOSIs("windows"):
-    ldap_connection_sources.append("connections/windows_ldap_connection.cpp")
-else:
-    ldap_connection_sources.append("connections/openldap_connection.cpp")
-
-env.Library(
-    target="ldap_connection",
-    source=ldap_connection_sources,
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/user_acquisition_stats",
-        "ldap_query",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/commands/server_status_core",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/executor/connection_pool_executor",
-        "$BUILD_DIR/mongo/util/alarm",
-        "$BUILD_DIR/mongo/util/concurrency/thread_pool",
-        "$BUILD_DIR/mongo/util/dns_query",
-        "$BUILD_DIR/mongo/util/fail_point",
-        "$BUILD_DIR/mongo/util/net/network",
-        "ldap_manager",
-        "ldap_parameters",
-    ],
-    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
-)
-
-env.Library(
     target="mongo_ldap",
     source=[
         "authz_manager_external_state_ldap.cpp",
@@ -178,23 +60,6 @@ env.Library(
         "$BUILD_DIR/mongo/util/background_job",
         "ldap_manager_impl",
         "ldap_name_map",
-        "ldap_query",
-    ],
-)
-
-env.Library(
-    target="ldap_name_map",
-    source=[
-        "name_mapping/internal_to_ldap_user_name_mapper.cpp",
-        "name_mapping/rewrite_rule.cpp",
-        "name_mapping/ldap_rewrite_rule.cpp",
-        "name_mapping/regex_rewrite_rule.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/util/pcre_wrapper",
-        "ldap_parameters",
         "ldap_query",
     ],
 )
@@ -238,6 +103,7 @@ env.CppUnitTest(
         "ldap_name_map",
         "ldap_query",
     ],
+    SYSLIBDEPS="Wldap32" if env.TargetOSIs("windows") else "",
 )
 
 env.Program(
@@ -271,4 +137,5 @@ env.Program(
         "ldap_options_mongod",
         "ldap_query",
     ],
+    SYSLIBDEPS="Wldap32" if env.TargetOSIs("windows") else "",
 )

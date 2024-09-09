@@ -84,22 +84,6 @@ wtEnv.Library(
 )
 
 env.Library(
-    target="log_redact_options",
-    source=[
-        "log_redact_options.cpp",
-        "log_redact_options_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-)
-
-env.Library(
     target="key_acquisition",
     source=[
         "encryption_key_acquisition.cpp",

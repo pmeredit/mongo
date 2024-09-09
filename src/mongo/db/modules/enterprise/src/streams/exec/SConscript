@@ -31,45 +31,6 @@ else:
 env.SConscript(must_exist=1, dirs=["tests"], exports=["env"])
 
 env.Library(
-    target="streams_stages_idl",
-    source=[
-        "stages_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/client/clientdriver_minimal",
-        "$BUILD_DIR/mongo/db/pipeline/aggregation_request_helper",
-        "$BUILD_DIR/mongo/db/pipeline/document_sources_idl",
-        "$BUILD_DIR/mongo/idl/idl_parser",
-    ],
-)
-
-env.Library(
-    target="streams_exec_internal_idl",
-    source=[
-        "exec_internal_gen.cpp",
-        "checkpoint_data_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/client/clientdriver_minimal",
-        "$BUILD_DIR/mongo/idl/idl_parser",
-    ],
-)
-
-env.Library(
-    target="streams_exec_common_idl",
-    source=[
-        "common_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/client/clientdriver_minimal",
-        "$BUILD_DIR/mongo/idl/idl_parser",
-    ],
-)
-
-env.Library(
     target="streams_exec_util",
     source=[
         "document_timestamp_extractor.cpp",

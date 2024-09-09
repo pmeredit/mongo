@@ -52,3 +52,64 @@ mongo_cc_library(
         "//src/mongo/db/auth:sasl_options",
     ],
 )
+
+mongo_cc_library(
+    name = "sasl_aws_server",
+    srcs = [
+        "sasl_aws_server_protocol.cpp",
+    ],
+    hdrs = [
+        "sasl_aws_server_protocol.h",
+        "//src/mongo/base:data_type_validated.h",
+        "//src/mongo/client:sasl_aws_protocol_common.h",
+        "//src/mongo/rpc:object_check.h",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/bson:bson_validate",
+        "//src/mongo/client:sasl_aws_common",
+        "//src/mongo/db:connection_health_metrics_parameter",
+        "//src/mongo/db:server_base",
+    ],
+)
+
+mongo_cc_library(
+    name = "mongosaslserversession",
+    srcs = [
+        "canon_mongodb_internal.cpp",
+        "sasl_aws_server_conversation.cpp",
+        "sasl_aws_server_options_gen",
+    ] + select({
+        "@platforms//os:windows": [
+            "auxprop_mongodb_internal.cpp",
+            "mongo_sspi.cpp",
+        ],
+        "//conditions:default": ["mongo_gssapi.cpp"],
+    }),
+    hdrs = [
+        "mongo_gssapi.h",
+        "sasl_aws_server_conversation.h",
+    ] + select({
+        "@platforms//os:windows": ["cyrus_sasl_authentication_session.h"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@platforms//os:windows": [
+            "secur32.lib",
+            "sasl2.lib",
+        ],
+        "//conditions:default": [
+            "-lgssapi_krb5",
+            "-lsasl2",
+        ],
+    }),
+    deps = [
+        "sasl_aws_server",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/auth:saslauth",
+        "//src/mongo/util/net:http_client",
+    ] + select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["//src/mongo/db/modules/enterprise/src/util:gssapi_helpers"],
+    }),
+)

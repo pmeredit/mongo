@@ -5,21 +5,6 @@ Import("env")
 env = env.Clone()
 
 env.Library(
-    target="streams_ops_idl",
-    source=[
-        "stream_ops_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/client/clientdriver_minimal",
-        "$BUILD_DIR/mongo/idl/idl_parser",
-        "../exec/streams_exec_common_idl",
-        "../exec/streams_exec_internal_idl",
-        "../exec/streams_stages_idl",
-    ],
-)
-
-env.Library(
     target="streams_commands",
     source=[
         "get_metrics.cpp",
