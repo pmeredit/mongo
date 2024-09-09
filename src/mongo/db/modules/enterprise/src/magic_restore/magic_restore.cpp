@@ -22,6 +22,7 @@
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
+#include "mongo/db/index/index_constants.h"
 #include "mongo/db/mongod_options.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/op_observer/op_observer.h"
@@ -346,7 +347,7 @@ void updateShardNameMetadata(OperationContext* opCtx,
                 8291303,
                 storageInterface->findDocuments(opCtx,
                                                 NamespaceString::kConfigsvrShardsNamespace,
-                                                StringData("_id_") /* indexName */,
+                                                IndexConstants::kIdIndexName,
                                                 repl::StorageInterface::ScanDirection::kForward,
                                                 BSON("_id" << srcShardName) /* startKey */,
                                                 BoundInclusion::kIncludeStartKeyOnly,

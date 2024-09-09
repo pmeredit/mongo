@@ -11,6 +11,7 @@
 
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/database_name.h"
+#include "mongo/db/index/index_constants.h"
 #include "mongo/db/pipeline/process_interface/common_process_interface.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/catalog/type_collection.h"
@@ -50,7 +51,8 @@ WriteConcernOptions getWriteConcern() {
 // mongos_process_interface.cpp.
 bool supportsUniqueKey(const BSONObj& index, const std::set<FieldPath>& uniqueKeyPaths) {
     // SERVER-5335: The _id index does not report to be unique, but in fact is unique.
-    auto isIdIndex = index[IndexDescriptor::kIndexNameFieldName].String() == "_id_";
+    auto isIdIndex =
+        index[IndexDescriptor::kIndexNameFieldName].String() == IndexConstants::kIdIndexName;
     return (isIdIndex || index.getBoolField(IndexDescriptor::kUniqueFieldName)) &&
         !index.hasField(IndexDescriptor::kPartialFilterExprFieldName) &&
         CommonProcessInterface::keyPatternNamesExactPaths(
