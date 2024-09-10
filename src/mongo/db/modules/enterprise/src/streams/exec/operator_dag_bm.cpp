@@ -55,15 +55,16 @@ public:
     void runStreamProcessor(benchmark::State& state, const BSONObj& pipelineSpec);
     void runAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
 
-    void runDeserializerBenchmark(benchmark::State& state, JsonEventDeserializer deserializer);
+    void runDeserializerBenchmark(benchmark::State& state,
+                                  JsonEventDeserializer deserializer,
+                                  const std::vector<std::string>& inputDocs);
 
 protected:
     std::string generateRandomString(size_t size);
 
-    BSONObj generateBSONObj(int numFields);
+    BSONObj generateBSONObj(int numFields, int stringFieldSize);
 
-    // Generates a document. Each document has 200 fields in it and is ~13KB in size.
-    BSONObj generateDoc();
+    BSONObj generateDoc(int stringFieldSize);
 
     static constexpr int32_t kNumDataMsgs{100};
     static constexpr int32_t kDocsPerMsg{1000};
@@ -77,7 +78,11 @@ protected:
     BSONObj _groupObj;
     StreamDataMsg _dataMsg;
     std::vector<BSONObj> _inputObjs;
-    std::vector<std::string> _inputDocs;
+    std::vector<std::string> _inputDocsSmall;
+    std::vector<std::string> _inputDocsMedium;
+    std::vector<std::string> _inputDocsLarge;
+    std::vector<std::string> _inputDocsXLarge;
+    std::vector<std::string> _inputDocsXXLarge;
 };
 
 OperatorDagBMFixture::OperatorDagBMFixture()
@@ -206,28 +211,56 @@ void OperatorDagBMFixture::SetUp(benchmark::State& state) {
     _dataMsg = StreamDataMsg{};
     _dataMsg.docs.reserve(kDocsPerMsg);
     _inputObjs.reserve(kDocsPerMsg);
-    _inputDocs.reserve(kDocsPerMsg);
+    _inputDocsSmall.reserve(kDocsPerMsg);
+    _inputDocsMedium.reserve(kDocsPerMsg);
+    _inputDocsLarge.reserve(kDocsPerMsg);
+    _inputDocsXLarge.reserve(kDocsPerMsg);
+    _inputDocsXXLarge.reserve(kDocsPerMsg);
     // Generate 10 unique docs and duplicate them as many times as needed.
     for (int i = 0; i < 10; i++) {
-        auto obj = generateDoc();
-        _dataMsg.docs.emplace_back(Document(obj));
-        _inputDocs.emplace_back(tojson(obj));
-        _inputObjs.emplace_back(std::move(obj));
+        auto smallObj = generateDoc(10);  // BSONObject size of .9KB
+        _inputDocsSmall.emplace_back(tojson(std::move(smallObj)));
+
+        auto mediumObj = generateDoc(100);  // BSONObject size of 2.7KB
+        _inputDocsMedium.emplace_back(tojson(mediumObj));
+        _dataMsg.docs.emplace_back(Document(mediumObj));
+        _inputObjs.emplace_back(std::move(mediumObj));
+
+        auto largeObj = generateDoc(1000);  // BSONObject size of 20KB
+        _inputDocsLarge.emplace_back(tojson(std::move(largeObj)));
+
+        auto xLargeObj = generateDoc(10'000);  // BSONObject size of 200KB
+        _inputDocsXLarge.emplace_back(tojson(std::move(xLargeObj)));
+
+        auto xxLargeObj = generateDoc(100'000);  // BSONObject size of 2MB
+        _inputDocsXXLarge.emplace_back(tojson(std::move(xxLargeObj)));
     }
     for (int i = 10; i < kDocsPerMsg; i += 10) {
         std::copy_n(_dataMsg.docs.begin(), 10, std::back_inserter(_dataMsg.docs));
         std::copy_n(_inputObjs.begin(), 10, std::back_inserter(_inputObjs));
-        std::copy_n(_inputDocs.begin(), 10, std::back_inserter(_inputDocs));
+        std::copy_n(_inputDocsSmall.begin(), 10, std::back_inserter(_inputDocsSmall));
+        std::copy_n(_inputDocsMedium.begin(), 10, std::back_inserter(_inputDocsMedium));
+        std::copy_n(_inputDocsLarge.begin(), 10, std::back_inserter(_inputDocsLarge));
+        std::copy_n(_inputDocsXLarge.begin(), 10, std::back_inserter(_inputDocsXLarge));
+        std::copy_n(_inputDocsXXLarge.begin(), 10, std::back_inserter(_inputDocsXXLarge));
     }
     invariant(_inputObjs.size() == kDocsPerMsg);
-    invariant(_inputDocs.size() == kDocsPerMsg);
+    invariant(_inputDocsSmall.size() == kDocsPerMsg);
+    invariant(_inputDocsMedium.size() == kDocsPerMsg);
+    invariant(_inputDocsLarge.size() == kDocsPerMsg);
+    invariant(_inputDocsXLarge.size() == kDocsPerMsg);
+    invariant(_inputDocsXXLarge.size() == kDocsPerMsg);
     invariant(_dataMsg.docs.size() == kDocsPerMsg);
 }
 
 void OperatorDagBMFixture::TearDown(benchmark::State& state) {
     _dataMsg = StreamDataMsg{};
     _inputObjs.clear();
-    _inputDocs.clear();
+    _inputDocsSmall.clear();
+    _inputDocsMedium.clear();
+    _inputDocsLarge.clear();
+    _inputDocsXLarge.clear();
+    _inputDocsXXLarge.clear();
     if (state.thread_index == 0) {
         setGlobalServiceContext({});
     }
@@ -243,7 +276,7 @@ std::string OperatorDagBMFixture::generateRandomString(size_t size) {
     return str;
 }
 
-BSONObj OperatorDagBMFixture::generateBSONObj(int numFields) {
+BSONObj OperatorDagBMFixture::generateBSONObj(int numFields, int stringFieldSize) {
     BSONObjBuilder objBuilder;
 
     int numIntFields = numFields / 2;
@@ -252,14 +285,14 @@ BSONObj OperatorDagBMFixture::generateBSONObj(int numFields) {
     }
     int numStrFields = numFields / 2;
     for (int i = 0; i < numStrFields; ++i) {
-        objBuilder.append(fmt::format("strField{}", i), generateRandomString(/*size*/ 100));
+        objBuilder.append(fmt::format("strField{}", i), generateRandomString(stringFieldSize));
     }
     return objBuilder.obj();
 }
 
-BSONObj OperatorDagBMFixture::generateDoc() {
-    BSONObjBuilder objBuilder(generateBSONObj(20));
-    objBuilder.append("subObj", generateBSONObj(20));
+BSONObj OperatorDagBMFixture::generateDoc(int stringFieldSize) {
+    BSONObjBuilder objBuilder(generateBSONObj(20, stringFieldSize));
+    objBuilder.append("subObj", generateBSONObj(20, stringFieldSize));
     return objBuilder.obj();
 }
 
@@ -424,36 +457,41 @@ BENCHMARK_F(OperatorDagBMFixture, BM_RunAggregationPipelineType2)(benchmark::Sta
 }
 
 void OperatorDagBMFixture::runDeserializerBenchmark(benchmark::State& state,
-                                                    JsonEventDeserializer deserializer) {
-    invariant(_inputDocs.size() == kDocsPerMsg);
+                                                    JsonEventDeserializer deserializer,
+                                                    const std::vector<std::string>& inputDocs) {
+    invariant(inputDocs.size() == kDocsPerMsg);
     std::vector<BSONObj> results(kDocsPerMsg);
 
     // Run the benchmark.
     for (auto keepRunning : state) {
         for (int i = 0; i < 10; ++i) {
             for (int j = 0; j < kDocsPerMsg; ++j) {
-                const auto& doc = _inputDocs[j];
+                const auto& doc = inputDocs[j];
                 results[j] = deserializer.deserialize(doc.c_str(), doc.size());
             }
         }
     }
 }
 
-BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerSimple)(benchmark::State& state) {
-    runDeserializerBenchmark(state, JsonEventDeserializer());
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerSmallDocs)(benchmark::State& state) {
+    runDeserializerBenchmark(state, JsonEventDeserializer(), _inputDocsSmall);
 }
 
-BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerForceSlowPath)(benchmark::State& state) {
-    runDeserializerBenchmark(state,
-                             JsonEventDeserializer(JsonEventDeserializer::Options{
-                                 .allowBsonCxxParsing = true, .forceBsonCxxParsing = true}));
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerMediumDocs)(benchmark::State& state) {
+    runDeserializerBenchmark(state, JsonEventDeserializer(), _inputDocsMedium);
 }
 
-BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerDisableSlowPath)(benchmark::State& state) {
-    runDeserializerBenchmark(
-        state, JsonEventDeserializer(JsonEventDeserializer::Options{.allowBsonCxxParsing = false}));
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerLargeDocs)(benchmark::State& state) {
+    runDeserializerBenchmark(state, JsonEventDeserializer(), _inputDocsLarge);
 }
 
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerXLargeDocs)(benchmark::State& state) {
+    runDeserializerBenchmark(state, JsonEventDeserializer(), _inputDocsXLarge);
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerXXLargeDocs)(benchmark::State& state) {
+    runDeserializerBenchmark(state, JsonEventDeserializer(), _inputDocsXXLarge);
+}
 
 }  // namespace
 }  // namespace mongo

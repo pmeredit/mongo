@@ -1,9 +1,12 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include <exception>
+
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/framework.h"
+#include "mongo/util/assert_util.h"
 #include "streams/exec/json_event_deserializer.h"
 
 namespace streams {
@@ -28,6 +31,41 @@ TEST(JsonEventDeserializerTest, Empty) {
     auto bson = deserializer.deserialize(empty.c_str(), empty.length());
     ASSERT_BSONOBJ_EQ(BSONObj::kEmptyObject, bson);
     ASSERT(bson.isEmpty());
+}
+
+TEST(JsonEventDeserializerTest, Whitespace) {
+    JsonEventDeserializer deserializer;
+    std::string empty = " ";
+    ASSERT_THROWS_WHAT(deserializer.deserialize(empty.c_str(), empty.length()),
+                       std::exception,
+                       "Incomplete JSON: could not parse JSON document");
+}
+
+TEST(JsonEventDeserializerTest, ValidWithTrailingWhitespace) {
+    JsonEventDeserializer deserializer;
+    std::string val = R"({ "a": 1 } )";
+    auto bson = deserializer.deserialize(val.c_str(), val.length());
+    ASSERT(!bson.isEmpty());
+    ASSERT(bson.nFields() == 1);
+    ASSERT(bson.getField("a").numberInt() == 1);
+}
+
+TEST(JsonEventDeserializerTest, ValidWithPrecedingWhitespace) {
+    JsonEventDeserializer deserializer;
+    std::string val = R"( { "a": 1 })";
+    auto bson = deserializer.deserialize(val.c_str(), val.length());
+    ASSERT(!bson.isEmpty());
+    ASSERT(bson.nFields() == 1);
+    ASSERT(bson.getField("a").numberInt() == 1);
+}
+
+TEST(JsonEventDeserializerTest, ValidWithSurroundingWhitespace) {
+    JsonEventDeserializer deserializer;
+    std::string val = R"( { "a": 1 } )";
+    auto bson = deserializer.deserialize(val.c_str(), val.length());
+    ASSERT(!bson.isEmpty());
+    ASSERT(bson.nFields() == 1);
+    ASSERT(bson.getField("a").numberInt() == 1);
 }
 
 }  // namespace

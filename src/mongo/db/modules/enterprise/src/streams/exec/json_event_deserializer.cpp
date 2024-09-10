@@ -19,30 +19,10 @@ namespace streams {
 using namespace mongo;
 
 BSONObj JsonEventDeserializer::doDeserialize(const char* buf, int len) {
-    // Check for any UTF-16 escape sequences.
-    if (_options.allowBsonCxxParsing &&
-        (_options.forceBsonCxxParsing ||
-         std::string_view(buf, len).find("\\u") != std::string::npos)) {
-        // JSON strings can contain UTF-16 escape sequences, according to
-        // https://datatracker.ietf.org/doc/html/rfc8259#section-7.
-        // However fromjson does not support this. So, we use bsoncxx to parse the JSON string.
-        // We create a BSONObj from the bsoncxx::document.
-        return fromBsoncxxDocument(
-            bsoncxx::from_json(bsoncxx::stdx::string_view{buf, (size_t)len}));
+    if (len == 0) {
+        return BSONObj();
     }
-
-    int actualLen{0};
-    auto obj = fromjson(buf, &actualLen);
-    while (actualLen < len) {
-        if (std::isspace(buf[actualLen])) {
-            ++actualLen;
-            continue;
-        }
-        uasserted(ErrorCodes::InvalidOptions,
-                  str::stream() << "Unexpected extra character in the message: "
-                                << int(buf[actualLen]));
-    }
-    return obj;
+    return fromBsoncxxDocument(bsoncxx::from_json(bsoncxx::stdx::string_view{buf, (size_t)len}));
 }
 
 }  // namespace streams
