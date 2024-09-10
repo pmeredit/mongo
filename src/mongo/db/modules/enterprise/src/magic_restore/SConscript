@@ -11,6 +11,7 @@ env.Library(
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/catalog/collection_crud",
         "$BUILD_DIR/mongo/db/commands/servers",
+        "$BUILD_DIR/mongo/db/commands/umc_commands_idl",
         "$BUILD_DIR/mongo/db/concurrency/exception_util",
         "$BUILD_DIR/mongo/db/dbhelpers",
         "$BUILD_DIR/mongo/db/mongod_options",

@@ -303,11 +303,11 @@ int main(int argc, char** argv) {
         }
     }
 
+    runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
+
     saslGlobalParams.authenticationMechanisms.push_back("GSSAPI");
     saslGlobalParams.serviceName = mockServiceName;
     saslGlobalParams.hostName = mockHostName;
-
-    runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
 
     {
         auto service = ServiceContext::make();

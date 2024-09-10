@@ -70,6 +70,7 @@ if ssl_provider == "openssl":
             "$BUILD_DIR/mongo/db/auth/auth_impl_internal",
             "$BUILD_DIR/mongo/db/auth/sasl_mechanism_protocol",
             "$BUILD_DIR/mongo/db/auth/sasl_options",
+            "$BUILD_DIR/mongo/db/auth/sasl_options_init",
             "$BUILD_DIR/mongo/db/auth/saslauth",
             "$BUILD_DIR/mongo/db/commands",
             "$BUILD_DIR/mongo/db/commands/test_commands_enabled",
