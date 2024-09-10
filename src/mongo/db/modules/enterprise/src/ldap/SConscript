@@ -103,7 +103,7 @@ env.CppUnitTest(
         "ldap_name_map",
         "ldap_query",
     ],
-    SYSLIBDEPS="Wldap32" if env.TargetOSIs("windows") else "",
+    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
 )
 
 env.Program(
@@ -137,5 +137,5 @@ env.Program(
         "ldap_options_mongod",
         "ldap_query",
     ],
-    SYSLIBDEPS="Wldap32" if env.TargetOSIs("windows") else "",
+    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
 )
