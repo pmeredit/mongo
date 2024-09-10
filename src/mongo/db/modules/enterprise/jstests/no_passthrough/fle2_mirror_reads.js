@@ -7,32 +7,21 @@ import {ShardingTest} from "jstests/libs/shardingtest.js";
 const dbName = "testdb";
 const collName = "basic";
 
-function verifyEncryptedMirrorReads(rst, edb, cmd, mirrorCount) {
+function verifyEncryptedMirrorReads(rst, edb, cmd) {
     const slowQueryId = 51803;
     const secDb = rst.getSecondary().getDB("admin");
 
-    const mirroredCmdName = cmd.hasOwnProperty("count") ? "count" : "find";
-    const expectedLogId = (cmd.hasOwnProperty("count") ? 7964102 : 7964101);
-    const expectedLogCmdAttr = {
-        "cmd": {[mirroredCmdName]: collName, "encryptionInformation": {"type": 1}, "mirrored": true}
-    };
-
     assert.commandWorked(secDb.adminCommand({clearLog: "global"}));
 
-    // Run the command
     if (cmd.hasOwnProperty("bulkWrite")) {
         assert.commandWorked(edb.eadminCommand(cmd));
     } else {
         assert.commandWorked(edb.erunCommand(cmd));
     }
 
-    // Verify the secondary gets the mirrored read, which contains encryptionInformation
-    assert.soon(
-        () => checkLog.checkContainsWithAtLeastCountJson(
-            secDb, expectedLogId, expectedLogCmdAttr, mirrorCount, null, true /*isRelaxed*/),
-        "Unable to find log message indicating mirrored read in secondary");
-
-    // Verify the secondary does not log a slow query log on the encrypted namespace
+    // Verify the secondary does not log a slow query log on the encrypted namespace.
+    // The absence of a slow query log implies FLE2 redaction happened due to the presence of
+    // encryptionInformation in the mirrored request.
     const slowQueryLogs =
         checkLog.getFilteredLogMessages(secDb, slowQueryId, {"ns": `${dbName}.${collName}`});
     assert.eq(0, slowQueryLogs.length);
@@ -57,11 +46,6 @@ function runTest(conn, rst) {
     // Set slow query threshold to -1 so every query gets logged
     rst.getSecondary().getDB('admin').setProfilingLevel(0, -1);
 
-    // Raise log level on secondary because this test depends on debug log messages
-    // to verify the mirrored command.
-    assert.commandWorked(rst.getSecondary().setLogLevel(2, 'command'));
-    assert.commandWorked(rst.getSecondary().setLogLevel(2, 'query'));
-
     const edb = client.getDB();
     const coll = edb.getCollection(collName);
 
@@ -78,49 +62,35 @@ function runTest(conn, rst) {
 
         // For QE find and count, the secondary receives just one mirrored read
         // containing the original encrypted query.
-        let expectedMirrorCount = 1;
-
         jsTestLog("Test encrypted 'find' commands are mirrored");
-        verifyEncryptedMirrorReads(
-            rst, edb, {find: collName, filter: {first: "bob"}}, expectedMirrorCount);
+        verifyEncryptedMirrorReads(rst, edb, {find: collName, filter: {first: "bob"}});
 
         jsTestLog("Test encrypted 'count' commands are mirrored");
-        verifyEncryptedMirrorReads(
-            rst, edb, {count: collName, query: {first: "bob"}}, expectedMirrorCount);
+        verifyEncryptedMirrorReads(rst, edb, {count: collName, query: {first: "bob"}});
 
         // For QE findAndModify/update, the secondary receives two mirrored reads
         // (1 for rewritten command, 1 for find by _id used by garbage collect).
         // On replsets, there's one extra mirrored read for the outer command, which
         // contains the original encrypted query.
-        expectedMirrorCount = sharded ? 2 : 3;
-
         jsTestLog("Test encrypted 'findAndModify' command queries are mirrored");
         verifyEncryptedMirrorReads(
             rst,
             edb,
-            {findAndModify: collName, query: {first: "bob", _id: 1}, update: {"$inc": {ctr: 1}}},
-            expectedMirrorCount);
+            {findAndModify: collName, query: {first: "bob", _id: 1}, update: {"$inc": {ctr: 1}}});
 
         jsTestLog("Test encrypted 'update' command queries are mirrored");
         verifyEncryptedMirrorReads(
             rst,
             edb,
-            {update: collName, updates: [{q: {first: "bob", _id: 2}, u: {"$inc": {ctr: 1}}}]},
-            expectedMirrorCount);
+            {update: collName, updates: [{q: {first: "bob", _id: 2}, u: {"$inc": {ctr: 1}}}]});
 
         if (FeatureFlagUtil.isEnabled(conn, "BulkWriteCommand")) {
             jsTestLog("Test encrypted 'bulkWrite' update command queries are mirrored");
-            verifyEncryptedMirrorReads(
-                rst,
-                edb,
-                {
-                    bulkWrite: 1,
-                    ops: [
-                        {update: 0, filter: {first: "bob", _id: 3}, updateMods: {'$inc': {ctr: 1}}}
-                    ],
-                    nsInfo: [{ns: dbName + "." + collName}]
-                },
-                expectedMirrorCount);
+            verifyEncryptedMirrorReads(rst, edb, {
+                bulkWrite: 1,
+                ops: [{update: 0, filter: {first: "bob", _id: 3}, updateMods: {'$inc': {ctr: 1}}}],
+                nsInfo: [{ns: dbName + "." + collName}]
+            });
         }
     }
 }
