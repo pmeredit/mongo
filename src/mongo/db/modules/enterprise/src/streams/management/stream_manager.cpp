@@ -1,12 +1,14 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "mongo/util/assert_util.h"
 #include <chrono>
 #include <exception>
 #include <memory>
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
+#include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/error_labels.h"
@@ -543,15 +545,36 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
         return boost::none;
     };
 
-    // Wait for the executor to succesfully start or report an error.
+    boost::optional<Status> status;
     Date_t deadline = Date_t::now() + request.getTimeout();
-    boost::optional<Status> status = getExecutorStartStatus();
-    while (!status) {
-        sleepFor(Milliseconds(100));
+    {
+        // Log state of all stream processors to help with analyzing rogue SP incidents
+        ScopeGuard guard([&] {
+            stdx::lock_guard<Latch> lk(_mutex);
+            for (const auto& tenant : _tenantProcessors) {
+                for (const auto& [name, processorInfo] : tenant.second->processors) {
+                    LOGV2_INFO(
+                        9420201,
+                        "Stream processor state",
+                        "correlationId"_attr = request.getCorrelationId(),
+                        "context"_attr = processorInfo->context.get(),
+                        "status"_attr = processorInfo->streamStatus,
+                        "memoryTrackerBytes"_attr =
+                            processorInfo->context->memoryAggregator->getCurrentMemoryUsageBytes());
+                }
+            }
+        });
+
+        // Wait for the executor to succesfully start or report an error.
         status = getExecutorStartStatus();
-        uassert(75384, "Timeout while connecting", Date_t::now() <= deadline);
+        while (!status) {
+            sleepFor(Milliseconds(100));
+            status = getExecutorStartStatus();
+            uassert(75384, "Timeout while connecting", Date_t::now() <= deadline);
+        }
     }
 
+    tassert(9420202, "status should be set", status);
     if (!status->isOK()) {
         StopStreamProcessorCommand stopCommand;
         stopCommand.setTenantId(request.getTenantId());
