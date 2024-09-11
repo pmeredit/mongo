@@ -121,9 +121,9 @@ structs:
                 type: long
                 stability: stable
                 optional: true
-            connectionNames:
-                description: "The connection names from the supplied pipeline if the 'parseOnly' flag is set."
-                type: array<string>
+            connections:
+                description: "The connection information from the supplied pipeline if the 'parseOnly' flag is set."
+                type: array<ParsedConnectionInfo>
                 stability: stable
                 optional: true
             optimizedPipeline:

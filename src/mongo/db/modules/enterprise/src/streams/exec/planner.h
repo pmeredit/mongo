@@ -63,7 +63,8 @@ public:
     /**
      * Get the list of connection names from the user supplied pipeline.
      */
-    static mongo::StringSet parseConnectionNames(const std::vector<mongo::BSONObj>& pipeline);
+    static std::vector<mongo::ParsedConnectionInfo> parseConnectionInfo(
+        const std::vector<mongo::BSONObj>& pipeline);
 
 private:
     friend class PlannerTest;

@@ -34,7 +34,7 @@ function test({pipeline, dlq, expectedConnectionNames}) {
         processorId: 'test_id',
     };
     const result = assert.commandWorked(db.runCommand(command));
-    assert.eq(result.connectionNames.sort(), expectedConnectionNames, result.connectionNames);
+    assert.eq(result.connections, expectedConnectionNames, result.connections);
 }
 
 test({
@@ -76,26 +76,6 @@ test({
                 ]
             }
         },
-        {
-            $hoppingWindow: {
-                interval: {size: NumberInt(1), unit: "second"},
-                hopSize: {size: NumberInt(1), unit: "second"},
-                pipeline: [
-                    {
-                        $lookup: {
-                            from: {
-                                connectionName: "conn5",
-                                db: dbName,
-                                coll: foreignCollName,
-                            },
-                            localField: "a",
-                            foreignField: "b",
-                            as: "out"
-                        }
-                    }
-                ]
-            }
-        },
         {$merge: {into: {connectionName: "conn2", db: dbName, coll: collName}}}
     ],
     dlq: {
@@ -103,5 +83,45 @@ test({
         db: dbName,
         coll: dlqCollName,
     },
-    expectedConnectionNames: ["conn1", "conn2", "conn3", "conn4", "conn5", "conn6"]
+    expectedConnectionNames: [
+        { name: "conn1", stage: "$source" },
+        { name: "conn3", stage: "$lookup" },
+        { name: "conn4", stage: "$lookup" },
+        { name: "conn2", stage: "$merge" },
+        { name: "conn6" }
+    ]
+});
+
+test({
+    pipeline: [
+        {$source: {documents: [{a: 1}]}},
+    ],
+    expectedConnectionNames: []
+});
+
+test({
+    pipeline: [
+        {
+            $source: {
+                connectionName: "conn1",
+                timeField: {$toDate: "$timestamp"},
+            }
+        },
+        {$merge: {into: {connectionName: "conn2", db: dbName, coll: collName}}}
+    ],
+    expectedConnectionNames: [
+        {name: "conn1", stage: "$source"},
+        {name: "conn2", stage: "$merge"},
+    ]
+});
+
+test({
+    pipeline: [
+        {$source: {connectionName: "foo", topic: "t2"}},
+        {$emit: {connectionName: "bar", topic: "t1"}}
+    ],
+    expectedConnectionNames: [
+        {name: "foo", stage: "$source"},
+        {name: "bar", stage: "$emit"},
+    ]
 });

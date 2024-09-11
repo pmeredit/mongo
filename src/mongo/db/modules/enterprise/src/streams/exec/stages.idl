@@ -300,6 +300,18 @@ structs:
                 type: KafkaSourceKeyFormatError
                 default: Dlq
 
+    ParsedConnectionInfo:
+        description: Connection information returned in parseOnly start requests.
+        strict: false
+        fields:
+            name:
+                description: Name of the connection.
+                type: string
+            stage:
+                description: Stage name the connection is associated with.
+                type: string
+                optional: true
+
     KafkaSinkConfigOptions:
         description: "Optional configuration options for a Kafka Sink."
         strict: true

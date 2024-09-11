@@ -494,14 +494,13 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
     activeGauge->incBy(1);
 
     if (isParseOnlyRequest(request)) {
-        auto connectionNames = Planner::parseConnectionNames(request.getPipeline());
+        auto connections = Planner::parseConnectionInfo(request.getPipeline());
         auto dlqOptions = request.getOptions().getDlq();
         if (dlqOptions) {
-            connectionNames.insert(dlqOptions->getConnectionName().toString());
+            connections.push_back(ParsedConnectionInfo{dlqOptions->getConnectionName().toString()});
         }
         StartStreamProcessorReply startReply;
-        startReply.setConnectionNames(
-            std::vector<StringData>(connectionNames.begin(), connectionNames.end()));
+        startReply.setConnections(std::move(connections));
         return startReply;
     }
 

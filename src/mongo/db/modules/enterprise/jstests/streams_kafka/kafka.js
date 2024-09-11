@@ -489,8 +489,12 @@ function mongoToKafkaToMongoGetConnectionNames() {
         collName: sinkColl1.getName(),
         parseOnly: true,
     })));
-    assert.eq(kafkaToMongoStartResult.connectionNames.sort(),
-              [dbConnName, kafkaPlaintextName],
+    assert.eq(kafkaToMongoStartResult.connections.sort(),
+              [
+                  {name: kafkaPlaintextName, stage: "$source"},
+                  {name: dbConnName, stage: "$merge"},
+                  {name: dbConnName}
+              ],
               kafkaToMongoStartResult);
     const mongoToKafkaStartResult = assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
         collName: sourceColl1.getName(),
@@ -498,8 +502,12 @@ function mongoToKafkaToMongoGetConnectionNames() {
         connName: kafkaPlaintextName,
         parseOnly: true
     })));
-    assert.eq(mongoToKafkaStartResult.connectionNames.sort(),
-              [dbConnName, kafkaPlaintextName],
+    assert.eq(mongoToKafkaStartResult.connections.sort(),
+              [
+                  {name: dbConnName, stage: "$source"},
+                  {name: kafkaPlaintextName, stage: "$emit"},
+                  {name: dbConnName}
+              ],
               kafkaToMongoStartResult);
 }
 

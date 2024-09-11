@@ -1735,8 +1735,9 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     return dag;
 }
 
-mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipeline) {
-    mongo::StringSet connectionNames;
+std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
+    const std::vector<BSONObj>& pipeline) {
+    std::vector<ParsedConnectionInfo> connectionNames;
     for (auto& stage : pipeline) {
         uassert(mongo::ErrorCodes::InvalidOptions,
                 str::stream() << "Stage must contain a single object spec: " << stage,
@@ -1745,27 +1746,34 @@ mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipel
         auto specBson = stage.firstElement().Obj();
         auto spec = Document(specBson);
 
-        auto addConnectionName = [&](const Document& doc, const FieldPath& fp) {
+        auto addConnectionName = [&](StringData stage, const Document& doc, const FieldPath& fp) {
             auto connectionField = doc.getNestedField(fp);
             uassert(
                 mongo::ErrorCodes::InvalidOptions,
                 str::stream() << "Stage spec must contain a 'connectionName' string field in it: "
                               << stage,
                 connectionField.getType() == String);
-            connectionNames.insert(connectionField.getString());
+            ParsedConnectionInfo info{connectionField.getString()};
+            info.setStage(stage.toString());
+            connectionNames.push_back(std::move(info));
         };
 
         if (isSourceStage(stageName)) {
-            addConnectionName(spec, FieldPath(kConnectionNameField));
+            // We special case $source.documents because it doesn't require a connection.
+            if (spec[kDocumentsField].missing()) {
+                addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
+            }
         } else if (isEmitStage(stageName)) {
-            addConnectionName(spec, FieldPath(kConnectionNameField));
+            addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
         } else if (isMergeStage(stageName)) {
-            addConnectionName(spec,
+            addConnectionName(stageName,
+                              spec,
                               FieldPath((str::stream() << MergeOperatorSpec::kIntoFieldName << "."
                                                        << kConnectionNameField)
                                             .ss.str()));
         } else if (isLookUpStage(stageName)) {
             addConnectionName(
+                stageName,
                 spec,
                 FieldPath(
                     (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
@@ -1794,6 +1802,7 @@ mongo::StringSet Planner::parseConnectionNames(const std::vector<BSONObj>& pipel
                 auto windowStageSpec = Document(windowStage.firstElement().Obj());
                 if (isLookUpStage(windowStageName)) {
                     addConnectionName(
+                        windowStageName,
                         windowStageSpec,
                         FieldPath((str::stream() << kFromFieldName << "." << kConnectionNameField)
                                       .ss.str()));
