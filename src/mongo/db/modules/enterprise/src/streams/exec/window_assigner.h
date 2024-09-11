@@ -30,7 +30,7 @@ public:
 
     WindowAssigner(Options options)
         : _options(std::move(options)),
-          _windowSizeMs(toMillis(options.sizeUnit, options.size)),
+          _windowSizeMs(toMillis(_options.sizeUnit, _options.size)),
           _windowSlideMs(toMillis(_options.slideUnit, _options.slide)),
           _windowOffsetMs(calculateOffsetMs(_options.offsetUnit, _options.offsetFromUtc)) {
         if (_options.idleTimeoutUnit) {
