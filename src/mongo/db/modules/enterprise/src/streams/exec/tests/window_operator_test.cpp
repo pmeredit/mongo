@@ -1059,6 +1059,30 @@ TEST_F(WindowOperatorTest, DateRounding) {
     ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 15, 0, 0, 0, 0),
               date(2023, 5, 15, 23, 59, 59, 999));
 
+    // Checking date when a leap second has occurred. Dec 31st, 2016
+    ASSERT_EQ(timeZone.createFromDateParts(2016, 12, 30, 0, 0, 0, 0),
+              date(2016, 12, 30, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2016, 12, 30, 0, 0, 0, 0),
+              date(2016, 12, 30, 23, 59, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2016, 12, 31, 0, 0, 0, 0),
+              date(2016, 12, 31, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2016, 12, 31, 0, 0, 0, 0),
+              date(2016, 12, 31, 23, 59, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2017, 1, 1, 0, 0, 0, 0), date(2017, 1, 1, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2017, 1, 1, 0, 0, 0, 0),
+              date(2017, 1, 1, 23, 59, 59, 999));
+
+    // Checking leap year. Feb 29th, 2024
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 2, 28, 0, 0, 0, 0), date(2024, 2, 28, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 2, 28, 0, 0, 0, 0),
+              date(2024, 2, 28, 23, 59, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 2, 29, 0, 0, 0, 0), date(2024, 2, 29, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 2, 29, 0, 0, 0, 0),
+              date(2024, 2, 29, 23, 59, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 3, 1, 0, 0, 0, 0), date(2024, 3, 1, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 3, 1, 0, 0, 0, 0),
+              date(2024, 3, 1, 23, 59, 59, 999));
+
     // TODO(STREAMS-219)-PrivatePreview: Fix these and support year
     // timeUnit = StreamTimeUnitEnum::Year;
     // sizeInUnits = 1;
