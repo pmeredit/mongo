@@ -14,16 +14,13 @@ async function bgInsertFunc(doc) {
     const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
 
     let client = new EncryptedClient(db.getMongo(), "txn_contention_insert");
-    while (true) {
-        let res = client.getDB().basic.einsert(doc);
-        if (!res.hasWriteError()) {
-            assert.writeOK(res);
-            return;
-        }
-        assert.writeErrorWithCode(
-            res, ErrorCodes.WriteConflict, "Unexpected error: " + tojson(res));
-        print("insert(" + tojson(doc) + ") threw a WriteConflict error. Retrying...");
-    }
+    assert.soon(() => {
+        let res =
+            assert.commandWorkedOrFailedWithCode(client.getDB().basic.einsert(doc),
+                                                 ErrorCodes.WriteConflict,
+                                                 "Insert failed, but not with WriteConflict error");
+        return (res.nInserted === 1);
+    }, "Unable to insert successfully");
 }
 
 function runTest(conn) {

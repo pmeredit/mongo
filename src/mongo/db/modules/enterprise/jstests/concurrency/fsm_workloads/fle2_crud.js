@@ -46,6 +46,24 @@ export const $config = (function() {
             return {
                 $and: [{$or: [{first: doc.first}, {ssn: doc.ssn}, {pin: doc.pin}]}, {tid: tid}]
             };
+        },
+        assertUntilCommandWorksOrNotWriteError: function(cmdFunc, onWriteConflict, cmdName) {
+            let res;
+            assert.soon(() => {
+                res = cmdFunc();
+                try {
+                    assert.commandWorked(res);
+                    return true;
+                } catch (e) {
+                    assert.commandFailedWithCode(
+                        res,
+                        ErrorCodes.WriteConflict,
+                        `${cmdName} failed, but not with WriteConflict error`);
+                }
+                onWriteConflict();
+                return false;
+            }, `Unable to execute ${cmdName} successfully`);
+            return res;
         }
     };
 
@@ -84,18 +102,13 @@ export const $config = (function() {
                 insertDoc["count"] = this.count + 1;
 
                 // Insert a document into encrypted collection; retry on write conflict error
-                this.conflictStats.insertAttempts++;
-                let res = encryptedColl.einsert(insertDoc);
-
-                while (res.hasWriteError()) {
-                    assert.writeErrorWithCode(res,
-                                              ErrorCodes.WriteConflict,
-                                              "Insert did not fail with WriteConflict error");
-                    this.conflictStats.insert++;
-                    this.conflictStats.insertAttempts++;
-                    res = encryptedColl.einsert(insertDoc);
-                }
-                assert.writeOK(res);
+                let res = this.assertUntilCommandWorksOrNotWriteError(
+                    () => {
+                        this.conflictStats.insertAttempts++;
+                        return encryptedColl.einsert(insertDoc);
+                    },
+                    () => { this.conflictStats.insert++; },
+                    "Insert");
 
                 // Insert the same document in the unencrypted collection
                 res = db[collName].insert(insertDoc);
@@ -112,18 +125,14 @@ export const $config = (function() {
                 const queryDoc = {count: indexToUpdate, tid: this.tid};
 
                 // Update a document; retry on write conflict error
-                this.conflictStats.updateAttempts++;
-                let res = encryptedColl.eupdate(queryDoc, updateDoc);
+                let res = this.assertUntilCommandWorksOrNotWriteError(
+                    () => {
+                        this.conflictStats.updateAttempts++;
+                        return encryptedColl.eupdate(queryDoc, updateDoc);
+                    },
+                    () => { this.conflictStats.update++; },
+                    "Update");
 
-                while (res.hasWriteError()) {
-                    assert.writeErrorWithCode(res,
-                                              ErrorCodes.WriteConflict,
-                                              "Update did not fail with WriteConflict error");
-                    this.conflictStats.update++;
-                    this.conflictStats.updateAttempts++;
-                    res = encryptedColl.eupdate(queryDoc, updateDoc);
-                }
-                assert.writeOK(res);
                 if (res.nModified === 0) {
                     // indexToUpdate was deleted
                     continue;

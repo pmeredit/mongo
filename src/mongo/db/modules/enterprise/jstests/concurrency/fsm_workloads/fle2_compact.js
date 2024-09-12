@@ -44,7 +44,24 @@ export const $config = (function() {
                 ssn: getRandomValue(ssns),
             };
         },
-        valuesInserted: {}
+        valuesInserted: {},
+        assertUntilCommandWorksOrNotWriteError: function(cmdFunc, cmdName) {
+            let res;
+            assert.soon(() => {
+                res = cmdFunc();
+                try {
+                    assert.commandWorked(res);
+                    return true;
+                } catch (e) {
+                    assert.commandFailedWithCode(
+                        res,
+                        ErrorCodes.WriteConflict,
+                        `${cmdName} failed, but not with WriteConflict error`);
+                }
+                return false;
+            }, `Unable to execute ${cmdName} successfully`);
+            return res;
+        }
     };
 
     // 'states' are the different functions callable by a worker
@@ -71,17 +88,8 @@ export const $config = (function() {
                 this.valuesInserted[insertDoc.ssn] = 1;
 
                 // Insert a document into encrypted collection; retry on write conflict error
-                let res;
-                do {
-                    res = encryptedColl.einsert(insertDoc);
-                    if (res.hasWriteError()) {
-                        assert.writeErrorWithCode(
-                            res,
-                            ErrorCodes.WriteConflict,
-                            "Insert failed: error was not WriteConflict error");
-                    }
-                } while (res.hasWriteError());
-                assert.writeOK(res);
+                let res = this.assertUntilCommandWorksOrNotWriteError(
+                    () => { return encryptedColl.einsert(insertDoc); }, "Insert");
 
                 // Insert the same document in the unencrypted collection
                 res = db[collName].insert(insertDoc);
@@ -99,17 +107,8 @@ export const $config = (function() {
                 this.valuesInserted[updateDoc["$set"].ssn] = 1;
 
                 // Update a document; retry on write conflict error
-                let res;
-                do {
-                    res = encryptedColl.eupdate(queryDoc, updateDoc);
-                    if (res.hasWriteError()) {
-                        assert.writeErrorWithCode(
-                            res,
-                            ErrorCodes.WriteConflict,
-                            "Update failed: error was not WriteConflict error");
-                    }
-                } while (res.hasWriteError());
-                assert.writeOK(res);
+                let res = this.assertUntilCommandWorksOrNotWriteError(
+                    () => { return encryptedColl.eupdate(queryDoc, updateDoc); }, "Update");
 
                 // Update same document in unencrypted collection
                 res = db[collName].update(queryDoc, updateDoc);
