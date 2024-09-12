@@ -18,8 +18,10 @@ const foreignColl = db.foreign_coll;
 const outputColl = db.output_coll;
 const dlqColl = db.dlq_coll;
 
+const sampleData = Array.from({length: 20}, (_, i) => ({id: i, aa: i % 5, bb: Math.floor(i / 5)}));
+
 foreignColl.drop();
-foreignColl.insert(Array.from({length: 20}, (_, i) => ({id: i, aa: i % 5, bb: Math.floor(i / 5)})));
+foreignColl.insert(sampleData);
 assert.soon(() => { return foreignColl.count() == 20; });
 
 function prepareDoc(doc) {
@@ -504,7 +506,225 @@ function stopStreamProcessor() {
         }
     ]);
 
-    // The last document is only needed for closing the windows we are interetesed in.
+    // The last document is only needed for closing the windows we are interested in.
+    inputColl.insertMany([
+        {id: 1, ts: 1000, a: 1, b: 2, c: 3},
+        {id: 3, ts: 3000, a: 3, b: 2, c: 3},
+        {id: 5, ts: 5000}
+    ]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 2; });
+    assert.eq([{
+                  a: 1,
+                  arr: [
+                      {id: 1, aa: 1, bb: 0},
+                      {id: 6, aa: 1, bb: 1},
+                      {id: 11, aa: 1, bb: 2},
+                      {id: 16, aa: 1, bb: 3}
+                  ]
+              }],
+              outputColl.find({_id: 1}).sort({"arr.id": 1}).toArray().map(prepareDoc));
+    assert.eq([{
+                  a: 3,
+                  arr: [
+                      {id: 3, aa: 3, bb: 0},
+                      {id: 8, aa: 3, bb: 1},
+                      {id: 13, aa: 3, bb: 2},
+                      {id: 18, aa: 3, bb: 3}
+                  ]
+              }],
+              outputColl.find({_id: 3}).sort({"arr.id": 1}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+(function testCollectionlessLookup() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $lookup: {
+                localField: "a",
+                foreignField: "aa",
+                as: 'arr',
+                pipeline: [
+                    {
+                        $documents: sampleData
+                    }
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    inputColl.insert([{id: 1, ts: 1, a: 1, b: 2, c: 3}, {id: 3, ts: 3, a: 3, b: 2, c: 3}]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 2; });
+    assert.eq([{
+                  id: 1,
+                  ts: 1,
+                  a: 1,
+                  b: 2,
+                  c: 3,
+                  arr: [
+                      {id: 1, aa: 1, bb: 0},
+                      {id: 6, aa: 1, bb: 1},
+                      {id: 11, aa: 1, bb: 2},
+                      {id: 16, aa: 1, bb: 3}
+                  ]
+              }],
+              outputColl.find({id: 1}).toArray().map(prepareDoc));
+    assert.eq([{
+                  id: 3,
+                  ts: 3,
+                  a: 3,
+                  b: 2,
+                  c: 3,
+                  arr: [
+                      {id: 3, aa: 3, bb: 0},
+                      {id: 8, aa: 3, bb: 1},
+                      {id: 13, aa: 3, bb: 2},
+                      {id: 18, aa: 3, bb: 3}
+                  ]
+              }],
+              outputColl.find({id: 3}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+(function testCollectionlessLookupNoMatchingCase() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $lookup: {
+                localField: "a",
+                foreignField: "aa",
+                as: 'arr',
+                pipeline: [
+                    {
+                        $documents: [
+                            {id: 0, aa: 0, bb: 0},
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            $lookup: {
+                localField: "a",
+                foreignField: "aa",
+                as: 'arrEmptyDocuments',
+                pipeline: [
+                    {
+                        $documents: []
+                    }
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    inputColl.insert([{id: 1, ts: 1, a: 10, b: 2, c: 3}]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 1; });
+    assert.eq([{id: 1, ts: 1, a: 10, b: 2, c: 3, arr: [], arrEmptyDocuments: []}],
+              outputColl.find({id: 1}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+(function testCollectionlessLookupWithWindow() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: '$fullDocument.ts'}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                pipeline: [
+                    {
+                        $group: {
+                            _id: "$id",
+                            a: {$sum: "$a"},
+                        }
+                    },
+                    {
+                        $lookup: {
+                            localField: "a",
+                            foreignField: "aa",
+                            as: 'arr',
+                            pipeline: [
+                                {
+                                    $documents: sampleData
+                                }
+                            ]
+                        }
+                    },
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    // The last document is only needed for closing the windows we are interested in.
     inputColl.insertMany([
         {id: 1, ts: 1000, a: 1, b: 2, c: 3},
         {id: 3, ts: 3000, a: 3, b: 2, c: 3},

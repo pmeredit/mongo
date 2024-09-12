@@ -104,9 +104,70 @@ TEST_F(LookUpOperatorTest, LocalTest) {
     auto msgUnion = std::move(msgs.front());
     msgs.pop_front();
     ASSERT_TRUE(msgUnion.dataMsg);
-    for (const auto& streamDoc : msgUnion.dataMsg->docs) {
-        std::cout << "output doc: " << streamDoc.doc.toBson() << std::endl;
+    ASSERT_EQUALS(3, msgUnion.dataMsg->docs.size());
+}
+
+// Executes a collectionless $lookup with $documents
+TEST_F(LookUpOperatorTest, LocalTestCollectionlessLookupWithDocuments) {
+    _context->connections = testInMemoryConnectionRegistry();
+    auto lookupObj = fromjson(R"(
+{
+  $lookup: {
+    localField: "leftKey",
+    foreignField: "rightKey",
+    as: "arr",
+    pipeline: [{
+        $documents: [{
+            rightKey: 2,
+            a: 1
+        }, {
+            rightKey: 2,
+            a: 2
+        }, {
+            rightKey: 5,
+            a: 1
+        }, {
+            rightKey: 1,
+            a: 1
+        }]
+    }]
+  }
+})");
+    auto unwindObj = fromjson(R"(
+{
+  $unwind: {
+    path: "$arr"
+  }
+})");
+
+    std::vector<BSONObj> rawPipeline{
+        getTestSourceSpec(), lookupObj, unwindObj, getTestMemorySinkSpec()};
+
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    std::vector<BSONObj> inputDocs;
+    std::vector<int> vals = {5, 2};
+    inputDocs.reserve(vals.size());
+    for (auto& val : vals) {
+        inputDocs.emplace_back(fromjson(fmt::format("{{leftKey: {}}}", val)));
     }
+
+    StreamDataMsg dataMsg;
+    for (auto& inputDoc : inputDocs) {
+        dataMsg.docs.emplace_back(Document(inputDoc));
+    }
+    source->addDataMsg(std::move(dataMsg));
+    source->runOnce();
+
+    std::deque<StreamMsgUnion> msgs = sink->getMessages();
+    ASSERT_EQUALS(1, msgs.size());
+    auto msgUnion = std::move(msgs.front());
+    msgs.pop_front();
+    ASSERT_TRUE(msgUnion.dataMsg);
+    ASSERT_EQUALS(3, msgUnion.dataMsg->docs.size());
 }
 
 }  // namespace

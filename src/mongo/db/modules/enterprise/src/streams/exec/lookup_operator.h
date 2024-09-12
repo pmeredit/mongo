@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <boost/optional/optional.hpp>
+
 #include "mongo/db/namespace_string.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
@@ -28,11 +30,12 @@ public:
         // DocumentSourceLookUp stage that this Operator wraps. This object is not used for actual
         // document processing but is only used for accessing its member fields.
         mongo::DocumentSourceLookUp* documentSource;
+        boost::optional<mongo::NamespaceString> foreignNs;
         // MongoDBProcessInterface is not thread-safe and we should use a separate instance for each
         // thread. The main thread's MongoDBProcessInterface may be used for $merge's consumerLoop
         // and so we should use separate instances for $lookup's from collection.
+        // foreignMongoDBClient is non-null only when foreignNs is specified.
         std::shared_ptr<MongoDBProcessInterface> foreignMongoDBClient;
-        mongo::NamespaceString foreignNs;
     };
 
     LookUpOperator(Context* context, Options options);

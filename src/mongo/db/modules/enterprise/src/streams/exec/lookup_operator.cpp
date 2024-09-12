@@ -26,8 +26,9 @@ using namespace mongo;
 LookUpOperator::LookUpOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
-      _asField(_options.documentSource->getAsField()),
-      _fromExpCtx(context->expCtx->copyForSubPipeline(_options.foreignNs)) {
+      _asField(_options.documentSource->getAsField()) {
+    _fromExpCtx = context->expCtx->copyForSubPipeline(
+        _options.foreignNs.value_or(_options.documentSource->getFromNs()));
     const auto& unwindSource = _options.documentSource->getUnwindSource();
     if (unwindSource) {
         _shouldUnwind = true;
@@ -111,13 +112,6 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
 
             auto& streamDoc = dataMsg.docs[curInputDocIdx];
             if (auto pipeline = buildPipeline(streamDoc)) {
-                tassert(8369607,
-                        "Invalid pipeline: expected a single {} stage."_format(
-                            DocumentSourceRemoteDbCursor::kStageName),
-                        pipeline->getSources().size() == 1 &&
-                            pipeline->getSources().back()->getSourceName() ==
-                                DocumentSourceRemoteDbCursor::kStageName);
-
                 if (_shouldUnwind) {
                     _pipeline = std::move(pipeline);
                 } else {
@@ -161,7 +155,10 @@ PipelinePtr LookUpOperator::buildPipeline(const StreamDocument& streamDoc) {
     try {
         auto pipeline = _options.documentSource->buildPipeline<true /*isStreamsEngine*/>(
             _fromExpCtx, streamDoc.doc);
-        return _options.foreignMongoDBClient->preparePipelineForExecution(pipeline.get());
+        if (_options.foreignMongoDBClient) {
+            return _options.foreignMongoDBClient->preparePipelineForExecution(pipeline.get());
+        }
+        return pipeline;
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();

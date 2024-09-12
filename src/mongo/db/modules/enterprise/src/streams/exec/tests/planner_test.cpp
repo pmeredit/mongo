@@ -1423,6 +1423,119 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
     }
 }
 
+TEST_F(PlannerTest, LookupFromDoesNotExist) {
+    _context->isEphemeral = true;
+    auto pipeline = R"(
+[
+    {
+        $source: {
+            connectionName: "kafka1",
+            topic: "topic1",
+            testOnlyPartitionCount: 5
+        }
+    },
+    {
+        $lookup: {
+        }
+    }
+]
+    )";
+    auto bson = parsePipeline(pipeline);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+    Planner planner(_context.get(), Planner::Options{});
+    try {
+        auto dag = planner.plan(bson);
+        ASSERT(false);
+    } catch (const DBException& e) {
+        ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
+        ASSERT_EQ("FailedToParse: must specify 'pipeline' when 'from' is empty", e.reason());
+    }
+}
+
+TEST_F(PlannerTest, LookupStagingWithPipeline) {
+    _context->isEphemeral = true;
+    auto pipeline = R"(
+[
+    {
+        $source: {
+            connectionName: "kafka1",
+            topic: "topic1",
+            testOnlyPartitionCount: 5
+        }
+    },
+    {
+        $lookup: {
+            localField: "a",
+            foreignField: "aa",
+            as: "arr",
+            pipeline: [
+                {
+                    $documents: []
+                }
+            ]
+        }
+    }
+]
+    )";
+    auto bson = parsePipeline(pipeline);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+    Planner planner(_context.get(), Planner::Options{});
+    try {
+        auto dag = planner.plan(bson);
+    } catch (const DBException& e) {
+        ASSERT_EQ("", e.reason());
+        ASSERT(false);
+    }
+}
+
+
+TEST_F(PlannerTest, LookupStagingWithPipelineMissingDocuments) {
+    _context->isEphemeral = true;
+    auto pipeline = R"(
+[
+    {
+        $source: {
+            connectionName: "kafka1",
+            topic: "topic1",
+            testOnlyPartitionCount: 5
+        }
+    },
+    {
+        $lookup: {
+            localField: "a",
+            foreignField: "aa",
+            as: "arr",
+            pipeline: []
+        }
+    }
+]
+    )";
+    auto bson = parsePipeline(pipeline);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+    Planner planner(_context.get(), Planner::Options{});
+    try {
+        auto dag = planner.plan(bson);
+    } catch (const DBException& e) {
+        ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
+        ASSERT_EQ(
+            "FailedToParse: $lookup stage without explicit collection must have a pipeline with "
+            "$documents as first stage",
+            e.reason());
+    }
+}
+
 // Test the execution plan the Planner chooses for various pipelines.
 // Currently, Planner changes that create different execution plans for existing stream
 // processors will cause issues in checkpoint restore.

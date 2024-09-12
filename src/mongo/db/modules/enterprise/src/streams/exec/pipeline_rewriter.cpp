@@ -43,6 +43,10 @@ BSONObj PipelineRewriter::rewriteLookUp(const BSONObj& stageObj) {
 
     auto lookupObj = stageObj.firstElement().Obj();
     auto fromField = lookupObj[kFromFieldName];
+    if (!fromField) {
+        // There is no rewrite to perform because the 'from' field does not exist.
+        return stageObj;
+    }
     uassert(ErrorCodes::InvalidOptions,
             "The $lookup.from field must be an object",
             fromField.isABSONObj());

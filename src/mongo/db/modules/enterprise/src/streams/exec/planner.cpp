@@ -1217,30 +1217,32 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
 
     auto lookupObj = stageObj.firstElement().Obj();
     auto fromField = lookupObj[kFromFieldName];
-    auto fromFieldObj = fromField.Obj();
-    auto lookupFromAtlas =
-        AtlasCollection::parse(IDLParserContext("AtlasCollection"), fromFieldObj);
-    std::string connectionName(lookupFromAtlas.getConnectionName().toString());
+    LookUpOperator::Options options{.documentSource = documentSource};
+    if (fromField) {
+        auto fromFieldObj = fromField.Obj();
+        auto lookupFromAtlas =
+            AtlasCollection::parse(IDLParserContext("AtlasCollection"), fromFieldObj);
+        std::string connectionName(lookupFromAtlas.getConnectionName().toString());
 
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Unknown connection name " << connectionName,
-            _context->connections.contains(connectionName));
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Unknown connection name " << connectionName,
+                _context->connections.contains(connectionName));
 
-    const auto& connection = _context->connections.at(connectionName);
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Only atlas connection type is currently supported for $lookup",
-            connection.getType() == ConnectionTypeEnum::Atlas);
-    auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
-                                                      connection.getOptions());
+        const auto& connection = _context->connections.at(connectionName);
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Only atlas connection type is currently supported for $lookup",
+                connection.getType() == ConnectionTypeEnum::Atlas);
+        auto atlasOptions = AtlasConnectionOptions::parse(
+            IDLParserContext("AtlasConnectionOptions"), connection.getOptions());
 
-    MongoCxxClientOptions clientOptions(atlasOptions);
-    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
-    auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
+        MongoCxxClientOptions clientOptions(atlasOptions);
+        clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
+        auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
 
-    LookUpOperator::Options options{
-        .documentSource = documentSource,
-        .foreignMongoDBClient = std::move(foreignMongoDBClient),
-        .foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl())};
+        options.foreignMongoDBClient = std::move(foreignMongoDBClient);
+        options.foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl());
+    }
+
     auto oper = std::make_unique<LookUpOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
@@ -1250,7 +1252,7 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
     BSONObjBuilder lookupBuilder;
     BSONObjBuilder builder(lookupBuilder.subobjStart(kLookUpStageName));
     for (auto elem : lookupObj) {
-        if (elem.fieldNameStringData() == kFromFieldName) {
+        if (elem.fieldNameStringData() == kFromFieldName && fromField) {
             builder.append(fromField);
             continue;
         }
