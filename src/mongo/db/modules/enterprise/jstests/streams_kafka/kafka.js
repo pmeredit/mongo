@@ -845,6 +845,12 @@ function kafkaStartAtEarliestTest() {
         sourceColl1, topicName1, kafkaPlaintextName, /* count */ numDocuments);
 
     const processorId = `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`;
+    // TODO(SERVER-93198): Remove this once the feature flag is removed.
+    // We're just doing this to ensure the basic flow works when the feature flag
+    // is off.
+    let options = startOptions;
+    options.featureFlags.kafkaEmitUserDeliveryCallback = false;
+
     const startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
@@ -860,7 +866,7 @@ function kafkaStartAtEarliestTest() {
             {$emit: {connectionName: "__noopSink"}}
         ],
         connections: connectionRegistry,
-        options: startOptions,
+        options: options,
         processorId: processorId,
     };
     const {name} = startCmd;
@@ -1361,3 +1367,28 @@ function honorSourceBufferSizeLimit() {
 }
 
 runKafkaTest(kafka, honorSourceBufferSizeLimit);
+
+runKafkaTest(kafka, () => {
+    // The tests many small batches of 1 document flowing into $emit.
+    const numInputDocs = 100001;
+    let inputData = [];
+    for (let i = 0; i < numInputDocs; i += 1) {
+        inputData.push({a: i});
+    }
+    const spName = "manyTinyBatches";
+    sp.createStreamProcessor(spName, [
+        {$source: {'connectionName': '__testMemory'}},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+            }
+        }
+    ]);
+    sp[spName].start();
+    for (const doc of inputData) {
+        sp[spName].testInsert(doc);
+    }
+    assert.soon(() => { return sp[spName].stats().outputMessageCount == inputData.length; });
+    sp[spName].stop();
+});

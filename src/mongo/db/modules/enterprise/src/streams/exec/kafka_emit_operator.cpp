@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "mongo/util/scopeguard.h"
 #include <exception>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -138,14 +139,9 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     // Set the event callback.
     setConf("event_cb", _eventCbImpl.get());
 
-    if (_context->featureFlags) {
-        auto useDeliveryCallback =
-            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
-                .getBool();
-        if (useDeliveryCallback && *useDeliveryCallback) {
-            // Set the delivery callback, used during flush to detect connectivity errors.
-            setConf("dr_cb", _deliveryCb.get());
-        }
+    if (_useDeliveryCallback) {
+        // Set the delivery callback, used during flush to detect connectivity errors.
+        setConf("dr_cb", _deliveryCb.get());
     }
 
     // Set the resolve callback.
@@ -190,6 +186,12 @@ KafkaEmitOperator::KafkaEmitOperator(Context* context, Options options)
     : SinkOperator(context, /* numInputs */ 1),
       _options(std::move(options)),
       _expCtx(context->expCtx) {
+    if (_context->featureFlags) {
+        auto useDeliveryCallback =
+            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
+                .getBool();
+        _useDeliveryCallback = useDeliveryCallback && *useDeliveryCallback;
+    }
     _conf = createKafkaConf();
 
     std::string errstr;
@@ -208,15 +210,6 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     int64_t numDlqBytes{0};
     int64_t numOutputDocs{0};
     int64_t numOutputBytes{0};
-    bool shouldPoll{false};
-    int64_t numDocsSinceLastPoll{0};
-    int64_t numBytesSinceLastPoll{0};
-    if (_context->featureFlags) {
-        auto useDeliveryCallback =
-            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitUseDeliveryCallback)
-                .getBool();
-        shouldPoll = useDeliveryCallback && *useDeliveryCallback;
-    }
 
     bool samplersPresent = samplersExist();
     for (auto& streamDoc : dataMsg.docs) {
@@ -224,22 +217,12 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
             processStreamDoc(streamDoc);
             incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
             numOutputDocs++;
-            numDocsSinceLastPoll++;
             auto bytes = streamDoc.doc.memUsageForSorter();
             numOutputBytes += bytes;
-            numBytesSinceLastPoll += bytes;
             if (samplersPresent) {
                 StreamDataMsg msg;
                 msg.docs.push_back(streamDoc);
                 sendOutputToSamplers(std::move(msg));
-            }
-            if (shouldPoll &&
-                (numDocsSinceLastPoll > _options.queueBufferingMaxMessages / 2 ||
-                 numBytesSinceLastPoll > _options.queueBufferingMaxKBytes / 2)) {
-                // Call poll to serve any queued callbacks.
-                _producer->poll(0 /* timeoutMs */);
-                numDocsSinceLastPoll = 0;
-                numBytesSinceLastPoll = 0;
             }
         } catch (const DBException& e) {
             if (e.code() == ErrorCodes::StreamProcessorKafkaConnectionError) {
@@ -566,9 +549,31 @@ void KafkaEmitOperator::doStart() {
     options.kafkaEventCallback = _eventCbImpl.get();
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
+
+    if (_useDeliveryCallback) {
+        _pollThread = stdx::thread([this]() {
+            while (!_pollShutdown.load()) {
+                // Call poll with a brief timeout.
+                // We want to rely on rdkafka's timeout because only it knows when a delivery
+                // callback is available. We want to call poll as soon as a callback is available
+                // because it can help throughput-- if callbacks aren't served by poll, the local
+                // producer queue can block.
+                // So we don't use a condition variable here. Unfortunately, this means stop()
+                // might take up to a second to wait on this thread to shutdown.
+                _producer->poll(1000 /* timeout_ms */);
+            }
+        });
+    }
 }
 
 void KafkaEmitOperator::doStop() {
+    ScopeGuard scopeGuard([&] {
+        if (_pollThread.joinable()) {
+            _pollShutdown.store(true);
+            _pollThread.join();
+        }
+    });
+
     if (_connector) {
         _connector->stop();
         _connector.reset();

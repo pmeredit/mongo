@@ -189,5 +189,12 @@ private:
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
     std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
     std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
+
+    // Set to true depending on a feature flag.
+    bool _useDeliveryCallback{false};
+    // Poll thread, which calls the producer poll method to serve any
+    // delivery callbacks.
+    mongo::stdx::thread _pollThread;
+    mongo::Atomic<bool> _pollShutdown{false};
 };
 }  // namespace streams
