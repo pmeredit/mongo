@@ -185,4 +185,5 @@ else:
             "mongosaslservercommon",
             "mongosaslserversession",
         ],
+        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
     )
