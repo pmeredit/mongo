@@ -192,11 +192,11 @@ void importCollection(OperationContext* opCtx,
                 !opCtx->writesAreReplicated() ||
                     repl::ReplicationCoordinator::get(opCtx)->canAcceptWritesFor(opCtx, nss));
 
-        auto db = autoDb.ensureDbExists(opCtx);
+        autoDb.ensureDbExists(opCtx);
         uassert(ErrorCodes::DatabaseDropPending,
                 str::stream() << "The database is in the process of being dropped "
                               << nss.dbName().toStringForErrorMsg(),
-                !db->isDropPending(opCtx));
+                !catalog->isDropPending(nss.dbName()));
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "Collection already exists. NS: " << nss.toStringForErrorMsg(),
