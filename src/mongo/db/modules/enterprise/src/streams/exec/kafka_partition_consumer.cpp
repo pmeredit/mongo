@@ -46,8 +46,6 @@ void KafkaPartitionConsumer::DocBatch::DocVec::pushDoc(KafkaSourceDocument doc) 
     dassert(size() < capacity());
     if (doc.doc) {
         if (!doc.doc->isEmpty()) {
-            // TODO: Better buffer management could allow us to pack 2.5x more docs in the
-            // prefetch buffer, currently there seem to be a lot of wastage of capacity.
             byteSize += doc.doc->sharedBuffer().capacity();
         }
     } else {
