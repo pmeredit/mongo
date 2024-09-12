@@ -43,12 +43,12 @@ public:
     OperatorDag(Options options, OperatorContainer operators)
         : _options(std::move(options)), _operators(std::move(operators)) {}
 
-    // Start the flow of data through the OperatorDag.
+    // Starts the flow of data through the OperatorDag.
     // TODO: This can throw an exception (e.g. KafkaConsumerOperator::start()), handle the
     // exception.
     void start();
 
-    // Stop the flow of data through the OperatorDag.
+    // Stops the flow of data through the OperatorDag and destroys the Operator instances.
     void stop();
 
     // Returns the first operator in _operators.
@@ -85,6 +85,7 @@ public:
 private:
     friend class OperatorDagTest;
     Options _options;
+    // Note that Operator instances get destroyed in stop().
     OperatorContainer _operators;
 };
 

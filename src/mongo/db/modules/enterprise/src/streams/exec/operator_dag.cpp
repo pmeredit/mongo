@@ -8,6 +8,8 @@
 
 namespace streams {
 
+using namespace mongo;
+
 void OperatorDag::start() {
     // Start the operators in sink to source order.
     for (auto i = _operators.rbegin(); i != _operators.rend(); i++) {
@@ -20,13 +22,16 @@ void OperatorDag::stop() {
     for (auto& i : _operators) {
         i->stop();
     }
+    _operators.clear();
 }
 
 SourceOperator* OperatorDag::source() const {
+    tassert(ErrorCodes::InternalError, "_operators is empty", !_operators.empty());
     return dynamic_cast<SourceOperator*>(_operators.front().get());
 }
 
 SinkOperator* OperatorDag::sink() const {
+    tassert(ErrorCodes::InternalError, "_operators is empty", !_operators.empty());
     return dynamic_cast<SinkOperator*>(_operators.back().get());
 }
 

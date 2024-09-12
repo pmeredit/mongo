@@ -681,6 +681,23 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
             }
         }
 
+        // Reset the `exceeded memory limit` signal after all the stream processors have been
+        // stopped so that new stream processors can get scheduled on this worker.
+        if (_memoryUsageMonitor->hasExceededMemoryLimit()) {
+            bool resetMemoryUsageMonitor{true};
+            for (auto& tenantIter : _tenantProcessors) {
+                for (auto& iter : tenantIter.second->processors) {
+                    if (iter.second->streamStatus == StreamStatusEnum::Running) {
+                        resetMemoryUsageMonitor = false;
+                    }
+                }
+            }
+
+            if (resetMemoryUsageMonitor) {
+                _memoryUsageMonitor->reset();
+            }
+        }
+
         std::unique_ptr<StreamProcessorInfo> info = createStreamProcessorInfo(lk, request);
 
         startReply.setOptimizedPipeline(info->operatorDag->optimizedPipeline());
@@ -1056,14 +1073,6 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
         auto tenantInfo = _tenantProcessors.find(tenantId);
         if (tenantInfo != _tenantProcessors.end() && tenantInfo->second->processors.empty()) {
             _tenantProcessors.erase(tenantId);
-        }
-
-        // If all stream processors are being stopped because the memory limit has been exceeded,
-        // then make sure to reset the `exceeded memory limit` signal after all the stream
-        // processors have been stopped so that new stream processors can be scheduled on this
-        // process afterwards.
-        if (_memoryUsageMonitor->hasExceededMemoryLimit() && _tenantProcessors.empty()) {
-            _memoryUsageMonitor->reset();
         }
     }
 

@@ -29,7 +29,8 @@ void KillAllMemoryUsageMonitor::onMemoryUsageIncreased(
     if (_exceededMemoryLimit.load()) {
         LOGV2_WARNING(
             8400500,
-            "MemoryUsageMonitor killing stream processor because memory limit has been exceeded");
+            "MemoryUsageMonitor killing stream processor because memory limit has been exceeded",
+            "current memory usage"_attr = memoryUsageBytes);
         throw SPException(Status(ErrorCodes::Error::ExceededMemoryLimit, "Worker out of memory"));
     }
 }
