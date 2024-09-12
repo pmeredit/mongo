@@ -31,7 +31,7 @@
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/db/ops/write_ops.h"
+#include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/logv2/log.h"
 #include "mongo/rpc/op_msg.h"

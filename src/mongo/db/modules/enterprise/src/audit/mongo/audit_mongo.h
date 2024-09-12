@@ -36,7 +36,7 @@
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/ops/write_ops.h"
+#include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/logv2/log_severity.h"
