@@ -37,11 +37,20 @@ class KafkaPartitionConsumerBase;
 struct Context;
 
 /**
- * This is a source operator for a Kafka topic. It tails documents from a Kafka
- * topic and feeds those documents to the OperatorDag.
+ * This is a source operator for Kafka topic(s). It tails documents from Kafka
+ * topic(s) and feeds those documents to the OperatorDag.
  */
 class KafkaConsumerOperator : public SourceOperator {
 public:
+    // Helper type used in some internal methods to represent a topic and partition
+    struct TopicPartition {
+        std::string topic;
+        int32_t partitionId;
+
+        TopicPartition(std::string topicName, int32_t partition);
+        bool operator==(const TopicPartition& other) const = default;
+    };
+
     struct Options : public SourceOperator::Options {
         Options(SourceOperator::Options baseOptions)
             : SourceOperator::Options(std::move(baseOptions)) {}
@@ -58,10 +67,10 @@ public:
         // `asp-{streamProcessorId}-consumer`. On checkpoint restoration, the consumer group
         // ID stored on the checkpoint will be used.
         std::string consumerGroupId;
-        // The number of Kafka topic partitions.
-        // When this is not provided, we fetch it from Kafka. Currently, this is only provided when
-        // FakeKafkaPartitionConsumer is used.
-        boost::optional<int64_t> testOnlyNumPartitions;
+        // This represents the partitions for each topic. When it is not provided, we fetch it from
+        // the kafka cluster. Currently, this is only provided when FakeKafkaPartitionConsumer is
+        // used (i.e. in unittests).
+        std::vector<TopicPartition> testOnlyTopicPartitions;
         // Start offset in each partition to start tailing from.
         int64_t startOffset{RdKafka::Topic::OFFSET_BEGINNING};
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
@@ -126,7 +135,9 @@ private:
         std::unique_ptr<KafkaPartitionConsumerBase> consumer;
         // Generates watermarks for this Kafka partition.
         std::unique_ptr<WatermarkGenerator> watermarkGenerator;
-        // The partition of the consumer.
+        // The topic that this consumer will subscribe to.
+        std::string topic;
+        // The partition in the topic that the consumer will subscribe to.
         int32_t partition{0};
         // Max received offset. This is updated in runOnce as documents are flushed
         // from consumers. If a document has not been consumed yet from this partition
@@ -149,11 +160,14 @@ private:
     public:
         struct Options {
             std::string topicName;
+            mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs;
             // Sleep duration after Kafka api calls fail.
             mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
-            // KafkaPartitionConsumer instance used just to determine the partition count for the
-            // topic.
-            std::unique_ptr<KafkaPartitionConsumerBase> consumer;
+            std::string bootstrapServers;
+            std::string consumerGroupId;
+            mongo::stdx::unordered_map<std::string, std::string> authConfig;
+            boost::optional<std::string> gwproxyEndpoint;
+            boost::optional<std::string> gwproxyKey;
         };
 
         Connector(Context* context, Options options);
@@ -169,15 +183,23 @@ private:
         // Returns the current connection status.
         ConnectionStatus getConnectionStatus();
 
-        // Returns the number of topic partitions.
-        // Returns boost::none if the partition count has not been initialized yet.
-        boost::optional<int64_t> getNumPartitions();
+        // Returns partitions of the topic that the source is subscribed to.
+        std::vector<TopicPartition> getTopicPartitions();
 
     private:
         void setConnectionStatus(ConnectionStatus status);
 
-        // Runs the connection logic until a success or error is encountered.
-        void connectLoop();
+        // Creates the _consumer from the configured options.
+        void createKafkaConsumer();
+
+        // Fetches the partition info for the subscribed topic.
+        // It will uassert on any errors and the call site will append error
+        // details retrieved via the configured KafkaEventCallback.
+        // On success, it will set state to Connected.
+        void retrieveTopicPartitions();
+
+        // Retrieves error details via configured event callback.
+        void onConnectionError(SPStatus status);
 
         Context* _context{nullptr};
         Options _options;
@@ -188,9 +210,26 @@ private:
         bool _shutdown{false};
         // Tracks the current ConnectionStatus.
         ConnectionStatus _connectionStatus;
-        // The number of Kafka topic partitions.
-        boost::optional<int64_t> _numPartitions;
+        std::vector<TopicPartition> _topicPartitions;
+        // Used to retrieve error details
+        std::unique_ptr<KafkaEventCallback> _eventCallback;
+        // Support for GWProxy authentication callbacks to enable VPC peering sessions.
+        std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
+        std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
+        // KafkaConsumer instance used to determine the topic/partition map for the topics we
+        // will be subscribing to
+        std::unique_ptr<RdKafka::KafkaConsumer> _consumer;
     };
+
+    struct TopicPartitionCmp {
+        bool operator()(const TopicPartition& lhs, const TopicPartition& rhs) const {
+            if (lhs.topic == rhs.topic) {
+                return lhs.partitionId < rhs.partitionId;
+            }
+            return lhs.topic < rhs.topic;
+        }
+    };
+    using TopicPartitionOffsetMap = std::map<TopicPartition, int64_t, TopicPartitionCmp>;
 
     void doStart() override;
     void doStop() override;
@@ -237,21 +276,23 @@ private:
     mongo::BSONObjBuilder toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc);
 
     // Helper methods to create a partition consumer.
-    std::unique_ptr<KafkaPartitionConsumerBase> createKafkaPartitionConsumer(int32_t partition,
+    std::unique_ptr<KafkaPartitionConsumerBase> createKafkaPartitionConsumer(std::string topicName,
+                                                                             int32_t partition,
                                                                              int64_t startOffset);
-    ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
+    ConsumerInfo createPartitionConsumer(std::string topicName,
+                                         int32_t partitionId,
+                                         int64_t startOffset);
 
     // Creates a `KafkaConsumer` which is used as a proxy to commit offsets and fetch committed
     // offsets for the specified consumer group ID.
     std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer();
 
     // Gets the committed offsets for the consumer group ID set for this kafka consumer operator.
-    // This must be called after the number of partitions has been fetched for the topic, so
-    // `_numPartitions` must already be set when this is called. This returns a vector indexed by
-    // the partition ID where the corresponding value is the committed offset for that partition ID.
+    // This must be called after the topic partition ids have been fetched for the topics, so
+    // `_topicPartitions` must be non-empty when this is called.
     // If this consumer group ID does not exist or doesn't have any committed offsets, then this
-    // will return an empty vector.
-    std::vector<int64_t> getCommittedOffsets() const;
+    // will return an empty map.
+    TopicPartitionOffsetMap getCommittedOffsets() const;
 
     // Deserialize the Kafka key according to the specified key format. If the deserialization
     // fails, the key will be returned as BinData.
@@ -263,11 +304,18 @@ private:
                         double>
     deserializeKafkaKey(std::vector<std::uint8_t> key, mongo::KafkaKeyFormatEnum keyFormat);
 
+    const std::vector<TopicPartition>& getTopicPartitions() const {
+        return _topicPartitions;
+    }
+
+    // Returns the index of a topic-partition that is used by the watermark combiner for
+    // this topic-partition.
+    boost::optional<int32_t> getPartitionIdx(const std::string& topicName, int32_t partitionId);
+
     Options _options;
     boost::optional<mongo::KafkaSourceCheckpointState> _restoredCheckpointState;
     std::unique_ptr<Connector> _connector;
-    // The number of Kafka topic partitions.
-    boost::optional<int64_t> _numPartitions;
+    std::vector<TopicPartition> _topicPartitions;
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;

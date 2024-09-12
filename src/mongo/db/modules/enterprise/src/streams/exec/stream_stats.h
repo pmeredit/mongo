@@ -133,6 +133,9 @@ StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& o
 
 // Kafka consumer partition state.
 struct KafkaConsumerPartitionState {
+    // Topic that this consumer is subscribed to
+    std::string topic;
+
     // Partition ID that this state represents.
     int32_t partition{0};
 

@@ -39,7 +39,8 @@ struct KafkaSourceDocument {
     // Contains the error message when the input event could not be successfully parsed.
     boost::optional<std::string> error;
 
-    // The partition this document was read from.
+    // The topic/partition this document was read from.
+    std::string topic;
     int32_t partition{0};
 
     // Offset of this document within the partition.

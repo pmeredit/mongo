@@ -4,11 +4,8 @@
 
 #pragma once
 
-#include <queue>
-#include <string>
 #include <vector>
 
-#include "mongo/platform/basic.h"
 #include "mongo/platform/mutex.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/message.h"
@@ -47,10 +44,6 @@ private:
 
     boost::optional<int64_t> doGetLatestOffsetAtBroker() const override {
         return boost::none;
-    }
-
-    boost::optional<int64_t> doGetNumPartitions() const override {
-        MONGO_UNREACHABLE;
     }
 
     // Returns the next batch of documents from _docs, if any available.

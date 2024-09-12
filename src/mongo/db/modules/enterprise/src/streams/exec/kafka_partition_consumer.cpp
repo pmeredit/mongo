@@ -245,11 +245,6 @@ boost::optional<int64_t> KafkaPartitionConsumer::doGetStartOffset() const {
     return _startOffset;
 }
 
-boost::optional<int64_t> KafkaPartitionConsumer::doGetNumPartitions() const {
-    stdx::lock_guard<Latch> lock(_mutex);
-    return _numPartitions;
-}
-
 std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
     std::vector<KafkaSourceDocument> docs;
     {
@@ -384,40 +379,9 @@ int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
 }
 
 void KafkaPartitionConsumer::connectToSource() {
-    boost::optional<int64_t> numPartitions;
-
-    RdKafka::Metadata* metadata{nullptr};
-    RdKafka::ErrorCode resp = _consumer->metadata(
-        /*all_topics*/ false, _topic.get(), &metadata, _options.kafkaRequestTimeoutMs.count());
-
-    std::unique_ptr<RdKafka::Metadata> metadataOwner(metadata);
-    if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
-        LOGV2_ERROR(77179,
-                    "{partition}: could not load metadata for the topic: {error}",
-                    "context"_attr = _context,
-                    "topic"_attr = _options.topicName,
-                    "partition"_attr = partition(),
-                    "error"_attr = RdKafka::err2str(resp));
-        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                  fmt::format("Could not connect to the Kafka topic with "
-                              "kafka error code: {}, message: {}.",
-                              resp,
-                              RdKafka::err2str(resp)));
-    } else if (metadata->topics()->at(0)->partitions()->empty()) {
-        LOGV2_ERROR(77178,
-                    "topic does not exist",
-                    "context"_attr = _context,
-                    "topic"_attr = _options.topicName,
-                    "partition"_attr = partition());
-        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                  "No partitions found in topic. Does the topic exist?");
-    } else {
-        numPartitions = metadata->topics()->at(0)->partitions()->size();
-    }
-
     auto startOffset = queryWatermarkOffsets();
 
-    resp = _consumer->start(_topic.get(), _options.partition, startOffset);
+    RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, startOffset);
     uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
             str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
             resp == RdKafka::ERR_NO_ERROR);
@@ -431,7 +395,6 @@ void KafkaPartitionConsumer::connectToSource() {
     stdx::lock_guard<Latch> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};
     _startOffset = startOffset;
-    _numPartitions = numPartitions;
 }
 
 void KafkaPartitionConsumer::fetchLoop() {
@@ -641,6 +604,7 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Messa
         sourceDoc.error = str::stream() << "Failed to parse input message with error:" << e.what();
     }
 
+    sourceDoc.topic = topicName();
     sourceDoc.partition = partition();
     sourceDoc.offset = message.offset();
     sourceDoc.messageSizeBytes = message.len();

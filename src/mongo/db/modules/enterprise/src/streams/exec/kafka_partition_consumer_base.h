@@ -87,12 +87,6 @@ public:
         return doGetLatestOffsetAtBroker();
     }
 
-    // Returns the number of topic partitions.
-    // Returns boost::none if the partition count has not been initialized yet.
-    boost::optional<int64_t> getNumPartitions() const {
-        return doGetNumPartitions();
-    }
-
     // Returns the next batch of documents tailed from the partition, if any available.
     std::vector<KafkaSourceDocument> getDocuments() {
         return doGetDocuments();
@@ -102,6 +96,14 @@ public:
         return doGetStats();
     }
 
+    std::string topicName() const {
+        return _options.topicName;
+    }
+
+    int32_t partition() const {
+        return _options.partition;
+    }
+
 protected:
     virtual void doInit() = 0;
     virtual void doStart() = 0;
@@ -109,7 +111,6 @@ protected:
     virtual ConnectionStatus doGetConnectionStatus() const = 0;
     virtual boost::optional<int64_t> doGetStartOffset() const = 0;
     virtual boost::optional<int64_t> doGetLatestOffsetAtBroker() const = 0;
-    virtual boost::optional<int64_t> doGetNumPartitions() const = 0;
     virtual std::vector<KafkaSourceDocument> doGetDocuments() = 0;
     virtual OperatorStats doGetStats() = 0;
 

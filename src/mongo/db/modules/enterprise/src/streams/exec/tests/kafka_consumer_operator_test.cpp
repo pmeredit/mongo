@@ -8,9 +8,7 @@
 #include <rdkafkacpp.h>
 
 #include "mongo/bson/json.h"
-#include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/stdx/unordered_map.h"
 #include "streams/exec/checkpoint_data_gen.h"
@@ -39,11 +37,15 @@ public:
     KafkaConsumerOperatorTest();
 
     KafkaConsumerOperator::Options makeOptions(int32_t numPartitions) const;
+    KafkaConsumerOperator::Options makeOptions(
+        std::vector<KafkaConsumerOperator::TopicPartition> topicPartitions) const;
     void createKafkaConsumerOperator(KafkaConsumerOperator::Options options);
 
     void disableOverrideOffsets(int32_t numPartitions);
 
     int32_t runOnce();
+
+    int32_t getNumConsumers() const;
 
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(int32_t partition,
                                                          KafkaConsumerOperator* source);
@@ -65,6 +67,9 @@ public:
                     const std::vector<std::vector<int64_t>>& partitionAppendTimes);
 
     int32_t getRunOnceMaxDocs(KafkaConsumerOperator* source);
+
+    std::vector<KafkaConsumerOperator::TopicPartition> getTopicPartitions() const;
+    boost::optional<int32_t> getPartitionIdx(const std::string& topic, int32_t partition) const;
 
 protected:
     std::unique_ptr<MetricManager> _metricManager;
@@ -90,8 +95,21 @@ KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(int32_t nu
     options.timestampOutputFieldName = "_ts";
     options.useWatermarks = true;
     options.isTest = true;
-    options.testOnlyNumPartitions = numPartitions;
+    options.topicName = "unitTestKafkaTopic";
+    for (int i = 0; i < numPartitions; i++) {
+        options.testOnlyTopicPartitions.emplace_back(options.topicName, i);
+    }
+    return options;
+}
 
+KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(
+    std::vector<KafkaConsumerOperator::TopicPartition> topicPartitions) const {
+    KafkaConsumerOperator::Options options;
+    options.timestampExtractor = _timestampExtractor.get();
+    options.timestampOutputFieldName = "_ts";
+    options.useWatermarks = true;
+    options.isTest = true;
+    options.testOnlyTopicPartitions = std::move(topicPartitions);
     return options;
 }
 
@@ -121,6 +139,10 @@ KafkaConsumerOperator::ConsumerInfo& KafkaConsumerOperatorTest::getConsumerInfo(
     return getConsumerInfo(partition, _source.get());
 }
 
+int32_t KafkaConsumerOperatorTest::getNumConsumers() const {
+    return _source->_consumers.size();
+}
+
 const WatermarkControlMsg& KafkaConsumerOperatorTest::getCombinedWatermarkMsg() {
     return _source->_watermarkCombiner->getCombinedWatermarkMsg();
 }
@@ -132,6 +154,16 @@ boost::optional<StreamDocument> KafkaConsumerOperatorTest::processSourceDocument
 
 int KafkaConsumerOperatorTest::getRunOnceMaxDocs(KafkaConsumerOperator* source) {
     return source->_options.maxNumDocsToReturn;
+}
+
+std::vector<KafkaConsumerOperator::TopicPartition> KafkaConsumerOperatorTest::getTopicPartitions()
+    const {
+    return _source->getTopicPartitions();
+}
+
+boost::optional<int32_t> KafkaConsumerOperatorTest::getPartitionIdx(const std::string& topic,
+                                                                    int32_t partition) const {
+    return _source->getPartitionIdx(topic, partition);
 }
 
 std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
@@ -146,8 +178,11 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
         int32_t numPartitionDocs = partitionOffsets[partition].size();
         for (int32_t i = 0; i < numPartitionDocs; ++i) {
             KafkaSourceDocument sourceDoc;
-            sourceDoc.doc = fromjson(fmt::format("{{partition: {}}}", partition));
-            sourceDoc.partition = partition;
+            sourceDoc.topic = partitionConsumer->_options.topicName;
+            sourceDoc.partition = partitionConsumer->_options.partition;
+            BSONObjBuilder docBuilder;
+            docBuilder << "topic" << sourceDoc.topic << "partition" << sourceDoc.partition;
+            sourceDoc.doc = docBuilder.obj();
             sourceDoc.offset = partitionOffsets[partition][i];
             sourceDoc.logAppendTimeMs = partitionAppendTimes[partition][i];
             BSONObjBuilder outputDocBuilder(*sourceDoc.doc);
@@ -155,10 +190,9 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
             outputDocBuilder << "_stream_meta"
                              << BSON("source" << BSON("type"
                                                       << "kafka"
-                                                      << "topic"
-                                                      << ""
-                                                      << "partition" << sourceDoc.partition
-                                                      << "offset" << sourceDoc.offset));
+                                                      << "topic" << sourceDoc.topic << "partition"
+                                                      << sourceDoc.partition << "offset"
+                                                      << sourceDoc.offset));
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());
             sourceDocs.push_back(std::move(sourceDoc));
         }
@@ -173,15 +207,18 @@ void KafkaConsumerOperatorTest::verifyDocs(
     const std::vector<std::vector<BSONObj>>& expectedOutputDocs,
     const std::vector<std::vector<int64_t>>& partitionAppendTimes) {
     ASSERT_EQUALS(expectednumDocs, dataMsg.docs.size());
-    std::vector<int32_t> nextDocIndexes = {0, 0};
+    std::vector<int32_t> nextDocIndexes(getTopicPartitions().size(), 0);
     for (int32_t i = 0; i < expectednumDocs; ++i) {
         auto& streamDoc = dataMsg.docs[i];
         auto& doc = streamDoc.doc;
+        std::string topic = doc.getField("topic").getString();
         int32_t partition = doc.getField("partition").getInt();
-        int32_t docIdx = nextDocIndexes[partition]++;
-        ASSERT_BSONOBJ_EQ(expectedOutputDocs[partition][docIdx], doc.toBson());
-        ASSERT_EQUALS(partitionAppendTimes[partition][docIdx], streamDoc.minEventTimestampMs);
-        ASSERT_EQUALS(partitionAppendTimes[partition][docIdx], streamDoc.maxEventTimestampMs);
+        boost::optional<int32_t> consumerIdx = _source->getPartitionIdx(topic, partition);
+        ASSERT_TRUE(consumerIdx);
+        int32_t docIdx = nextDocIndexes[*consumerIdx]++;
+        ASSERT_BSONOBJ_EQ(expectedOutputDocs[*consumerIdx][docIdx], doc.toBson());
+        ASSERT_EQUALS(partitionAppendTimes[*consumerIdx][docIdx], streamDoc.minEventTimestampMs);
+        ASSERT_EQUALS(partitionAppendTimes[*consumerIdx][docIdx], streamDoc.maxEventTimestampMs);
     }
 };
 
@@ -202,6 +239,17 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     _source->start();
     invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
+
+    std::vector<KafkaConsumerOperator::TopicPartition> expectedTopicPartitions{
+        {"unitTestKafkaTopic", 0}, {"unitTestKafkaTopic", 1}};
+    auto sourceTopicPartitions = getTopicPartitions();
+    ASSERT_EQUALS(sourceTopicPartitions, expectedTopicPartitions);
+    boost::optional<int32_t> pidx = getPartitionIdx("unitTestKafkaTopic", 0);
+    ASSERT_TRUE(pidx);
+    ASSERT_EQ(*pidx, 0);
+    pidx = getPartitionIdx("unitTestKafkaTopic", 1);
+    ASSERT_TRUE(pidx);
+    ASSERT_EQ(*pidx, 1);
 
     // Test that runOnce() does not emit any documents yet, but emits a control message.
     ASSERT_EQUALS(0, runOnce());
@@ -458,6 +506,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
                 for (auto& doc : docs) {
                     partitionInput.emplace_back(KafkaSourceDocument{
                         .doc = doc,
+                        .topic = consumer->topicName(),
                         .partition = partition,
                         .logAppendTimeMs = Date_t::now().toMillisSinceEpoch(),
                     });
@@ -496,7 +545,9 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         options.topicName = topicName;
         options.consumerGroupId = consumerGroupId;
         if (isFakeKafka) {
-            options.testOnlyNumPartitions = partitionCount;
+            for (int i = 0; i < partitionCount; i++) {
+                options.testOnlyTopicPartitions.emplace_back(topicName, i);
+            }
         }
         options.startOffset = spec.startAt == KafkaSourceStartAtEnum::Earliest
             ? RdKafka::Topic::OFFSET_BEGINNING

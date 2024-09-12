@@ -42,10 +42,6 @@ public:
     // RdKafka::Consumer.
     std::unique_ptr<RdKafka::Conf> createKafkaConf();
 
-    int32_t partition() const {
-        return _options.partition;
-    }
-
 private:
     friend class ConsumeCbImpl;  // Needed to be able to call onMessage() and onError().
 
@@ -140,9 +136,6 @@ private:
 
     boost::optional<int64_t> doGetLatestOffsetAtBroker() const override;
 
-    // Returns _numPartitions.
-    boost::optional<int64_t> doGetNumPartitions() const override;
-
     // Returns the next batch of documents tailed from the partition, if any available.
     // Throws exception if any exception was encountered while tailing Kafka.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
@@ -205,8 +198,6 @@ private:
     // Whether this consumer is currently connected to the source Kafka cluster.
     // The initial offset used to start tailing the Kafka partition.
     boost::optional<int64_t> _startOffset;
-    // The number of Kafka topic partitions.
-    boost::optional<int64_t> _numPartitions;
     // Connection status of the partition consumer. The background thread updates
     // this as it connects (or errors).
     ConnectionStatus _connectionStatus;

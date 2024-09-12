@@ -525,7 +525,11 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
-    internalOptions.testOnlyNumPartitions = options.getTestOnlyPartitionCount();
+    if (options.getTestOnlyPartitionCount()) {
+        for (int i = 0; i < *options.getTestOnlyPartitionCount(); i++) {
+            internalOptions.testOnlyTopicPartitions.emplace_back(internalOptions.topicName, i);
+        }
+    }
 
     if (auto auth = baseOptions.getAuth(); auth) {
         internalOptions.authConfig = constructKafkaAuthConfig(*auth);

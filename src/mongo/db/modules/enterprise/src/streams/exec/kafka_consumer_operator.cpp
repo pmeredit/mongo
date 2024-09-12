@@ -5,13 +5,11 @@
 
 #include <chrono>
 #include <fmt/format.h>
-#include <optional>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/text.h"
 #include "streams/exec/checkpoint_data_gen.h"
@@ -21,7 +19,6 @@
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
-#include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
@@ -35,23 +32,159 @@ namespace streams {
 
 namespace {
 MONGO_FAIL_POINT_DEFINE(slowKafkaSource);
+
+bool topicPartitionExists(const std::vector<KafkaConsumerOperator::TopicPartition>& topicPartitions,
+                          const std::string& topicName,
+                          int32_t partitionId) {
+
+    for (const auto& [topic, partition] : topicPartitions) {
+        if (topicName == topic && partitionId == partition) {
+            return true;
+        }
+    }
+    return false;
 }
+
+bool topicExists(const std::string& topic,
+                 const std::vector<KafkaConsumerOperator::TopicPartition>& topicPartitions) {
+    for (const auto& [topicName, _] : topicPartitions) {
+        if (topicName == topic) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
 
 using namespace mongo;
 
+// Helper method used to create KafkaConsumer. Used from KafkaConsumerOperator::Connector
+// and from KafkaConsumerOperator.
+std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
+    std::string bootstrapServers,
+    std::string consumerGroupId,
+    mongo::stdx::unordered_map<std::string, std::string> authConfig,
+    RdKafka::ResolveCb* resolveCb,
+    RdKafka::ConnectCb* connectCb,
+    RdKafka::EventCb* eventCb) {
+
+    // conf will go out of scope at the end of this function but it should be fine since it is
+    // expected to be valid only when it is being used in the call to RdKafkaConsumer::create
+    // towards the end of this function.
+    std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
+    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
+        std::string errstr;
+        if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
+            uasserted(8720700,
+                      str::stream() << "KafkaConsumerOperator failed while setting configuration "
+                                    << confName << " with error: " << errstr);
+        }
+    };
+    setConf("bootstrap.servers", bootstrapServers);
+    if (streams::isConfluentBroker(bootstrapServers)) {
+        setConf("client.id", std::string(streams::kKafkaClientID));
+    }
+    setConf("log.connection.close", "false");
+    setConf("topic.metadata.refresh.interval.ms", "-1");
+    setConf("enable.auto.commit", "false");
+    setConf("enable.auto.offset.store", "false");
+    setConf("group.id", consumerGroupId);
+    setConf("queued.max.messages.kbytes", "5000");
+
+    if (resolveCb) {
+        setConf("resolve_cb", resolveCb);
+        if (connectCb) {
+            setConf("connect_cb", connectCb);
+        }
+    }
+
+    if (eventCb) {
+        setConf("event_cb", eventCb);
+    }
+
+    for (const auto& config : authConfig) {
+        setConf(config.first, config.second);
+    }
+
+    // KafkaConsumer::create internally makes copies of any bits it needs from conf and so
+    // we are ok with letting conf destruct after this call.
+    std::string err;
+    std::unique_ptr<RdKafka::KafkaConsumer> kafkaConsumer(
+        RdKafka::KafkaConsumer::create(conf.get(), err));
+    uassert(8720701,
+            str::stream() << "KafkaConsumerOperator failed to create kafka consumer with error: "
+                          << err,
+            kafkaConsumer);
+
+    return kafkaConsumer;
+}
+
+KafkaConsumerOperator::TopicPartition::TopicPartition(std::string topicName, int32_t partition)
+    : topic{std::move(topicName)}, partitionId{partition} {}
+
 KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
-    : _context(context), _options(std::move(options)) {}
+    : _context(context), _options(std::move(options)) {
+
+    // Setup the resolve callback if so configured.
+    if (_options.gwproxyEndpoint) {
+        _resolveCbImpl =
+            std::make_unique<KafkaResolveCallback>(_context,
+                                                   "KafkaConsumerOperator::Connector",
+                                                   *_options.gwproxyEndpoint) /* target proxy */;
+
+        // Setup the connect callback if authentication is required.
+        if (_options.gwproxyKey) {
+            _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
+                _context,
+                "KafkaConsumerOperator::Connector",
+                *_options.gwproxyKey /* symmetricKey */,
+                10 /* connection timeout unit:seconds */);
+        }
+    }
+
+    // Setup event callback since we need to determine the details of connect errors
+    _eventCallback =
+        std::make_unique<KafkaEventCallback>(_context, "KafkaConsumerOperator::Connector");
+
+    _consumer = streams::createKafkaConsumer(_options.bootstrapServers,
+                                             _options.consumerGroupId,
+                                             _options.authConfig,
+                                             _resolveCbImpl ? _resolveCbImpl.get() : nullptr,
+                                             _connectCbImpl ? _connectCbImpl.get() : nullptr,
+                                             _eventCallback.get());
+}
 
 KafkaConsumerOperator::Connector::~Connector() {
     stop();
 }
 
 void KafkaConsumerOperator::Connector::start() {
-    _options.consumer->init();
-    _options.consumer->start();
-
     invariant(!_connectionThread.joinable());
-    _connectionThread = stdx::thread{[this]() { connectLoop(); }};
+    invariant(_consumer);
+    _connectionThread = stdx::thread{[this]() {
+        try {
+            retrieveTopicPartitions();
+        } catch (const SPException& e) {
+            onConnectionError(e.toStatus());
+        } catch (const DBException& e) {
+            onConnectionError(e.toStatus());
+        } catch (const std::exception& e) {
+            LOGV2_ERROR(8155001,
+                        "Unexpected exception while connecting to kafka $source",
+                        "exception"_attr = e.what());
+            onConnectionError(
+                SPStatus{mongo::Status{ErrorCodes::InternalError,
+                                       "Unexpected exception connecting to kafka $source."},
+                         e.what()});
+        }
+    }};
+}
+
+void KafkaConsumerOperator::Connector::onConnectionError(SPStatus status) {
+    status = _eventCallback->appendRecentErrorsToStatus(status);
+    stdx::lock_guard<Latch> lock(_mutex);
+    _connectionStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
 }
 
 void KafkaConsumerOperator::Connector::stop() {
@@ -66,8 +199,17 @@ void KafkaConsumerOperator::Connector::stop() {
         // Wait for the connection thread to exit.
         _connectionThread.join();
     }
-
-    _options.consumer->stop();
+    if (_consumer) {
+        // Shut down the RdKafka::KafkaConsumer.
+        auto errorCode = _consumer->close();
+        if (errorCode != RdKafka::ERR_NO_ERROR) {
+            LOGV2_WARNING(8674612,
+                          "Error while closing kafka consumer",
+                          "errorCode"_attr = errorCode,
+                          "errorMsg"_attr = RdKafka::err2str(errorCode),
+                          "context"_attr = _context);
+        }
+    }
 }
 
 ConnectionStatus KafkaConsumerOperator::Connector::getConnectionStatus() {
@@ -80,62 +222,96 @@ void KafkaConsumerOperator::Connector::setConnectionStatus(ConnectionStatus stat
     _connectionStatus = status;
 }
 
-boost::optional<int64_t> KafkaConsumerOperator::Connector::getNumPartitions() {
+std::vector<KafkaConsumerOperator::TopicPartition>
+KafkaConsumerOperator::Connector::getTopicPartitions() {
     stdx::lock_guard<Latch> lock(_mutex);
-    return _numPartitions;
+    return _topicPartitions;
 }
 
-void KafkaConsumerOperator::Connector::connectLoop() {
-    invariant(!_numPartitions);
+void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
+    invariant(getTopicPartitions().empty());
+    std::vector<TopicPartition> topicPartitions;
 
-    try {
-        boost::optional<int64_t> numPartitions;
-        while (true) {
-            auto connectionStatus = _options.consumer->getConnectionStatus();
-            if (connectionStatus.isConnected()) {
-                numPartitions = _options.consumer->getNumPartitions();
-                if (numPartitions) {
-                    LOGV2_INFO(74703,
-                               "Retrieved topic partition count",
-                               "topicName"_attr = _options.topicName,
-                               "context"_attr = _context,
-                               "numPartitions"_attr = *numPartitions);
-                    invariant(*numPartitions > 0);
-                }
-            }
-
-            {
-                stdx::lock_guard<Latch> lock(_mutex);
-                _connectionStatus = connectionStatus;
-                if (numPartitions) {
-                    _numPartitions = numPartitions;
-                }
-
-                if (_shutdown || _numPartitions || connectionStatus.isError()) {
-                    break;
-                }
-            }
-
-            // Sleep for a bit before calling getNumPartitions() again.
-            stdx::this_thread::sleep_for(
-                stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
+    std::string topicName = _options.topicName;
+    std::string errStr;
+    std::unique_ptr<RdKafka::Topic> rdTopic{
+        RdKafka::Topic::create(_consumer.get(), topicName, nullptr, errStr)};
+    if (!rdTopic) {
+        if (errStr.empty()) {
+            errStr = "Could not create topic while trying to connect to Kafka";
         }
-    } catch (const std::exception& e) {
-        LOGV2_ERROR(8155001,
-                    "Unexpected exception while connecting to kafka $source",
-                    "exception"_attr = e.what());
-        setConnectionStatus(ConnectionStatus{
-            ConnectionStatus::kError,
-            {{ErrorCodes::Error{8155002}, "$source encountered unkown error while connecting."},
-             e.what()}});
+        LOGV2_INFO(9358011,
+                   "could not create topic",
+                   "context"_attr = _context,
+                   "topic"_attr = topicName,
+                   "error"_attr = errStr);
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, errStr);
     }
+
+    RdKafka::Metadata* metadata{nullptr};
+    RdKafka::ErrorCode resp = _consumer->metadata(
+        false, rdTopic.get(), &metadata, _options.kafkaRequestTimeoutMs.count());
+    std::unique_ptr<RdKafka::Metadata> metadataHolder{metadata};
+    if (resp != RdKafka::ERR_NO_ERROR || !metadata || metadata->topics()->size() != 1 ||
+        metadata->topics()->at(0)->topic() != topicName) {
+        LOGV2_INFO(9358012,
+                   "could not load topic metadata",
+                   "context"_attr = _context,
+                   "topic"_attr = topicName,
+                   "error_code"_attr = resp,
+                   "error_msg"_attr = RdKafka::err2str(resp));
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                  fmt::format("Could not connect to the Kafka topic with kafka error code: "
+                              "{}, message: {}.",
+                              resp,
+                              RdKafka::err2str(resp)));
+    }
+
+    auto* partitions = metadataHolder->topics()->at(0)->partitions();
+    tassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+            "expected partitions to be non-null",
+            partitions);
+    if (partitions->empty()) {
+        LOGV2_INFO(
+            9358013, "topic does not exist", "context"_attr = _context, "topic"_attr = topicName);
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                  fmt::format("no partitions found in topic {}. Does the topic exist?", topicName));
+    }
+
+    // Iterate over all partitions of topicName, check whether any of them is reporting an
+    // error
+    for (const auto& partition : *partitions) {
+        auto partitionErr = partition->err();
+        if (partitionErr != RdKafka::ERR_NO_ERROR) {
+            LOGV2_INFO(9358014,
+                       "partition has error:",
+                       "context"_attr = _context,
+                       "topic"_attr = topicName,
+                       "partition"_attr = partition->id(),
+                       "error"_attr = RdKafka::err2str(partitionErr));
+            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                      fmt::format("topic[{}]/partition[{}] has error: [{}]",
+                                  topicName,
+                                  partition->id(),
+                                  RdKafka::err2str(partition->err())));
+        }
+
+        // All good, add this topic/partition
+        topicPartitions.emplace_back(topicName, partition->id());
+    }
+
+    std::sort(topicPartitions.begin(), topicPartitions.end(), TopicPartitionCmp());
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};
+    _topicPartitions = std::move(topicPartitions);
 }
 
 KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
     : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
-    if (_options.testOnlyNumPartitions) {
+    if (!_options.testOnlyTopicPartitions.empty()) {
         invariant(_options.isTest);
-        _numPartitions = _options.testOnlyNumPartitions;
+        _topicPartitions = _options.testOnlyTopicPartitions;
     }
     // We won't be using _sourceBufferHandle, so release it.
     _sourceBufferHandle.reset();
@@ -160,21 +336,25 @@ void KafkaConsumerOperator::doStart() {
     }
 
     invariant(_consumers.empty());
-    // We need to wait until a connection is established with the input source before we can start
-    // the per-partition consumer instances.
+    // We need to wait until a connection is established with the input source before we can
+    // start the per-partition consumer instances.
 
-    if (_numPartitions) {
-        // We already know the topic partition count. This is only true on test-only code path.
+    if (!_topicPartitions.empty()) {
+        // We already know the topic partition map. This is only true on test-only code path.
         init();
     } else {
         // Now create a Connector instace.
-        Connector::Options options;
-        options.topicName = _options.topicName;
-        options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
-        // Create a KafkaPartitionConsumer instance just to determine the partition count for the
-        // topic. Note that we will destroy this instance soon and won't be using it for reading
-        // any input documents.
-        options.consumer = createKafkaPartitionConsumer(/*partition*/ 0, _options.startOffset);
+        Connector::Options options{
+            .topicName = _options.topicName,
+            .kafkaRequestTimeoutMs = _options.kafkaRequestTimeoutMs,
+            .kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs,
+            .bootstrapServers = _options.bootstrapServers,
+            .consumerGroupId = _options.consumerGroupId,
+            .authConfig = _options.authConfig,
+            .gwproxyEndpoint = _options.gwproxyEndpoint,
+            .gwproxyKey = _options.gwproxyKey,
+        };
+
         _connector = std::make_unique<Connector>(_context, std::move(options));
         _connector->start();
     }
@@ -207,7 +387,7 @@ void KafkaConsumerOperator::doStop() {
         // Shut down the RdKafka::KafkaConsumer.
         auto errorCode = _groupConsumer->unsubscribe();
         if (errorCode != RdKafka::ERR_NO_ERROR) {
-            LOGV2_WARNING(8674600,
+            LOGV2_WARNING(8674613,
                           "Error while unsubscribing from kafka",
                           "errorCode"_attr = errorCode,
                           "errorMsg"_attr = RdKafka::err2str(errorCode),
@@ -216,8 +396,19 @@ void KafkaConsumerOperator::doStop() {
     }
 }
 
+boost::optional<int32_t> KafkaConsumerOperator::getPartitionIdx(const std::string& topicName,
+                                                                int32_t partitionId) {
+    invariant(!_topicPartitions.empty());
+    auto itr = std::find(
+        _topicPartitions.begin(), _topicPartitions.end(), TopicPartition{topicName, partitionId});
+    if (itr != _topicPartitions.end()) {
+        return std::distance(_topicPartitions.begin(), itr);
+    }
+    return boost::none;
+}
+
 void KafkaConsumerOperator::initFromCheckpoint() {
-    invariant(_numPartitions);
+    invariant(!_topicPartitions.empty());
     invariant(_consumers.empty());
     invariant(_restoredCheckpointState);
 
@@ -226,14 +417,15 @@ void KafkaConsumerOperator::initFromCheckpoint() {
                "state"_attr = _restoredCheckpointState->toBSON(),
                "checkpointId"_attr = *_context->restoreCheckpointId);
 
+    size_t expectedNumTopicPartitions = _topicPartitions.size();
     const auto& partitions = _restoredCheckpointState->getPartitions();
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
         _operatorId,
         str::stream() << "partition count in the checkpoint (" << partitions.size() << ") "
-                      << "does not match the partition count of Kafka topic (" << *_numPartitions
-                      << ")",
-        int64_t(partitions.size()) == *_numPartitions);
+                      << "does not match the partition count of Kafka topics ("
+                      << expectedNumTopicPartitions << ")",
+        partitions.size() == expectedNumTopicPartitions);
 
     // Use the consumer group ID from the checkpoint. The consumer group ID should never change
     // during the lifetime of a stream processor. The consumer group ID is only optional in the
@@ -243,19 +435,19 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     }
 
     // Create KafkaPartitionConsumer instances from the checkpoint data.
-    _consumers.reserve(*_numPartitions);
-    for (int32_t partition = 0; partition < *_numPartitions; ++partition) {
-        // Note: when all partitions are not contiguous on one $source, we may need to modify this.
-        const auto& partitionState = partitions[partition];
-        CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
-                                   _operatorId,
-                                   str::stream()
-                                       << "unexpected partitionState at index: " << partition
-                                       << " partition: " << partitionState.getPartition(),
-                                   partitionState.getPartition() == partition);
+    _consumers.reserve(partitions.size());
+    for (const auto& partitionState : partitions) {
+        std::string chkptTopic = _options.topicName;
+        int32_t chkptPartitionId = partitionState.getPartition();
+
+        // make sure this topicPartition still exists in the cluster
+        tassert(ErrorCodes::InternalError,
+                "checkpoint topic partition not found in current cluster",
+                topicPartitionExists(_topicPartitions, chkptTopic, chkptPartitionId));
 
         // Create the consumer with the offset in the checkpoint.
-        ConsumerInfo consumerInfo = createPartitionConsumer(partition, partitionState.getOffset());
+        ConsumerInfo consumerInfo =
+            createPartitionConsumer(chkptTopic, chkptPartitionId, partitionState.getOffset());
 
         CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                    _operatorId,
@@ -268,8 +460,16 @@ void KafkaConsumerOperator::initFromCheckpoint() {
             // All partition watermarks start as active when restoring from a checkpoint.
             WatermarkControlMsg watermark{WatermarkStatus::kActive,
                                           partitionState.getWatermark()->getEventTimeMs()};
+
+            boost::optional<int32_t> inputIdx = getPartitionIdx(chkptTopic, chkptPartitionId);
+            CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                       _operatorId,
+                                       str::stream() << "Could not get inputIdx for topic/partition"
+                                                     << chkptTopic << "/" << chkptPartitionId,
+                                       inputIdx)
+
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                partition /* inputIdx */, _watermarkCombiner.get(), watermark);
+                *inputIdx, _watermarkCombiner.get(), watermark);
         }
         _consumers.push_back(std::move(consumerInfo));
     }
@@ -282,29 +482,36 @@ void KafkaConsumerOperator::initFromCheckpoint() {
 }
 
 void KafkaConsumerOperator::initFromOptions() {
-    invariant(_numPartitions);
+    invariant(!_topicPartitions.empty());
     invariant(_consumers.empty());
-    // Create KafkaPartitionConsumer instances, one for each partition.
-    _consumers.reserve(*_numPartitions);
+
+    // Create KafkaPartitionConsumer instances, one for each topic partition.
+    _consumers.reserve(_topicPartitions.size());
 
     auto committedOffsets = getCommittedOffsets();
-    invariant(committedOffsets.empty() || int64_t(committedOffsets.size()) == *_numPartitions);
-    for (int32_t partition = 0; partition < *_numPartitions; ++partition) {
+    for (const auto& [topic, partitionId] : _topicPartitions) {
         int64_t startOffset = _options.startOffset;
         if (!committedOffsets.empty()) {
-            startOffset = committedOffsets[partition];
+            auto itr = committedOffsets.find({topic, partitionId});
+            tassert(ErrorCodes::InternalError,
+                    "Expected to find committed offset for partition.",
+                    itr != committedOffsets.end());
+            startOffset = itr->second;
         }
 
-        ConsumerInfo consumerInfo = createPartitionConsumer(partition, startOffset);
-
+        ConsumerInfo consumerInfo = createPartitionConsumer(topic, partitionId, startOffset);
         if (_options.useWatermarks) {
             invariant(_watermarkCombiner);
+            boost::optional<int32_t> inputIdx = getPartitionIdx(topic, partitionId);
+            tassert(ErrorCodes::InternalError,
+                    "Expected to find partitionIdx for topic/partition",
+                    inputIdx);
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                partition /* inputIdx */, _watermarkCombiner.get());
+                *inputIdx /* inputIdx */, _watermarkCombiner.get());
             consumerInfo.partitionIdleTimeoutMs = _options.partitionIdleTimeoutMs;
 
-            // Capturing the initial time during construction is useful in the context of idleness
-            // detection as it provides a baseline for subsequent events to compare to.
+            // Capturing the initial time during construction is useful in the context of
+            // idleness detection as it provides a baseline for subsequent events to compare to.
             consumerInfo.lastEventReadTimestamp = stdx::chrono::steady_clock::now();
         }
         _consumers.push_back(std::move(consumerInfo));
@@ -322,8 +529,8 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
     std::vector<RdKafka::TopicPartition*> assignedPartitions;
     while (!shutdown) {
         stdx::unique_lock lock(_groupConsumerMutex);
-        // TODO(SERVER-87007): Consider promoting the dasserts in this routine to errors that stop
-        // processing. Currently we don't want errors in this routine to fail processing in
+        // TODO(SERVER-87007): Consider promoting the dasserts in this routine to errors that
+        // stop processing. Currently we don't want errors in this routine to fail processing in
         // production.
 
         // Get the assigned partitions.
@@ -370,8 +577,8 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
         // We use a short timeout because we don't expect to see any messages and don't want to
         // block in the consumer call.
         std::unique_ptr<RdKafka::Message> msg{_groupConsumer->consume(/* timeout_ms */ 10)};
-        // We allow ERR__TIMED_OUT and ERR__MAX_POLL_EXCEEDED because those are expected errors from
-        // librdkafka when there are no messages to read.
+        // We allow ERR__TIMED_OUT and ERR__MAX_POLL_EXCEEDED because those are expected errors
+        // from librdkafka when there are no messages to read.
         if (msg != nullptr && msg->err() != RdKafka::ERR__TIMED_OUT &&
             msg->err() != RdKafka::ERR__MAX_POLL_EXCEEDED) {
             dassert(false);
@@ -390,12 +597,13 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
 }
 
 void KafkaConsumerOperator::init() {
-    invariant(_numPartitions);
+    invariant(!_topicPartitions.empty());
     invariant(_consumers.empty());
 
     if (_options.useWatermarks) {
         invariant(!_watermarkCombiner);
-        _watermarkCombiner = std::make_unique<WatermarkCombiner>(*_numPartitions);
+        _watermarkCombiner =
+            std::make_unique<WatermarkCombiner>((int32_t)(_topicPartitions.size()));
     }
 
     if (!_options.isTest) {
@@ -432,34 +640,35 @@ void KafkaConsumerOperator::init() {
 }
 
 ConnectionStatus KafkaConsumerOperator::doGetConnectionStatus() {
-    if (!_numPartitions) {
+    if (_topicPartitions.empty()) {
         invariant(_consumers.empty());
         tassert(ErrorCodes::InternalError, "Expected connector to be set.", _connector);
         auto connectionStatus = _connector->getConnectionStatus();
         if (connectionStatus.isConnected()) {
-            // Initialize the state if the connection has been successfully established.
-            _numPartitions = _connector->getNumPartitions();
+            // Initialize the state if the connector has obtained it
+            _topicPartitions = _connector->getTopicPartitions();
             tassert(ErrorCodes::InternalError,
-                    "Expected _numPartitions to be set",
-                    _numPartitions && *_numPartitions > 0);
+                    "Expected non-empty _topicPartitions",
+                    !_topicPartitions.empty());
             _connector->stop();
             _connector.reset();
 
-            // We successfully fetched the topic partition count.
+            // We successfully fetched the topic partition counts.
             init();
         } else {
             return connectionStatus;
         }
     }
     invariant(!_consumers.empty());
+    tassert(ErrorCodes::InternalError,
+            "Expected non-empty _topicPartitions",
+            !_topicPartitions.empty());
+
+    tassert(ErrorCodes::InternalError,
+            "Expected consumers.size() equal to numPartitions",
+            _consumers.size() == _topicPartitions.size());
 
     // Check if all the consumers are connected.
-    tassert(ErrorCodes::InternalError,
-            "Expected _numPartitions",
-            _numPartitions && *_numPartitions > 0);
-    tassert(ErrorCodes::InternalError,
-            "Expected consumers.size() equal to _numPartitions",
-            _consumers.size() == size_t(*_numPartitions));
     for (auto& consumerInfo : _consumers) {
         auto status = consumerInfo.consumer->getConnectionStatus();
         if (!status.isConnected()) {
@@ -561,8 +770,8 @@ int64_t KafkaConsumerOperator::doRunOnce() {
             dassert(consumerInfo.watermarkGenerator);
             const auto currentTime = stdx::chrono::steady_clock::now();
 
-            // Check for idleness if we didn't get any documents, otherwise, we record the current
-            // time and set the current partition as active.
+            // Check for idleness if we didn't get any documents, otherwise, we record the
+            // current time and set the current partition as active.
             if (sourceDocs.empty()) {
                 dassert(currentTime > consumerInfo.lastEventReadTimestamp);
                 const auto millisSinceLastEvent =
@@ -715,13 +924,13 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
         StreamMetaSource streamMetaSource;
         streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
-        streamMetaSource.setTopic(StringData{_options.topicName});
+        streamMetaSource.setTopic(sourceDoc.topic);
         streamMetaSource.setPartition(sourceDoc.partition);
         streamMetaSource.setOffset(sourceDoc.offset);
         auto deserializedKey = deserializeKafkaKey(std::move(sourceDoc.key), _options.keyFormat);
-        // If the required format is not binData but we find binData to be the result, this means
-        // deserialization error happened. Push error to the DLQ if that is the requested way to
-        // deal with the error.
+        // If the required format is not binData but we find binData to be the result, this
+        // means deserialization error happened. Push error to the DLQ if that is the requested
+        // way to deal with the error.
         if (_options.keyFormat != KafkaKeyFormatEnum::BinData &&
             std::holds_alternative<std::vector<std::uint8_t>>(deserializedKey) &&
             _options.keyFormatError == KafkaSourceKeyFormatErrorEnum::Dlq) {
@@ -749,7 +958,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         LOGV2_ERROR(74675,
                     "{topicName}: encountered exception while processing a source "
                     "document: {error}",
-                    "topicName"_attr = _options.topicName,
+                    "topicName"_attr = sourceDoc.topic,
                     "context"_attr = _context,
                     "error"_attr = e.what());
         if (streamDoc) {
@@ -772,7 +981,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc) {
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
-    streamMetaSource.setTopic(StringData{_options.topicName});
+    streamMetaSource.setTopic(sourceDoc.topic);
     streamMetaSource.setPartition(sourceDoc.partition);
     streamMetaSource.setOffset(sourceDoc.offset);
     streamMetaSource.setKey(deserializeKafkaKey(std::move(sourceDoc.key), _options.keyFormat));
@@ -810,70 +1019,41 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
 }
 
 std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsumer() {
-    std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
-        std::string errstr;
-        if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(8720700,
-                      str::stream() << "KafkaConsumerOperator failed while setting configuration "
-                                    << confName << " with error: " << errstr);
-        }
-    };
-    setConf("bootstrap.servers", _options.bootstrapServers);
-    if (streams::isConfluentBroker(_options.bootstrapServers)) {
-        setConf("client.id", std::string(streams::kKafkaClientID));
-    }
-
-    setConf("log.connection.close", "false");
-    setConf("topic.metadata.refresh.interval.ms", "-1");
-    setConf("enable.auto.commit", "false");
-    setConf("enable.auto.offset.store", "false");
-    setConf("group.id", _options.consumerGroupId);
-    setConf("queued.max.messages.kbytes", "5000");
-
-    // Set the resolve callback.
+    // Setup the resolve callback if so configured.
     if (_options.gwproxyEndpoint) {
         _resolveCbImpl = std::make_unique<KafkaResolveCallback>(
             _context, getName() /* operator name */, *_options.gwproxyEndpoint) /* target proxy */;
-        setConf("resolve_cb", _resolveCbImpl.get());
 
-        // Set the connect callback if authentication is required.
+        // Setup the connect callback if authentication is required.
         if (_options.gwproxyKey) {
             _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
                 _context,
                 getName() /* operator name */,
                 *_options.gwproxyKey /* symmetricKey */,
                 10 /* connection timeout unit:seconds */);
-            setConf("connect_cb", _connectCbImpl.get());
         }
     }
 
-    for (const auto& config : _options.authConfig) {
-        setConf(config.first, config.second);
-    }
-
-    std::string err;
-    std::unique_ptr<RdKafka::KafkaConsumer> kafkaConsumer(
-        RdKafka::KafkaConsumer::create(conf.get(), err));
-    uassert(8720701,
-            str::stream() << "KafkaConsumerOperator failed to create kafka consumer with error: "
-                          << err,
-            kafkaConsumer);
-
-    return kafkaConsumer;
+    return streams::createKafkaConsumer(_options.bootstrapServers,
+                                        _options.consumerGroupId,
+                                        _options.authConfig,
+                                        _resolveCbImpl ? _resolveCbImpl.get() : nullptr,
+                                        _connectCbImpl ? _connectCbImpl.get() : nullptr,
+                                        nullptr);
 }
 
-std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
+// topic partition ids should have been fetched before calling getCommittedOffsets
+KafkaConsumerOperator::TopicPartitionOffsetMap KafkaConsumerOperator::getCommittedOffsets() const {
     std::vector<std::unique_ptr<RdKafka::TopicPartition>> partitionsHolder;
     std::vector<RdKafka::TopicPartition*> partitions;
 
-    // Number of partitions should have been fetched before fetching the committed offsets.
-    invariant(_numPartitions);
-    partitionsHolder.reserve(*_numPartitions);
-    partitions.reserve(*_numPartitions);
-    for (int32_t partition = 0; partition < *_numPartitions; ++partition) {
+    invariant(!_topicPartitions.empty());
+    partitionsHolder.reserve(_topicPartitions.size());
+    partitions.reserve(_topicPartitions.size());
+
+    for (const auto& [topic, partitionId] : _topicPartitions) {
         std::unique_ptr<RdKafka::TopicPartition> p;
-        p.reset(RdKafka::TopicPartition::create(_options.topicName, partition));
+        p.reset(RdKafka::TopicPartition::create(topic, partitionId));
         partitions.push_back(p.get());
         partitionsHolder.push_back(std::move(p));
     }
@@ -892,29 +1072,45 @@ std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
         errCode == RdKafka::ERR_NO_ERROR);
     tassert(8385401,
             "KafkaConsumerOperator unexpected number of partitions received from the topic",
-            int64_t(partitions.size()) == *_numPartitions);
+            partitions.size() == _topicPartitions.size());
 
-    bool hasValidOffsets{false};
-    std::vector<int64_t> committedOffsets;
-    committedOffsets.resize(partitions.size());
+    boost::optional<bool> hasValidOffsets;
+    TopicPartitionOffsetMap committedOffsets;
     for (const auto& partition : partitions) {
+        uassert(
+            8385421,
+            str::stream() << "KafkaConsumerOperator failed to get committed offset for partition: "
+                          << partition->partition() << "; because partition has error: "
+                          << RdKafka::err2str(partition->err()),
+            partition->err() == RdKafka::ERR_NO_ERROR);
         if (partition->offset() != RdKafka::Topic::OFFSET_INVALID) {
-            committedOffsets[partition->partition()] = partition->offset();
-            hasValidOffsets = true;
+            committedOffsets[{partition->topic(), partition->partition()}] = partition->offset();
+            if (!hasValidOffsets) {
+                hasValidOffsets = true;
+            } else {
+                // Ensure that either all partitions have a committed offset or all of them don't
+                // have a committed offset, there shouldn't be a mix bag.
+                tassert(8385402,
+                        "KafkaConsumerOperator subset of partitions have a committed offset and a "
+                        "subset do not have a committed offset",
+                        *hasValidOffsets);
+            }
         } else {
-            // Ensure that either all partitions have a committed offset or all of them don't
-            // have a committed offset, there shouldn't be a mix bag.
-            tassert(8385402,
-                    "KafkaConsumerOperator subset of partitions have a committed offset and a "
-                    "subset do not have a committed offset",
-                    !hasValidOffsets);
+            if (!hasValidOffsets) {
+                hasValidOffsets = false;
+            } else {
+                // Ensure that either all partitions have a committed offset or all of them don't
+                // have a committed offset, there shouldn't be a mix bag.
+                tassert(9358001,
+                        "KafkaConsumerOperator subset of partitions have a committed offset and a "
+                        "subset do not have a committed offset",
+                        !*hasValidOffsets);
+            }
         }
     }
-
-    if (hasValidOffsets) {
+    if (hasValidOffsets && *hasValidOffsets) {
         return committedOffsets;
     }
-
     return {};
 }
 
@@ -985,10 +1181,10 @@ void KafkaConsumerOperator::registerMetrics(MetricManager* metricManager) {
 }
 
 std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPartitionConsumer(
-    int32_t partition, int64_t startOffset) {
+    std::string topicName, int32_t partition, int64_t startOffset) {
     KafkaPartitionConsumerBase::Options options;
     options.bootstrapServers = _options.bootstrapServers;
-    options.topicName = _options.topicName;
+    options.topicName = topicName;
     options.partition = partition;
     options.deserializer = _options.deserializer;
     options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
@@ -1009,10 +1205,11 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
 }
 
 KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsumer(
-    int32_t partition, int64_t startOffset) {
+    std::string topicName, int32_t partition, int64_t startOffset) {
     ConsumerInfo consumerInfo;
     consumerInfo.partition = partition;
-    consumerInfo.consumer = createKafkaPartitionConsumer(partition, startOffset);
+    consumerInfo.topic = topicName;
+    consumerInfo.consumer = createKafkaPartitionConsumer(topicName, partition, startOffset);
     return consumerInfo;
 }
 
@@ -1038,6 +1235,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
         }
         KafkaPartitionCheckpointState partitionState{consumerInfo.partition,
                                                      checkpointStartingOffset};
+        //        partitionState.setTopic(consumerInfo.topic);
         if (_options.useWatermarks) {
             partitionState.setWatermark(WatermarkState{
                 consumerInfo.watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
@@ -1085,12 +1283,14 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
             watermark = consumerInfo.watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
         }
 
-        states.push_back(
-            KafkaConsumerPartitionState{.partition = consumerInfo.partition,
-                                        .currentOffset = currentOffset,
-                                        .checkpointOffset = consumerInfo.checkpointOffset,
-                                        .partitionOffsetLag = offsetLag,
-                                        .watermark = watermark});
+        states.push_back(KafkaConsumerPartitionState{
+            .topic = consumerInfo.topic,
+            .partition = consumerInfo.partition,
+            .currentOffset = currentOffset,
+            .checkpointOffset = consumerInfo.checkpointOffset,
+            .partitionOffsetLag = offsetLag,
+            .watermark = watermark,
+        });
     }
 
     return states;
