@@ -277,7 +277,7 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
                                 const std::string& key,
                                 const void* valuePointer,
                                 size_t valueLength) {
-        err = headers->add(std::move(key), valuePointer, valueLength);
+        err = headers->add(key, valuePointer, valueLength);
         uassert(9136400,
                 "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
                     topicName, err),
@@ -286,8 +286,8 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
 
     auto pushStringHeader = [&](RdKafka::Headers* headers,
                                 const std::string& key,
-                                std::string value) {
-        err = headers->add(std::move(key), value);
+                                const std::string& value) {
+        err = headers->add(key, value);
         uassert(9136401,
                 "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
                     topicName, err),
