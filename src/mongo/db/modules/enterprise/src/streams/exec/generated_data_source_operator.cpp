@@ -131,19 +131,18 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
 }
 
 Date_t GeneratedDataSourceOperator::getTimestamp(const StreamDocument& doc) const {
-    Date_t out;
-    const auto& opts = getOptions();
     if (doc.minEventTimestampMs >= 0) {
-        out = Date_t::fromMillisSinceEpoch(doc.minEventTimestampMs);
-    } else if (opts.timestampExtractor) {
-        out = opts.timestampExtractor->extractTimestamp(doc.doc);
+        return Date_t::fromMillisSinceEpoch(doc.minEventTimestampMs);
+    }
+
+    const auto& opts = getOptions();
+    if (opts.timestampExtractor) {
+        return opts.timestampExtractor->extractTimestamp(doc.doc);
     } else {
         // Fallback to server timestamp if theres no timestamp extractor set
         // for the stream processor.
-        out = Date_t::now();
+        return Date_t::now();
     }
-
-    return out;
 }
 
 }  // namespace streams
