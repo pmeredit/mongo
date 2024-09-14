@@ -19,7 +19,7 @@ namespace mongo {
 namespace {
 
 stdx::mutex& consoleMutex() {
-    static stdx::mutex instance;  // NOLINT
+    static stdx::mutex instance;
     return instance;
 }
 
