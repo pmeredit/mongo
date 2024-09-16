@@ -94,10 +94,16 @@ StatusWith<std::unique_ptr<UserRequest>> queryLDAPRolesForUserRequest(
         return {ErrorCodes::LDAPRoleAcquisitionError, "Failed to acquire LDAP group membership"};
     }
 
-    auto returnRequest = userReq.clone();
-    returnRequest->setRoles(
-        std::set<RoleName>(swRoles.getValue().cbegin(), swRoles.getValue().cend()));
-    return std::move(returnRequest);
+    auto swReturnRequest = userReq.clone();
+
+    if (!swReturnRequest.isOK()) {
+        return swReturnRequest.getStatus();
+    }
+
+    std::unique_ptr<UserRequest> returnReq = std::move(swReturnRequest.getValue());
+
+    returnReq->setRoles(std::set<RoleName>(swRoles.getValue().cbegin(), swRoles.getValue().cend()));
+    return std::move(returnReq);
 }
 }  // namespace
 
