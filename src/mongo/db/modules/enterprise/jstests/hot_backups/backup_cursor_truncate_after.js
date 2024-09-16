@@ -98,7 +98,7 @@ const postBackupCursor = true;
 
 // Use a smaller oplog to exercise backup cursors in the face of oplogs that roll over.
 let rst = new ReplSetTest({nodes: 2, nodeOptions: {syncdelay: 1, oplogSize: 1}});
-let nodes = rst.startSet();
+rst.startSet();
 
 rst.initiate();
 rst.awaitNodesAgreeOnPrimary();
@@ -154,6 +154,12 @@ sleep(1000 + Random.randInt(1000));
 let backupCursor = openBackupCursor(primary.getDB("admin"));
 sleep(Random.randInt(1000));
 let primaryBackupMetadata = getBackupCursorMetadata(backupCursor);
+let primaryOplogTop = primary.getDB("local")
+                          .getCollection("oplog.rs")
+                          .find()
+                          .sort({$natural: -1})
+                          .limit(-1)
+                          .next()["ts"];
 copyBackupCursorFiles(backupCursor,
                       /*namespacesToSkip=*/[],
                       primaryBackupMetadata.dbpath,
@@ -170,6 +176,12 @@ getBackupColl(primary).insert({});
 // performing file copies. The data copied must not contain causally related writes.
 sleep(1000 + Random.randInt(1000));
 let secondaryBackupMetadata = getBackupCursorMetadata(backupCursor);
+let secondaryOplogTop = secondary.getDB("local")
+                            .getCollection("oplog.rs")
+                            .find()
+                            .sort({$natural: -1})
+                            .limit(-1)
+                            .next()["ts"];
 copyBackupCursorFiles(backupCursor,
                       /*namespacesToSkip=*/[],
                       secondaryBackupMetadata.dbpath,
@@ -187,25 +199,24 @@ let writerTwoOpTimes = readyWriterTwo.returnData();
 // Define the method that asserts the data files copied have the expected data. The inputs are
 // the dbpath the files were copied to, the metadata document returned by the $backupCursor and
 // the sample list of inserts by both writers.
-function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
+function assertData(backupDir, metadata, oplogTop, writerOneOpTimes, writerTwoOpTimes) {
     // Define the method that selects an additional "interesting" opTime to exercise a "point in
     // time restore" procedure.
-    function getAdditionalScenario(metadata, opTimes1, opTimes2) {
+    function getAdditionalScenario(metadata, oplogTop, opTimes1, opTimes2) {
         let ckptTime = metadata["checkpointTimestamp"];
-        let oplogEnd = metadata["oplogEnd"]["ts"];
 
         // All opTimes by both the Alpha and Beta writer that are after the checkpoint
         // timestamp and in the oplog copied are equally likely candidates.
         let candidates = [];
         for (let docOpTime of opTimes1) {
             let ts = docOpTime["opTime"];
-            if (isLessThan(ckptTime, ts) && isLessThanOrEqual(ts, oplogEnd)) {
+            if (isLessThan(ckptTime, ts) && isLessThanOrEqual(ts, oplogTop)) {
                 candidates.push(ts);
             }
         }
         for (let docOpTime of opTimes2) {
             let ts = docOpTime["opTime"];
-            if (isLessThan(ckptTime, ts) && isLessThanOrEqual(ts, oplogEnd)) {
+            if (isLessThan(ckptTime, ts) && isLessThanOrEqual(ts, oplogTop)) {
                 candidates.push(ts);
             }
         }
@@ -229,8 +240,8 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
     // visibleTime. Add tests in reverse visibleTime order such that later scenarios only need
     // a subset of the oplog of the previous scenario.
     scenarios.push({
-        visibleTime: metadata["oplogEnd"]["ts"],
-        // Note the `oplogEnd` is a minimum guarantee. It's likely the data contains more oplog
+        visibleTime: oplogTop,
+        // Note the `oplogTop` is a minimum guarantee. It's likely the data contains more oplog
         // entries than this value. `recoverOplog: true` will cause a oplogTruncateAfterPoint to be
         // set that will result in deleting those excess entries.
         recoverOplog: true,
@@ -238,7 +249,7 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
 
     // If we find a usable optime that splits the checkpoint timestamp and the end of oplog,
     // add it as a scenario.
-    let scenario = getAdditionalScenario(metadata, writerOneOpTimes, writerTwoOpTimes);
+    let scenario = getAdditionalScenario(metadata, oplogTop, writerOneOpTimes, writerTwoOpTimes);
     if (scenario) {
         jsTestLog({"Additional scenario. Visible time": scenario});
         // The scenario Timestamp object is owned by one of the writerOpTimes arrays. Create a
@@ -274,9 +285,6 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
             conn = MongoRunner.runMongod({dbpath: backupDir, noCleanData: true});
             assert.neq(conn, null);
         }
-
-        const writerOpTimes = scenario["opTimes"];
-        const collFn = scenario["collFn"];
 
         // The clients do not write to the `postBackupCursor` collection until after they
         // causally observe the (last) backup cursor being opened. The backup data must
@@ -319,10 +327,14 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
     }
 }
 
-assertData(
-    primary.dbpath + "/primary-backup", primaryBackupMetadata, writerOneOpTimes, writerTwoOpTimes);
+assertData(primary.dbpath + "/primary-backup",
+           primaryBackupMetadata,
+           primaryOplogTop,
+           writerOneOpTimes,
+           writerTwoOpTimes);
 assertData(secondary.dbpath + "/secondary-backup",
            secondaryBackupMetadata,
+           secondaryOplogTop,
            writerOneOpTimes,
            writerTwoOpTimes);
 

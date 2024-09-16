@@ -2,9 +2,6 @@
  * Copyright (C) 2018-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-
-#include "mongo/platform/basic.h"
-
 #include "backup_cursor_service.h"
 
 #include <boost/filesystem.hpp>
@@ -12,20 +9,17 @@
 
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/concurrency/replication_state_transition_lock_guard.h"
-#include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/replication_coordinator.h"
-#include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/control/journal_flusher.h"
 #include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_options.h"
-#include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
@@ -112,30 +106,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // Prevent rollback
     repl::ReplicationStateTransitionLockGuard rstl(opCtx, MODE_IX);
 
-    // Replica sets must also return the opTime's of the earliest and latest oplog entry. The
-    // range represented by the oplog start/end values must exist in the backup copy, but are not
-    // expected to be exact.
-    repl::OpTime oplogStart;
-    repl::OpTime oplogEnd;
-
-    // If replication is enabled, get the optime of the last document in the oplog (using the last
-    // applied as a proxy) before opening the backup cursor. This value will be checked again
-    // after the cursor is established to guarantee it still exists (and was not truncated before
-    // the backup cursor was established).
-    //
-    // This procedure can block, do it before acquiring the mutex to allow fsyncLock requests to
-    // succeed.
-    auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-    bool isReplSet = replCoord->getSettings().isReplSet();
-
-    if (isReplSet) {
-        oplogEnd = replCoord->getMyLastAppliedOpTime();
-        // If this is a primary, there may be oplog holes. The oplog range being returned must be
-        // contiguous.
-        auto storageInterface = repl::StorageInterface::get(opCtx);
-        storageInterface->waitForAllEarlierOplogWritesToBeVisible(opCtx);
-    }
-
     stdx::lock_guard<Latch> lk(_mutex);
     uassert(50887, "The node is currently fsyncLocked.", _state.load() != kFsyncLocked);
     uassert(50886,
@@ -152,9 +122,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
         // The catalog was not part of a checkpoint yet, do nothing.
     }
 
+    auto replCoord = repl::ReplicationCoordinator::get(opCtx);
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     boost::optional<Timestamp> checkpointTimestamp;
-    if (isReplSet) {
+    if (replCoord->getSettings().isReplSet()) {
         checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
     };
 
@@ -210,19 +181,15 @@ BackupCursorState BackupCursorService::openBackupCursor(
         }
     }
 
-    // If the oplog exists, capture the first oplog entry after opening the backup cursor. Ensure
-    // it is before the `oplogEnd` value.
-    if (!oplogEnd.isNull()) {
-        BSONObj firstEntry;
-        uassert(50912,
-                str::stream() << "No oplog records were found.",
-                Helpers::getSingleton(opCtx, NamespaceString::kRsOplogNamespace, firstEntry));
-        oplogStart = repl::OpTime::parse(firstEntry);
-        uassert(50917,
-                str::stream() << "Oplog rolled over while establishing the backup cursor."
-                              << " First entry:" << oplogStart.toString()
-                              << ". Last entry:" << oplogEnd.toString() << ".",
-                oplogStart < oplogEnd);
+    // If the oplog exists, capture the first oplog entry after opening the backup cursor.
+    repl::OpTime oplogStart;
+    BSONObj firstEntry;
+    try {
+        if (Helpers::getSingleton(opCtx, NamespaceString::kRsOplogNamespace, firstEntry)) {
+            oplogStart = repl::OpTime::parse(firstEntry);
+        }
+    } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
+        // The oplog doesn't exist in standalone deployments.
     }
 
     stdx::unordered_map<std::string, std::pair<NamespaceString, UUID>> identsToNsAndUUID;
@@ -277,7 +244,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
     builder << "dbpath" << storageGlobalParams.dbpath;
     if (!oplogStart.isNull()) {
         builder << "oplogStart" << oplogStart.toBSON();
-        builder << "oplogEnd" << oplogEnd.toBSON();
     }
 
     if (options.disableIncrementalBackup) {

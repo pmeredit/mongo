@@ -57,7 +57,7 @@ function assertUpdatedLogsAfterMultipleExtendCalls() {
     const metadata = firstBatch["metadata"];
 
     const backupId = metadata.backupId;
-    let clusterTime = metadata.oplogEnd.ts;
+    let clusterTime = rst.status().$clusterTime.clusterTime;
 
     // We insert new documents and call 'extendBackupCursor' multiple times and expect to read
     // an extra log file from the cursor and leave the older log files unchanged.
