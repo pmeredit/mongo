@@ -11,6 +11,7 @@
 #include <exception>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "mongo/bson/bsonelement.h"
@@ -1659,14 +1660,40 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
 
 TEST_F(WindowOperatorTest, LateData) {
     testBoth([this]() {
-        // Late documents should not be rejected because allowedLateness is now a window property
-        // as long as they are greater than previous watermark.
+        /**
+         * Late documents should not be rejected because allowedLateness is now a window property
+         * as long as they are greater than previous watermark.
+         *
+         * Expected min/maxEventTimestampMs values by windows:
+         * ["2023-04-10T17:02:19.062000", "2023-04-10T17:02:19.062000"], size=1
+         * ["2023-04-10T17:02:20.062839", "2023-04-10T17:02:24.062000"], size=2
+         * ["2023-04-10T17:02:25.100000", "2023-04-10T17:02:29.120000"], size=2
+         * ["2023-04-10T17:02:30.300000"), currently open window
+         */
         std::string jsonInput = R"([
             {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
             {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
             {"id": 12, "timestamp": "2023-04-10T17:02:19.062000"},
-            {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
+            {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"},
+            {"id": 12, "timestamp": "2023-04-10T17:02:29.120000"},
+            {"id": 12, "timestamp": "2023-04-10T17:02:30.300000"}
         ])";
+
+        auto expectedWindowBounds = std::vector<std::pair<Date_t, Date_t>>{
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 15, 0),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0)),
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0)),
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0))};
+
+        auto expectedEventTimestampBoundsPerWindow = std::vector<std::pair<Date_t, Date_t>>{
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 19, 62),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 19, 62)),
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62)),
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 29, 120))};
 
         std::string pipeline = R"(
         [
@@ -1692,23 +1719,136 @@ TEST_F(WindowOperatorTest, LateData) {
         }
         auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-        // Verify there is only 1 window and 1 control message.
+        ASSERT_EQ(4, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT(results[1].dataMsg);
+        ASSERT(results[2].dataMsg);
+        ASSERT(results[3].controlMsg);
+
+        ASSERT_EQ(1, results[0].dataMsg->docs.size());
+        ASSERT_EQ(2, results[1].dataMsg->docs.size());
+        ASSERT_EQ(2, results[2].dataMsg->docs.size());
+
+
+        // Iterate through all data messages (each representing a window) and verify that all
+        // documents within that window have the expected window bounds
+        for (size_t i = 0; i < results.size() - 1; i++) {
+            auto result = results[i];
+
+            for (auto& doc : result.dataMsg->docs) {
+                auto [start, end] = getBoundaries(doc);
+                ASSERT_EQ(expectedWindowBounds[i].first, start);
+                ASSERT_EQ(expectedWindowBounds[i].second, end);
+            }
+        }
+
+        // Iterate through all data messages (each representing a window) and verify that all
+        // documents within that window have the expected minEventTimestampMs and
+        // maxEventTimestampMs values.
+        for (size_t i = 0; i < results.size() - 1; i++) {
+            auto result = results[i];
+
+            ASSERT(result.dataMsg);
+
+            for (auto& doc : result.dataMsg->docs) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].first,
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].second,
+                          Date_t::fromMillisSinceEpoch(max));
+            }
+        }
+        ASSERT_EQ(0, dlqMsgs.size());
+    });
+}
+
+TEST_F(WindowOperatorTest, LimitGroupSortLimitPipeline) {
+    testBoth([this]() {
+        std::string jsonInput = R"([
+            {"id": 12, count: 1, breed: "pug", "timestamp": "2023-04-10T17:02:20.062839"},
+            {"id": 12, count: 2, breed: "poodle", "timestamp": "2023-04-10T17:02:24.062000"},
+            {"id": 12, count: 3, breed: "shibe", "timestamp": "2023-04-10T17:02:25.100000"},
+            {"id": 12, count: 4, breed: "retriever", "timestamp": "2023-04-10T17:02:29.120000"},
+            {"id": 12, count: 5, breed: "german sheperd", "timestamp": "2023-04-10T17:02:30.300000"}
+        ])";
+
+        auto expectedWindowBounds = std::vector<std::pair<Date_t, Date_t>>{
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0)),
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0))};
+
+        auto expectedEventTimestampBoundsPerWindow = std::vector<std::pair<Date_t, Date_t>>{
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62)),
+            std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
+                           timeZone.createFromDateParts(2023, 4, 10, 17, 2, 29, 120))};
+
+        // $limit performs a passthrough for the streamDoc.minEventTimestampMs and
+        // streamDoc.maxEventTimestampMs fields. Ensure that those fields are as we'd expect as
+        // output from the previous operator.
+        std::string pipeline = R"(
+        [
+        {
+            $tumblingWindow: {
+                interval: {size: 5, unit: "second"},
+                allowedLateness: { size: 0, unit: "second" },
+                pipeline: [
+                    { $limit: 5 },
+                    { $group: { _id: "$breed", count: { $sum: "$count"} }},
+                    { $sort: { count: 1 }},
+                    { $limit: 2 }
+                ]
+            }
+        }
+        ]
+        )";
+
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+
         ASSERT_EQ(3, results.size());
+        ASSERT(results[0].dataMsg);
         ASSERT(results[1].dataMsg);
         ASSERT(results[2].controlMsg);
-        // The 1 window should have two document results.
+
+        ASSERT_EQ(2, results[0].dataMsg->docs.size());
         ASSERT_EQ(2, results[1].dataMsg->docs.size());
-        for (auto& doc : results[1].dataMsg->docs) {
-            auto [start, end] = getBoundaries(doc);
-            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
-            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
-            // TODO(): Verify the doc.minEventTimestampMs matches the event times observed
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
-            //           Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
-            //           Date_t::fromMillisSinceEpoch(max));
+
+
+        // Iterate through all data messages (each representing a window) and verify that all
+        // documents within that window have the expected window bounds
+        for (size_t i = 0; i < results.size() - 1; i++) {
+            auto result = results[i];
+
+            for (auto& doc : result.dataMsg->docs) {
+                auto [start, end] = getBoundaries(doc);
+                ASSERT_EQ(expectedWindowBounds[i].first, start);
+                ASSERT_EQ(expectedWindowBounds[i].second, end);
+            }
+        }
+
+        // Iterate through all data messages (each representing a window) and verify that all
+        // documents within that window have the expected minEventTimestampMs and
+        // maxEventTimestampMs values.
+        for (size_t i = 0; i < results.size() - 1; i++) {
+            auto result = results[i];
+
+            ASSERT(result.dataMsg);
+
+            for (auto& doc : result.dataMsg->docs) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].first,
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].second,
+                          Date_t::fromMillisSinceEpoch(max));
+            }
         }
         ASSERT_EQ(0, dlqMsgs.size());
     });
@@ -1716,12 +1856,17 @@ TEST_F(WindowOperatorTest, LateData) {
 
 TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
     testBoth([this]() {
-        // The 3rd document will advance the watermark and close the 02:22-32 window.
+        // The 3rd document will advance the watermark and close the 02:22-62 window.
         std::string jsonInput = R"([
         {"id": 12, "timestamp": "2023-04-10T17:02:22.062839"},
         {"id": 12, "timestamp": "2023-04-10T17:02:31.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:32.100000"}
     ])";
+
+        auto timestamps =
+            std::vector<Date_t>{timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100)};
 
         std::string pipeline = R"(
 [
@@ -1738,6 +1883,18 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
     }
 ]
     )";
+
+        // We expect the min and max event timestamps of the documents to be their own timestamps in
+        // a pipeline that does not have $sort or $group.
+        auto expectedObservedTimestamps = std::vector<std::vector<Date_t>>{
+            {
+                timestamps[0],
+                timestamps[1],
+            },
+            {
+                timestamps[2],
+            },
+        };
 
         std::vector<BSONObj> inputDocs;
         auto inputBson = fromjson(jsonInput);
@@ -1762,33 +1919,33 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
 
         // The first window should have two document results.
         ASSERT_EQ(2, results[0].dataMsg->docs.size());
-        for (auto& doc : results[0].dataMsg->docs) {
+        for (size_t i = 0; i < results[0].dataMsg->docs.size(); i++) {
+            auto& doc = results[0].dataMsg->docs[i];
+
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), end);
+
             // Verify the doc.minEventTimestampMs matches the event times observed
-            // TODO(SERVER-83469): Track min and max observed event timestamp in new WindowOperator.
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
-            //           Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
-            //           Date_t::fromMillisSinceEpoch(max));
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(max));
         }
 
         // The second window should have one document.
         ASSERT_EQ(1, results[1].dataMsg->docs.size());
-        for (auto& doc : results[1].dataMsg->docs) {
+        for (size_t i = 0; i < results[1].dataMsg->docs.size(); i++) {
+            auto& doc = results[1].dataMsg->docs[i];
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0), end);
+
             // Verify the doc.minEventTimestampMs matches the event times observed
             auto min = doc.minEventTimestampMs;
             auto max = doc.maxEventTimestampMs;
-            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
-                      Date_t::fromMillisSinceEpoch(min));
-            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
-                      Date_t::fromMillisSinceEpoch(max));
+            ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(max));
         }
     });
 }
@@ -1800,6 +1957,11 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowPlusOffset) {
         {"id": 12, "timestamp": "2023-04-10T17:02:31.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:32.100000"}
     ])";
+
+        auto timestamps =
+            std::vector<Date_t>{timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100)};
 
         std::string pipeline = R"(
 [
@@ -1827,26 +1989,34 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowPlusOffset) {
 
         struct expectedWindow {
             Date_t windowStart, windowEnd;
-            Date_t minEventTimestamp, maxEventTimestamp;
         };
 
         std::vector<expectedWindow> expectedWindows{
-            {{.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 17, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62)},
-             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62)},
-             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 37, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100)},
-             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100)}}};
+            {{
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 17, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 0),
+             },
+             {
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0),
+             },
+             {
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 37, 0),
+             },
+             {
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0),
+             }}};
+
+        // We expect the min and max event timestamps of the documents to be their own timestamps in
+        // a pipeline that does not have $sort or $group.
+        std::vector<std::vector<Date_t>> expectedObservedTimestamps{{
+            {timestamps[0]},
+            {timestamps[0], timestamps[1]},
+            {timestamps[1], timestamps[2]},
+            {timestamps[2]},
+        }};
 
         // The last message should be the watermark control message.
         ASSERT_EQUALS(expectedWindows.size() + 1, results.size());
@@ -1857,20 +2027,17 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowPlusOffset) {
             const auto& actualDocs = results[i].dataMsg->docs;
             const auto& expectedWindow = expectedWindows[i];
 
-            for (const auto& actualDoc : actualDocs) {
+            for (size_t j = 0; j < actualDocs.size(); j++) {
+                auto& actualDoc = actualDocs[j];
                 auto [start, end] = getBoundaries(actualDoc);
                 ASSERT_EQUALS(expectedWindow.windowStart, start);
                 ASSERT_EQUALS(expectedWindow.windowEnd, end);
 
                 // Verify the doc.minEventTimestampMs matches the event times observed
-                // TODO(SERVER-83469): Track min and max observed event timestamp in new
-                // WindowOperator.
-                // int64_t min = actualDoc.minEventTimestampMs;
-                // int64_t max = actualDoc.maxEventTimestampMs;
-                // ASSERT_EQUALS(expectedWindow.minEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(min));
-                // ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(max));
+                int64_t min = actualDoc.minEventTimestampMs;
+                int64_t max = actualDoc.maxEventTimestampMs;
+                ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(max));
             }
         }
     });
@@ -1884,6 +2051,11 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
         {"id": 12, "timestamp": "2023-04-10T17:02:27.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:28.100000"}
     ])";
+        auto timestamps =
+            std::vector<Date_t>{timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100)};
+
 
         std::string pipeline = R"(
 [
@@ -1900,6 +2072,13 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
     }
 ]
     )";
+
+        // We expect the min and max event timestamps of the documents to be their own timestamps in
+        // a pipeline that does not have $sort or $group.
+        std::vector<std::vector<Date_t>> expectedObservedTimestamps{{
+            {timestamps[0], timestamps[1]},
+            {timestamps[2]},
+        }};
 
         std::vector<BSONObj> inputDocs;
         auto inputBson = fromjson(jsonInput);
@@ -1924,18 +2103,17 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
 
         // The first window should have two document results.
         ASSERT_EQ(2, results[0].dataMsg->docs.size());
-        for (auto& doc : results[0].dataMsg->docs) {
+        for (size_t i = 0; i < results[0].dataMsg->docs.size(); i++) {
+            auto& doc = results[0].dataMsg->docs[i];
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), end);
+
             // Verify the doc.minEventTimestampMs matches the event times observed
-            // TODO(SERVER-83469): Track min and max observed event timestamp in new WindowOperator.
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
-            //           Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
-            //           Date_t::fromMillisSinceEpoch(max));
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(max));
         }
 
         // The second window should have only one document.
@@ -1944,6 +2122,7 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0), end);
+
             // Verify the doc.minEventTimestampMs matches the event times observed
             auto min = doc.minEventTimestampMs;
             auto max = doc.maxEventTimestampMs;
@@ -1962,6 +2141,12 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowMinusOffset) {
         {"id": 12, "timestamp": "2023-04-10T17:02:27.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:28.100000"}
     ])";
+
+        auto timestamps =
+            std::vector<Date_t>{timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+                                timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100)};
+
 
         std::string pipeline = R"(
 [
@@ -1989,28 +2174,35 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowMinusOffset) {
 
         struct expectedWindow {
             Date_t windowStart, windowEnd;
-            Date_t minEventTimestamp, maxEventTimestamp;
         };
 
         std::vector<expectedWindow> expectedWindows{
             {{
                  .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 13, 0),
                  .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 23, 0),
-                 .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
-                 .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
              },
-             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62)},
-             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 23, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 33, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100)},
-             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0),
-              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0),
-              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
-              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100)}}};
+             {
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0),
+             },
+             {
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 23, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 33, 0),
+             },
+             {
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0),
+             }}};
+
+        // We expect the min and max event timestamps of the documents to be their own timestamps in
+        // a pipeline that does not have $sort or $group.
+        std::vector<std::vector<Date_t>> expectedObservedTimestamps{{
+            {timestamps[0]},
+            {timestamps[0], timestamps[1]},
+            {timestamps[1], timestamps[2]},
+            {timestamps[2]},
+        }};
+
 
         // The last message should be the watermark control message.
         ASSERT_EQUALS(expectedWindows.size() + 1, results.size());
@@ -2021,20 +2213,17 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowMinusOffset) {
             const auto& actualDocs = results[i].dataMsg->docs;
             const auto& expectedWindow = expectedWindows[i];
 
-            for (const auto& actualDoc : actualDocs) {
+            for (size_t j = 0; j < actualDocs.size(); j++) {
+                auto& actualDoc = actualDocs[j];
                 auto [start, end] = getBoundaries(actualDoc);
                 ASSERT_EQUALS(expectedWindow.windowStart, start);
                 ASSERT_EQUALS(expectedWindow.windowEnd, end);
 
                 // Verify the doc.minEventTimestampMs matches the event times observed
-                // TODO(SERVER-83469): Track min and max observed event timestamp in new
-                // WindowOperator.
-                // int64_t min = actualDoc.minEventTimestampMs;
-                // int64_t max = actualDoc.maxEventTimestampMs;
-                // ASSERT_EQUALS(expectedWindow.minEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(min));
-                // ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(max));
+                int64_t min = actualDoc.minEventTimestampMs;
+                int64_t max = actualDoc.maxEventTimestampMs;
+                ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(max));
             }
         }
     });
@@ -2245,6 +2434,23 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
         {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
     ])";
+        auto timestamps = std::vector<Date_t>{
+            timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+            timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+            timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
+        };
+
+        // We expect the min and max event timestamps of the documents to be their own timestamps in
+        // a pipeline that does not have $sort or $group.
+        auto expectedObservedTimestamps = std::vector<std::vector<Date_t>>{
+            {
+                timestamps[0],
+                timestamps[1],
+            },
+            {
+                timestamps[2],
+            },
+        };
 
         std::vector<BSONObj> inputDocs;
         auto inputBson = fromjson(jsonInput);
@@ -2261,33 +2467,32 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
 
         // The first window should have two document results.
         ASSERT_EQ(2, results[0].dataMsg->docs.size());
-        for (auto& doc : results[0].dataMsg->docs) {
+        for (size_t i = 0; i < results[0].dataMsg->docs.size(); i++) {
+            auto& doc = results[0].dataMsg->docs[i];
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
+
             // Verify the doc.minEventTimestampMs matches the event times observed
-            // TODO(): Track min and max observed event timestamp in new WindowOperator.
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
-            //             Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
-            //             Date_t::fromMillisSinceEpoch(max));
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(max));
         }
 
         // The second window should have one document results.
         ASSERT_EQ(1, results[1].dataMsg->docs.size());
-        for (auto& doc : results[1].dataMsg->docs) {
+        for (size_t i = 0; i < results[1].dataMsg->docs.size(); i++) {
+            auto& doc = results[1].dataMsg->docs[i];
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0), end);
+
             // Verify the doc.minEventTimestampMs matches the event times observed
             auto min = doc.minEventTimestampMs;
             auto max = doc.maxEventTimestampMs;
-            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
-                      Date_t::fromMillisSinceEpoch(min));
-            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
-                      Date_t::fromMillisSinceEpoch(max));
+            ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(max));
         }
     });
 }
@@ -2450,8 +2655,8 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
             docs.emplace_back(std::move(sourceDoc));
         }
 
-        // By populating one of our consumers and leaving the other empty, we can simulate an idle
-        // partition.
+        // By populating one of our consumers and leaving the other empty, we can simulate
+        // an idle partition.
         consumers[0]->addDocuments(std::move(docs));
 
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
@@ -2460,13 +2665,13 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         auto results = toVector(sink->getMessages());
 
         // Initially, we shouldn't have any results.
-        // There is one partition idle in the source, so the $source sends an event time watermark
-        // of -1 along. This does not change the window's output watermark, so nothing is sent to
-        // the sink.
+        // There is one partition idle in the source, so the $source sends an event time
+        // watermark of -1 along. This does not change the window's output watermark, so
+        // nothing is sent to the sink.
         ASSERT(results.empty());
 
-        // If we sleep for longer than the idleness period, both partitions should be marked as
-        // idle.
+        // If we sleep for longer than the idleness period, both partitions should be marked
+        // as idle.
         sleepmillis(6 * 1000);
 
         kafkaRunOnce(source);
@@ -2476,10 +2681,10 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         // operator has still not advanced its output watermark that the sink sees.
         ASSERT(results.empty());
 
-        // Add another document to our first partition. This should allow for our earliest window to
-        // be closed, as this event is 4 seconds after the previous four events (exceeding the size
-        // of the window). Crucially, we should close the window even if our second partition is
-        // idle.
+        // Add another document to our first partition. This should allow for our earliest
+        // window to be closed, as this event is 4 seconds after the previous four events
+        // (exceeding the size of the window). Crucially, we should close the window even if
+        // our second partition is idle.
         KafkaSourceDocument sourceDoc;
         const auto controlTimestampString = "2023-04-10T17:02:25.100Z";
         const auto dateWithStatus = dateFromISOString(controlTimestampString);
@@ -2488,8 +2693,8 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         const auto lastTumblingWindowTimestamp =
             dateFromISOString(lastTumblingWindowTimestampString);
 
-        // The watermark time is computed as the timestamp minus the default allowed lateness minus
-        // one.
+        // The watermark time is computed as the timestamp minus the default allowed
+        // lateness minus one.
         const auto expectedMillisSinceEpoch =
             std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 1,
                      lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
@@ -2596,8 +2801,8 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
         kafkaRunOnce(source);
         auto results = toVector(sink->getMessages());
 
-        // Initially, we shouldn't have any results (that is, we should have open windows but no
-        // data msg results in our sink).
+        // Initially, we shouldn't have any results (that is, we should have open windows
+        // but no data msg results in our sink).
         ASSERT(!results.empty());
         for (auto res : results) {
             ASSERT(!res.dataMsg);
@@ -2606,9 +2811,9 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
             ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
         }
 
-        // If we sleep for longer than the idleness period and run again, both partitions should be
-        // marked as idle. In the absence of new events, we should not close any windows, no matter
-        // how many times we run or how long we wait.
+        // If we sleep for longer than the idleness period and run again, both partitions
+        // should be marked as idle. In the absence of new events, we should not close any
+        // windows, no matter how many times we run or how long we wait.
         sleepmillis(8 * 1000);
         kafkaRunOnce(source);
         kafkaRunOnce(source);
@@ -2678,8 +2883,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
             docs.emplace_back(std::move(sourceDoc));
         }
 
-        // By populating one of our consumers and leaving the other empty, we can simulate an idle
-        // partition.
+        // By populating one of our consumers and leaving the other empty, we can simulate
+        // an idle partition.
         consumers[0]->addDocuments(std::move(docs));
 
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
@@ -2688,24 +2893,25 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
         auto results = toVector(sink->getMessages());
 
         // Initially, we shouldn't have any results.
-        // There is one partition idle in the source, so the $source sends an event time watermark
-        // of -1 along. This does not change the window's output watermark, so nothing is sent to
-        // the sink.
+        // There is one partition idle in the source, so the $source sends an event time
+        // watermark of -1 along. This does not change the window's output watermark, so
+        // nothing is sent to the sink.
         ASSERT(results.empty());
 
-        // If we sleep for longer than the idleness period, but shorter than the window size, both
-        // partitions should be marked as idle.
+        // If we sleep for longer than the idleness period, but shorter than the window
+        // size, both partitions should be marked as idle.
         sleepmillis(2 * 1000);
         kafkaRunOnce(source);
         results = toVector(sink->getMessages());
 
-        // We should still have no output messages, and our partition should be marked as idle.
+        // We should still have no output messages, and our partition should be marked as
+        // idle.
         ASSERT(results.empty());
 
-        // Add another document. This should allow for our earliest window to be closed, as this
-        // event is more than 5 seconds after the previous four events (exceeding the size of the
-        // window), plus the default allowed lateness. Crucially, we should close the window even if
-        // our second partition is idle.
+        // Add another document. This should allow for our earliest window to be closed, as
+        // this event is more than 5 seconds after the previous four events (exceeding the
+        // size of the window), plus the default allowed lateness. Crucially, we should
+        // close the window even if our second partition is idle.
         KafkaSourceDocument sourceDoc;
         const auto controlTimestampString = "2023-04-10T17:02:28.200Z";
         const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:25.000Z";
@@ -2714,7 +2920,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
             dateFromISOString(lastTumblingWindowTimestampString);
         ASSERT_OK(dateWithStatus);
 
-        // The watermark time is computed as the timestamp minus the allowed lateness minus 1.
+        // The watermark time is computed as the timestamp minus the allowed lateness
+        // minus 1.
         const auto expectedMillisSinceEpoch =
             std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1,
                      lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
@@ -3035,8 +3242,8 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     // and send along it's output watermark as minWindowStartTime - 1.
     source->runOnce();
     auto sourceEventTimeWatermark = now - Milliseconds{1};
-    // The remaining window time is the windowEnd time minus the last observed source event time
-    // watermark.
+    // The remaining window time is the windowEnd time minus the last observed source event
+    // time watermark.
     Milliseconds remainingWindowTime = windowEndTime - sourceEventTimeWatermark;
     int64_t expectedWindowOutputWatermark =
         toOldestWindowStartTime(sourceEventTimeWatermark.toMillisSinceEpoch(), window) - 1;
@@ -3072,9 +3279,9 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     ASSERT_EQ(1, results[1].dataMsg->docs.size());
     ASSERT_EQ(windowStartTime, *results[1].dataMsg->docs[0].streamMeta.getWindow()->getStart());
     ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindow()->getEnd());
-    // results[2] is the watermark output of the window operator. The window output watermark is
-    // the minimum window start time minus 1. The expected minimum window start time
-    // is one hop after the max window we have just output.
+    // results[2] is the watermark output of the window operator. The window output
+    // watermark is the minimum window start time minus 1. The expected minimum window start
+    // time is one hop after the max window we have just output.
     auto minWindowStartTime = windowStartTime + windowSize;
     ASSERT(results[2].controlMsg);
     ASSERT(results[2].controlMsg->watermarkMsg);
@@ -3129,9 +3336,9 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     dag->stop();
 }
 
-// Close a window, send a checkpoint, restore from the checkpoint, and verify late events for the
-// window we closed are DLQ-ed. This verifies we are saving the minimum window start time in the
-// WindowAwareOperator checkpoints.
+// Close a window, send a checkpoint, restore from the checkpoint, and verify late events
+// for the window we closed are DLQ-ed. This verifies we are saving the minimum window start
+// time in the WindowAwareOperator checkpoints.
 TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
     _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
     _context->checkpointStorage->registerMetrics(_executor->getMetricManager());
@@ -3192,8 +3399,8 @@ TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
     ASSERT_EQ(1000, dlqMessages[0].getField("missedWindowStartTimes").Array()[0].Long());
 }
 
-// Test a $tumblingWindow with an input batch containing one late document, and one document a few
-// hops ahead of the minimum allowed window start time.
+// Test a $tumblingWindow with an input batch containing one late document, and one document
+// a few hops ahead of the minimum allowed window start time.
 TEST_F(WindowOperatorTest, SERVER_92798) {
     _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
     _context->checkpointStorage->registerMetrics(_executor->getMetricManager());
@@ -3222,8 +3429,8 @@ TEST_F(WindowOperatorTest, SERVER_92798) {
                                                         .eventTimeWatermarkMs = 1000}}},
         StreamMsgUnion{.dataMsg = StreamDataMsg{{// late
                                                  generateDocMs(0, 1, 1),
-                                                 // on-time, but a few slide durations ahead of the
-                                                 // minWindowStartTime.
+                                                 // on-time, but a few slide durations ahead
+                                                 // of the minWindowStartTime.
                                                  generateDocMs(5000, 1, 1)}}},
     }};
 

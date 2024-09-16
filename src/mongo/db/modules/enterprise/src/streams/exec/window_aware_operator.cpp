@@ -394,7 +394,7 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
     tassert(8318505, "Expected a watermarkMsg", controlMsg.watermarkMsg);
     const auto& watermark = *controlMsg.watermarkMsg;
     const auto& options = getOptions();
-    tassert(8347600, "Expected to be the window assignger", options.windowAssigner);
+    tassert(8347600, "Expected to be the window assigner", options.windowAssigner);
     const auto& assigner = *options.windowAssigner;
 
     bool isInputActive = watermark.watermarkStatus == WatermarkStatus::kActive;

@@ -59,6 +59,11 @@ void GroupOperator::doProcessDocs(Window* window, std::vector<StreamDocument> st
             invariant(inserted);
         }
 
+        window->minEventTimestampMs =
+            std::min(window->minEventTimestampMs, streamDoc.minEventTimestampMs);
+        window->maxEventTimestampMs =
+            std::max(window->maxEventTimestampMs, streamDoc.maxEventTimestampMs);
+
         processor->accumulate(*groupIter, accumulatorArgs);
     }
     groupWindow->stats.numInputDocs += streamDocs.size();
@@ -110,6 +115,8 @@ void GroupOperator::doCloseWindow(Window* window) {
         }
         StreamDocument streamDoc(std::move(doc));
         streamDoc.streamMeta = window->streamMetaTemplate;
+        streamDoc.minEventTimestampMs = window->minEventTimestampMs;
+        streamDoc.maxEventTimestampMs = window->maxEventTimestampMs;
         outputMsg.docs.emplace_back(std::move(streamDoc));
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
             curDataMsgByteSize >= kDataMsgMaxByteSize) {

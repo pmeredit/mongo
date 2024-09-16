@@ -13,6 +13,7 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_operator.h"
+#include <algorithm>
 #include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -46,6 +47,11 @@ void SortOperator::doProcessDocs(Window* window, std::vector<StreamDocument> str
             continue;
         }
 
+        window->minEventTimestampMs =
+            std::min(window->minEventTimestampMs, streamDoc.minEventTimestampMs);
+        window->maxEventTimestampMs =
+            std::max(window->maxEventTimestampMs, streamDoc.maxEventTimestampMs);
+
         processor->add(sortKey, streamDoc.doc);
     }
     window->stats.numInputDocs += streamDocs.size();
@@ -74,6 +80,8 @@ void SortOperator::doCloseWindow(Window* window) {
         curDataMsgByteSize += result.getApproximateSize();
         StreamDocument streamDoc(std::move(result));
         streamDoc.streamMeta = window->streamMetaTemplate;
+        streamDoc.minEventTimestampMs = window->minEventTimestampMs;
+        streamDoc.maxEventTimestampMs = window->maxEventTimestampMs;
         outputMsg.docs.emplace_back(std::move(streamDoc));
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
             curDataMsgByteSize >= kDataMsgMaxByteSize) {

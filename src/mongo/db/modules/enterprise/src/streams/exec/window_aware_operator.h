@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "mongo/db/exec/document_value/value_comparator.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
@@ -92,6 +94,10 @@ protected:
         mongo::Status status{mongo::Status::OK()};
         // Stats for this window.
         PerWindowStats stats;
+        // The lowest observed timestamp of events in this window.
+        int64_t minEventTimestampMs{std::numeric_limits<int64_t>::max()};
+        // The highest observed timestamp of events in this window.
+        int64_t maxEventTimestampMs{-1};
 
         int64_t getWindowID() {
             return *streamMetaTemplate.getWindow()->getWindowID();
