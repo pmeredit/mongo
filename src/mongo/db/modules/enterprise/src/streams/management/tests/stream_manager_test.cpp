@@ -1257,4 +1257,56 @@ TEST_F(StreamManagerTest, MultiTenancy) {
     mongo::streams::gStreamsAllowMultiTenancy = false;
 }
 
+TEST_F(StreamManagerTest, ParseOnlyMode_Lookup) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+    std::string pipelineRaw = R"([
+        { $source: { connectionName: "__testMemory" } },
+        { $lookup: { from: { connectionName: "connName1", db: "dbName", coll: "collName" }, localField: "a", foreignField: "b", as: "c" } },
+        { $emit: { connectionName: "__noopSink" } }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    StartStreamProcessorCommand request;
+    request.setPipeline(parsePipelineFromBSON(pipeline));
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    auto startOptions = mongo::StartOptions{};
+    startOptions.setParseOnly(true);
+    request.setOptions(startOptions);
+    auto reply = streamManager->startStreamProcessor(request);
+    auto parseConnections = reply.getConnections();
+    ASSERT_EQUALS(3, parseConnections->size());
+    ASSERT_EQUALS("__testMemory", parseConnections->at(0).getName());
+    ASSERT_EQUALS("connName1", parseConnections->at(1).getName());
+    ASSERT_EQUALS("__noopSink", parseConnections->at(2).getName());
+}
+
+TEST_F(StreamManagerTest, ParseOnlyMode_CollectionlessLookup) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    std::string pipelineRaw = R"([
+        { $source: { connectionName: "__testMemory" } },
+        { $lookup: { localField: "a", foreignField: "b", as: "c", pipeline: [] } },
+        { $emit: { connectionName: "__noopSink" } }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    StartStreamProcessorCommand request;
+    request.setPipeline(parsePipelineFromBSON(pipeline));
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    auto startOptions = mongo::StartOptions{};
+    startOptions.setParseOnly(true);
+    request.setOptions(startOptions);
+    auto reply = streamManager->startStreamProcessor(request);
+    auto parseConnections = reply.getConnections();
+    ASSERT_EQUALS(2, parseConnections->size());
+    ASSERT_EQUALS("__testMemory", parseConnections->at(0).getName());
+    ASSERT_EQUALS("__noopSink", parseConnections->at(1).getName());
+}
+
 }  // namespace streams

@@ -125,3 +125,29 @@ test({
         {name: "bar", stage: "$emit"},
     ]
 });
+
+test({
+    pipeline: [
+        {
+            $source: {
+                connectionName: "conn1",
+                timeField: {$toDate: "$timestamp"},
+            }
+        },
+        {$lookup: {localField: "a", foreignField: "b", as: "out", pipeline: []}},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                pipeline: [{$lookup: {localField: "a", foreignField: "b", as: "out", pipeline: []}}]
+            }
+        },
+        {$merge: {into: {connectionName: "conn2", db: dbName, coll: collName}}}
+    ],
+    dlq: {
+        connectionName: "conn6",
+        db: dbName,
+        coll: dlqCollName,
+    },
+    expectedConnectionNames:
+        [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
+});

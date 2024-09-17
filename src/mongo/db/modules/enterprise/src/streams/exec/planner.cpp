@@ -1778,11 +1778,15 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
                                                        << kConnectionNameField)
                                             .ss.str()));
         } else if (isLookUpStage(stageName)) {
-            addConnectionName(
-                stageName,
-                spec,
-                FieldPath(
-                    (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
+            // If the 'from' field does not exist in the $lookup stage, there is no connection
+            // information to retrieve. This scenario is valid when a 'pipeline' field is defined.
+            if (!spec.getField(kFromFieldName).missing()) {
+                addConnectionName(
+                    stageName,
+                    spec,
+                    FieldPath(
+                        (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
+            }
         } else if (isWindowStage(stageName)) {
             std::vector<mongo::BSONObj> windowPipeline;
             if (stageName == kTumblingWindowStageName) {
@@ -1807,11 +1811,16 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
                 auto windowStageName = windowStage.firstElementFieldNameStringData();
                 auto windowStageSpec = Document(windowStage.firstElement().Obj());
                 if (isLookUpStage(windowStageName)) {
-                    addConnectionName(
-                        windowStageName,
-                        windowStageSpec,
-                        FieldPath((str::stream() << kFromFieldName << "." << kConnectionNameField)
-                                      .ss.str()));
+                    // If the 'from' field does not exist in the $lookup stage, there is no
+                    // connection information to retrieve. This scenario is valid when a 'pipeline'
+                    // field is defined.
+                    if (!windowStageSpec.getField(kFromFieldName).missing()) {
+                        addConnectionName(windowStageName,
+                                          windowStageSpec,
+                                          FieldPath((str::stream() << kFromFieldName << "."
+                                                                   << kConnectionNameField)
+                                                        .ss.str()));
+                    }
                 }
             }
         }
