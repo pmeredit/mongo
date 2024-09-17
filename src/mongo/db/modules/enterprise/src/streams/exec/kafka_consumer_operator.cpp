@@ -172,6 +172,7 @@ void KafkaConsumerOperator::Connector::start() {
         } catch (const std::exception& e) {
             LOGV2_ERROR(8155001,
                         "Unexpected exception while connecting to kafka $source",
+                        "context"_attr = _context,
                         "exception"_attr = e.what());
             onConnectionError(
                 SPStatus{mongo::Status{ErrorCodes::InternalError,
@@ -414,6 +415,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
 
     LOGV2_INFO(77187,
                "KafkaConsumerOperator restoring from checkpoint",
+               "context"_attr = _context,
                "state"_attr = _restoredCheckpointState->toBSON(),
                "checkpointId"_attr = *_context->restoreCheckpointId);
 
@@ -540,6 +542,7 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
             dassert(false);
             LOGV2_WARNING(8674610,
                           "Error from librdkafka assignment call",
+                          "context"_attr = _context,
                           "err"_attr = int(err),
                           "errMsg"_attr = RdKafka::err2str(err));
         }
@@ -554,6 +557,7 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
                         dassert(false);
                         LOGV2_WARNING(8674607,
                                       "Error from librdkafka pause call for topic",
+                                      "context"_attr = _context,
                                       "err"_attr = int(err),
                                       "errMsg"_attr = RdKafka::err2str(err),
                                       "topic"_attr = partition->topic(),
@@ -564,6 +568,7 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
                 dassert(false);
                 LOGV2_WARNING(8674609,
                               "Error from librdkafka pause call",
+                              "context"_attr = _context,
                               "err"_attr = int(err),
                               "errMsg"_attr = RdKafka::err2str(err));
             }
@@ -584,6 +589,7 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
             dassert(false);
             LOGV2_WARNING(8674611,
                           "Unexpected data msg in groupConsumerBackgroundTask",
+                          "context"_attr = _context,
                           "partition"_attr = msg->partition(),
                           "offset"_attr = msg->offset(),
                           "len"_attr = msg->len(),
@@ -626,6 +632,7 @@ void KafkaConsumerOperator::init() {
                 // TODO(SERVER-87007): Consider promoting this warning to an error.
                 LOGV2_WARNING(8674608,
                               "Unexpected exception in groupConsumerBackgroundTask",
+                              "context"_attr = _context,
                               "exception"_attr = e.what());
             }
         });

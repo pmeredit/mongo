@@ -1433,7 +1433,9 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                     "Expected serializeToArray to return a single BSONObj.",
                     serializedStage.size() == 1);
         } else if (serializedStage.size() != 1) {
-            LOGV2_WARNING(9012802, "SerializeToArray returned more than one BSONObj.");
+            LOGV2_WARNING(9012802,
+                          "SerializeToArray returned more than one BSONObj.",
+                          "context"_attr = _context);
         }
         return serializedStage[0].getDocument().toBson();
     };
@@ -1732,6 +1734,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
         if (op->getOperatorId() != OperatorId(idx)) {
             LOGV2_WARNING(9012801,
                           "Operator had unexpected operatorId",
+                          "context"_attr = _context,
                           "name"_attr = op->getName(),
                           "index"_attr = idx,
                           "operatorId"_attr = op->getOperatorId());

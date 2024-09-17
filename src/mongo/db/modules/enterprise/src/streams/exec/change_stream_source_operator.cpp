@@ -443,6 +443,7 @@ void ChangeStreamSourceOperator::doStart() {
             // exception.
             LOGV2_WARNING(8681501,
                           "Unexpected std::exception in changestream $source",
+                          "context"_attr = _context,
                           "exception"_attr = e.what());
             stdx::unique_lock lock(_mutex);
             _connectionStatus = {

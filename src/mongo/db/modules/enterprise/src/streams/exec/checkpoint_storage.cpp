@@ -54,7 +54,8 @@ void CheckpointStorage::onCheckpointFlushed(CheckpointId checkpointId) {
         // doesn't know about. This block is to handle that.
         LOGV2_WARNING(9416700,
                       "onCheckpointFlushed with unknown checkpointId",
-                      "checkpointId"_attr = checkpointId);
+                      "checkpointId"_attr = checkpointId,
+                      "context"_attr = _context);
         return;
     }
     auto bson = _unflushedCheckpoints.pop(checkpointId);

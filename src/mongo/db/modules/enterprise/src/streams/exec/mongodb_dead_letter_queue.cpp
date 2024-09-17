@@ -185,6 +185,7 @@ void MongoDBDeadLetterQueue::consumeLoop() {
         } catch (const std::exception& ex) {
             LOGV2_ERROR(8112612,
                         "Error encountered while writing to the DLQ.",
+                        "context"_attr = _context,
                         "exception"_attr = ex.what());
             status = Status{
                 ErrorCodes::Error{8191506},

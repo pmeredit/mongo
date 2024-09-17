@@ -339,6 +339,7 @@ int KafkaConnectAuthCallback::connect_cb(int sockfd,
         LOGV2_ERROR(
             780050,
             "Unexpected exception while running connect_cb in librdkafka - check gwproxy health",
+            "context"_attr = _context,
             "exception"_attr = e.what());
     }
     return -1;

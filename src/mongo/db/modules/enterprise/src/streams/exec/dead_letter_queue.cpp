@@ -29,7 +29,7 @@ int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
     }
     objBuilder.append("dlqTime", Date_t::now());
     auto obj = objBuilder.obj();
-    LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj);
+    LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj, "context"_attr = _context);
     sendOutputToSamplers(obj);
     auto dlqBytes = doAddMessage(std::move(obj));
     _numDlqDocumentsCounter->increment();

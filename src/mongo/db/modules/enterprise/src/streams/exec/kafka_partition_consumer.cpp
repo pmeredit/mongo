@@ -489,6 +489,7 @@ boost::optional<int64_t> KafkaPartitionConsumer::doGetLatestOffsetAtBroker() con
     if (err != RdKafka::ERR_NO_ERROR) {
         LOGV2_INFO(9092701,
                    "Could not get latest offset at broker",
+                   "context"_attr = _context,
                    "partition"_attr = _options.partition,
                    "err"_attr = err);
         return boost::none;

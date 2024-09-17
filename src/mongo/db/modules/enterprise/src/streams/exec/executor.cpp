@@ -467,6 +467,7 @@ Executor::RunStatus Executor::runOnce() {
                         "uncheckpointedState"_attr = _uncheckpointedState,
                         "changeStreamAdvanced"_attr = changeStreamAdvanced,
                         "req"_attr = _writeCheckpointCommand.load(),
+                        "context"_attr = _context,
                         "firstcheckpoint"_attr = checkpointCoordinator->writtenFirstCheckpoint());
             sendCheckpointControlMsg(std::move(*checkpointControlMsg));
         }
@@ -503,6 +504,7 @@ void Executor::processFlushedCheckpoint(mongo::CheckpointDescription checkpointD
 
     LOGV2_INFO(8256200,
                "Executor::onCheckpointFlush",
+               "context"_attr = _context,
                "checkpointDescription"_attr = checkpointDescription.toBSON());
 
     auto source = _options.operatorDag->source();

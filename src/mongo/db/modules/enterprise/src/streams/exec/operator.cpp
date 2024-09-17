@@ -130,12 +130,17 @@ void Operator::sendDataMsg(int32_t outputIdx,
     // accurately.
     dataMsg.creationTimer = mongo::Timer{};
 
-    LOGV2_DEBUG(
-        8241200, 1, "sendDataMsg", "operatorName"_attr = getName(), "dataMsg"_attr = dataMsg);
+    LOGV2_DEBUG(8241200,
+                1,
+                "sendDataMsg",
+                "context"_attr = _context,
+                "operatorName"_attr = getName(),
+                "dataMsg"_attr = dataMsg);
     if (controlMsg) {
         LOGV2_DEBUG(8241201,
                     1,
                     "sendDataMsg",
+                    "context"_attr = _context,
                     "operatorName"_attr = getName(),
                     "controlMsg"_attr = *controlMsg);
     }
@@ -161,6 +166,7 @@ void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
     LOGV2_DEBUG(8241202,
                 1,
                 "sendControlMsg",
+                "context"_attr = _context,
                 "operatorName"_attr = getName(),
                 "controlMsg"_attr = controlMsg);
 

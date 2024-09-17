@@ -41,6 +41,7 @@ void QueuedSinkOperator::doStart() {
         } catch (const SPException& e) {
             LOGV2_INFO(8520399,
                        "SPException occured in QueuedSinkOperator validateConnection",
+                       "context"_attr = _context,
                        "code"_attr = e.code(),
                        "reason"_attr = e.reason(),
                        "unsafeErrorMessage"_attr = e.unsafeReason());
@@ -48,6 +49,7 @@ void QueuedSinkOperator::doStart() {
         } catch (const DBException& e) {
             LOGV2_INFO(8520301,
                        "Exception occured in QueuedSinkOperator validateConnection",
+                       "context"_attr = _context,
                        "code"_attr = e.code(),
                        "reason"_attr = e.reason());
             status = e.toStatus();
@@ -55,6 +57,7 @@ void QueuedSinkOperator::doStart() {
             LOGV2_WARNING(
                 8520300,
                 "Unexpected std::exception occured in QueuedSinkOperator validateConnection",
+                "context"_attr = _context,
                 "exception"_attr = e.what());
             status = SPStatus{{ErrorCodes::UnknownError, "Unkown error occured in sink operator."},
                               e.what()};

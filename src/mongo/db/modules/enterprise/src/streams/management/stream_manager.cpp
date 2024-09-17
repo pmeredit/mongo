@@ -512,13 +512,18 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
 
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
-    auto getExecutorStartStatus = [this, tenantId, name]() -> boost::optional<mongo::Status> {
+    auto processorId = request.getProcessorId();
+    auto getExecutorStartStatus =
+        [this, tenantId, name, processorId]() -> boost::optional<mongo::Status> {
         stdx::lock_guard<Latch> lk(_mutex);
 
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
         if (!processorInfo) {
             static constexpr char reason[] = "stream processor disappeared during start";
-            LOGV2_INFO(75943, reason, "name"_attr = name);
+            LOGV2_INFO(75943,
+                       reason,
+                       "streamProcessorName"_attr = name,
+                       "streamProcessorId"_attr = processorId);
             return Status{ErrorCodes::StreamProcessorDoesNotExist, std::string{reason}};
         }
 
@@ -634,8 +639,6 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
                        "StreamProcessor exists and is in an error state. Stopping it before "
                        "restarting it",
                        "correlationId"_attr = request.getCorrelationId(),
-                       "streamProcessorName"_attr = request.getName(),
-                       "streamProcessorId"_attr = request.getProcessorId(),
                        "tenantId"_attr = tenantId,
                        "context"_attr = processorInfo->context.get());
             shouldStopStreamProcessor = true;
@@ -960,11 +963,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 }
 
 void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& request) {
-    LOGV2_INFO(8017803,
-               "Checkpointing stream processor",
-               "correlationId"_attr = request.getCorrelationId(),
-               "streamProcessorName"_attr = request.getName());
-
     stdx::lock_guard<Latch> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
@@ -972,6 +970,12 @@ void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& r
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
     auto* info = getProcessorInfo(lk, tenantId, name);
+
+    LOGV2_INFO(8017803,
+               "Checkpointing stream processor",
+               "context"_attr = info->context.get(),
+               "correlationId"_attr = request.getCorrelationId());
+
     uassert(mongo::ErrorCodes::InternalError,
             str::stream() << "stream processor is being stopped: " << name,
             info->streamStatus != StreamStatusEnum::Stopping);
@@ -983,6 +987,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
     LOGV2_INFO(8238704,
                "Stopping stream processor",
                "correlationId"_attr = request.getCorrelationId(),
+               "streamProcessorId"_attr = request.getProcessorId(),
                "streamProcessorName"_attr = request.getName());
 
     Timer executionTimer;
@@ -1006,14 +1011,19 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
 
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
-    auto getExecutorStopStatus = [this, tenantId, name]() -> boost::optional<mongo::Status> {
+    auto processorId = request.getProcessorId();
+    auto getExecutorStopStatus =
+        [this, tenantId, name, processorId]() -> boost::optional<mongo::Status> {
         stdx::lock_guard<Latch> lk(_mutex);
 
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
         if (!processorInfo) {
             static constexpr char reason[] =
                 "Stream processor disappeared while waiting for it to stop";
-            LOGV2_INFO(75941, reason, "name"_attr = name);
+            LOGV2_INFO(75941,
+                       reason,
+                       "streamProcessorName"_attr = name,
+                       "streamProcessorId"_attr = processorId);
             return Status{mongo::ErrorCodes::Error(75934), std::string{reason}};
         }
 
@@ -1118,6 +1128,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     LOGV2_INFO(8238702,
                "Starting to sample the stream processor",
                "correlationId"_attr = request.getCorrelationId(),
+               "streamProcessorId"_attr = request.getProcessorId(),
                "streamProcessorName"_attr = request.getName(),
                "limit"_attr = request.getLimit());
     auto activeGauge = _streamProcessorActiveGauges[kSampleCommand];
@@ -1291,6 +1302,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                 2,
                 "Getting stats for the stream processor",
                 "correlationId"_attr = request.getCorrelationId(),
+                "streamProcessorId"_attr = request.getProcessorId(),
                 "streamProcessorName"_attr = name,
                 "scale"_attr = scale,
                 "verbose"_attr = verbose);
@@ -1547,7 +1559,7 @@ void StreamManager::onExecutorShutdown(std::string tenantId, std::string name, S
     if (!processorInfo) {
         LOGV2_WARNING(75905,
                       "StreamProcessor does not exist",
-                      "name"_attr = name,
+                      "streamProcessorName"_attr = name,
                       "status"_attr = status.reason());
         return;
     }
@@ -1600,7 +1612,8 @@ void StreamManager::stopAllStreamProcessors() {
         } catch (const DBException& ex) {
             LOGV2_WARNING(75906,
                           "Failed to stop stream processor during stopAllStreamProcessors",
-                          "name"_attr = stopCommand.getName(),
+                          "streamProcessorId"_attr = stopCommand.getProcessorId(),
+                          "streamProcessorName"_attr = stopCommand.getName(),
                           "errorCode"_attr = ex.code(),
                           "exception"_attr = ex.reason());
         }
