@@ -322,7 +322,7 @@ function testIncorrectCollectionType() {
 
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 0);
-    assert.includes(result["errmsg"], "Expected a Time Series collection");
+    assert.includes(result["errmsg"], "$emit can only be used with a time series collection.");
 }
 
 function testTimeFieldMismatch() {
@@ -445,7 +445,7 @@ function testNoTimeFieldNoTimeSeriesCollection() {
 
     let result = startStreamProcessor(pipeline);
     assert.eq(result["ok"], 0);
-    assert.includes(result["errmsg"], "Expected a Time Series collection");
+    assert.includes(result["errmsg"], "$emit can only be used with a time series collection.");
 }
 
 testEmitToTimeSeriesCollection();

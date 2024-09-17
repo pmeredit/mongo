@@ -77,8 +77,9 @@ void TimeseriesEmitOperator::validateConnection() {
         auto tsOptions = getTimeseriesOptionsFromDb();
         if (collectionExists) {
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    str::stream() << "Expected a Time Series collection "
-                                  << *_options.clientOptions.collection,
+                    str::stream() << "$emit can only be used with a time series collection. "
+                                  << *_options.clientOptions.collection
+                                  << " is not a time series collection.",
                     tsOptions);
         }
         if (_options.timeseriesSinkOptions.getTimeseries()) {
