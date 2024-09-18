@@ -98,7 +98,7 @@ sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
     addrinfo* tempAddrInfoPtr = nullptr;
     err = getaddrinfo(hostname.c_str(), port.c_str(), &hints, &tempAddrInfoPtr);
     auto addrs = AddrInfoPtr{tempAddrInfoPtr, freeaddrinfo};
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::InternalError,
             str::stream() << "Unable to resolve proxy name provided.  Hostname: " << hostname
                           << "Port: " << port,
             err == 0);

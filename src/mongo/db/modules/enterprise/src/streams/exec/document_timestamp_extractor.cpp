@@ -20,7 +20,7 @@ DocumentTimestampExtractor::DocumentTimestampExtractor(
 
 Date_t DocumentTimestampExtractor::extractTimestamp(const Document& doc) {
     auto timestampVal = _expr->evaluate(doc, &_expCtx->variables);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Failed to extract timestamp from document, extracted timestampVal: "
                           << timestampVal.toString(),
             timestampVal.getType() == BSONType::Date);

@@ -62,7 +62,7 @@ MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions
     }
 
     if (!caFile.empty()) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::InternalError,
                 "Must specify 'pemFile' when 'caFile' is specified",
                 !pemFile.empty());
     }

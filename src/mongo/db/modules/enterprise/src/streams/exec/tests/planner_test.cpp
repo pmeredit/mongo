@@ -529,7 +529,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
                                     DBException,
                                     ErrorCodes::StreamProcessorInvalidOptions,
-                                    "InvalidOptions: Unsupported stage: $source");
+                                    "StreamProcessorInvalidOptions: Unsupported stage: $source");
     }
 
     {
@@ -549,7 +549,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
                                     DBException,
                                     ErrorCodes::StreamProcessorInvalidOptions,
-                                    "InvalidOptions: Unsupported stage: $source");
+                                    "StreamProcessorInvalidOptions: Unsupported stage: $source");
     }
 }
 
@@ -1384,7 +1384,8 @@ TEST_F(PlannerTest, NotAllowedInMainPipelineErrorMessage) {
     } catch (const DBException& e) {
         ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
         ASSERT_EQ(
-            "InvalidOptions: $sort stage is only permitted in the inner pipeline of a window stage",
+            "StreamProcessorInvalidOptions: $sort stage is only permitted in the inner pipeline of "
+            "a window stage",
             e.reason());
     }
 }
@@ -1419,7 +1420,8 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
         ASSERT(false);
     } catch (const DBException& e) {
         ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
-        ASSERT_EQ("InvalidOptions: The $lookup.from field must be an object", e.reason());
+        ASSERT_EQ("StreamProcessorInvalidOptions: The $lookup.from field must be an object",
+                  e.reason());
     }
 }
 
@@ -2239,7 +2241,8 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
             }
         }
     ])",
-                   "InvalidOptions: Cannot use $text in $match stage in Atlas Stream Processing.");
+                   "StreamProcessorInvalidOptions: Cannot use $text in $match stage in Atlas "
+                   "Stream Processing.");
 }
 
 TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {

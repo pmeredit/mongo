@@ -56,7 +56,7 @@ void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDoc
         fakeKafkaSource->testOnlyInsertDocuments(std::move(inputDocs));
     } else {
         uasserted(
-            ErrorCodes::InvalidOptions,
+            ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Only in-memory or fake kafka sources supported for testOnlyInsert");
     }
 }

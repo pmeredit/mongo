@@ -22,13 +22,13 @@ void SourceBufferManager::SourceBufferDeleter::operator()(SourceBuffer* sourceBu
 }
 
 SourceBufferManager::SourceBufferManager(Options options) : _options(std::move(options)) {
-    uassert(mongo::ErrorCodes::InvalidOptions,
+    uassert(mongo::ErrorCodes::InternalError,
             "Options.bufferPreallocationFraction must be in the range [0, 1]",
             _options.bufferPreallocationFraction >= 0 && _options.bufferPreallocationFraction <= 1);
-    uassert(mongo::ErrorCodes::InvalidOptions,
+    uassert(mongo::ErrorCodes::InternalError,
             "Options.maxSourceBufferSize must be >= pageSize",
             _options.maxSourceBufferSize >= _options.pageSize);
-    uassert(mongo::ErrorCodes::InvalidOptions,
+    uassert(mongo::ErrorCodes::InternalError,
             "Options.metricManager must not be nullptr",
             _options.metricManager);
 

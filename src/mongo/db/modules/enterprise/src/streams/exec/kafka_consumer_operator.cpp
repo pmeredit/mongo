@@ -1009,7 +1009,7 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
     for (size_t partition = 0; partition < numPartitions; partition++) {
         auto fakeKafkaPartition =
             dynamic_cast<FakeKafkaPartitionConsumer*>(_consumers[partition].consumer.get());
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "can only insert with FakeKafkaPartitionConsumer",
                 bool(fakeKafkaPartition));
 

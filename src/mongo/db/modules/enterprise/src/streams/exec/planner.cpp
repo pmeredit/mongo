@@ -184,18 +184,18 @@ static constexpr mongo::stdx::chrono::milliseconds kSlowCheckpointInterval{60 * 
 // Verifies that a stage specified in the input pipeline is a valid stage.
 void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
     auto it = stageTraits.find(name);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unsupported stage: " << name,
             it != stageTraits.end());
 
     const auto& stageInfo = it->second;
     if (isMainPipeline) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << name
                               << " stage is only permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInMainPipeline);
     } else {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << name
                               << " stage is not permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInWindowPipeline);
@@ -210,7 +210,7 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
     if (!options.getValidator().isEmpty()) {
         auto statusWithMatcher =
             MatchExpressionParser::parse(options.getValidator(), context->expCtx);
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "failed to parse validator: " << options.getValidator(),
                 statusWithMatcher.isOK());
         validator = std::move(statusWithMatcher.getValue());
@@ -219,7 +219,7 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
     }
 
     if (options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "DLQ must be specified if validation action is dlq.",
                 bool(context->dlq));
     }
@@ -240,12 +240,12 @@ boost::intrusive_ptr<DocumentSource> makeDocumentSourceMerge(
         {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
 
     if (mergeOpSpec.getWhenMatched()) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "Unsupported whenMatched mode: ",
                 supportedWhenMatchedModes.contains(mergeOpSpec.getWhenMatched()->mode));
     }
     if (mergeOpSpec.getWhenNotMatched()) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "Unsupported whenNotMatched mode: ",
                 supportedWhenNotMatchedModes.contains(*mergeOpSpec.getWhenNotMatched()));
     }
@@ -307,7 +307,7 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
         allowedLatenessMs = toMillis(unit, size);
     }
 
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Maximum allowedLateness is 30 minutes",
             allowedLatenessMs <= 30 * 60 * 1000);
 
@@ -367,7 +367,7 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     } else {
         options.timestampOutputFieldName = kDefaultTimestampOutputFieldName;
     }
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << ChangeStreamSourceOptions::kTsFieldOverrideFieldName
                           << " cannot be empty",
             !options.timestampOutputFieldName.empty());
@@ -601,14 +601,16 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 
     auto db = options.getDb();
     if (db) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "Cannot specify an empty database name to $source when configuring a change stream",
                 !db->empty());
         clientOptions.database = db->toString();
     }
 
     if (auto coll = options.getColl(); coll) {
-        uassert(ErrorCodes::InvalidOptions, "If coll is specified, db must be specified.", db);
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "If coll is specified, db must be specified.",
+                db);
         if (std::holds_alternative<std::string>(*coll)) {
             auto singleColl = std::get<std::string>(*coll);
             clientOptions.collection = singleColl;
@@ -632,7 +634,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 
     auto config = options.getConfig();
     if (config) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "startAfter and startAtOperationTime cannot both be set",
                 !(config->getStartAfter() && config->getStartAtOperationTime()));
 
@@ -658,7 +660,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 
         if (auto fullDocumentOnly = config->getFullDocumentOnly()) {
             uassert(
-                ErrorCodes::InvalidOptions,
+                ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "fullDocumentOnly is set to true, fullDocument mode can either be "
                                  "updateLookup or required",
                 internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kUpdateLookup ||
@@ -668,7 +670,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 
         if (auto fullDocumentBeforeChange = config->getFullDocumentBeforeChange();
             fullDocumentBeforeChange) {
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "fullDocumentBeforeChange is set, so fullDocumentOnly should not be set.",
                     fullDocumentBeforeChange == FullDocumentBeforeChangeModeEnum::kOff ||
                         !internalOptions.fullDocumentOnly);
@@ -687,7 +689,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 }
 
 void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleMessages) {
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid $source " << spec,
             spec.firstElementFieldName() == StringData(kSourceStageName) &&
                 spec.firstElement().isABSONObj());
@@ -701,12 +703,12 @@ void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleM
 
     // Read connectionName field.
     auto connectionField = sourceSpec.getField(kConnectionNameField);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "$source must contain 'connectionName' field in it",
             connectionField.ok());
     std::string connectionName(connectionField.String());
 
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid connectionName in " << kSourceStageName << " " << sourceSpec,
             _context->connections.contains(connectionName));
 
@@ -734,13 +736,13 @@ void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleM
             break;
         };
         default:
-            uasserted(ErrorCodes::InvalidOptions,
+            uasserted(ErrorCodes::StreamProcessorInvalidOptions,
                       "Only kafka, sample_solar, and atlas source connection type is supported");
     }
 }
 
 void Planner::planMergeSink(const BSONObj& spec) {
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid sink: " << spec,
             spec.firstElementFieldName() == StringData(kMergeStageName) &&
                 spec.firstElement().isABSONObj());
@@ -751,12 +753,12 @@ void Planner::planMergeSink(const BSONObj& spec) {
         AtlasCollection::parse(IDLParserContext("AtlasCollection"), mergeOpSpec.getInto());
     std::string connectionName(mergeIntoAtlas.getConnectionName().toString());
 
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connection name " << connectionName,
             _context->connections.contains(connectionName));
 
     const auto& connection = _context->connections.at(connectionName);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Only atlas merge connection type is currently supported",
             connection.getType() == ConnectionTypeEnum::Atlas);
     auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
@@ -806,7 +808,7 @@ void Planner::planMergeSink(const BSONObj& spec) {
 }
 
 void Planner::planEmitSink(const BSONObj& spec) {
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid sink: " << spec,
             spec.firstElementFieldName() == StringData(kEmitStageName) &&
                 spec.firstElement().isABSONObj());
@@ -814,7 +816,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
     auto sinkSpec = spec.firstElement().Obj();
     // Read connectionName field.
     auto connectionField = sinkSpec.getField(kConnectionNameField);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "$emit must contain 'connectionName' field in it",
             connectionField.ok());
     std::string connectionName(connectionField.String());
@@ -834,7 +836,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
         sinkOperator->setOperatorId(_nextOperatorId++);
     } else {
         // 'connectionName' must be in '_context->connections'.
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
                 _context->connections.contains(connectionName));
         auto connection = _context->connections.at(connectionName);
@@ -878,7 +880,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
                     : nullptr;
                 if (kafkaEmitOptions.key) {
                     uassert(
-                        ErrorCodes::InvalidOptions,
+                        ErrorCodes::StreamProcessorInvalidOptions,
                         "Expected config.keyFormat to be specified when config.key is specified",
                         options.getConfig()->getKeyFormat());
                     kafkaEmitOptions.keyFormat = *options.getConfig()->getKeyFormat();
@@ -896,7 +898,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
             sinkOperator->setOperatorId(_nextOperatorId++);
         } else {
             // $emit to TimeSeries collection
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << "Expected Atlas connection for " << kEmitStageName << " "
                                   << sinkSpec,
                     connection.getType() == ConnectionTypeEnum::Atlas);
@@ -932,7 +934,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
     auto interval = options.getInterval();
     auto offset = options.getOffset();
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "Window interval size must be greater than 0.",
             interval.getSize() > 0);
 
@@ -1027,10 +1029,10 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
     auto offset = options.getOffset();
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "Window interval size must be greater than 0.",
             windowInterval.getSize() > 0);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "Window hopSize size must be greater than 0.",
             hopInterval.getSize() > 0);
 
@@ -1159,7 +1161,7 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
             // You need a blocking window aware operator (i.e. sort) in the pipeline so that
             // _stream_meta.window.start/end values are finalized by the time the document is
             // output.
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, there must be a $group or $sort "
                     "in the pipeline.",
                     false);
@@ -1168,7 +1170,7 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
             // dummy sort. A blocking operator must precede any operator with a _stream_meta
             // dependency so that the _stream_meta.window.start/end values are finalized by the time
             // they are read.
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, the pipeline cannot use "
                     "_stream_meta.window until after the first $group or $sort.",
                     false);
@@ -1176,7 +1178,7 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
             // Else, if there's a limit operator before the first blocking window aware operator,
             // prepend dummy sort. A blocking operator must precede a limit operator with limit <
             // INF for window merge to work.
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, there cannot be a $limit before "
                     "the first $group or $sort.",
                     false);
@@ -1210,7 +1212,7 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
     auto& stageObj =
         lookupPlanningInfo.rewrittenLookupStages.at(lookupPlanningInfo.numLookupStagesPlanned++)
             .first;
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid lookup spec: " << stageObj,
             isLookUpStage(stageObj.firstElementFieldName()) &&
                 stageObj.firstElement().isABSONObj());
@@ -1224,12 +1226,12 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
             AtlasCollection::parse(IDLParserContext("AtlasCollection"), fromFieldObj);
         std::string connectionName(lookupFromAtlas.getConnectionName().toString());
 
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Unknown connection name " << connectionName,
                 _context->connections.contains(connectionName));
 
         const auto& connection = _context->connections.at(connectionName);
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Only atlas connection type is currently supported for $lookup",
                 connection.getType() == ConnectionTypeEnum::Atlas);
         auto atlasOptions = AtlasConnectionOptions::parse(
@@ -1472,7 +1474,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 optimizedPipeline.push_back(serialize(stage));
                 auto specificSource = dynamic_cast<DocumentSourceMatch*>(stage.get());
                 dassert(specificSource);
-                uassert(ErrorCodes::InvalidOptions,
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
                         "Cannot use $text in $match stage in Atlas Stream Processing.",
                         !specificSource->isTextQuery());
                 MatchOperator::Options options{.documentSource = specificSource};
@@ -1564,7 +1566,7 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                     ? featureFlags->getFeatureFlagValue(FeatureFlags::kEnableSessionWindow)
                           .getBool()
                     : boost::none;
-                uassert(ErrorCodes::InvalidOptions,
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
                         "Unsupported stage: $sessionWindow",
                         sessionWindowEnabled && *sessionWindowEnabled);
                 optimizedPipeline.push_back(planSessionWindow(stage.get()));
@@ -1615,15 +1617,16 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
 }
 
 std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
-    uassert(
-        ErrorCodes::InvalidOptions, "Pipeline must have at least one stage", !bsonPipeline.empty());
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Pipeline must have at least one stage",
+            !bsonPipeline.empty());
     std::string firstStageName(bsonPipeline.begin()->firstElementFieldNameStringData());
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "First stage must be " << kSourceStageName
                           << ", found: " << firstStageName,
             isSourceStage(firstStageName));
     std::string lastStageName(bsonPipeline.rbegin()->firstElementFieldNameStringData());
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "The last stage in the pipeline must be $merge or $emit.",
             isSinkStage(lastStageName) || _context->isEphemeral);
 
@@ -1691,7 +1694,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     BSONObj sinkSpec;
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "The last stage in the pipeline must be $merge or $emit.",
                 _context->isEphemeral);
         // In the ephemeral case, we append a NoOpSink to handle the sample requests.
@@ -1700,7 +1703,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     } else {
         sinkSpec = *current;
         invariant(isSinkStage(sinkSpec.firstElementFieldNameStringData()));
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "No stages are allowed after a $merge or $emit stage.",
                 std::next(current) == bsonPipeline.end());
     }
@@ -1748,7 +1751,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
     const std::vector<BSONObj>& pipeline) {
     std::vector<ParsedConnectionInfo> connectionNames;
     for (auto& stage : pipeline) {
-        uassert(mongo::ErrorCodes::InvalidOptions,
+        uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Stage must contain a single object spec: " << stage,
                 stage.nFields() == 1 && stage.firstElement().isABSONObj());
         auto stageName = stage.firstElementFieldNameStringData();
@@ -1758,7 +1761,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
         auto addConnectionName = [&](StringData stage, const Document& doc, const FieldPath& fp) {
             auto connectionField = doc.getNestedField(fp);
             uassert(
-                mongo::ErrorCodes::InvalidOptions,
+                mongo::ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Stage spec must contain a 'connectionName' string field in it: "
                               << stage,
                 connectionField.getType() == String);
@@ -1808,7 +1811,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             }
 
             for (const auto& windowStage : windowPipeline) {
-                uassert(mongo::ErrorCodes::InvalidOptions,
+                uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
                         str::stream() << "Stage must contain a single object spec: " << windowStage,
                         windowStage.nFields() == 1 && windowStage.firstElement().isABSONObj());
                 auto windowStageName = windowStage.firstElementFieldNameStringData();

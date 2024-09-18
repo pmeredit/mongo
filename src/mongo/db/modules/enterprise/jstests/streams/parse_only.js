@@ -151,3 +151,24 @@ test({
     expectedConnectionNames:
         [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
 });
+
+function missingConnectionName() {
+    const command = {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: 'test_name',
+        pipeline: [
+            {$source: {topic: "foo"}},
+            {$merge: {into: {connectionName: "conn2", db: dbName, coll: collName}}}
+        ],
+        connections: connectionRegistry,
+        options: {parseOnly: true, featureFlags: {}},
+        processorId: 'test_id',
+    };
+    const result = db.runCommand(command);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
+    jsTestLog(result);
+    assert.eq("StreamProcessorUserError", result.errorLabels[0]);
+}
+
+missingConnectionName();

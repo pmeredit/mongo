@@ -36,7 +36,7 @@ std::vector<mongo::BSONObj> PipelineRewriter::rewrite() {
 }
 
 BSONObj PipelineRewriter::rewriteLookUp(const BSONObj& stageObj) {
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid lookup spec: " << stageObj,
             isLookUpStage(stageObj.firstElementFieldName()) &&
                 stageObj.firstElement().isABSONObj());
@@ -47,7 +47,7 @@ BSONObj PipelineRewriter::rewriteLookUp(const BSONObj& stageObj) {
         // There is no rewrite to perform because the 'from' field does not exist.
         return stageObj;
     }
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "The $lookup.from field must be an object",
             fromField.isABSONObj());
 

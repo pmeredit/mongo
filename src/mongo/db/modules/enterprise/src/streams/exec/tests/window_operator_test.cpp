@@ -3051,7 +3051,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
                     parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
                 DBException,
                 ErrorCodes::StreamProcessorInvalidOptions,
-                "InvalidOptions: Window interval size must be greater than 0.");
+                "StreamProcessorInvalidOptions: Window interval size must be greater than 0.");
         }
 
         {
@@ -3078,7 +3078,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
                     parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
                 DBException,
                 ErrorCodes::StreamProcessorInvalidOptions,
-                "InvalidOptions: Window interval size must be greater than 0.");
+                "StreamProcessorInvalidOptions: Window interval size must be greater than 0.");
         }
 
         {
@@ -3105,7 +3105,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
                     parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
                 DBException,
                 ErrorCodes::StreamProcessorInvalidOptions,
-                "InvalidOptions: Window hopSize size must be greater than 0.");
+                "StreamProcessorInvalidOptions: Window hopSize size must be greater than 0.");
         }
     });
 }
