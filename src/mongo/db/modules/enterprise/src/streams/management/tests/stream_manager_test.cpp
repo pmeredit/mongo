@@ -188,6 +188,7 @@ public:
 
     void updateContextFeatureFlags(StreamManager::StreamProcessorInfo* processorInfo,
                                    std::shared_ptr<TenantFeatureFlags> featureFlags) {
+        stdx::lock_guard<Latch> lock(processorInfo->executor->_mutex);
         processorInfo->executor->_tenantFeatureFlagsUpdate = std::move(featureFlags);
         processorInfo->executor->updateContextFeatureFlags();
     }
