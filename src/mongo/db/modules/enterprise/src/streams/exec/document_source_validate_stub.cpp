@@ -30,6 +30,10 @@ std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceValidateStub::crea
     return {make_intrusive<DocumentSourceValidateStub>(expCtx, elem.Obj().copy())};
 }
 
+mongo::Value DocumentSourceValidateStub::serialize(const mongo::SerializationOptions& opts) const {
+    return Value(DOC(getSourceName() << Document(_bsonOptions)));
+}
+
 REGISTER_INTERNAL_DOCUMENT_SOURCE(validate,
                                   LiteParsedDocumentSourceDefault::parse,
                                   DocumentSourceValidateStub::createFromBson,

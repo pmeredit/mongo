@@ -51,9 +51,7 @@ protected:
     }
 
     mongo::Value serialize(
-        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const override {
-        return mongo::Value(_bsonOptions);
-    }
+        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const override;
 
 private:
     mongo::BSONObj _bsonOptions;

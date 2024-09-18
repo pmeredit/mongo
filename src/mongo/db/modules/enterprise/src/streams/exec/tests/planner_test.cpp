@@ -2175,6 +2175,38 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "LookUpOperator",
                "UnwindOperator",
                "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+
+        {
+            $validate: {
+                validator: {
+                    "$jsonSchema": {
+                        "required": ["a"]
+                    }
+                },
+                validationAction: "discard"
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "ValidateOperator", "MergeOperator"});
 }
 
 // Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying
