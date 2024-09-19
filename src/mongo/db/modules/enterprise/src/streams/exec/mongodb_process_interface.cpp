@@ -49,14 +49,22 @@ WriteConcernOptions getWriteConcern() {
 
 // The implementation of this function largely matches the implementation of the same function in
 // mongos_process_interface.cpp.
-bool supportsUniqueKey(const BSONObj& index, const std::set<FieldPath>& uniqueKeyPaths) {
+MongoProcessInterface::SupportingUniqueIndex supportsUniqueKey(
+    const BSONObj& index, const std::set<FieldPath>& uniqueKeyPaths) {
     // SERVER-5335: The _id index does not report to be unique, but in fact is unique.
     auto isIdIndex =
         index[IndexDescriptor::kIndexNameFieldName].String() == IndexConstants::kIdIndexName;
-    return (isIdIndex || index.getBoolField(IndexDescriptor::kUniqueFieldName)) &&
+    bool supports =
+        (isIdIndex || index.getBoolField(IndexDescriptor::kUniqueFieldName)) &&
         !index.hasField(IndexDescriptor::kPartialFilterExprFieldName) &&
         CommonProcessInterface::keyPatternNamesExactPaths(
-               index.getObjectField(IndexDescriptor::kKeyPatternFieldName), uniqueKeyPaths);
+            index.getObjectField(IndexDescriptor::kKeyPatternFieldName), uniqueKeyPaths);
+    if (!supports) {
+        return MongoProcessInterface::SupportingUniqueIndex::None;
+    }
+    return index.getBoolField(IndexDescriptor::kSparseFieldName)
+        ? MongoProcessInterface::SupportingUniqueIndex::NotNullish
+        : MongoProcessInterface::SupportingUniqueIndex::Full;
 }
 
 }  // namespace
@@ -302,7 +310,8 @@ MongoDBProcessInterface::preparePipelineForExecution(mongo::Pipeline* pipeline,
 
 // The implementation of this function largely matches the implementation of the same function in
 // mongos_process_interface.cpp.
-bool MongoDBProcessInterface::fieldsHaveSupportingUniqueIndex(
+MongoProcessInterface::SupportingUniqueIndex
+MongoDBProcessInterface::fieldsHaveSupportingUniqueIndex(
     const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
     const mongo::NamespaceString& nss,
     const std::set<FieldPath>& fieldPaths) const {
@@ -312,17 +321,20 @@ bool MongoDBProcessInterface::fieldsHaveSupportingUniqueIndex(
             collInfo);
     if (collInfo->indexes.empty()) {
         // The collection does not exist.
-        return fieldPaths == std::set<FieldPath>{kIdFieldName};
+        return fieldPaths == std::set<FieldPath>{kIdFieldName} ? SupportingUniqueIndex::Full
+                                                               : SupportingUniqueIndex::None;
     }
-    return std::any_of(
-        collInfo->indexes.begin(), collInfo->indexes.end(), [&fieldPaths](const auto& index) {
-            return supportsUniqueKey(index, fieldPaths);
-        });
+    return std::accumulate(collInfo->indexes.begin(),
+                           collInfo->indexes.end(),
+                           SupportingUniqueIndex::None,
+                           [&fieldPaths](auto result, const auto& index) {
+                               return std::max(result, supportsUniqueKey(index, fieldPaths));
+                           });
 }
 
 // The implementation of this function largely matches the implementation of the same function in
 // mongos_process_interface.cpp.
-std::pair<std::set<FieldPath>, boost::optional<ChunkVersion>>
+MongoDBProcessInterface::DocumentKeyResolutionMetadata
 MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     boost::optional<std::set<FieldPath>> fieldPaths,
@@ -335,16 +347,18 @@ MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
             outputNs.dbName() != kNoDb);
 
     if (fieldPaths) {
+        auto supportingUniqueIndex = fieldsHaveSupportingUniqueIndex(expCtx, outputNs, *fieldPaths);
         uassert(8186209,
                 "Cannot find index to verify that join fields will be unique",
-                fieldsHaveSupportingUniqueIndex(expCtx, outputNs, *fieldPaths));
-        return {*fieldPaths, boost::none};
+                supportingUniqueIndex != SupportingUniqueIndex::None);
+        return {*fieldPaths, boost::none, supportingUniqueIndex};
     }
 
     auto docKeyPaths = collectDocumentKeyFieldsActingAsRouter(expCtx->opCtx, outputNs);
     return {std::set<FieldPath>(std::make_move_iterator(docKeyPaths.begin()),
                                 std::make_move_iterator(docKeyPaths.end())),
-            boost::none};
+            boost::none,
+            SupportingUniqueIndex::Full};
 }
 
 void MongoDBProcessInterface::fetchCollection(mongo::NamespaceString nss) {

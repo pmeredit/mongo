@@ -27,8 +27,11 @@ using namespace std::string_literals;
 // Override StubMongoProcessInterface like done in document_source_merge_test.cpp
 class MongoProcessInterfaceForTest : public MongoDBProcessInterface {
 public:
-    MongoProcessInterfaceForTest(std::set<FieldPath> documentKey = {"_id"})
-        : _documentKey(std::move(documentKey)) {}
+    MongoProcessInterfaceForTest(
+        std::set<FieldPath> documentKey = {"_id"},
+        MongoProcessInterface::SupportingUniqueIndex supportingUniqueIndex =
+            MongoProcessInterface::SupportingUniqueIndex::NotNullish)
+        : _documentKey(std::move(documentKey)), _supportingUniqueIndex(supportingUniqueIndex) {}
 
     struct InsertInfo {
         BSONObj obj;
@@ -92,13 +95,12 @@ public:
 
     void ensureCollectionExists(const mongo::NamespaceString& ns) override {}
 
-    std::pair<std::set<mongo::FieldPath>, boost::optional<mongo::ChunkVersion>>
-    ensureFieldsUniqueOrResolveDocumentKey(
+    DocumentKeyResolutionMetadata ensureFieldsUniqueOrResolveDocumentKey(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         boost::optional<std::set<mongo::FieldPath>> fieldPaths,
         boost::optional<mongo::ChunkVersion> targetCollectionPlacementVersion,
         const mongo::NamespaceString& outputNs) const override {
-        return {_documentKey, boost::none};
+        return {_documentKey, boost::none, _supportingUniqueIndex};
     }
 
     Status insert(const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -151,6 +153,8 @@ public:
 private:
     mongocxx::uri _uri{"mongodb://localhost:27017"};
     std::set<FieldPath> _documentKey;
+    MongoProcessInterface::SupportingUniqueIndex _supportingUniqueIndex;
+
     std::vector<InsertInfo> _objsInserted;
     std::vector<UpdateInfo> _objsUpdated;
 };
@@ -512,8 +516,8 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto dlqDoc = std::move(dlqMsgs.front());
     ASSERT_EQ(
         "Failed to process input document in MergeOperator with error: code = Location51132, "
-        "reason = $merge write error: 'on' field 'customerId' cannot be missing, null, undefined "
-        "or an array",
+        "reason = $merge write error: 'on' field 'customerId' cannot be missing, null or undefined "
+        "if supporting index is sparse",
         dlqDoc["errInfo"]["reason"].String());
     ASSERT_BSONOBJ_EQ(dataMsg.docs[1].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
     ASSERT_EQ("MergeOperator", dlqDoc["operatorName"].String());

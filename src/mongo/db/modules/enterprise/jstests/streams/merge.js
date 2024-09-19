@@ -364,10 +364,10 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     ]);
 
     // Insert 4 documents (2 good, 2 bad) into the stream. Of the 2 bad documents,
-    // - one does not contains the on field 'x' and is added to the dlq while creating the batch
+    // - one contain array in the on field 'x' and is added to the dlq while creating the batch
     // - one violates unique constraint on field 'a' and is added to the dlq while the batch is
     //   getting flushed
-    insertDocs(spName, [{x: 0, a: 0, b: 0}, {x: 1, a: 0}, {a: 0}, {x: 1, a: 1, b: 1}]);
+    insertDocs(spName, [{x: 0, a: 0, b: 0}, {x: 1, a: 0}, {x: [1, 2], a: 0}, {x: 1, a: 1, b: 1}]);
 
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => {
@@ -744,7 +744,7 @@ const kMaxDynamicTargets = 100;
                 connectionName: 'db1',
                 db: 'test',
                 coll: inputColl.getName(),
-                timeField: '$ts',       
+                timeField: '$ts',
                 config: {fullDocument: 'required', fullDocumentOnly: true}
             }
         },
@@ -928,10 +928,10 @@ const kMaxDynamicTargets = 100;
         {_id: 1, a: 2, ts: ISODate("2024-03-01T01:00:01.000Z")},
         {_id: 2, a: 3, ts: ISODate("2024-03-01T01:00:01.000Z")},
         {_id: 3, a: 2, ts: ISODate("2024-03-01T01:00:01.000Z")},
-        {_id: 4, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 4, a: [3, 4], ts: ISODate("2024-03-01T01:00:01.000Z")},
         {_id: 5, a: 5, ts: ISODate("2024-03-01T01:00:01.000Z")},
         {_id: 6, a: 7, ts: ISODate("2024-03-01T01:00:01.000Z")},
-        {_id: 7, ts: ISODate("2024-03-01T01:00:01.000Z")},
+        {_id: 7, a: [8], ts: ISODate("2024-03-01T01:00:01.000Z")},
         {_id: 8, a: 9, ts: ISODate("2024-03-01T01:00:01.000Z")},
     ]);
 

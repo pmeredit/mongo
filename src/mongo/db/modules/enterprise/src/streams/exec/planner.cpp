@@ -268,7 +268,8 @@ boost::intrusive_ptr<DocumentSource> makeDocumentSourceMerge(
                                        mergeOpSpec.getLet(),
                                        pipeline,
                                        std::move(dummyMergeOnFields),
-                                       /*collectionPlacementVersion*/ boost::none);
+                                       /*collectionPlacementVersion*/ boost::none,
+                                       /*allowMergeOnNullishValues*/ true);
 }
 
 // Utility to construct a map of auth options from 'authOptions' for a Kafka connection.

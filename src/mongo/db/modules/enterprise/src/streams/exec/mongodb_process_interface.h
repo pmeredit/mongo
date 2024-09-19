@@ -307,7 +307,7 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    bool fieldsHaveSupportingUniqueIndex(
+    SupportingUniqueIndex fieldsHaveSupportingUniqueIndex(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         const mongo::NamespaceString& nss,
         const std::set<mongo::FieldPath>& fieldPaths) const override;
@@ -330,8 +330,7 @@ public:
         uasserted(76971, "Unexpected check of routing table");
     }
 
-    std::pair<std::set<mongo::FieldPath>, boost::optional<mongo::ChunkVersion>>
-    ensureFieldsUniqueOrResolveDocumentKey(
+    DocumentKeyResolutionMetadata ensureFieldsUniqueOrResolveDocumentKey(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         boost::optional<std::set<mongo::FieldPath>> fieldPaths,
         boost::optional<mongo::ChunkVersion> targetCollectionPlacementVersion,

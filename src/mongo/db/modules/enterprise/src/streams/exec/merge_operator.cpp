@@ -123,7 +123,7 @@ void MergeOperator::validateConnection() {
                     _options.onFieldPaths,
                     /*targetCollectionPlacementVersion*/ boost::none,
                     outputNs);
-                _literalMergeOnFieldPaths = std::move(result.first);
+                _literalMergeOnFieldPaths = std::move(std::get<0>(result));
             }
         };
 
@@ -170,13 +170,12 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
         try {
             // For the given 'on' field paths, retrieve the list of field paths that can be used to
             // uniquely identify the doc.
-            dynamicMergeOnFieldPaths = mongoProcessInterface
-                                           ->ensureFieldsUniqueOrResolveDocumentKey(
-                                               _options.mergeExpCtx,
-                                               _options.onFieldPaths,
-                                               /*targetCollectionPlacementVersion*/ boost::none,
-                                               outputNs)
-                                           .first;
+            dynamicMergeOnFieldPaths =
+                std::get<0>(mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+                    _options.mergeExpCtx,
+                    _options.onFieldPaths,
+                    /*targetCollectionPlacementVersion*/ boost::none,
+                    outputNs));
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();

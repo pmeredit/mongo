@@ -99,9 +99,9 @@ function resetOutputColl(shardKey, coll) {
         }
     ]);
 
-    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document does not contains
+    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document contains an array in
     // shard key fields and should get added to the dlq.
-    insertDocs([{a: 0, b: 0}, {x: 1, a: 0}, {a: 1, b: 1}]);
+    insertDocs([{a: 0, b: 0}, {x: 1, a: 0, b: [0]}, {a: 1, b: 1}]);
 
     assert.soon(() => { return outputColl.find().itcount() == 2; });
     assert.soon(() => {
@@ -141,9 +141,9 @@ function resetOutputColl(shardKey, coll) {
         }
     ]);
 
-    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document does not contains
+    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document contains an array in
     // shard key fields and should get added to the dlq.
-    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0}, {a: 1, b: 1, c: 1}]);
+    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0, b: [0]}, {a: 1, b: 1, c: 1}]);
 
     assert.soon(() => { return outputColl.find().itcount() == 2; });
     assert.soon(() => {
@@ -201,9 +201,9 @@ function resetOutputColl(shardKey, coll) {
         }
     ]);
 
-    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document does not contains
+    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document contains an array in
     // shard key fields and should get added to the dlq.
-    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0}, {a: 1, b: 1, c: 1}]);
+    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0, b: [0]}, {a: 1, b: 1, c: 1}]);
 
     assert.soon(() => { return colls[0].find().itcount() == 1; });
     assert.soon(() => { return colls[1].find().itcount() == 1; });
@@ -309,9 +309,9 @@ function resetOutputColl(shardKey, coll) {
         }
     ]);
 
-    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document does not contains
+    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document contains an array in
     // shard key fields and should get added to the dlq.
-    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0}, {a: 1, b: 1, c: 1}]);
+    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0, b: [0]}, {a: 1, b: 1, c: 1}]);
 
     assert.soon(() => { return outputColl.find().itcount() == 2; });
     assert.soon(() => {
@@ -351,8 +351,8 @@ function resetOutputColl(shardKey, coll) {
         }
     ]);
 
-    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document does not contains
-    // shard key fields and should get added to the dlq.
+    // Insert 3 documents into the stream. The document without explicit _id will have an
+    // automatically generated one.
     insertDocs([{_id: 0, a: 0, b: 0}, {x: 1}, {_id: 1, a: 1, b: 1}]);
 
     assert.soon(() => { return outputColl.find().itcount() == 3; });
@@ -395,8 +395,8 @@ function resetOutputColl(shardKey, coll) {
         }
     ]);
 
-    // Insert 2 documents (2 good, 1 bad) into the stream. The bad document does not contains
-    // shard key fields and should get added to the dlq.
+    // Insert 3 documents into the stream. The document without explicit _id will have an
+    // automatically generated one.
     insertDocs([{_id: 0, a: 0, b: 0}, {x: 1}, {_id: 1, a: 1, b: 1}]);
 
     assert.soon(() => { return outputColl.find().itcount() == 3; });
