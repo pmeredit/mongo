@@ -22,6 +22,10 @@ public:
 
     const char* getSourceName() const override;
 
+    mongo::DocumentSourceType getType() const override {
+        return mongo::DocumentSourceType::kFeeder;
+    }
+
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         MONGO_UNREACHABLE;
     }

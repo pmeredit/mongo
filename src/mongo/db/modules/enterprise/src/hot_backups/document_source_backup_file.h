@@ -35,6 +35,11 @@ public:
     const char* getSourceName() const override {
         return DocumentSourceBackupFile::kStageName.rawData();
     }
+
+    DocumentSourceType getType() const override {
+        return DocumentSourceType::kBackupFile;
+    }
+
     StageConstraints constraints(Pipeline::SplitState pipeState) const final {
         StageConstraints constraints(StreamType::kStreaming,
                                      PositionRequirement::kFirst,

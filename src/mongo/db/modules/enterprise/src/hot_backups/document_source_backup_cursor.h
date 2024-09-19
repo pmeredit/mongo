@@ -73,6 +73,10 @@ public:
         return DocumentSourceBackupCursor::kStageName.rawData();
     }
 
+    DocumentSourceType getType() const override {
+        return DocumentSourceType::kBackupCursor;
+    }
+
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         return boost::none;
     }

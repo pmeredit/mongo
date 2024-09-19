@@ -25,6 +25,10 @@ public:
                              mongo::BSONObj bsonOptions)
         : DocumentSource(stageName, expCtx), _bsonOptions(bsonOptions) {}
 
+    mongo::DocumentSourceType getType() const override {
+        return mongo::DocumentSourceType::kWindowStub;
+    }
+
 protected:
     mongo::StageConstraints constraints(mongo::Pipeline::SplitState pipeState) const override;
 

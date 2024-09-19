@@ -53,6 +53,10 @@ public:
 
     const char* getSourceName() const override;
 
+    mongo::DocumentSourceType getType() const override {
+        return mongo::DocumentSourceType::kRemoteDbCursor;
+    }
+
     Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final {
         // This is an internal-only stage and so this should never be called.
         MONGO_UNREACHABLE;

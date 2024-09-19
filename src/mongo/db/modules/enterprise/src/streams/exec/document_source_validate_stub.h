@@ -32,6 +32,10 @@ protected:
         return kStageName;
     }
 
+    mongo::DocumentSourceType getType() const override {
+        return mongo::DocumentSourceType::kValidateStub;
+    }
+
     mongo::StageConstraints constraints(mongo::Pipeline::SplitState pipeState) const override;
 
     void addVariableRefs(std::set<mongo::Variables::Id>* refs) const final {
