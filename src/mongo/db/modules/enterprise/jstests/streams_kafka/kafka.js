@@ -409,6 +409,220 @@ function mongoToKafkaToMongo({
     stopStreamProcessor(mongoToKafkaName);
 }
 
+// test that we can resume from a v2 checkpoint
+function resumeFromCheckpointVersion2(numPartitions) {
+    assert.eq(numPartitions, 12);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName, 0);
+    // Cleanup the source collection.
+    sourceColl1.drop();
+
+    // Now the Kafka topic exists, and it has at least count events in it.
+    // Start kafkaToMongo, but set it up to resume from a previously taken checkpoint
+    const kafkaToMongoProcessorId = `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`;
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+
+    // This is the stored checkpoint with version2 that we will resume from
+    const chkptId = "1726682845981";
+    const srcDir =
+        "src/mongo/db/modules/enterprise/jstests/streams_kafka/data/resume_test/checkpointVer2/" +
+        chkptId;
+
+    // sanity check to make sure that the checkpoint we are reading from is indeed a ver 2
+    // checkpoint eslint-disable-next-line
+    let manifest = _readDumpFile(srcDir + "/manifest.bson");
+    manifest = manifest[0];
+    assert.eq(manifest['version'], 2);
+
+    // some other misc sanity checks
+    assert.eq(manifest['metadata']['checkpointId'], chkptId);
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['name'], 'KafkaConsumerOperator');
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['inputDocs'], 10000);
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['outputDocs'], 10000);
+
+    const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
+    mkdir(destDir);
+    // eslint-disable-next-line
+    copyDir(srcDir, destDir);
+
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        topicName: topicName1,
+        collName: sinkColl1.getName(),
+        restoreDirectory: checkpointUtils.getRestoreDirectory(chkptId),
+    });
+
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+
+    assert.soon(() => {
+        let statsResult = getStats(kafkaToMongoName);
+        jsTestLog("statsResult *********");
+        jsTestLog(statsResult);
+
+        if (!Object.hasOwn(statsResult, 'kafkaPartitions')) {
+            return false;
+        }
+
+        let kafkaPartitions = statsResult["kafkaPartitions"];
+        if (kafkaPartitions.length != 12) {
+            return false;
+        }
+
+        for (let idx of [1, 4, 5, 7, 8, 9, 10, 11]) {
+            if (kafkaPartitions[idx].currentOffset != 0) {
+                return false;
+            }
+        }
+
+        if (kafkaPartitions[0].currentOffset != 5999) {
+            return false;
+        }
+
+        if (kafkaPartitions[2].currentOffset != 1) {
+            return false;
+        }
+
+        if (kafkaPartitions[3].currentOffset != 1) {
+            return false;
+        }
+
+        if (kafkaPartitions[6].currentOffset != 4000) {
+            return false;
+        }
+
+        return true;
+    }, "checking kafkaPartition states of resumed from checkpoint", 90000, 1000);
+
+    // Stop the streamProcessor.
+    stopStreamProcessor(kafkaToMongoName);
+}
+
+// test that we can resume from a v3 checkpoint
+function resumeFromCheckpointVersion3(numPartitions) {
+    // To obtain a checkpoint to resume from, follow these steps. (Looking into automating this
+    // - mayuresh). The gist of it is to run the mongoToKafkaToMongo test and use the last
+    // checkpoint for the kafka to mongo SP which would have been taken when the test stops.
+    // 1. Run mongoToKafkaToMongo test by first modifying it to pump 10000 input docs and running it
+    // with 12 partitions. It is not required, but is recomended to do this with multiple
+    // partitions,
+    // 2. Make a note of the final stats as obtained via getStats before stopping the processor.
+    // These will have the partition offsets of the kafka partitions.
+    // 3. Grab the latest directory in
+    // /tmp/checkpointskafka/testTenant/processor-topic_outputTopic1-to-coll_sinkColl1. This
+    //    will be the final checkpoint written as part of the processor stop.
+    // 4. Convert the MANIFEST in the checkpoint to a regular bson file. This makes it easier to
+    // inspect the MANIFEST from the test code: tail -c +5 MANIFEST > manifest.bson
+    // 5. Now in a test, this checkpoint can be used as the restore-from checkpoint. To do this,
+    // copy the entire checkpoint directory to any path accessible from this file location and
+    // then use that directory as the restoreDirectory. Look at the invocation of
+    // makeKafkaToMongoStartCmd below.
+    assert.eq(numPartitions, 12);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName, 0);
+    // Cleanup the source collection.
+    sourceColl1.drop();
+
+    // Now the Kafka topic exists, and it has at least count events in it.
+    // Start kafkaToMongo, but set it up to resume from a previously taken checkpoint
+    const kafkaToMongoProcessorId = `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`;
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+
+    // This is the stored checkpoint with version3 that we will resume from
+    const chkptId = "1726778091150";
+    const srcDir =
+        "src/mongo/db/modules/enterprise/jstests/streams_kafka/data/resume_test/checkpointVer3/" +
+        chkptId;
+
+    // sanity check to make sure that the checkpoint we are reading from is indeed a ver 3
+    // checkpoint eslint-disable-next-line
+    let manifest = _readDumpFile(srcDir + "/manifest.bson");
+    manifest = manifest[0];
+    assert.eq(manifest['version'], 3);
+
+    // sanity check to make sure that in the execution plan, the $source option has the topic
+    // specified as a string. If topic is in an array format, that means this checkpoint was taken
+    // by a SP that had started using the new syntax and so cannot be rolled back.
+    assert.eq(manifest['metadata']['executionPlan'][0]['$source']['topic'], 'outputTopic1');
+
+    // some other misc sanity checks.
+    assert.eq(manifest['metadata']['checkpointId'], chkptId);
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['name'], 'KafkaConsumerOperator');
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['inputDocs'], 10000);
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['outputDocs'], 10000);
+
+    const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
+    mkdir(destDir);
+    // eslint-disable-next-line
+    copyDir(srcDir, destDir);
+
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        topicName: topicName1,
+        collName: sinkColl1.getName(),
+        restoreDirectory: checkpointUtils.getRestoreDirectory(chkptId),
+    });
+
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+
+    // Make sure that the useExecutionPlanFromCheckpoint feature flag is set to true. This
+    // ensures that the current code is indeed parsing the pipeline from the checkpoint instead
+    // of using the pipeline from the start request's options (where we will not have the array of
+    // topics syntax)
+    assert.soon(() => {
+        let result = db.runCommand({
+            streams_testOnlyGetFeatureFlags: '',
+            tenantId: TEST_TENANT_ID,
+            name: kafkaToMongoName
+        });
+        return (result.featureFlags.hasOwnProperty("useExecutionPlanFromCheckpoint") &&
+                result.featureFlags['useExecutionPlanFromCheckpoint'] == true);
+    });
+
+    assert.soon(() => {
+        let statsResult = getStats(kafkaToMongoName);
+        jsTestLog("statsResult *********");
+        jsTestLog(statsResult);
+
+        if (!Object.hasOwn(statsResult, 'kafkaPartitions')) {
+            return false;
+        }
+
+        let kafkaPartitions = statsResult["kafkaPartitions"];
+        if (kafkaPartitions.length != 12) {
+            return false;
+        }
+
+        for (let idx of [0, 2, 3, 5, 8, 9, 10, 11]) {
+            if (kafkaPartitions[idx].currentOffset != 0) {
+                return false;
+            }
+        }
+
+        if (kafkaPartitions[1].currentOffset != 5671) {
+            return false;
+        }
+
+        if (kafkaPartitions[4].currentOffset != 4328) {
+            return false;
+        }
+
+        if (kafkaPartitions[6].currentOffset != 1) {
+            return false;
+        }
+
+        if (kafkaPartitions[7].currentOffset != 1) {
+            return false;
+        }
+
+        return true;
+    }, "checking kafkaPartition states of resumed from checkpoint", 90000, 1000);
+
+    // Stop the streamProcessor.
+    stopStreamProcessor(kafkaToMongoName);
+}
+
 // Test that the stream metadata are preserved when non-group window operator exists even if the
 // pipeline doesn't have explicit dependency on the metadata.
 function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
@@ -1075,6 +1289,10 @@ function testKafkaOffsetLag(
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
+
+runKafkaTest(kafka, () => resumeFromCheckpointVersion2(12), 12);
+runKafkaTest(kafka, () => resumeFromCheckpointVersion3(12), 12);
+
 runKafkaTest(kafka,
              () => mongoToKafkaToMongoMaintainStreamMeta({$limit: 1} /* nonGroupWindowStage */));
 runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({
