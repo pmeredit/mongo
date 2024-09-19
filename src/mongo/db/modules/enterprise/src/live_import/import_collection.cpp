@@ -16,6 +16,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/profile_settings.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/stats/top.h"
@@ -212,7 +213,8 @@ void importCollection(OperationContext* opCtx,
                                           nss,
                                           Top::LockType::NotLocked,
                                           AutoStatsTracker::LogMode::kUpdateTopAndCurOp,
-                                          catalog->getDatabaseProfileLevel(nss.dbName()));
+                                          DatabaseProfileSettings::get(opCtx->getServiceContext())
+                                              .getDatabaseProfileLevel(nss.dbName()));
 
             // If the collection creation rolls back, ensure that the Top entry created for the
             // collection is deleted.
