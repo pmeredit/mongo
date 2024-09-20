@@ -31,8 +31,8 @@ using namespace fmt::literals;
 
 namespace {
 
-static constexpr size_t kMaxDatabaseCacheSize = 100;
-static constexpr size_t kMaxCollectionCacheSize = 100;
+static constexpr size_t kMaxDatabaseCacheSize = 1000;
+static constexpr size_t kMaxCollectionCacheSize = 1000;
 
 // This failpoint throws an exception after a successful call to
 // failAfterRemoteInsertSucceeds.

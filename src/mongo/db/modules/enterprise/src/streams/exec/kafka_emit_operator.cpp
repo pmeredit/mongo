@@ -244,7 +244,7 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
 }
 
 namespace {
-static constexpr size_t kMaxTopicNamesCacheSize = 100;
+static constexpr size_t kMaxTopicNamesCacheSize = 1000;
 }
 
 std::vector<char> serializeInt(int32_t valueInt) {

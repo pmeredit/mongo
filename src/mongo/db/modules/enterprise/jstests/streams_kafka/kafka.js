@@ -1286,6 +1286,174 @@ function testKafkaOffsetLag(
     stopStreamProcessor(mongoToKafkaName);
 }
 
+// Test that KafkaConsumerOperator stays within the configured memory usage limits.
+function honorSourceBufferSizeLimit() {
+    // Start a stream processor that reads from sourceColl1 and writes to the Kafka topic.
+    let processorName = 'sp';
+    sp.createStreamProcessor(processorName, [
+        {$source: {connectionName: dbConnName, db: dbName, coll: sourceColl1.getName()}},
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        {$project: {_stream_meta: 0}},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {outputFormat: 'canonicalJson'}
+            }
+        }
+    ]);
+
+    let processor = sp[processorName];
+    processor.start();
+
+    // Add 1000 input docs each of size ~1KB to the input collection.
+    let numDocs = 10000;
+    Random.setRandomSeed(42);
+    const str = makeRandomString(1000);
+    Array.from({length: numDocs}, (_, i) => i)
+        .forEach(idx => { assert.commandWorked(sourceColl1.insert({_id: idx, str: str})); });
+
+    // Wait until all the docs are emitted.
+    assert.soon(() => {
+        let statsResult = getStats(processorName);
+        return statsResult.outputMessageCount == numDocs;
+    });
+
+    processor.stop();
+
+    // Test that maxMemoryUsage reported by KafkaConsumerOperator stays within the configured limit.
+    let numProcessors = 10;
+    let featureFlags = {
+        sourceBufferTotalSize: NumberLong(500 * 1024 * 1024),
+        sourceBufferMaxSize: NumberLong(5 * 1024),
+        sourceBufferPageSize: NumberLong(1024)
+    };
+
+    // Start all the stream processors.
+    for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
+        processorName = "sp" + spIdx;
+        sp.createStreamProcessor(processorName, [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
+                    config: {auto_offset_reset: "earliest"},
+                }
+            },
+            {$emit: {connectionName: '__testMemory'}}
+        ]);
+
+        const processor = sp[processorName];
+        processor.start({featureFlags: featureFlags});
+    }
+
+    // Wait until all stream processors are done processing all the input docs.
+    assert.soon(() => {
+        let allDone = true;
+        for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
+            const processorName = "sp" + spIdx;
+            let statsResult = getStats(processorName);
+            if (statsResult.outputMessageCount < numDocs) {
+                allDone = false;
+            }
+        }
+        return allDone;
+    });
+
+    // Verify stats and stop all stream processors.
+    for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
+        const processorName = "sp" + spIdx;
+        let statsResult = getStats(processorName);
+        jsTestLog(statsResult);
+        const sourceStats = statsResult.operatorStats[0];
+        assert.eq('KafkaConsumerOperator', sourceStats.name);
+        assert.eq(sourceStats.stateSize, 0, statsResult);
+        assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
+        // KafkaPartitionConsumer sets consume.callback.max.messages to 500. So it can only enforce
+        // memory limits after reading up to 500 docs. So we need to have higher tolerance in our
+        // checks than we'd like.
+        assert.lt(sourceStats.maxMemoryUsage, 1.5 * 1024 * 1024, statsResult);
+        sp[processorName].stop();
+    }
+    sourceColl1.drop();
+}
+
+// Test that content-based routing feature of $emit works as expected.
+function contentBasedRouting() {
+    // Start a stream processor that reads from sourceColl1 and writes to the Kafka topic.
+    let processorName = 'sp';
+    sp.createStreamProcessor(processorName, [
+        {$source: {connectionName: dbConnName, db: dbName, coll: sourceColl1.getName()}},
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        {$project: {_stream_meta: 0}},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {outputFormat: 'canonicalJson'}
+            }
+        }
+    ]);
+
+    let processor = sp[processorName];
+    processor.start();
+
+    // Add 200 input docs to the input collection.
+    let numInputDocs = 200;
+    Random.setRandomSeed(42);
+    const str = makeRandomString(100);
+    Array.from({length: numInputDocs}, (_, i) => i)
+        .forEach(
+            idx => { assert.commandWorked(sourceColl1.insert({_id: idx.toString(), str: str})); });
+
+    // Wait until all the docs are emitted.
+    assert.soon(() => {
+        let statsResult = getStats(processorName);
+        return statsResult.outputMessageCount == numInputDocs;
+    });
+
+    processor.stop();
+
+    // Start a stream processor that writes 100 docs each to 200 Kafka topics.
+    sp.createStreamProcessor(processorName, [
+        {
+            $source: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {auto_offset_reset: "earliest"},
+            }
+        },
+        {$addFields: {i: {$range: [0, 10]}}},
+        {$unwind: "$i"},
+        {
+            $addFields:
+                {ii: {$range: [{$multiply: ["$i", 10]}, {$multiply: [{$add: ["$i", 1]}, 10]}]}}
+        },
+        {$unwind: "$ii"},
+        {$emit: {connectionName: kafkaPlaintextName, topic: "$_id"}}
+    ]);
+
+    processor = sp[processorName];
+
+    let options = {
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
+        featureFlags: {},
+    };
+    processor.start(options);
+
+    // Wait until all stream processors are done processing all the input docs.
+    let numOutputDocs = numInputDocs * 100;
+    assert.soon(() => {
+        let statsResult = getStats(processorName);
+        return statsResult.outputMessageCount == numOutputDocs;
+    });
+
+    processor.stop();
+    sourceColl1.drop();
+}
+
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
@@ -1491,99 +1659,6 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
 
 runKafkaTest(kafka, mongoToKafkaToMongoGetConnectionNames);
 
-// Test that KafkaConsumerOperator stays within the configured memory usage limits.
-function honorSourceBufferSizeLimit() {
-    // Start a stream processor that reads from sourceColl1 and writes to the Kafka topic.
-    let processorName = 'sp';
-    sp.createStreamProcessor(processorName, [
-        {$source: {connectionName: dbConnName, db: dbName, coll: sourceColl1.getName()}},
-        {$match: {operationType: "insert"}},
-        {$replaceRoot: {newRoot: "$fullDocument"}},
-        {$project: {_stream_meta: 0}},
-        {
-            $emit: {
-                connectionName: kafkaPlaintextName,
-                topic: topicName1,
-                config: {outputFormat: 'canonicalJson'}
-            }
-        }
-    ]);
-
-    let processor = sp[processorName];
-    processor.start();
-
-    // Add 1000 input docs each of size ~1KB to the input collection.
-    let numDocs = 10000;
-    Random.setRandomSeed(42);
-    const str = makeRandomString(1000);
-    Array.from({length: numDocs}, (_, i) => i)
-        .forEach(idx => { assert.commandWorked(sourceColl1.insert({_id: idx, str: str})); });
-
-    // Wait until all the docs are emitted.
-    assert.soon(() => {
-        let statsResult = getStats(processorName);
-        return statsResult.outputMessageCount == numDocs;
-    });
-
-    processor.stop();
-
-    // Test that maxMemoryUsage reported by KafkaConsumerOperator stays within the configured limit.
-    let numProcessors = 10;
-    let featureFlags = {
-        sourceBufferTotalSize: NumberLong(500 * 1024 * 1024),
-        sourceBufferMaxSize: NumberLong(5 * 1024),
-        sourceBufferPageSize: NumberLong(1024)
-    };
-
-    // Start all the stream processors.
-    for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
-        processorName = "sp" + spIdx;
-        sp.createStreamProcessor(processorName, [
-            {
-                $source: {
-                    connectionName: kafkaPlaintextName,
-                    topic: topicName1,
-                    config: {auto_offset_reset: "earliest"},
-                }
-            },
-            {$emit: {connectionName: '__testMemory'}}
-        ]);
-
-        const processor = sp[processorName];
-        processor.start({featureFlags: featureFlags});
-    }
-
-    // Wait until all stream processors are done processing all the input docs.
-    assert.soon(() => {
-        let allDone = true;
-        for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
-            const processorName = "sp" + spIdx;
-            let statsResult = getStats(processorName);
-            if (statsResult.outputMessageCount < numDocs) {
-                allDone = false;
-            }
-        }
-        return allDone;
-    });
-
-    // Verify stats and stop all stream processors.
-    for (let spIdx = 1; spIdx <= numProcessors; ++spIdx) {
-        const processorName = "sp" + spIdx;
-        let statsResult = getStats(processorName);
-        jsTestLog(statsResult);
-        const sourceStats = statsResult.operatorStats[0];
-        assert.eq('KafkaConsumerOperator', sourceStats.name);
-        assert.eq(sourceStats.stateSize, 0, statsResult);
-        assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
-        // KafkaPartitionConsumer sets consume.callback.max.messages to 500. So it can only enforce
-        // memory limits after reading up to 500 docs. So we need to have higher tolerance in our
-        // checks than we'd like.
-        assert.lt(sourceStats.maxMemoryUsage, 1.5 * 1024 * 1024, statsResult);
-        sp[processorName].stop();
-    }
-    sourceColl1.drop();
-}
-
 runKafkaTest(kafka, honorSourceBufferSizeLimit);
 
 runKafkaTest(kafka, () => {
@@ -1610,3 +1685,5 @@ runKafkaTest(kafka, () => {
     assert.soon(() => { return sp[spName].stats().outputMessageCount == inputData.length; });
     sp[spName].stop();
 });
+
+runKafkaTest(kafka, contentBasedRouting);

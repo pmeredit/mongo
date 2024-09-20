@@ -526,11 +526,8 @@ function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     stopStreamProcessor(spName);
 })();
 
-// The max number of dynamic targets allowed is 100.
-const kMaxDynamicTargets = 100;
-
 (function testManyDynamicCollections() {
-    const testCases = [0, kMaxDynamicTargets];
+    const testCases = [0, 100];
 
     testCases.forEach((numDynamicTargets) => {
         jsTestLog("Running testManyDynamicCollections " + numDynamicTargets);
@@ -591,6 +588,9 @@ const kMaxDynamicTargets = 100;
     });
 })();
 
+// The max number of dynamic targets allowed is 1000.
+const kMaxDynamicTargets = 1000;
+
 (function testTooManyDynamicDbs() {
     jsTestLog("Running testTooManyDynamicDbs");
 
@@ -632,7 +632,7 @@ const kMaxDynamicTargets = 100;
         // by the executor to 75384.
         return sp.status == "error" &&
             sp.error.code == ErrorCodes.StreamProcessorTooManyOutputTargets &&
-            sp.error.reason == "Too many unique databases: 100";
+            sp.error.reason == "Too many unique databases: 1000";
     });
 
     // Stop the streamProcessor.
