@@ -98,6 +98,18 @@ void createCollectionsToRestore(
     repl::StorageInterface* storageInterface);
 
 /**
+ * Helper function that runs the functions needed for a selective restore. This function will only
+ * be called on a config server node. It creates the 'collections_to_restore' collection, populates
+ * it with the given restored collections passed in via the restoreConfig, and runs the
+ * _configsvrRunRestore command. This command removes metadata about unrestored collections. This
+ * function then drops the 'collections_to_restore' collection before returning.
+ */
+void runSelectiveRestoreSteps(OperationContext* opCtx,
+                              const RestoreConfiguration& restoreConfig,
+                              repl::StorageInterface* storageInterface);
+
+
+/**
  * Performs follow-up steps for sharded clusters.
  */
 void updateShardingMetadata(OperationContext* opCtx,

@@ -32,6 +32,7 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/grid.h"
@@ -363,7 +364,6 @@ void updateShardNameMetadata(OperationContext* opCtx,
             // See documentation of addFields, this replaces those 2 fields as they exist already.
             auto doc = docs[0].addFields(BSON("_id" << dstShardName << "host" << dstShardConnStr));
 
-            // TODO SERVER-87581: confirm that this does not create an oplog entry.
             fassert(8291306,
                     storageInterface->insertDocument(opCtx,
                                                      NamespaceString::kConfigsvrShardsNamespace,
@@ -546,7 +546,6 @@ void createCollectionsToRestore(
                 opCtx, NamespaceString::kConfigsvrRestoreNamespace, CollectionOptions()));
 
     // Insert all the names and UUIDs of the collections that were restored.
-    // TODO SERVER-87581: confirm that this does not create an oplog entry.
     std::vector<InsertStatement> docs;
     docs.reserve(nsAndUuids.size());
     for (const auto& nsAndUuid : nsAndUuids) {
@@ -561,6 +560,33 @@ void createCollectionsToRestore(
     fassert(8756806,
             storageInterface->insertDocuments(
                 opCtx, NamespaceString::kConfigsvrRestoreNamespace, docs));
+}
+
+void runSelectiveRestoreSteps(OperationContext* opCtx,
+                              const RestoreConfiguration& restoreConfig,
+                              repl::StorageInterface* storageInterface) {
+    if (!storageGlobalParams.restore) {
+        LOGV2_FATAL(8948400,
+                    "Performing a selective restore with magic restore requires passing in "
+                    "the --restore parameter.");
+    }
+
+    createCollectionsToRestore(
+        opCtx, restoreConfig.getCollectionsToRestore().get(), storageInterface);
+
+    // Run the _configsvrRunRestore command to clean up config metadata documents for
+    // unrestored collections.
+    DBDirectClient dbClient(opCtx);
+    OpMsgRequest request;
+    request.body = BSON("_configsvrRunRestore" << 1 << "$db"
+                                               << "admin");
+    LOGV2(8290806, "Running _configsvrRunRestore for selective restore");
+    dbClient.runCommand(request);
+    const auto commandReply = dbClient.runCommand(request)->getCommandReply();
+    fassert(8756807, getStatusFromWriteCommandReply(commandReply));
+
+    fassert(8756808,
+            storageInterface->dropCollection(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
 }
 
 void updateShardingMetadata(OperationContext* opCtx,
@@ -584,22 +610,7 @@ void updateShardingMetadata(OperationContext* opCtx,
                 storageInterface->dropCollection(opCtx, NamespaceString::kConfigMongosNamespace));
 
         if (restoreConfig.getCollectionsToRestore()) {
-            createCollectionsToRestore(
-                opCtx, restoreConfig.getCollectionsToRestore().get(), storageInterface);
-
-            // Run the _configsvrRunRestore command to clean up config metadata documents for
-            // unrestored collections.
-            DBDirectClient dbClient(opCtx);
-            OpMsgRequest request;
-            request.body = BSON("_configsvrRunRestore" << 1);
-            LOGV2(8290806, "Running _configsvrRunRestore for selective restore");
-            dbClient.runCommand(request);
-            const auto commandReply = dbClient.runCommand(request)->getCommandReply();
-            fassert(8756807, getStatusFromWriteCommandReply(commandReply));
-
-            fassert(8756808,
-                    storageInterface->dropCollection(opCtx,
-                                                     NamespaceString::kConfigsvrRestoreNamespace));
+            runSelectiveRestoreSteps(opCtx, restoreConfig, storageInterface);
         }
     }
 

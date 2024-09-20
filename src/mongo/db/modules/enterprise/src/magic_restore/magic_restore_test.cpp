@@ -725,6 +725,44 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataShard) {
     ASSERT_BSONOBJ_EQ_UNORDERED(docs[1], expectedShardIdentity);
 }
 
+DEATH_TEST_REGEX_F(MagicRestoreFixture,
+                   SelectiveRestoreStepsMissingParam,
+                   "8948400.*Performing a selective restore with magic restore requires passing in "
+                   "the --restore parameter") {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+    magic_restore::RestoreConfiguration restoreConfig;
+
+    // Without the --restore parameter, this call will crash the node.
+    runSelectiveRestoreSteps(opCtx, restoreConfig, storage);
+}
+
+TEST_F(MagicRestoreFixture, SelectiveRestoreSteps) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+    magic_restore::RestoreConfiguration restoreConfig;
+
+
+    auto dbName = DatabaseName::createDatabaseName_forTest(boost::none /* tenantId*/, "db");
+    std::string collName = "collToRestore";
+    auto ns = NamespaceString::createNamespaceString_forTest(dbName, collName);
+    auto uuid = mongo::UUID::gen();
+
+    std::vector<mongo::magic_restore::NamespaceUUIDPair> collectionsToRestore{
+        mongo::magic_restore::NamespaceUUIDPair{ns, uuid}};
+    restoreConfig.setCollectionsToRestore(collectionsToRestore);
+
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage->getCollectionUUID(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
+
+    storageGlobalParams.restore = true;
+    runSelectiveRestoreSteps(opCtx, restoreConfig, storage);
+    // Ensure the 'collections_to_restore' collection was successfully dropped after
+    // 'runSelectiveRestoreSteps'.
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
+                  storage->getCollectionUUID(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
+}
+
 // Test dropNonRestoredClusterParameters.
 TEST_F(MagicRestoreFixture, DropNonRestoredClusterParameters) {
     auto storage = storageInterface();
