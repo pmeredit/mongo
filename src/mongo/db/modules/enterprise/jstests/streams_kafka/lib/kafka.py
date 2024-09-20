@@ -313,6 +313,26 @@ def get_consumer_group(args) -> List[Any]:
     print(json.dumps(rows))
 
 
+def get_compress_codec_details(args):
+    cmd = [
+        DOCKER,
+        "exec",
+        "-it",
+        "streamskafkabroker",
+        "/bin/kafka-run-class",
+        "kafka.tools.DumpLogSegments",
+        "--files",
+        f"/var/lib/kafka/data/{args.topic}-{args.partition}/00000000000000000000.log",
+        "--print-data-log",
+    ]
+    ret = _run_process_capture(cmd)
+    pattern = re.compile(r"compresscodec:\s([^\s]+)")
+    for line in ret.stdout.splitlines():
+        match = pattern.search(line)
+        if match:
+            print(match.group(1))
+
+
 def main() -> None:
     """Execute Main entry point."""
 
@@ -349,6 +369,18 @@ def main() -> None:
         "--group-id", required=True, type=str, help="Consumer group ID to fetch members"
     )
     list_consumer_group_members_cmd.set_defaults(func=list_consumer_group_members)
+
+    get_compress_codec_details_cmd = sub.add_parser(
+        "get-compress-codec-details",
+        help="Gets compress codec details in the kafka logs",
+    )
+    get_compress_codec_details_cmd.add_argument(
+        "--topic", required=True, type=str, help="topic to fetch data from"
+    )
+    get_compress_codec_details_cmd.add_argument(
+        "--partition", required=True, type=str, help="partition to fetch data from"
+    )
+    get_compress_codec_details_cmd.set_defaults(func=get_compress_codec_details)
 
     (args, _) = parser.parse_known_args()
 
