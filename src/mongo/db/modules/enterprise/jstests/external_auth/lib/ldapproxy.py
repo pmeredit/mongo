@@ -116,9 +116,7 @@ def testClientConnect(config):
     client = yield clientCreator.connect("", overrides=clientConfig)
 
     searchReq = LDAPEntry(client, "")
-    results = yield searchReq.search(
-        scope=pureldap.LDAP_SCOPE_baseObject, filterText="(objectClass=*)"
-    )
+    yield searchReq.search(scope=pureldap.LDAP_SCOPE_baseObject, filterText="(objectClass=*)")
 
     print("Got root DSE!")
 

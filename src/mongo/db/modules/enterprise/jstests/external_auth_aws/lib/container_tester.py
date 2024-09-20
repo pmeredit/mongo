@@ -109,7 +109,6 @@ def run_test(endpoint, script, files):
     LOGGER.info("Waiting for SSH on %s", endpoint)
     for retry in range(20):
         if 0 == _ssh(endpoint, "/usr/bin/uptime"):
-            ssh_ready = True
             break
         time.sleep(5)
     else:

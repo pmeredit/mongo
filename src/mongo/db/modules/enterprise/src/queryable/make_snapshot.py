@@ -66,7 +66,7 @@ def sha256(data):
 
 BLOCKSTORE = True
 s3Bucket = None
-if BLOCKSTORE == False:
+if not BLOCKSTORE:
     import boto3
 
     s3Bucket = boto3.resource("s3").Bucket("mms-backup-test")
@@ -170,7 +170,7 @@ while len(dirs_to_snapshot) > 0:
 
 ssType = "blockstore"
 ssId = "blockstore1"
-if BLOCKSTORE == False:
+if not BLOCKSTORE:
     ssType = "S3"
     ssId = "s3blockstore"
 

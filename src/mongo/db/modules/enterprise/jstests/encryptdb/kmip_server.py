@@ -362,7 +362,7 @@ def main():
         try:
             server.start()
             server.serve()
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             logger.debug("Shutdown signal received")
         except Exception as e:
             logger.info("Exception received while serving: {0}".format(e))

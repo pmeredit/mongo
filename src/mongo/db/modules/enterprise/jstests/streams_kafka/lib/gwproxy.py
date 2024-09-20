@@ -117,7 +117,7 @@ class GWProxyManager(object):
         self.add_interface_alias()
 
         # Create a client connection if we don't already have one.
-        if self.ecr_client == None:
+        if self.ecr_client is None:
             self.login_to_ecr()
 
         # Pull latest image.
@@ -319,7 +319,7 @@ def stop(args) -> int:
     mgr = GWProxyManager()
 
     try:
-        ret = mgr.stop_gwproxy()
+        mgr.stop_gwproxy()
     except GWProxyException as ex:
         print(f"Failed to stop gwproxy (may have already been stopped): {ex}")
 

@@ -93,7 +93,6 @@ def configure(conf, env):
     env["MODULE_INJECTORS"]["enterprise"] = injectEnterpriseModule
 
     distsrc = env.Dir(root).Dir("distsrc")
-    docs = env.Dir(root).Dir("docs")
     env.Append(
         MODULE_BANNERS=[
             distsrc.File("LICENSE-Enterprise.txt"),
