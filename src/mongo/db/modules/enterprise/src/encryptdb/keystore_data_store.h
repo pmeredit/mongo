@@ -13,7 +13,7 @@
 
 #include "encryption_options.h"
 #include "mongo/base/string_data.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
 
 namespace mongo {
 // This is a stateless deleter for Wired Tiger structs. Wired Tiger structs have a close() method

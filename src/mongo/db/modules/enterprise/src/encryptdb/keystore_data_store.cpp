@@ -11,7 +11,6 @@
 #include "mongo/base/data_builder.h"
 #include "mongo/base/status.h"
 #include "mongo/db/storage/storage_options.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
