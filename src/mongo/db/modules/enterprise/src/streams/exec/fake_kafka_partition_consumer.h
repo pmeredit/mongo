@@ -52,7 +52,7 @@ private:
     OperatorStats doGetStats() override;
 
     // Guards _docs.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("FakeKafkaPartitionConsumer::mutex");
+    mutable mongo::stdx::mutex _mutex;
     std::vector<KafkaSourceDocument> _docs;
 
     // If true, the document offsets returned use the internal index.

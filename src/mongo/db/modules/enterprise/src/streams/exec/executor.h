@@ -191,7 +191,7 @@ private:
     mongo::Timer _executorTimer;
     mongo::Promise<void> _promise;
     mongo::stdx::thread _executorThread;
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
+    mutable mongo::stdx::mutex _mutex;
     bool _shutdown{false};
     StopReason _stopReason;
     mongo::Date_t _stopDeadline;

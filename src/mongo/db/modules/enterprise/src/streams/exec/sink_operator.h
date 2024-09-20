@@ -80,7 +80,7 @@ protected:
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
 
 private:
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("SinkOperator::mutex");
+    mutable mongo::stdx::mutex _mutex;
 };
 
 }  // namespace streams

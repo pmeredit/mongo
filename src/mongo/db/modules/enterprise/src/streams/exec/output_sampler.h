@@ -52,7 +52,7 @@ public:
 
 private:
     Options _options;
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("OutputSampler::mutex");
+    mutable mongo::stdx::mutex _mutex;
     // Number of documents received via addDataMsg() so far.
     int32_t _numDocsSampled{0};
     // Number of bytes received via addDataMsg() so far.

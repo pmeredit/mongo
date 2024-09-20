@@ -97,8 +97,7 @@ private:
     // that may add documents to the DLQ.
     mongo::MultiProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;
     mongo::stdx::thread _consumerThread;
-    mutable mongo::Mutex _consumerMutex =
-        MONGO_MAKE_LATCH("MongoDBDeadLetterQueue::_consumerMutex");
+    mutable mongo::stdx::mutex _consumerMutex;
     SPStatus _consumerStatus{mongo::Status::OK()};
     bool _pendingFlush{false};
     mongo::stdx::condition_variable _flushedCv;

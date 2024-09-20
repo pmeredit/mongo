@@ -117,7 +117,7 @@ public:
  * state, like those which create new sessions, are not threadsafe. Therefore, we must
  * wrap session creation with a mutex.
  */
-static Mutex libldapGlobalMutex = MONGO_MAKE_LATCH();
+static stdx::mutex libldapGlobalMutex;
 
 /**
  * Locking OpenLDAPGlobalMutex locks a global mutex if setNeedsGlobalLock was called. Otherwise,

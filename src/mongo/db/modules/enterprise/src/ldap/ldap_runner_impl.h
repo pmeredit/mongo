@@ -77,7 +77,7 @@ private:
      * Protects access to _defaultBindOptions.bindDN, _defaultBindOptions.password,
      * _options.serverURIs and _options.timeout.
      */
-    mutable Mutex _memberAccessMutex = MONGO_MAKE_LATCH("LDAPRunnerImpl::_memberAccessMutex");
+    mutable stdx::mutex _memberAccessMutex;
 
     std::vector<SecureString> _bindPasswords;
     LDAPBindOptions _defaultBindOptions;

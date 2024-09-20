@@ -193,8 +193,7 @@ private:
     std::unique_ptr<DelayedWatermarkGenerator> _watermarkGenerator;
 
     // Guards the members below.
-    mutable mongo::Mutex _mutex =
-        MONGO_MAKE_LATCH("ChangeStreamSourceOperator::ChangeEvents::mutex");
+    mutable mongo::stdx::mutex _mutex;
 
     // Condition variable used by '_changeStreamThread'. Synchronized with '_mutex'.
     mongo::stdx::condition_variable _changeStreamThreadCond;

@@ -29,7 +29,7 @@ namespace {
 using namespace fmt::literals;
 
 // Secure Random for SASL IAM Nonce generation
-Mutex saslAWSServerMutex = MONGO_MAKE_LATCH("AWSServerMutex");
+stdx::mutex saslAWSServerMutex;
 SecureRandom saslAWSServerGen;
 
 std::array<StringData, 10> allowedHeaders = {"content-length"_sd,

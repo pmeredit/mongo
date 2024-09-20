@@ -94,7 +94,7 @@ private:
     struct SourceBufferInfo {
         // Guards all the member variables of this struct.
         // This mutex is never acquired before SourceBufferManager::_mutex.
-        mongo::Mutex mutex = MONGO_MAKE_LATCH("SourceBufferManager::SourceBufferInfo::mutex");
+        mongo::stdx::mutex mutex;
 
         // Current byte size of this buffer. This is an approximate value, the actual value may be
         // slightly smaller or larger.

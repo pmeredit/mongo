@@ -58,7 +58,7 @@ public:
 
 IDPManager globalIDPManager(std::make_unique<JWKSFetcherFactoryImpl>());
 
-Mutex refreshIntervalMutex = MONGO_MAKE_LATCH();
+stdx::mutex refreshIntervalMutex;
 stdx::condition_variable refreshIntervalChanged;
 
 StringDataMap<std::vector<IDPConfiguration*>> groupIDPConfigurationsByIssuer(

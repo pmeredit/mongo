@@ -254,7 +254,7 @@ private:
     Options _options;
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
-    mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
+    mongo::stdx::mutex _mutex;
     // The callback that `_memoryAggregator` invokes when the memory usage increases.
     std::shared_ptr<KillAllMemoryUsageMonitor> _memoryUsageMonitor;
     // Memory aggregator that tracks memory usage across all active stream processors. This must be

@@ -68,7 +68,7 @@ public:
 
 private:
     std::vector<std::shared_ptr<MetricInfo>> computeMetricsToVisit();
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("MetricManager::mutex");
+    mutable mongo::stdx::mutex _mutex;
     // Tracks all registered metrics.
     std::list<std::shared_ptr<MetricInfo>> _metrics;
 };

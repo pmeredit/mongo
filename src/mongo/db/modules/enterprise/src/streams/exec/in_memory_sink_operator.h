@@ -38,7 +38,7 @@ private:
     OperatorStats doGetStats() override;
 
     // Guards _messages.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemorySinkOperator::mutex");
+    mutable mongo::stdx::mutex _mutex;
 };
 
 }  // namespace streams

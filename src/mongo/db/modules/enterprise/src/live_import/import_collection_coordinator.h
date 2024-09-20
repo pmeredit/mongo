@@ -32,7 +32,7 @@ public:
                        const boost::optional<StringData>& reasons = boost::none);
 
 private:
-    Mutex _mutex = MONGO_MAKE_LATCH("ImportCollectionCoordinator::_mutex");
+    stdx::mutex _mutex;
 
     struct DryRunStatus {
         SharedPromise<void> promise;

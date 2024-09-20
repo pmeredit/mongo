@@ -100,7 +100,7 @@ private:
         DocVec popDocVec();
 
         // Guards all members of this struct.
-        mutable mongo::Mutex mutex = MONGO_MAKE_LATCH("KafkaPartitionConsumer::DocBatch::mutex");
+        mutable mongo::stdx::mutex mutex;
         // Tracks all the documents added to this batch.
         std::queue<DocVec> docVecs;
         // Tracks the total number of documents in docVecs.
@@ -194,7 +194,7 @@ private:
 
     // Guards following member variables.
     // Note that this mutex and DocBatch::mutex are never acquired together.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaPartitionConsumer::mutex");
+    mutable mongo::stdx::mutex _mutex;
     // Whether this consumer is currently connected to the source Kafka cluster.
     // The initial offset used to start tailing the Kafka partition.
     boost::optional<int64_t> _startOffset;

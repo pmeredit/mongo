@@ -132,7 +132,7 @@ private:
         // Background thread used to establish connection with Kafka.
         mongo::stdx::thread _connectionThread;
         // Protects the members below.
-        mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Connector::mutex");
+        mutable mongo::stdx::mutex _mutex;
         // Tracks the current ConnectionStatus.
         ConnectionStatus _connectionStatus;
     };
@@ -152,7 +152,7 @@ private:
         Context* _context{nullptr};
 
         // Protects the members below.
-        mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("DeliveryReportCb::mutex");
+        mutable mongo::stdx::mutex _mutex;
         mongo::Status _status{mongo::Status::OK()};
     };
 

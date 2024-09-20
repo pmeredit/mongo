@@ -107,7 +107,7 @@ private:
 
     // Background thread that processes documents from `_queue`.
     mongo::stdx::thread _consumerThread;
-    mutable mongo::Mutex _consumerMutex = MONGO_MAKE_LATCH("QueuedSinkOperator::_consumerMutex");
+    mutable mongo::stdx::mutex _consumerMutex;
 
     // Status of the the background consumer thread, protected by `_consumerMutex`.
     ConnectionStatus _consumerStatus{ConnectionStatus::kConnecting};

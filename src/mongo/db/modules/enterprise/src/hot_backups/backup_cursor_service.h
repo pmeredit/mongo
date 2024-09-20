@@ -103,7 +103,7 @@ private:
     enum State { kInactive, kFsyncLocked, kBackupCursorOpened };
     AtomicWord<State> _state{kInactive};
 
-    mutable Mutex _mutex = MONGO_MAKE_LATCH("BackupCursorService::_mutex");
+    mutable stdx::mutex _mutex;
     // When state is `kBackupCursorOpened`, _activeBackupId contains an UUID which uniquely
     // identifies the active backup cursor. Otherwise it is boost::none.
     boost::optional<UUID> _activeBackupId = boost::none;

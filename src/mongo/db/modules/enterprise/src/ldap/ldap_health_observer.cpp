@@ -160,8 +160,7 @@ struct LdapHealthObserver::ConcurrentRunContext {
     // Vector itself is immutable, only futures values can change.
     SharedPromiseFutureVector promisesAndFutures;
 
-    mutable Mutex mutex = MONGO_MAKE_LATCH(HierarchicalAcquisitionLevel(0),
-                                           "LdapHealthObserver::ConcurrentRunContext::mutex");
+    mutable stdx::mutex mutex;
     // Only this field needs protection, shared by all threads.
     std::shared_ptr<std::deque<LDAPHost>> resolvedHosts;
     ServiceContext* const svcCtx;

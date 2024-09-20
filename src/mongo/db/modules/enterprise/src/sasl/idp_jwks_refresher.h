@@ -63,7 +63,7 @@ public:
 
 private:
     std::shared_ptr<crypto::JWKManager> _keyManager;
-    Mutex _refreshMutex = MONGO_MAKE_LATCH("IdentityProvider Refresh Mutex");
+    stdx::mutex _refreshMutex;
     Date_t _lastRefresh;
     Seconds _pollSecs;
     std::string _issuer;

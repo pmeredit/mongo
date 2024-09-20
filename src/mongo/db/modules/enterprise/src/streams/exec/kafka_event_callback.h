@@ -38,7 +38,7 @@ private:
     std::string _operatorName;
 
     // Protects access to the error messages buffer.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaErrorBuffer::mutex");
+    mutable mongo::stdx::mutex _mutex;
     std::deque<std::string> _errorBuffer;
     // Set to true when a librdkafka indicates we should error out.
     bool _hasError{false};

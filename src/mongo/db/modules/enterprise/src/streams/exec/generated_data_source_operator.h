@@ -23,7 +23,7 @@ public:
 
 protected:
     // Guards each `run()` instance, including `getMessages()`.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("GeneratedDataSourceOperator::mutex");
+    mutable mongo::stdx::mutex _mutex;
 
 private:
     // Returns the next batch of messages to process. This is called once per `run()`.

@@ -72,7 +72,7 @@ protected:
     std::shared_ptr<Counter> _numDlqBytesCounter;
 
     // Mutex used to protect the member below.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("DeadLetterQueue::mutex");
+    mutable mongo::stdx::mutex _mutex;
 
     // Current output samplers.
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;

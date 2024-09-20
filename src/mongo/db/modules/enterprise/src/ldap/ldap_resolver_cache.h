@@ -94,7 +94,7 @@ private:
 
 private:
     stdx::unordered_map<CacheKey, CacheEntry> _dnsCache;
-    Mutex _mutex = MONGO_MAKE_LATCH("WindowsLDAPInfoCache::_mutex");
+    stdx::mutex _mutex;
 };
 
 inline bool operator==(const LDAPDNSResolverCache::CacheKey& lhs,

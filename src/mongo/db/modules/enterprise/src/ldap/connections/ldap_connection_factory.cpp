@@ -77,14 +77,14 @@ public:
     }
 
 private:
-    mutable Mutex _mutex = MONGO_MAKE_LATCH("LDAPHostTimingData::_mutex");
+    mutable stdx::mutex _mutex;
     Milliseconds _latency{0};
     bool _failed = true;
     AtomicWord<int64_t> _uses{0};
 };
 
 struct LDAPPoolTimingData {
-    Mutex mutex = MONGO_MAKE_LATCH("LDAPPoolTimingData::mutex");
+    stdx::mutex mutex;
     stdx::unordered_map<HostAndPort, std::shared_ptr<LDAPHostTimingData>> timingData;
 };
 

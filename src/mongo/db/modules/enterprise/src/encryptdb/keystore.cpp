@@ -287,8 +287,7 @@ private:
     // all the databases in the current rollover set.
     // *Current contains the most recent keys for a given name and is suitable for new writes.
     // *Oldest contains the original keys for a given name and are suitable for reads from v0 pages.
-    Mutex _dbNameToKeyIdCurrentMutex =
-        MONGO_MAKE_LATCH("KeystoreImplV1::_dbNameToKeyIdCurrentMutex");
+    stdx::mutex _dbNameToKeyIdCurrentMutex;
     StringMap<SymmetricKeyId::id_type> _dbNameToKeyIdCurrent;
 
     const StringMap<SymmetricKeyId::id_type> _dbNameToKeyIdOldest;

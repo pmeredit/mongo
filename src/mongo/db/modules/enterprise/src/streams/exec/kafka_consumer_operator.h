@@ -206,7 +206,7 @@ private:
         // Background thread used to establish connection with Kafka.
         mongo::stdx::thread _connectionThread;
         // Protects the members below.
-        mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Connector::mutex");
+        mutable mongo::stdx::mutex _mutex;
         bool _shutdown{false};
         // Tracks the current ConnectionStatus.
         ConnectionStatus _connectionStatus;
@@ -338,8 +338,7 @@ private:
     // requires.
     mongo::stdx::thread _groupConsumerThread;
     // This mutex protects the variables below.
-    mutable mongo::Mutex _groupConsumerMutex =
-        MONGO_MAKE_LATCH("KafkaConsumerOperator::groupConsumerThread::mutex");
+    mutable mongo::stdx::mutex _groupConsumerMutex;
     mongo::stdx::condition_variable _groupConsumerThreadCond;
     bool _groupConsumerThreadShutdown{false};
 

@@ -39,7 +39,7 @@ private:
     int doAddMessage(mongo::BSONObj msg) override;
 
     // Guards _docs.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemoryDeadLetterQueue::mutex");
+    mutable mongo::stdx::mutex _mutex;
     std::queue<mongo::BSONObj> _messages;
     int64_t _messageBytes{0};
 };

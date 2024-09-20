@@ -103,7 +103,7 @@ public:
 
 private:
     friend class RotatableFileWriter::Use;
-    Mutex _mutex = MONGO_MAKE_LATCH("RotatableFileWriter::_mutex");
+    stdx::mutex _mutex;
     std::string _fileName;
     std::unique_ptr<std::ostream> _stream;
 };

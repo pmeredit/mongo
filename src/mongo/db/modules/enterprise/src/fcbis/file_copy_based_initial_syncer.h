@@ -432,9 +432,9 @@ private:
     // (MX) Must hold _mutex and be in a future chain run on _exec to write; must either hold
     //      _mutex or be in a future chain run on _exec to read.
 
-    mutable Mutex _mutex = MONGO_MAKE_LATCH("FileCopyBasedInitialSyncer::_mutex");  // (S)
-    const InitialSyncerInterface::Options _opts;                                    // (R)
-    std::unique_ptr<DataReplicatorExternalState> _dataReplicatorExternalState;      // (R)
+    mutable stdx::mutex _mutex;                                                 // (S)
+    const InitialSyncerInterface::Options _opts;                                // (R)
+    std::unique_ptr<DataReplicatorExternalState> _dataReplicatorExternalState;  // (R)
 
     // This cannot be shutdown before shutting down FileCopyBasedInitialSyncer itself, since
     // shutdown() (and ~FileCopyBasedInitialSyncer) relies on running cleanup work on _exec.

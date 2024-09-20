@@ -102,7 +102,7 @@ private:
     /**
      * Protects access to the _queryConfig and _userToDN member variables.
      */
-    mutable Mutex _memberAccessMutex = MONGO_MAKE_LATCH("LDAPManagerImpl::_memberAccessMutex");
+    mutable stdx::mutex _memberAccessMutex;
 
     /**
      * Template containing a query, in which authenticated user's DN will replace

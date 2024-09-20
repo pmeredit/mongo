@@ -272,7 +272,7 @@ private:
 
     // We exclusively take this mutex during setConfiguration
     // to avoid confusion in the audit log about concurrent sets.
-    Mutex _setConfigurationMutex = MONGO_MAKE_LATCH("AuditManager::setConfiguration");
+    stdx::mutex _setConfigurationMutex;
 
     // Object to call encryption and compression on the audit logs.
     std::unique_ptr<AuditEncryptionCompressionManager> _ac;

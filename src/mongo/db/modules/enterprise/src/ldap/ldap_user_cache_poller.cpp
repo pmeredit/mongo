@@ -25,17 +25,17 @@ namespace mongo {
 namespace {
 AtomicWord<int> ldapUserCacheInvalidationInterval(
     LDAPUserCacheInvalidationIntervalParameter::kDataDefault);  // seconds
-Mutex invalidationIntervalMutex = MONGO_MAKE_LATCH();
+stdx::mutex invalidationIntervalMutex;
 stdx::condition_variable invalidationIntervalChanged;
 
 AtomicWord<int> ldapUserCacheRefreshInterval(
     LDAPUserCacheRefreshIntervalParameter::kDataDefault);  // seconds
-Mutex refreshIntervalMutex = MONGO_MAKE_LATCH();
+stdx::mutex refreshIntervalMutex;
 stdx::condition_variable refreshIntervalChanged;
 
 AtomicWord<int> ldapUserCacheStalenessInterval(
     LDAPUserCacheStalenessIntervalParameter::kDataDefault);  // seconds
-Mutex stalenessIntervalMutex = MONGO_MAKE_LATCH();
+stdx::mutex stalenessIntervalMutex;
 
 StatusWith<int> parseSecondsParameter(StringData paramName, StringData paramValue) {
     int value;
