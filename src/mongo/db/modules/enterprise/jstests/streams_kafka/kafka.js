@@ -118,12 +118,11 @@ function makeMongoToKafkaStartCmd({
     collName,
     topicName,
     connName,
-    sinkKey,
-    sinkKeyFormat,
-    sinkHeaders,
-    jsonType,
+    sinkKey = undefined,
+    sinkKeyFormat = undefined,
+    sinkHeaders = undefined,
+    jsonType = undefined,
     parseOnly = false,
-    compressionType,
 }) {
     let processorId = `processor-coll_${collName}-to-topic${Math.floor(Math.random() * 10000)}`;
     const emitOptions = {
@@ -142,9 +141,6 @@ function makeMongoToKafkaStartCmd({
     }
     if (jsonType != undefined) {
         emitOptions.config.outputFormat = jsonType;
-    }
-    if (compressionType != null) {
-        emitOptions.config.compression_type = compressionType;
     }
     let options = {
         checkpointOptions: {
@@ -323,8 +319,7 @@ function mongoToKafkaToMongo({
     expectedSerializedHeaders,
     sourceKeyFormat,
     sourceKeyFormatError,
-    jsonType,
-    compressionType,
+    jsonType
 } = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
@@ -363,8 +358,7 @@ function mongoToKafkaToMongo({
         sinkKey,
         sinkKeyFormat,
         sinkHeaders,
-        jsonType,
-        compressionType,
+        jsonType
     })));
 
     // Write input to the 'sourceColl'.
@@ -395,25 +389,6 @@ function mongoToKafkaToMongo({
             outputDoc = sanitizeDoc(outputDoc);
             delete outputDoc._id;
             assert.docEq(input[i], outputDoc, outputDoc);
-        }
-
-        if (results.length) {
-            if (compressionType === undefined) {
-                // If compressionType is undefined that means we will default to "none"
-                // We set compressionType to "none" in these scenarios so we can still test that
-                // "none" was the compression type used
-                compressionType = "none";
-            }
-
-            let compressionTypesUsed = [];
-            // We have to iterate over all the partitions because there may not be data in partition
-            // 0 (default) even though there is data in the other partitions, and when that happens
-            // the test will fail
-            for (let i = 0; i < kafka.partitionCount; i++) {
-                compressionTypesUsed =
-                    compressionTypesUsed.concat(kafka.getCompressCodecDetails(topicName1, i));
-            }
-            assert.gt(compressionTypesUsed.filter(used => used === compressionType).length, 0);
         }
 
         // Verify that KafkaConsumerOperator is reporting non-zero maxMemoryUsage.
@@ -1486,11 +1461,6 @@ runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, () => resumeFromCheckpointVersion2(12), 12);
 runKafkaTest(kafka, () => resumeFromCheckpointVersion3(12), 12);
 
-runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "gzip"}));
-runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "snappy"}));
-runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "lz4"}));
-runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "zstd"}));
-runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "none"}));
 runKafkaTest(kafka,
              () => mongoToKafkaToMongoMaintainStreamMeta({$limit: 1} /* nonGroupWindowStage */));
 runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({

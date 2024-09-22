@@ -890,10 +890,6 @@ void Planner::planEmitSink(const BSONObj& spec) {
                     ? parseStringOrObjectExpression(_context->expCtx,
                                                     *options.getConfig()->getHeaders())
                     : nullptr;
-
-                if (options.getConfig()->getCompressionType()) {
-                    kafkaEmitOptions.compressionType = *options.getConfig()->getCompressionType();
-                }
             }
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())

@@ -59,8 +59,6 @@ public:
         boost::optional<std::string> gwproxyKey;
         // Json String Format either relaxedJson or canonicalJson.
         mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
-        // compression.type setting
-        mongo::KafkaCompressionTypeEnum compressionType{mongo::KafkaCompressionTypeEnum::none};
     };
 
     KafkaEmitOperator(Context* context, Options options);
