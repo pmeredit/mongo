@@ -1753,11 +1753,11 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
     std::vector<ParsedConnectionInfo> connectionNames;
     for (auto& stage : pipeline) {
         uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
-                str::stream() << "Stage must contain a single object spec: " << stage,
-                stage.nFields() == 1 && stage.firstElement().isABSONObj());
+                str::stream()
+                    << "A pipeline stage specification object must contain exactly one field: "
+                    << stage,
+                stage.nFields() == 1);
         auto stageName = stage.firstElementFieldNameStringData();
-        auto specBson = stage.firstElement().Obj();
-        auto spec = Document(specBson);
 
         auto addConnectionName = [&](StringData stage, const Document& doc, const FieldPath& fp) {
             auto connectionField = doc.getNestedField(fp);
@@ -1770,21 +1770,31 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             info.setStage(stage.toString());
             connectionNames.push_back(std::move(info));
         };
+        auto getSpecDoc = [](StringData stageName, const BSONObj& stageBson) {
+            uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                    str::stream() << stageName << " specification must be an object.",
+                    stageBson.firstElement().isABSONObj());
+            return Document(stageBson.firstElement().Obj());
+        };
 
         if (isSourceStage(stageName)) {
+            auto spec = getSpecDoc(stageName, stage);
             // We special case $source.documents because it doesn't require a connection.
             if (spec[kDocumentsField].missing()) {
                 addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
             }
         } else if (isEmitStage(stageName)) {
+            auto spec = getSpecDoc(stageName, stage);
             addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
         } else if (isMergeStage(stageName)) {
+            auto spec = getSpecDoc(stageName, stage);
             addConnectionName(stageName,
                               spec,
                               FieldPath((str::stream() << MergeOperatorSpec::kIntoFieldName << "."
                                                        << kConnectionNameField)
                                             .ss.str()));
         } else if (isLookUpStage(stageName)) {
+            auto spec = getSpecDoc(stageName, stage);
             // If the 'from' field does not exist in the $lookup stage, there is no connection
             // information to retrieve. This scenario is valid when a 'pipeline' field is defined.
             if (!spec.getField(kFromFieldName).missing()) {
@@ -1795,6 +1805,12 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
                         (str::stream() << kFromFieldName << "." << kConnectionNameField).ss.str()));
             }
         } else if (isWindowStage(stageName)) {
+            uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                    str::stream()
+                        << "A pipeline stage specification object must contain exactly one field: "
+                        << stageName,
+                    stage.firstElement().isABSONObj());
+            auto specBson = stage.firstElement().Obj();
             std::vector<mongo::BSONObj> windowPipeline;
             if (stageName == kTumblingWindowStageName) {
                 windowPipeline =
@@ -1812,12 +1828,15 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             }
 
             for (const auto& windowStage : windowPipeline) {
-                uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
-                        str::stream() << "Stage must contain a single object spec: " << windowStage,
-                        windowStage.nFields() == 1 && windowStage.firstElement().isABSONObj());
+                uassert(
+                    mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                    str::stream()
+                        << "A pipeline stage specification object must contain exactly one field: "
+                        << windowStage,
+                    windowStage.nFields() == 1);
                 auto windowStageName = windowStage.firstElementFieldNameStringData();
-                auto windowStageSpec = Document(windowStage.firstElement().Obj());
                 if (isLookUpStage(windowStageName)) {
+                    auto windowStageSpec = getSpecDoc(windowStageName, windowStage);
                     // If the 'from' field does not exist in the $lookup stage, there is no
                     // connection information to retrieve. This scenario is valid when a 'pipeline'
                     // field is defined.

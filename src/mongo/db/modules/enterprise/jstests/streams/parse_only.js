@@ -152,6 +152,36 @@ test({
         [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
 });
 
+test({
+    pipeline: [
+        {
+            $source: {
+                connectionName: "conn1",
+                timeField: {$toDate: "$timestamp"},
+            }
+        },
+        {$lookup: {localField: "a", foreignField: "b", as: "out", pipeline: []}},
+        {$unwind: "$foo"},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                pipeline: [
+                    {$lookup: {localField: "a", foreignField: "b", as: "out", pipeline: []}},
+                    {$unwind: "$bar"},
+                ]
+            }
+        },
+        {$merge: {into: {connectionName: "conn2", db: dbName, coll: collName}}}
+    ],
+    dlq: {
+        connectionName: "conn6",
+        db: dbName,
+        coll: dlqCollName,
+    },
+    expectedConnectionNames:
+        [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
+});
+
 function missingConnectionName() {
     const command = {
         streams_startStreamProcessor: '',
@@ -172,3 +202,25 @@ function missingConnectionName() {
 }
 
 missingConnectionName();
+
+function badSourceSpec() {
+    const command = {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: 'test_name',
+        pipeline: [
+            {$source: "foo"},
+            {$merge: {into: {connectionName: "conn2", db: dbName, coll: collName}}}
+        ],
+        connections: connectionRegistry,
+        options: {parseOnly: true, featureFlags: {}},
+        processorId: 'test_id',
+    };
+    const result = db.runCommand(command);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
+    jsTestLog(result);
+    assert.eq("StreamProcessorUserError", result.errorLabels[0]);
+    assert.eq("$source specification must be an object.", result.errmsg);
+}
+
+badSourceSpec();
