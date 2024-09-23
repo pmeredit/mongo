@@ -13,8 +13,6 @@
  * assumes_balancer_off,
  * assumes_unsharded_collection,
  * requires_fcv_70,
- * # Bonsai optimizer cannot use the plan cache yet.
- * cqf_incompatible,
  * # Test expects to only talk to primary to verify plan cache usage
  * assumes_read_preference_unchanged,
  * ]
