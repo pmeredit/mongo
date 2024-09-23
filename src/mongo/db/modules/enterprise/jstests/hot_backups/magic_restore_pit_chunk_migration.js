@@ -26,8 +26,8 @@
  * ]
  */
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
-import {ShardedMagicRestoreTest} from "jstests/libs/magic_restore_test.js";
 import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
+import {ShardedMagicRestoreTest} from "jstests/libs/sharded_magic_restore_test.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 

@@ -19,7 +19,8 @@
  * ]
  */
 
-import {ShardedMagicRestoreTest} from "jstests/libs/magic_restore_test.js";
+import {ShardedMagicRestoreTest} from "jstests/libs/sharded_magic_restore_test.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
 function runTest(insertHigherTermOplogEntry) {
