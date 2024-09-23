@@ -3,9 +3,11 @@ import {getPython3Binary} from "jstests/libs/python.js";
 export class LocalKafkaCluster {
     constructor() {
         this.python_file = "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/kafka.py";
+        this.partitionCount = 0;
     }
 
     start(partitionCount) {
+        this.partitionCount = partitionCount;
         // Stop any previously running containers to ensure we are running from a clean state.
         this.stop();
         // Start the kafka containers.
@@ -88,5 +90,27 @@ export class LocalKafkaCluster {
         output = output.substring(output.indexOf("["));
         jsTestLog(`Consumer group '${groupId}' members: ${output}`);
         return JSON.parse(output);
+    }
+
+    // Returns a list of the compressions used in the specified topic.
+    getCompressCodecDetails(topic, partition = 0) {
+        clearRawMongoProgramOutput();
+        const ret = runMongoProgram(getPython3Binary(),
+                                    "-u",
+                                    this.python_file,
+                                    "-v",
+                                    "get-compress-codec-details",
+                                    "--topic",
+                                    topic,
+                                    "--partition",
+                                    partition.toString());
+        if (ret != 0) {
+            jsTestLog(`Could not run get-compress-codec-details command: ${ret}`);
+            return null;
+        }
+        const output = rawMongoProgramOutput().split(/\W+/).filter(
+            (word) => ["none", "gzip", "snappy", "lz4", "zstd"].includes(word));
+        jsTestLog(`output: ${output}`);
+        return output;
     }
 }

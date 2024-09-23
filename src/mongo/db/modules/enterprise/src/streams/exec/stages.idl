@@ -116,6 +116,16 @@ enums:
             Dlq: "dlq"
             PassThrough: "passThrough"
 
+    KafkaCompressionType:
+        type: string
+        description: "The supported kafka compression types"
+        values:
+            none: "none"
+            gzip: "gzip"
+            snappy: "snappy"
+            lz4: "lz4"
+            zstd: "zstd"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -336,6 +346,12 @@ structs:
                 cpp_name: outputFormat
                 type: KafkaEmitJsonStringFormat
                 default: RelaxedJson
+            compression_type:
+                description: "Kafka compression.type options."
+                optional: true
+                cpp_name: compressionType
+                type: KafkaCompressionType
+                default: none
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
