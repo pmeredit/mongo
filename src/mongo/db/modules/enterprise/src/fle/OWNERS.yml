@@ -5,8 +5,4 @@ filters:
       - 10gen/server-security
   - "query_analysis":
     approvers:
-      - TedTuckman
-      - awagenmaker
-      - banarun
-    metadata:
-      owning_team: 10gen/query-integration
+      - 10gen/query-integration-fle
