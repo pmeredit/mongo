@@ -3,8 +3,8 @@
  */
 
 #include "mongo/db/commands.h"
-#include "mongo/db/cursor_id.h"
-#include "mongo/db/query/cursor_response.h"
+#include "mongo/db/query/client_cursor/cursor_id.h"
+#include "mongo/db/query/client_cursor/cursor_response.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"

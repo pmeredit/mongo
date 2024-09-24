@@ -17,7 +17,7 @@ idl_generator(
         "//src/mongo/db/modules/enterprise/src/streams/exec:common_gen",
         "//src/mongo/db/modules/enterprise/src/streams/exec:exec_internal_gen",
         "//src/mongo/db/modules/enterprise/src/streams/exec:stages_gen",
-        "//src/mongo/db/query:cursor_response_gen",
+        "//src/mongo/db/query/client_cursor:cursor_response_gen",
         "//src/mongo/idl:generic_argument_gen",
     ],
 )

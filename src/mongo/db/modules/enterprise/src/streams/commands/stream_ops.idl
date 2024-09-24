@@ -36,7 +36,7 @@ imports:
     - "mongo/db/modules/enterprise/src/streams/exec/common.idl"
     - "mongo/db/modules/enterprise/src/streams/exec/stages.idl"
     - "mongo/db/modules/enterprise/src/streams/exec/exec_internal.idl"
-    - "mongo/db/query/cursor_response.idl"
+    - "mongo/db/query/client_cursor/cursor_response.idl"
 
 enums:
     StreamStatus:
