@@ -3,6 +3,8 @@
  */
 
 #include <algorithm>
+#include <boost/none.hpp>
+#include <boost/optional/optional.hpp>
 #include <chrono>
 #include <fmt/format.h>
 #include <iostream>
@@ -709,7 +711,9 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         int partitionCount = 1;
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
         BSONObj auth;
-        std::string consumerGroupId{fmt::format("asp-{}-consumer", streamProcessorId)};
+        boost::optional<std::string> consumerGroupId{
+            fmt::format("asp-{}-consumer", streamProcessorId)};
+        bool enableAutoCommit{true};
     };
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
@@ -731,6 +735,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         ASSERT_EQ(expected.topicName, options.topicName);
         ASSERT_EQ(expected.consumerGroupId, options.consumerGroupId);
         ASSERT_EQ(expected.startOffset, options.startOffset);
+        ASSERT_EQ(expected.enableAutoCommit, options.enableAutoCommit);
         ASSERT_TRUE(dynamic_cast<JsonEventDeserializer*>(options.deserializer) != nullptr);
         auto timestampExtractor = options.timestampExtractor;
         ASSERT_EQ(expected.hasTimestampExtractor, (timestampExtractor != nullptr));
@@ -772,14 +777,60 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                                                       << "testOnlyPartitionCount" << 1)),
               {.bootstrapServers = options3.getBootstrapServers().toString(),
                .topicName = topicName,
-               .auth = options3.getAuth()->toBSON()});
+               .auth = options3.getAuth()->toBSON(),
+               .enableAutoCommit = true});
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
                                                       << "testOnlyPartitionCount" << 1 << "config"
                                                       << BSON("group_id"
-                                                              << "consumer-group-1"))),
+                                                              << "consumer-group-1"
+                                                              << "enable_auto_commit" << false))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicName = topicName,
-               .consumerGroupId = "consumer-group-1"});
+               .consumerGroupId = boost::make_optional<std::string>("consumer-group-1"),
+               .enableAutoCommit = false});
+
+    _context->isEphemeral = true;
+    // Test the scenario where a user tries to start an ephemeral kafka SP. The source should not
+    // have a consumer group id (without explicitly setting it) nor enable auto commits.
+    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
+                                                      << "testOnlyPartitionCount" << 1)),
+              {.bootstrapServers = options1.getBootstrapServers().toString(),
+               .topicName = topicName,
+               .consumerGroupId = boost::none,
+               .enableAutoCommit = false});
+
+    // Defining consumer group id is permitted for ephemeral SPs. enable_auto_commit will be true by
+    // default.
+    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
+                                                      << "testOnlyPartitionCount" << 1 << "config"
+                                                      << BSON("group_id"
+                                                              << "consumer-group-2"))),
+              {.bootstrapServers = options1.getBootstrapServers().toString(),
+               .topicName = topicName,
+               .consumerGroupId = boost::make_optional<std::string>("consumer-group-2"),
+               .enableAutoCommit = true});
+
+    // Setting enable_auto_commit when not also setting a group_id in an ephemeral SP will throw an
+    // InvalidOptions user error.
+    auto didThrow{false};
+    try {
+        innerTest(
+            BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
+                                                    << "testOnlyPartitionCount" << 1 << "config"
+                                                    << BSON("enable_auto_commit" << true))),
+            {});
+    } catch (const DBException& e) {
+        didThrow = true;
+        ASSERT_EQ(ErrorCodes::StreamProcessorInvalidOptions, e.code());
+        ASSERT_EQ(
+            "StreamProcessorInvalidOptions: Cannot set enable_auto_commit for ephemeral processors "
+            "when consumer group ID "
+            "has not been "
+            "specified.",
+            e.reason());
+    }
+    ASSERT_TRUE(didThrow);
+    _context->isEphemeral = false;
 
     auto tsField = "_tsOverride";
 

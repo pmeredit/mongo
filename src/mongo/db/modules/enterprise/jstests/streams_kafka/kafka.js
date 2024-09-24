@@ -186,7 +186,9 @@ function makeKafkaToMongoStartCmd({
     pipeline = [],
     sourceKeyFormat = 'binData',
     sourceKeyFormatError = 'dlq',
-    parseOnly = false
+    parseOnly = false,
+    enableAutoCommit,
+    consumerGroupId,
 }) {
     const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
     let options = {
@@ -216,6 +218,8 @@ function makeKafkaToMongoStartCmd({
                     config: {
                         keyFormat: sourceKeyFormat,
                         keyFormatError: sourceKeyFormatError,
+                        group_id: consumerGroupId,
+                        enable_auto_commit: enableAutoCommit,
                     }
                 }
             },
@@ -915,6 +919,51 @@ function writeToTopic(topicName, input) {
     stopStreamProcessor(startCmd.name);
 }
 
+function kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka) {
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    const topicName = topicName1;
+    const collName = sinkCollName1;
+    const consumerGroupId = "consumer-group-withEnableAutoCommit";
+
+    // Start KafkaToMongo SP with default enableAutoCommit (true).
+    const startCmd = makeKafkaToMongoStartCmd({topicName, collName, consumerGroupId});
+    assert.commandWorked(db.runCommand(startCmd));
+
+    const docsToInsert = [{a: 1}, {b: 1}, {c: 1}];
+    writeToTopic(topicName1, docsToInsert);
+
+    // Because enableAutoCommit was enabled, the consumer group offset should be updated
+    // every 500ms (at time of writing).
+    // There is an initial period where the consumer group cannot commit/store offsets
+    // due to it needing to rebalance partitions it's subscribed to. We should keep
+    // inserting documents until the consumer group is ready to accept commits.
+    let additionalDocsCount = 0;
+    assert.soon(() => {
+        additionalDocsCount++;
+        writeToTopic(topicName1, [{a: additionalDocsCount}]);
+
+        const res = kafka.getConsumerGroupId(consumerGroupId);
+        if (!res || Object.keys(res).length === 0) {
+            return false;
+        }
+
+        return res[0]?.current_offset > 0;
+    }, `waiting for current_offset > ${docsToInsert.length}`);
+
+    jsTestLog("waiting for consumer group to catch up");
+    assert.soon(() => {
+        const res = kafka.getConsumerGroupId(consumerGroupId);
+        if (!res || Object.keys(res).length === 0) {
+            return false;
+        }
+
+        return res[0]?.current_offset == docsToInsert.length + additionalDocsCount;
+    }, `waiting for current_offset == ${docsToInsert.length + additionalDocsCount}`);
+
+    stopStreamProcessor(startCmd.name);
+}
+
 function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
     return function() {
         // Prepare a topic 'topicName1', which will also write atleast one event to
@@ -932,6 +981,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
                         topic: topicName1,
                         config: {
                             auto_offset_reset: "earliest",
+                            enable_auto_commit: false,
                             group_id: consumerGroupId,
                         },
                     }
@@ -986,7 +1036,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
             // Only one message was sent to the kafka broker, so the first partition
             // should have committed offset=1. There also should be one active
             // group member.
-            return res[0]["current_offset"] == 1 && groupMembers.length == 1;
+            return res[0]?.current_offset == 1 && groupMembers.length == 1;
         }, "waiting for current_offset == 1");
         jsTestLog(`Last committed checkpoint: ${checkpointUtil.latestCheckpointId}`);
 
@@ -995,6 +1045,11 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         const numDocsBeforeStop = 4;
         // Wait for the processor to read the documents.
         assert.soon(() => getStats(startCmd.name).inputMessageCount == numDocsBeforeStop);
+
+        // Ensure that even after the SP source reads more docs, the committed offset is still the
+        // value from the last checkpoint. (because enable_auto_commit is false).
+        const kafkaGroupIdResponse = kafka.getConsumerGroupId(consumerGroupId);
+        assert.eq(1, kafkaGroupIdResponse[0]?.current_offset);
 
         let alreadyFlushedIds = checkpointUtil.flushAll();
         // With the default checkpoint interval of (5 minutes), changes are we have not
@@ -1500,6 +1555,7 @@ runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
+runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka));
 runKafkaTest(kafka, kafkaStartAtEarliestTest);
 
 // offset lag in verbose stats

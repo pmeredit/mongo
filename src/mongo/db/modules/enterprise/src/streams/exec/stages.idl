@@ -296,8 +296,13 @@ structs:
                 type: KafkaSourceAutoOffsetReset
                 default: Latest
                 cpp_name: autoOffsetReset
+            enable_auto_commit:
+                description: "Controls whether to update consumer group offsets when reading input documents (true) or whenever a checkpoint occurs (false)."
+                type: bool
+                cpp_name: enableAutoCommit
+                optional: true
             group_id:
-                description: "Kafka consumer group ID to use for this stream processor. If one is not set, then one will be auto-generated."
+                description: "Kafka consumer group ID to use for this stream processor. If one is not set, then one will be auto-generated for non ephemeral stream processors."
                 type: string
                 optional: true
                 cpp_name: groupId

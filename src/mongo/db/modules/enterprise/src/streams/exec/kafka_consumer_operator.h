@@ -63,10 +63,10 @@ public:
         // Name of the topic to tail.
         std::string topicName;
         // Consumer group ID to use for the kafka consumer. If this is not set by the
-        // user on creation, then an auto-generated one will be used which will look like:
-        // `asp-{streamProcessorId}-consumer`. On checkpoint restoration, the consumer group
-        // ID stored on the checkpoint will be used.
-        std::string consumerGroupId;
+        // user on creation, then an auto-generated one will be used (when the stream is not
+        // ephemeral) which will look like: `asp-{streamProcessorId}-consumer` . On checkpoint
+        // restoration, the consumer group ID stored on the checkpoint will be used.
+        boost::optional<std::string> consumerGroupId;
         // This represents the partitions for each topic. When it is not provided, we fetch it from
         // the kafka cluster. Currently, this is only provided when FakeKafkaPartitionConsumer is
         // used (i.e. in unittests).
@@ -97,6 +97,9 @@ public:
         // How to handle error during Kafka key deserialization.
         mongo::KafkaSourceKeyFormatErrorEnum keyFormatError{
             mongo::KafkaSourceKeyFormatErrorEnum::Dlq};
+        // Whether to commit offsets on reads or on checkpoints. true indicates that offsets will be
+        // commited on reads.
+        bool enableAutoCommit{false};
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -164,7 +167,7 @@ private:
             // Sleep duration after Kafka api calls fail.
             mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
             std::string bootstrapServers;
-            std::string consumerGroupId;
+            boost::optional<std::string> consumerGroupId;
             mongo::stdx::unordered_map<std::string, std::string> authConfig;
             boost::optional<std::string> gwproxyEndpoint;
             boost::optional<std::string> gwproxyKey;
@@ -345,6 +348,11 @@ private:
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
     std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
     std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
+
+    // Used in doRunOnce to handle committing offsets to the consumer group. Only used when
+    // config.enable_auto_commit is true.
+    std::vector<RdKafka::TopicPartition*> _partitionOffsets;
+    std::vector<std::unique_ptr<RdKafka::TopicPartition>> _partitionOffsetsHolder;
 };
 
 }  // namespace streams
