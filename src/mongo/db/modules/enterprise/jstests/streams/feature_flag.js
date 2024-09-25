@@ -116,5 +116,23 @@ assert.soon(() => {
     return (result.featureFlags.feature_flag_a && !result.featureFlags.feature_flag_b);
 });
 
+result = listStreamProcessors();
+assert.eq(result["ok"], 1, result);
+assert.eq(result["streamProcessors"].length, 1, result);
+// verify setting invalid feature flag value will terminate a stream processor.
+ff = {
+    checkpointDuration: {value: false}
+};
+result =
+    db.runCommand({streams_updateFeatureFlags: '', tenantId: TEST_TENANT_ID, featureFlags: ff});
+assert.eq(result.ok, true);
+
+assert.soon(() => {
+    result = listStreamProcessors();
+    assert.eq(result["ok"], 1, result);
+    jsTestLog(result);
+    return result["streamProcessors"][0]["status"] == "error";
+});
+
 stopStreamProcessor(spName);
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

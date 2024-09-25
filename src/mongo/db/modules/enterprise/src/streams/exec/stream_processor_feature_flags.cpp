@@ -1,9 +1,12 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/util/str.h"
 #include "streams/exec/feature_flag.h"
+
 
 namespace streams {
 
@@ -26,6 +29,10 @@ StreamProcessorFeatureFlags StreamProcessorFeatureFlags::parseFeatureFlags(
     auto it = doc.fieldIterator();
     while (it.more()) {
         auto fld = it.next();
+        uassert(9273402,
+                mongo::str::stream()
+                    << "feature flag " << fld.first.toString() << " type mismatched",
+                FeatureFlags::validateFeatureFlag(fld.first.toString(), fld.second));
         featureFlags[fld.first.toString()] = fld.second;
     }
     StreamProcessorFeatureFlags spff{featureFlags,

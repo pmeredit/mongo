@@ -69,4 +69,52 @@ TEST(StreamProcessorFeatureFlags, FeatureFlagTests) {
     ASSERT_EQ(spff.getFeatureFlagValue(tierSpecificDefinition).getInt().get(), 1);
 }
 
+TEST(StreamProcessorFeatureFlags, ValidateFeatureFlagTests) {
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag(FeatureFlags::kCheckpointDurationInMs.name,
+                                                  mongo::Value(123456)));
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag(FeatureFlags::kCheckpointDurationInMs.name,
+                                                  mongo::Value((long long)12345678901234)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(FeatureFlags::kCheckpointDurationInMs.name,
+                                                   mongo::Value(true)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(FeatureFlags::kCheckpointDurationInMs.name,
+                                                   mongo::Value(1.234)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(FeatureFlags::kCheckpointDurationInMs.name,
+                                                   mongo::Value(std::string{"somestring"})));
+
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag(
+        FeatureFlags::kUseExecutionPlanFromCheckpoint.name, mongo::Value(true)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(
+        FeatureFlags::kUseExecutionPlanFromCheckpoint.name, mongo::Value(1)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(
+        FeatureFlags::kUseExecutionPlanFromCheckpoint.name, mongo::Value(1.234)));
+    ASSERT_FALSE(
+        FeatureFlags::validateFeatureFlag(FeatureFlags::kUseExecutionPlanFromCheckpoint.name,
+                                          mongo::Value(std::string{"somestring"})));
+
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag(
+        FeatureFlags::kSourceBufferPreallocationFraction.name, mongo::Value(0.5)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(
+        FeatureFlags::kSourceBufferPreallocationFraction.name, mongo::Value(1)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(
+        FeatureFlags::kSourceBufferPreallocationFraction.name, mongo::Value(true)));
+    ASSERT_FALSE(
+        FeatureFlags::validateFeatureFlag(FeatureFlags::kSourceBufferPreallocationFraction.name,
+                                          mongo::Value(std::string{"somestring"})));
+
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(FeatureFlags::kTestOnlyStringType.name,
+                                                   mongo::Value(0.5)));
+    ASSERT_FALSE(
+        FeatureFlags::validateFeatureFlag(FeatureFlags::kTestOnlyStringType.name, mongo::Value(1)));
+    ASSERT_FALSE(FeatureFlags::validateFeatureFlag(FeatureFlags::kTestOnlyStringType.name,
+                                                   mongo::Value(true)));
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag(FeatureFlags::kTestOnlyStringType.name,
+                                                  mongo::Value(std::string{"somestring"})));
+
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag("testFeatureFlag", mongo::Value(true)));
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag("testFeatureFlag", mongo::Value(1)));
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag("testFeatureFlag", mongo::Value(1.0)));
+    ASSERT_TRUE(FeatureFlags::validateFeatureFlag("testFeatureFlag",
+                                                  mongo::Value(std::string{"somestring"})));
+}
+
 }  // namespace streams

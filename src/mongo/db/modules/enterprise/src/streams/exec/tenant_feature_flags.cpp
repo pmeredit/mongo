@@ -33,6 +33,9 @@ StreamProcessorFeatureFlags TenantFeatureFlags::getStreamProcessorFeatureFlags(
         }
 
         if (!val.missing()) {
+            uassert(9273401,
+                    str::stream() << "feature flag " << fld.first.toString() << " type mismatched",
+                    FeatureFlags::validateFeatureFlag(fld.first.toString(), val));
             featureFlags[fld.first.toString()] = val;
         }
     }

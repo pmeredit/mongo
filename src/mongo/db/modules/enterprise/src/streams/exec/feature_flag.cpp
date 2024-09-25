@@ -4,6 +4,7 @@
 
 #include "streams/exec/feature_flag.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/feature_flag.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/operator.h"
 
@@ -118,5 +119,43 @@ const FeatureFlagDefinition FeatureFlags::kSourceBufferPageSize{
     // 4 MB default
     mongo::Value::createIntOrLong(4L * 1024 * 1024),
     {}};
+
+const FeatureFlagDefinition FeatureFlags::kTestOnlyStringType{
+    "stringFlag",
+    "testOnly flag to set string validation",
+    mongo::Value{std::string("string")},
+    {}};
+
+mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
+    {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
+    {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
+    {FeatureFlags::kUseExecutionPlanFromCheckpoint.name,
+     FeatureFlags::kUseExecutionPlanFromCheckpoint},
+    {FeatureFlags::kMaxQueueSizeBytes.name, FeatureFlags::kMaxQueueSizeBytes},
+    {FeatureFlags::kKafkaEmitUseDeliveryCallback.name, FeatureFlags::kKafkaEmitUseDeliveryCallback},
+    {FeatureFlags::kSourceBufferTotalSize.name, FeatureFlags::kSourceBufferTotalSize},
+    {FeatureFlags::kSourceBufferPreallocationFraction.name,
+     FeatureFlags::kSourceBufferPreallocationFraction},
+    {FeatureFlags::kSourceBufferMaxSize.name, FeatureFlags::kSourceBufferMaxSize},
+    {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
+    {FeatureFlags::kSourceBufferPageSize.name, FeatureFlags::kSourceBufferPageSize},
+    {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType}};
+
+bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
+    auto definition = featureFlagDefinitions.find(name);
+    if (definition != featureFlagDefinitions.end()) {
+        switch (value.getType()) {
+            case mongo::BSONType::NumberInt:
+            case mongo::BSONType::NumberLong:
+                return definition->second.defaultValue.getType() == mongo::BSONType::NumberInt ||
+                    definition->second.defaultValue.getType() == mongo::BSONType::NumberLong;
+            default:
+                return value.getType() == definition->second.defaultValue.getType();
+        }
+    }
+    // if feature flag is not found, validate does not care.
+    // Feature will not be found for feature flags meant for other components.
+    return true;
+}
 
 }  // namespace streams

@@ -33,9 +33,10 @@ private:
     mongo::Value _value;
 };
 
-// Empty class to limit scope of global FeatureFlagDefinitions.
+// Empty class to limit scope of global featureFlagDefinitions.
 class FeatureFlags {
 public:
+    static bool validateFeatureFlag(const std::string& name, const mongo::Value& value);
     static const FeatureFlagDefinition kCheckpointDurationInMs;
     // TODO: Remove this feature flag after the next prod deploy.
     static const FeatureFlagDefinition kKafkaMaxPrefetchByteSize;
@@ -47,6 +48,7 @@ public:
     static const FeatureFlagDefinition kSourceBufferPreallocationFraction;
     static const FeatureFlagDefinition kSourceBufferMaxSize;
     static const FeatureFlagDefinition kSourceBufferPageSize;
+    static const FeatureFlagDefinition kTestOnlyStringType;
 };
 
 }  // namespace streams

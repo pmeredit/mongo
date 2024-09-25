@@ -911,7 +911,11 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: \"60000\"}}}");
         tFeatureFlags = std::make_shared<TenantFeatureFlags>(featureFlags);
-        updateContextFeatureFlags(processorInfo, tFeatureFlags);
+        try {
+            updateContextFeatureFlags(processorInfo, tFeatureFlags);
+        } catch (const DBException& ex) {
+            ASSERT_EQ(ex.code(), 9273401);
+        }
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
         std::string writeRootDir = dynamic_cast<LocalDiskCheckpointStorage*>(
