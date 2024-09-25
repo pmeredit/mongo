@@ -45,7 +45,7 @@ std::unique_ptr<KafkaConsumerOperator> createKafkaConsumerOperator(
     const BSONObj& sourceObj, Context* context, EventDeserializer* deserializer) {
     KafkaConsumerOperator::Options options;
     options.bootstrapServers = sourceObj["bootstrapServers"].String();
-    options.topicName = sourceObj["topic"].String();
+    options.topicNames.push_back(sourceObj["topic"].String());
     options.deserializer = deserializer;
     return std::make_unique<KafkaConsumerOperator>(context, std::move(options));
 }

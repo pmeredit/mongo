@@ -50,8 +50,8 @@ public:
     // OpRange per stateFileIdx
     using OpStateRanges = absl::InlinedVector<OpStateRange, 1>;
 
-    // TODO(SERVER-92447): Remove the kOldVersion.
-    static const int kOldVersion;
+    // TODO(SERVER-92447): Remove kVersionWithNoExecutionPlan
+    static const int kVersionWithNoExecutionPlan;
     static const int kVersion;
     static const int kMinAllowedVersion;
 

@@ -404,7 +404,7 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
         tassert(
             ErrorCodes::InternalError,
             fmt::format("Missing execution plan in checkpoint for manifest version {}", version),
-            version == ManifestBuilder::kOldVersion);
+            version == ManifestBuilder::kVersionWithNoExecutionPlan);
     }
 }
 

@@ -25,6 +25,7 @@ const kafkaUri = 'localhost:9092';
 const kafkaUriSASLSSL = 'localhost:9093';
 const topicName1 = 'outputTopic1';
 const topicName2 = 'outputTopic2';
+const topicName3 = 'outputTopic3';
 // Dynamic topic name expression for the $emit operator.
 const topicNameExpr = {
     $cond: {if: {$eq: ["$gid", 0]}, then: topicName1, else: topicName2}
@@ -32,11 +33,13 @@ const topicNameExpr = {
 const dbName = 'test';
 const sourceCollName1 = 'sourceColl1';
 const sourceCollName2 = 'sourceColl2';
+const sourceCollName3 = 'sourceColl3';
 const sinkCollName1 = 'sinkColl1';
 const sinkCollName2 = 'sinkColl2';
 const dlqCollName = 'dlq';
 const sourceColl1 = db.getSiblingDB(dbName)[sourceCollName1];
 const sourceColl2 = db.getSiblingDB(dbName)[sourceCollName2];
+const sourceColl3 = db.getSiblingDB(dbName)[sourceCollName3];
 const sinkColl1 = db.getSiblingDB(dbName)[sinkCollName1];
 const sinkColl2 = db.getSiblingDB(dbName)[sinkCollName2];
 const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
@@ -124,6 +127,7 @@ function makeMongoToKafkaStartCmd({
     jsonType,
     parseOnly = false,
     compressionType,
+    processorName = null
 }) {
     let processorId = `processor-coll_${collName}-to-topic${Math.floor(Math.random() * 10000)}`;
     const emitOptions = {
@@ -162,10 +166,14 @@ function makeMongoToKafkaStartCmd({
     if (parseOnly) {
         options.parseOnly = true;
     }
+    let name = mongoToKafkaName;
+    if (processorName != null) {
+        name = processorName;
+    }
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
-        name: mongoToKafkaName,
+        name: name,
         pipeline: [
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
             {$match: {operationType: "insert"}},
@@ -189,14 +197,23 @@ function makeKafkaToMongoStartCmd({
     parseOnly = false,
     enableAutoCommit,
     consumerGroupId,
+    restoreDirectory = null
 }) {
-    const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
+    let topicNameForProcessorId;
+    if (Array.isArray(topicName)) {
+        topicNameForProcessorId = topicName[0];
+    } else {
+        topicNameForProcessorId = topicName;
+    }
+    const processorId = `processor-topic_${topicNameForProcessorId}-to-coll_${collName}`;
+    jsTestLog(`processorId=${processorId} topicName=${topicName}`);
+
+    if (restoreDirectory == null) {
+        restoreDirectory = getRestoreDirectory(processorId);
+    }
     let options = {
         checkpointOptions: {
-            localDisk: {
-                writeDirectory: checkpointBaseDir,
-                restoreDirectory: getRestoreDirectory(processorId)
-            },
+            localDisk: {writeDirectory: checkpointBaseDir, restoreDirectory: restoreDirectory},
             // Checkpoint every five seconds.
             debugOnlyIntervalMs: 5000,
         },
@@ -206,10 +223,13 @@ function makeKafkaToMongoStartCmd({
     if (parseOnly) {
         options.parseOnly = true;
     }
+
+    jsTestLog(`enableAutoCommit=${enableAutoCommit}`);
+
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
-        name: `${kafkaToMongoNamePrefix}-${topicName}`,
+        name: `${kafkaToMongoNamePrefix}-${topicNameForProcessorId}`,
         pipeline: pipeline.length ? pipeline : [
             {
                 $source: {
@@ -257,6 +277,7 @@ function dropCollections() {
     removeFile(checkpointBaseDir);
     sourceColl1.drop();
     sourceColl2.drop();
+    sourceColl3.drop();
     sinkColl1.drop();
     sinkColl2.drop();
     dlqColl.drop();
@@ -265,13 +286,13 @@ function dropCollections() {
 const debugBuild = db.adminCommand("buildInfo").debug;
 const defaultNumDocsToInsert = debugBuild ? 100 : 1000;
 let numDocumentsToInsert = defaultNumDocsToInsert;
-function generateInput(count = null) {
+function generateInput(count = null, begIdx = 0) {
     let num = numDocumentsToInsert;
     if (count != null) {
         num = count;
     }
     let input = [];
-    for (let i = 0; i < num; i += 1) {
+    for (let i = begIdx; i < begIdx + num; i += 1) {
         const binData = new BinData(0, (i % defaultNumDocsToInsert).toString().padStart(4, "0"));
         input.push({
             a: i,
@@ -308,8 +329,9 @@ function generateInput(count = null) {
     }
     return input;
 }
-function insertData(coll, count = null) {
-    const input = generateInput(count);
+
+function insertData(coll, count = null, begIdx = 0) {
+    const input = generateInput(count, begIdx);
     coll.insertMany(input);
     return input;
 }
@@ -343,8 +365,8 @@ function mongoToKafkaToMongo({
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
         topicName: topicName1,
         collName: sinkColl1.getName(),
-        sourceKeyFormat,
-        sourceKeyFormatError
+        sourceKeyFormat: sourceKeyFormat,
+        sourceKeyFormatError: sourceKeyFormatError
     });
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
@@ -652,6 +674,276 @@ function resumeFromCheckpointVersion3(numPartitions) {
     stopStreamProcessor(kafkaToMongoName);
 }
 
+// Test that when a pipeline involves a group, the _stream_meta.source.topic/partition are no
+// longer projected.
+function mongoToKafkaToMongoGroupStreamMeta({
+    numPartitions,
+} = {}) {
+    assert.eq(numPartitions, 2);
+
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+    sourceColl1.drop();
+
+    const groupPipeline = [
+        {
+            $source: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {
+                    keyFormat: 'binData',
+                    keyFormatError: 'dlq',
+                },
+                timeField: {$toDate: {$toLong: "$a"}},
+            }
+        },
+        {$addFields: {topic: "$_stream_meta.source.topic"}},
+        {$addFields: {partition: "$_stream_meta.source.partition"}},
+        {
+            // We are expecting to be able to access "_stream_meta.source.topic/partition in the
+            // $group accumulators. They will stop being projected once the window closes
+            $tumblingWindow: {
+                interval: {size: NumberInt(5), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                pipeline: [{
+                    $group: {
+                        _id: "$a",
+                        minPartition: {$min: "$partition"},
+                        maxPartition: {$max: "$_stream_meta.source.partition"}
+                    }
+                }],
+                idleTimeout: {size: NumberInt(2), unit: 'second'}
+            },
+        },
+        // These will not get added since topic/partition no longer are projected
+        {$addFields: {topicAfterGroup: "$_stream_meta.source.topic"}},
+        {$addFields: {partitionAfterGroup: "$_stream_meta.source.partition"}},
+        {$merge: {into: {connectionName: dbConnName, db: dbName, coll: sinkCollName1}}}
+    ];
+
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        topicName: topicName1,
+        collName: sinkColl1.getName(),
+        pipeline: groupPipeline,
+    });
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => { return checkpointUtils.checkpointIds.length > 0; });
+
+    let sinkKey = "$k";
+    let sinkKeyFormat = "int";
+
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicName1,
+        connName: kafkaPlaintextName,
+        sinkKey: sinkKey,
+        sinkKeyFormat: sinkKeyFormat,
+    })));
+
+    // This input will form one window of 5 sec span
+    let input = [
+        {a: NumberInt(0), k: NumberInt(23129877)},
+        {a: NumberInt(1), k: NumberInt(98897878)},
+        {a: NumberInt(2), k: NumberInt(77888776)},
+        {a: NumberInt(3), k: NumberInt(33123444)},
+        {a: NumberInt(4), k: NumberInt(13122233)},
+    ];
+    sourceColl1.insertMany(input);
+    let sourceCount = sourceColl1.find({}).count();
+
+    // Each document in window will be in a separate group
+    let expectedSinkCount = 5;
+
+    assert.soon(() => {
+        let dlqCount = dlqColl.find({}).count();
+        if (dlqCount > 0) {
+            let results = dlqColl.find({}).sort({a: 1}).toArray();
+            for (let i = 0; i < results.length; i++) {
+                jsTestLog(results[i]);
+            }
+        }
+        assert.eq(dlqCount, 0);
+        let sinkCount = sinkColl1.find({}).count();
+        return sinkCount == expectedSinkCount;
+    });
+
+    // Verify output shows up in the sink collection as expected.
+    let results = sinkColl1.find({}).sort({a: 1}).toArray();
+    let partitionsSeen1 = new Set();
+    let partitionsSeen2 = new Set();
+    for (let i = 0; i < results.length; i++) {
+        let outputDoc = results[i];
+        jsTestLog(outputDoc);
+
+        assert(Object.hasOwn(outputDoc['_stream_meta']['source'], 'type'));
+        assert(!Object.hasOwn(outputDoc['_stream_meta']['source'], 'topic'));
+        assert(!Object.hasOwn(outputDoc['_stream_meta']['source'], 'partition'));
+        assert(Object.hasOwn(outputDoc['_stream_meta']['window'], 'start'));
+        assert(Object.hasOwn(outputDoc['_stream_meta']['window'], 'end'));
+
+        assert.eq(outputDoc["_stream_meta"]["source"]["type"], "kafka");
+
+        assert(!Object.hasOwn(outputDoc, 'topicAfterGroup'));
+        assert(!Object.hasOwn(outputDoc, 'partitionAfterGroup'));
+
+        partitionsSeen1.add(outputDoc['minPartition']);
+        partitionsSeen2.add(outputDoc['maxPartition']);
+    }
+
+    assert.eq(partitionsSeen1.size, 2);
+    assert.eq(partitionsSeen2.size, 2);
+
+    // Verify that KafkaConsumerOperator is reporting non-zero maxMemoryUsage.
+    let statsResult = getStats(kafkaToMongoName);
+    const sourceStats = statsResult.operatorStats[0];
+    assert.eq('KafkaConsumerOperator', sourceStats.name);
+    assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
+
+    // Stop the streamProcessors.
+    stopStreamProcessor(kafkaToMongoName);
+    stopStreamProcessor(mongoToKafkaName);
+}
+
+function mongoToKafkaToMongoMultiTopic({
+    expectDlq,
+    sinkKey,
+    sinkKeyFormat,
+    expectedKeyFunc,
+    sinkHeaders,
+    expectedSerializedHeaders,
+    sourceKeyFormat,
+    sourceKeyFormatError,
+    jsonType,
+    numTopics,
+    numPartitions
+} = {}) {
+    assert(numTopics != null && numTopics > 0 && numTopics <= 3);
+    assert(numPartitions != null && numPartitions > 0);
+
+    let topicNames = [topicName1, topicName2, topicName3].slice(0, numTopics);
+    let sourceColls = [sourceColl1, sourceColl2, sourceColl3].slice(0, numTopics);
+
+    for (let i = 0; i < numTopics; i++) {
+        makeSureKafkaTopicCreated(sourceColls[i], topicNames[i], kafkaPlaintextName);
+        sourceColls[i].drop();
+    }
+
+    // Now the Kafka topics exist, and have least 1 events in them.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        topicName: topicNames,
+        collName: sinkColl1.getName(),
+    });
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => { return checkpointUtils.checkpointIds.length > 0; });
+
+    // Make sure that we are subscribed to the expected number of topics
+    let partitions = getStats(kafkaToMongoName)["kafkaPartitions"];
+    jsTestLog(partitions);
+    assert.eq(partitions.length, numPartitions * numTopics);
+    let foundTopics = [];
+    for (let partition of partitions) {
+        if (foundTopics.indexOf(partition.topic) == -1) {
+            foundTopics.push(partition.topic);
+        }
+    }
+    foundTopics.sort();
+    assert.eq(foundTopics, topicNames);
+
+    jsTestLog(`Verified that we are subscribed to ${numTopics} topics with ${
+        numPartitions} partitions each`);
+
+    // Start the mongoToKafka streamProcessors.
+    // These are used to write more data to the Kafka topics used as input in the kafkaToMongo
+    // stream processor.
+    let processors = [];
+    for (let i = 0; i < numTopics; i++) {
+        let mongoToKafkaStartCmd = makeMongoToKafkaStartCmd({
+            collName: sourceColls[i].getName(),
+            topicName: topicNames[i],
+            connName: kafkaPlaintextName,
+            processorName: `mongoToKafka${i}`,
+            sinkKey,
+            sinkKeyFormat,
+            sinkHeaders,
+            jsonType,
+        });
+        assert.commandWorked(db.runCommand(mongoToKafkaStartCmd));
+        processors.push(mongoToKafkaStartCmd.name);
+    }
+
+    // Write input to the 'sourceColl'.
+    // mongoToKafka reads the source collection and writes to Kafka.
+    // kafkaToMongo reads Kafka and writes to the sink collection.
+    var input = [];
+    for (let i = 0; i < numTopics; i++) {
+        input = input.concat(insertData(sourceColls[i], numDocumentsToInsert, input.length));
+    }
+
+    jsTestLog(`Inserted input of length - ${input.length} - across - ${numTopics} topics`);
+
+    if (expectDlq) {
+        // Verify output shows up in the dlq collection as expected.
+        waitForCount(dlqColl, input.length, 5 * 60 /* timeout */);
+    } else {
+        // Verify output shows up in the sink collection as expected.
+        waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
+        let results = sinkColl1.find({}).sort({a: 1}).toArray();
+        let output = [];
+        for (let i = 0; i < results.length; i++) {
+            let outputDoc = results[i];
+            const expectedKey = sinkKey === undefined ? undefined : expectedKeyFunc(input[i]);
+
+            let expectedHeaders = expectedSerializedHeaders;
+            if (expectedHeaders === undefined) {
+                expectedHeaders = sinkHeaders === undefined ? undefined : input[i].headers;
+            }
+
+            assert.eq(outputDoc._stream_meta.source.topic,
+                      topicNames[Math.floor(i / numDocumentsToInsert)],
+                      outputDoc);
+            assert.eq(outputDoc._stream_meta.source.key, expectedKey, outputDoc);
+            assert.eq(outputDoc._stream_meta.source.headers, expectedHeaders, outputDoc);
+
+            outputDoc = sanitizeDoc(outputDoc);
+            delete outputDoc._id;
+            assert.docEq(input[i], outputDoc, outputDoc);
+        }
+
+        // Verify that KafkaConsumerOperator is reporting non-zero maxMemoryUsage.
+        let statsResult = getStats(kafkaToMongoName);
+        const sourceStats = statsResult.operatorStats[0];
+        assert.eq('KafkaConsumerOperator', sourceStats.name);
+        assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
+    }
+
+    // Stop the streamProcessors.
+    stopStreamProcessor(kafkaToMongoName);
+    for (let processor of processors) {
+        stopStreamProcessor(processor);
+    }
+}
+
 // Test that the stream metadata are preserved when non-group window operator exists even if the
 // pipeline doesn't have explicit dependency on the metadata.
 function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
@@ -696,8 +988,8 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
     assert.soon(() => { return checkpointUtils.checkpointIds.length > 0; });
 
     // Start the mongoToKafka streamProcessor.
-    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
-    // processor.
+    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo
+    // stream processor.
     assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
         {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaPlaintextName})));
 
@@ -807,10 +1099,10 @@ function mongoToKafkaSASLSSL() {
     stopStreamProcessor(mongoToKafkaName);
 }
 
-// Use a streamProcessor to write data from the source collection changestream to Kafka topics using
-// dynamic name expression. Then use another streamProcessors to write data from those Kafka topics
-// to the sink collections. Verify the data in sink collections equals to data that are suppoed to
-// be inserted to each sink collection.
+// Use a streamProcessor to write data from the source collection changestream to Kafka topics
+// using dynamic name expression. Then use another streamProcessors to write data from those
+// Kafka topics to the sink collections. Verify the data in sink collections equals to data that
+// are suppoed to be inserted to each sink collection.
 function mongoToDynamicKafkaTopicToMongo() {
     // Prepare topics.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
@@ -820,9 +1112,9 @@ function mongoToDynamicKafkaTopicToMongo() {
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
     // Start kafkaToMongo, which will write from the topics to the sink collections. The
-    // kafkaToMongo uses the default kafka startAt behavior, which starts reading from the current
-    // end of topic. The event we wrote above won't be included in the output in the sink
-    // collections.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading from the
+    // current end of topic. The event we wrote above won't be included in the output in the
+    // sink collections.
     const kafkaToMongoStartCmd1 =
         makeKafkaToMongoStartCmd({topicName: topicName1, collName: sinkColl1.getName()});
     const kafkaToMongoProcessorId1 = kafkaToMongoStartCmd1.processorId;
@@ -1014,8 +1306,8 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         waitForCount(sinkColl1, 1, /* timeout */ 60);
         // Wait for a current offset of 1 in the consumer group.
         assert.soon(() => {
-            // Mark all checkpoints as flushed. The streams Agent does this after the upload to S3
-            // completes.
+            // Mark all checkpoints as flushed. The streams Agent does this after the upload to
+            // S3 completes.
             checkpointUtil.flushAll();
 
             // TODO(SERVER-87997): Sometimes the consumerGroup.commitAsync fails if the stream
@@ -1083,12 +1375,12 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
 
         // Wait for the Kafka consumer group offsets to be updated.
         assert.soon(() => {
-            // Mark all checkpoints as flushed. The streams Agent does this after the upload to S3
-            // completes.
+            // Mark all checkpoints as flushed. The streams Agent does this after the upload to
+            // S3 completes.
             checkpointUtil.flushAll();
 
-            // TODO(SERVER-87997): Sometimes consumerGroup.commitAsync fails, but the next attempt
-            // works. So we write more checkpoints to work around that.
+            // TODO(SERVER-87997): Sometimes consumerGroup.commitAsync fails, but the next
+            // attempt works. So we write more checkpoints to work around that.
             db.runCommand(
                 {streams_writeCheckpoint: '', tenantId: TEST_TENANT_ID, name: name, force: true});
 
@@ -1130,6 +1422,196 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         // Stop the stream processor.
         stopStreamProcessor(name, alreadyFlushedIds);
     };
+}
+
+function kafkaMultiTopicCheckpointTest(kafka, numPartitions) {
+    assert.eq(numPartitions, 2);
+    // Prepare two topics and write 1 event each to them
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+    makeSureKafkaTopicCreated(sourceColl2, topicName2, kafkaPlaintextName);
+
+    sourceColl1.drop();
+    sourceColl2.drop();
+    insertData(sourceColl1, 1, 0);
+    insertData(sourceColl2, 1, 1);
+
+    const consumerGroupId = "consumer-group-1";
+    const startCmd = {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: `${kafkaToMongoNamePrefix}-${topicName1}`,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: [topicName1, topicName2],
+                    config: {
+                        auto_offset_reset: "earliest",
+                        group_id: consumerGroupId,
+                        enable_auto_commit: false,
+                    },
+                }
+            },
+            {$merge: {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}}
+        ],
+        connections: connectionRegistry,
+        options: {
+            checkpointOptions: {
+                localDisk: {
+                    writeDirectory: checkpointBaseDir,
+                },
+            },
+            enableUnnestedWindow: true,
+            featureFlags: {useExecutionPlanFromCheckpoint: true},
+        },
+        processorId: `processor-topic_${topicName1}_${topicName2}-to-coll_${sinkColl1.getName()}`,
+    };
+    const {processorId, name} = startCmd;
+    const checkpointUtil =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, processorId, name);
+    checkpointUtil.clear();
+
+    // Start the kafka to mongo stream processor.
+    assert.commandWorked(db.runCommand(startCmd));
+    // Wait for messages to be read from Kafka and show up in the sink.
+    waitForCount(sinkColl1, 2, /* timeout */ 60);
+    // Wait for a current offset of 1 in the consumer group for each topic
+    assert.soon(() => {
+        // Mark all checkpoints as flushed. The streams Agent does this after the upload to S3
+        // completes.
+        checkpointUtil.flushAll();
+
+        let groupMembers = kafka.getConsumerGroupMembers(consumerGroupId);
+        if (!groupMembers) {
+            return false;
+        }
+        jsTestLog("groupMembers=");
+        jsTestLog(groupMembers);
+        if (groupMembers.length != 1) {
+            return false;
+        }
+
+        // TODO(SERVER-87997): Sometimes the consumerGroup.commitAsync fails if the stream
+        // processor was just started... but the next attempt works. So we write more
+        // checkpoints to work around that.
+        db.runCommand(
+            {streams_writeCheckpoint: '', tenantId: TEST_TENANT_ID, name: name, force: true});
+
+        sleep(500);
+        const res = kafka.getConsumerGroupId(consumerGroupId, true);
+        if (res == null || Object.keys(res).length != 4) {
+            return false;
+        }
+
+        // Only one message was sent to the kafka broker for each topic
+        let current_offset = 0;
+        for (let i = 0; i < 4; i++) {
+            jsTestLog(`res[i=${i}]:`);
+            jsTestLog(res[i]);
+            try {
+                let n = Number(res[i]["current_offset"]);
+                current_offset += n;
+            } catch (err) {
+                return false;
+            }
+        }
+        return current_offset == 2;
+    }, "waiting for current_offset");
+    jsTestLog(`Last committed checkpoint: ${checkpointUtil.latestCheckpointId}`);
+
+    // Write 3 more documents to each topic
+    writeToTopic(topicName1, [{a: 2}, {b: 2}, {c: 2}]);
+    writeToTopic(topicName2, [{a: 3}, {b: 3}, {c: 3}]);
+    const numDocsBeforeStop = 8;
+    // Wait for the processor to read the documents.
+    assert.soon(() => getStats(startCmd.name).inputMessageCount == numDocsBeforeStop);
+
+    let alreadyFlushedIds = checkpointUtil.flushAll();
+    // With the default checkpoint interval of (5 minutes), chances are we have not
+    // written another checkpoint by now. Stop the processor which should write a final
+    // checkpoint.
+    stopStreamProcessor(name, alreadyFlushedIds);
+    // Get the last committed checkpoint.
+    const checkpointId = checkpointUtil.latestCheckpointId;
+
+    // Delete all documents in the sink.
+    sinkColl1.deleteMany({});
+
+    // Insert more data into the kafka topic.
+    // This data will span offsets 8 through (8+input.length).
+    let input1 = generateInput(6 /* count */);
+    writeToTopic(topicName1, input1);
+    let input2 = generateInput(6, input1.length);
+    writeToTopic(topicName2, input2);
+
+    // Start a new stream processor. This SP will restore from the checkpoint and begin
+    // at offset 8.
+    const checkpointsFromLastRun = checkpointUtil.getCheckpointIds();
+    checkpointUtil.flushedIds = checkpointUtil.flushedIds.concat(checkpointsFromLastRun);
+    startCmd.options.checkpointOptions.localDisk.restoreDirectory =
+        checkpointUtil.getRestoreDirectory(checkpointId);
+    assert.commandWorked(db.runCommand(startCmd));
+    for (const id of checkpointsFromLastRun) {
+        // Delete these checkpoints so we don't call flush on them below.
+        checkpointUtil.deleteCheckpointDirectory(id);
+    }
+    // Verify output 8 through 8+input.length shows up in the sink collection as expected.
+    assert.soon(() => { return sinkColl1.count() == input1.length + input2.length; });
+
+    // Wait for the Kafka consumer group offsets to be updated.
+    assert.soon(() => {
+        // Mark all checkpoints as flushed. The streams Agent does this after the upload to S3
+        // completes.
+        checkpointUtil.flushAll();
+
+        // TODO(SERVER-87997): Sometimes consumerGroup.commitAsync fails, but the next attempt
+        // works. So we write more checkpoints to work around that.
+        db.runCommand(
+            {streams_writeCheckpoint: '', tenantId: TEST_TENANT_ID, name: name, force: true});
+
+        let res = kafka.getConsumerGroupId(consumerGroupId, true);
+        if (Object.keys(res).length === 0) {
+            return false;
+        }
+
+        let currOffset = 0;
+        for (let i = 0; i < 4; i++) {
+            currOffset += Number(res[i]["current_offset"]);
+        }
+        // +numDocsBeforeStop
+        return currOffset == input1.length + input2.length + numDocsBeforeStop;
+    }, `wait for current_offset == ${input1.length + input2.length + numDocsBeforeStop}`);
+
+    // Ensure that we only processed `input` documents and not `input + 2`
+    // because the stream processor should have resumed from when the last
+    // committed offsets (1,1) rather than the "earliest" or "latest".
+    assert.eq(input1.length + input2.length, sinkColl1.find({}).count());
+
+    let totalMessages = input1.length + input2.length + numDocsBeforeStop;
+    assert.soon(() => {
+        const stats = getStats(name);
+        assert.commandWorked(stats);
+        assert.neq(undefined, stats["kafkaPartitions"]);
+        assert.eq(4, stats["kafkaPartitions"].length);
+
+        if (stats["inputMessageCount"] != totalMessages ||
+            stats["outputMessageCount"] != totalMessages) {
+            return false;
+        }
+
+        let currOffset = 0;
+        let checkpointOffset = 0;
+        for (let i = 0; i < stats["kafkaPartitions"].length; i++) {
+            currOffset += Number(stats["kafkaPartitions"][i]["currentOffset"]);
+            checkpointOffset += Number(stats["kafkaPartitions"][i]["checkpointOffset"]);
+        }
+        return currOffset == input1.length + input2.length + numDocsBeforeStop &&
+            checkpointOffset == input1.length + input2.length + numDocsBeforeStop;
+    });
+
+    alreadyFlushedIds = checkpointUtil.flushAll();
+    // Stop the stream processor.
+    stopStreamProcessor(name, alreadyFlushedIds);
 }
 
 function kafkaStartAtEarliestTest() {
@@ -1257,8 +1739,8 @@ function testKafkaAsyncError() {
     kafkaThatWillFail.stop();
 
     assert.soon(() => {
-        // Kafka $emit errors are detected during flush. Write some data so checkpoints and flushes
-        // happen and we detect the error.
+        // Kafka $emit errors are detected during flush. Write some data so checkpoints and
+        // flushes happen and we detect the error.
         sourceColl1.insert({a: 1});
         let result = listStreamProcessors();
         let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
@@ -1267,10 +1749,10 @@ function testKafkaAsyncError() {
             mongoToKafka.error.reason.includes("Kafka $emit encountered error");
 
         // TODO(SERVER-89760): Figure out a reliable way to detect source connection failure.
-        // let kafkaToMongo = result.streamProcessors.filter(s => s.name == kafkaToMongoName)[0];
-        // return kafkaToMongo.status == "error" &&
-        //     kafkaToMongo.error.reason.includes("Kafka $source partition 0 encountered error") &&
-        //     kafkaToMongo.error.reason.includes(
+        // let kafkaToMongo = result.streamProcessors.filter(s => s.name ==
+        // kafkaToMongoName)[0]; return kafkaToMongo.status == "error" &&
+        //     kafkaToMongo.error.reason.includes("Kafka $source partition 0 encountered error")
+        //     && kafkaToMongo.error.reason.includes(
         //         "Connect to ipv4#127.0.0.1:9092 failed: Connection refused");
     }, "expected mongoToKafka processor to go into failed state");
 
@@ -1315,8 +1797,8 @@ function testKafkaOffsetLag(
         db.adminCommand({'configureFailPoint': 'slowKafkaSource', 'mode': 'alwaysOn'}));
 
     // Start the mongoToKafka streamProcessor.
-    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
-    // processor.
+    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo
+    // stream processor.
     assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
         collName: sourceColl1.getName(),
         topicName: topicName1,
@@ -1540,6 +2022,13 @@ runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 
 runKafkaTest(kafka, () => resumeFromCheckpointVersion2(12), 12);
 runKafkaTest(kafka, () => resumeFromCheckpointVersion3(12), 12);
+
+runKafkaTest(kafka, () => mongoToKafkaToMongoMultiTopic({numTopics: 1, numPartitions: 10}), 10);
+runKafkaTest(kafka, () => mongoToKafkaToMongoMultiTopic({numTopics: 2, numPartitions: 5}), 5);
+runKafkaTest(kafka, () => mongoToKafkaToMongoMultiTopic({numTopics: 3, numPartitions: 1}), 1);
+runKafkaTest(kafka, () => mongoToKafkaToMongoMultiTopic({numTopics: 3, numPartitions: 3}), 3);
+runKafkaTest(kafka, () => kafkaMultiTopicCheckpointTest(kafka, 2), 2);
+runKafkaTest(kafka, () => mongoToKafkaToMongoGroupStreamMeta({numPartitions: 2}), 2);
 
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "gzip"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "snappy"}));

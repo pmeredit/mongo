@@ -136,7 +136,7 @@ TEST_F(KafkaEmitTest, RoundTrip) {
     auto deserializer = std::make_unique<JsonEventDeserializer>();
     KafkaConsumerOperator::Options options;
     options.bootstrapServers = localKafkaBrokers;
-    options.topicName = topicName;
+    options.topicNames = {topicName};
     options.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
     options.deserializer = deserializer.get();
     options.timestampOutputFieldName = "_ts";

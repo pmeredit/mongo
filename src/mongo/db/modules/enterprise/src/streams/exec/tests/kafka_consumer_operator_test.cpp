@@ -95,9 +95,9 @@ KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(int32_t nu
     options.timestampOutputFieldName = "_ts";
     options.useWatermarks = true;
     options.isTest = true;
-    options.topicName = "unitTestKafkaTopic";
+    options.topicNames = {"unitTestKafkaTopic"};
     for (int i = 0; i < numPartitions; i++) {
-        options.testOnlyTopicPartitions.emplace_back(options.topicName, i);
+        options.testOnlyTopicPartitions.emplace_back(options.topicNames[0], i);
     }
     return options;
 }
@@ -112,6 +112,7 @@ KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(
     options.testOnlyTopicPartitions = std::move(topicPartitions);
     return options;
 }
+
 
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(
     KafkaConsumerOperator::Options options) {
@@ -340,6 +341,80 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     ASSERT_EQUALS(_source->getStats().watermark, 60 - 1);
 }
 
+TEST_F(KafkaConsumerOperatorTest, BasicMultiTopic) {
+    // multiple topics with some non-contiguous partition ids
+    std::vector<KafkaConsumerOperator::TopicPartition> topicPartitions{{"topic1", 1},
+                                                                       {"topic1", 2},
+                                                                       {"topic2", 0},
+                                                                       {"topic2", 1},
+                                                                       {"topic2", 2},
+                                                                       {"topic4", 1},
+                                                                       {"topic4", 3},
+                                                                       {"topic4", 5},
+                                                                       {"topic4", 7},
+                                                                       {"topic4", 9}};
+    createKafkaConsumerOperator(makeOptions(topicPartitions));
+
+    auto sourceTopicPartitions = getTopicPartitions();
+    ASSERT_EQUALS(sourceTopicPartitions, topicPartitions);
+
+    auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
+    _source->addOutput(sink.get(), 0);
+
+    _source->start();
+    invariant(_source->getConnectionStatus().isConnected());
+
+    auto sourceNumConsumers = getNumConsumers();
+    ASSERT_EQUALS(sourceNumConsumers, 10);
+
+    std::vector<int> expectedPartitionIds{1, 2, 0, 1, 2, 1, 3, 5, 7, 9};
+    for (int consumerIdx = 0; consumerIdx < sourceNumConsumers; consumerIdx++) {
+        ASSERT_EQUALS(getConsumerInfo(consumerIdx).partition, expectedPartitionIds[consumerIdx]);
+    }
+
+    disableOverrideOffsets(sourceNumConsumers);
+
+    // Test that runOnce() does not emit any documents yet, but emits a control message.
+    ASSERT_EQUALS(0, runOnce());
+    std::deque<StreamMsgUnion> msgs = sink->getMessages();
+    ASSERT_EQUALS(1, msgs.size());
+    auto msgUnion = std::move(msgs.front());
+    msgs.pop_front();
+    ASSERT_FALSE(msgUnion.dataMsg);
+    ASSERT_EQUALS(createWatermarkControlMsg(-1), *msgUnion.controlMsg->watermarkMsg);
+    for (auto consumerIdx = 0; consumerIdx < sourceNumConsumers; consumerIdx++) {
+        ASSERT_EQUALS(createWatermarkControlMsg(-1),
+                      getConsumerInfo(consumerIdx).watermarkGenerator->getWatermarkMsg());
+    }
+
+    // Test that runOnce() does not emit anything now, not even a control message.
+    ASSERT_EQUALS(0, runOnce());
+    msgs = sink->getMessages();
+    ASSERT_EQUALS(0, msgs.size());
+
+    // Consume docs from the first three consumers. The first two are subscribed to "topic1" and the
+    // third consumer is subscribed to "topic2"
+    std::vector<std::vector<int64_t>> partitionOffsets = {
+        {1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}, {1, 2, 3}};
+    std::vector<std::vector<int64_t>> partitionAppendTimes = {
+        {1, 2, 3, 4, 5}, {5, 10, 15, 20, 25}, {6, 7, 8}};
+    auto expectedOutputDocs = ingestDocs(partitionOffsets, partitionAppendTimes);
+
+    size_t numDocs = std::accumulate(
+        partitionOffsets.begin(), partitionOffsets.end(), 0, [](auto accum, const auto& elem) {
+            return accum + elem.size();
+        });
+
+    ASSERT_EQUALS(numDocs, runOnce());
+    msgs = sink->getMessages();
+    ASSERT_EQUALS(1, msgs.size());
+    msgUnion = std::move(msgs.front());
+    msgs.pop_front();
+
+    // Test that the output docs are as expected.
+    verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
+}
+
 TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto exprObj = fromjson("{$toDate: '$event_time_ms'}");
@@ -515,11 +590,13 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             }
         } else {
             // Add input to the partitions.
+            // Test only works for one topic
+            ASSERT(source->getOptions().topicNames.size() == 1);
             for (auto& [partition, docs] : input) {
                 // Create a KafkaEmitOperator and output data to the Kafka topic.
                 KafkaEmitOperator emitForTest{context.get(),
                                               {.bootstrapServers = localKafkaBrokers,
-                                               .topicName = source->getOptions().topicName}};
+                                               .topicName = source->getOptions().topicNames[0]}};
                 emitForTest.start();
                 std::vector<StreamDocument> partitionInput;
                 for (auto& doc : docs) {
@@ -542,7 +619,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         options.isTest = isFakeKafka;
         options.bootstrapServers = localKafkaBrokers;
         options.deserializer = _deserializer.get();
-        options.topicName = topicName;
+        options.topicNames = {topicName};
         options.consumerGroupId = consumerGroupId;
         if (isFakeKafka) {
             for (int i = 0; i < partitionCount; i++) {

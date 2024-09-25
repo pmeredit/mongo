@@ -41,7 +41,7 @@ export class LocalKafkaCluster {
     //      },
     //      ...
     //  ]
-    getConsumerGroupId(groupId) {
+    getConsumerGroupId(groupId, rawOutput = false) {
         jsTestLog(groupId);
         clearRawMongoProgramOutput();
         let ret = runMongoProgram(getPython3Binary(),
@@ -59,12 +59,17 @@ export class LocalKafkaCluster {
         // JSON dump of the consumer group state.
         let output = rawMongoProgramOutput().split("\n").find(
             (line) => line.includes(`"group": "${groupId}"`));
-
+        if (!output) {
+            return null;
+        }
         output = output.substring(output.indexOf("["));
         jsTestLog(`Consumer group '${groupId}' state: ${output}`);
 
-        // Return a partition keyed object.
         const obj = JSON.parse(output);
+        if (rawOutput) {
+            return obj;
+        }
+        // Return a partition keyed object.
         return Object.values(obj).reduce((acc, p) => {
             acc[p["partition"]] = p;
             return acc;
@@ -87,6 +92,9 @@ export class LocalKafkaCluster {
 
         let output = rawMongoProgramOutput().split("\n").find(
             (line) => line.includes(`"group": "${groupId}"`));
+        if (!output) {
+            return null;
+        }
         output = output.substring(output.indexOf("["));
         jsTestLog(`Consumer group '${groupId}' members: ${output}`);
         return JSON.parse(output);

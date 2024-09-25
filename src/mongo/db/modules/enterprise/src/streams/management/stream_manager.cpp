@@ -1353,6 +1353,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
             partitionStatesReply.reserve(kafkaConsumerPartitionStates.size());
             for (auto& state : kafkaConsumerPartitionStates) {
                 mongo::KafkaConsumerPartitionState stateReply;
+                stateReply.setTopic(state.topic);
                 stateReply.setPartition(state.partition);
                 stateReply.setCurrentOffset(state.currentOffset);
                 stateReply.setCheckpointOffset(state.checkpointOffset);

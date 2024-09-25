@@ -366,8 +366,9 @@ structs:
                 description: "Name of the Kafka source, should be the same as the Connection.name."
                 type: string
             topic:
-                description: "Topic name to use for the source data."
-                type: string
+                description: "Topic(s) to use for the source data."
+                type:
+                    variant: [string, array<string>]
             timeField:
                 description: "Expression for computing the event time on a Document."
                 type:
@@ -391,8 +392,8 @@ structs:
                 optional: true
             testOnlyPartitionCount:
                 description: "The number of topic partitions to use for the test."
-                type: int
-                validator: {gte: 1}
+                type:
+                    variant: [int, array<int>]
                 optional: true
             config:
                 description: "Additional configuration options for the Kafka $source."

@@ -705,7 +705,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
 
     struct ExpectedResults {
         std::string bootstrapServers;
-        std::string topicName;
+        std::vector<std::string> topicNames;
         bool hasTimestampExtractor = false;
         std::string timestampOutputFieldName = std::string(kDefaultTsFieldName);
         int partitionCount = 1;
@@ -732,7 +732,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
 
         // Verify that all the parsed options match what is expected.
         ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
-        ASSERT_EQ(expected.topicName, options.topicName);
+        ASSERT_EQ(expected.topicNames, options.topicNames);
         ASSERT_EQ(expected.consumerGroupId, options.consumerGroupId);
         ASSERT_EQ(expected.startOffset, options.startOffset);
         ASSERT_EQ(expected.enableAutoCommit, options.enableAutoCommit);
@@ -772,11 +772,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     auto topicName = "topic1";
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
                                                       << "testOnlyPartitionCount" << 1)),
-              {options1.getBootstrapServers().toString(), topicName});
+              {options1.getBootstrapServers().toString(), {topicName}});
     innerTest(BSON("$source" << BSON("connectionName" << kafka3.getName() << "topic" << topicName
                                                       << "testOnlyPartitionCount" << 1)),
               {.bootstrapServers = options3.getBootstrapServers().toString(),
-               .topicName = topicName,
+               .topicNames = {topicName},
                .auth = options3.getAuth()->toBSON(),
                .enableAutoCommit = true});
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
@@ -785,7 +785,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                                                               << "consumer-group-1"
                                                               << "enable_auto_commit" << false))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
-               .topicName = topicName,
+               .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-1"),
                .enableAutoCommit = false});
 
@@ -795,7 +795,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
                                                       << "testOnlyPartitionCount" << 1)),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
-               .topicName = topicName,
+               .topicNames = {topicName},
                .consumerGroupId = boost::none,
                .enableAutoCommit = false});
 
@@ -806,7 +806,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                                                       << BSON("group_id"
                                                               << "consumer-group-2"))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
-               .topicName = topicName,
+               .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-2"),
                .enableAutoCommit = true});
 
@@ -843,7 +843,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                                                  << BSONArrayBuilder().append("").append(5).arr()))
                        << "tsFieldName" << tsField << "testOnlyPartitionCount" << partitionCount)),
               {options2.getBootstrapServers().toString(),
-               topic2,
+               {topic2},
                true,
                tsField,
                partitionCount,
@@ -860,7 +860,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                      << "tsFieldName" << tsField << "testOnlyPartitionCount" << partitionCount
                      << "config" << BSON("auto_offset_reset" << autoOffsetReset))),
             {options2.getBootstrapServers().toString(),
-             topic2,
+             {topic2},
              true,
              tsField,
              partitionCount,
@@ -880,6 +880,16 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     ASSERT_EQUALS(idlEnumCount<KafkaSourceAutoOffsetResetEnum>, testCases.size());
     for (const auto& [input, expected] : testCases) {
         autoOffsetResetTest(input, expected);
+    }
+
+    {
+        // Parse array syntax - topic: ["topicName1", "topicName2"]
+        std::vector<std::string> twoTopicVec{"topic1", "topic2"};
+        std::vector<int> partitionCounts{2, 3};
+        innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic"
+                                                          << twoTopicVec << "testOnlyPartitionCount"
+                                                          << partitionCounts)),
+                  {options1.getBootstrapServers().toString(), twoTopicVec});
     }
 }
 

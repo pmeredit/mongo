@@ -525,11 +525,41 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
         getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
-    internalOptions.topicName = std::string{options.getTopic()};
+    std::visit(
+        OverloadedVisitor{
+            [&](const std::string& str) { internalOptions.topicNames.push_back(str); },
+            [&](const std::vector<std::string>& strVec) { internalOptions.topicNames = strVec; }},
+        options.getTopic());
+
     if (options.getTestOnlyPartitionCount()) {
-        for (int i = 0; i < *options.getTestOnlyPartitionCount(); i++) {
-            internalOptions.testOnlyTopicPartitions.emplace_back(internalOptions.topicName, i);
-        }
+        std::visit(
+            OverloadedVisitor{
+                [&](int32_t partitionCount) {
+                    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                            fmt::format("Expected topicNames size to be: 1, instead found: {}",
+                                        internalOptions.topicNames.size()),
+                            internalOptions.topicNames.size() == 1);
+                    for (int i = 0; i < partitionCount; i++) {
+                        internalOptions.testOnlyTopicPartitions.emplace_back(
+                            internalOptions.topicNames[0], i);
+                    }
+                },
+                [&](const std::vector<int32_t>& partitionIds) {
+                    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                            fmt::format(
+                                "mismatch between partitionId count - {} and topicNames size - {}",
+                                partitionIds.size(),
+                                internalOptions.topicNames.size()),
+                            partitionIds.size() == internalOptions.topicNames.size());
+                    int idx = 0;
+                    for (const auto& topic : internalOptions.topicNames) {
+                        int numPartitions = partitionIds[idx++];
+                        for (int i = 0; i < numPartitions; i++) {
+                            internalOptions.testOnlyTopicPartitions.emplace_back(topic, i);
+                        }
+                    }
+                }},
+            *options.getTestOnlyPartitionCount());
     }
 
     if (auto auth = baseOptions.getAuth(); auth) {

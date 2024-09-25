@@ -33,6 +33,10 @@ structs:
                 description: Event time watermark of the partition.
                 type: WatermarkState
                 optional: true
+            topic:
+                description: Topic name.
+                type: string
+                optional: true
 
     KafkaSourceCheckpointState:
         description: Checkpoint state of a Kafka $source operator.

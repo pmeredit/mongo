@@ -60,8 +60,8 @@ public:
         // List of bootstrap servers to specify in Kafka's bootstrap.servers configuration
         // parameter.
         std::string bootstrapServers;
-        // Name of the topic to tail.
-        std::string topicName;
+        // Name of the topic(s) to tail.
+        std::vector<std::string> topicNames;
         // Consumer group ID to use for the kafka consumer. If this is not set by the
         // user on creation, then an auto-generated one will be used (when the stream is not
         // ephemeral) which will look like: `asp-{streamProcessorId}-consumer` . On checkpoint
@@ -162,7 +162,7 @@ private:
     class Connector {
     public:
         struct Options {
-            std::string topicName;
+            std::vector<std::string> topicNames;
             mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs;
             // Sleep duration after Kafka api calls fail.
             mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};

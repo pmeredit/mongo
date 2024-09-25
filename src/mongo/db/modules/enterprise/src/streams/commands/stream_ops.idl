@@ -135,6 +135,10 @@ structs:
         description: "State of a single partition in the kafka consumer source"
         strict: false
         fields:
+            topic:
+                description: "Topic that this consumer is subscribed to."
+                type: string
+                optional: true
             partition:
                 description: "Partition ID that this state represents."
                 type: safeInt
