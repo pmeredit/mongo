@@ -55,7 +55,8 @@ public:
         return 2;
     }
 
-    StatusWith<std::unique_ptr<UserRequest>> makeUserRequest() const override;
+    StatusWith<std::unique_ptr<UserRequest>> makeUserRequest(
+        OperationContext* opCtx) const override;
     boost::optional<Date_t> getExpirationTime() const override {
         return _expirationTime;
     }

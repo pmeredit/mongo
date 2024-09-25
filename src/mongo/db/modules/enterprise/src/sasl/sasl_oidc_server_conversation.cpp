@@ -167,8 +167,9 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
     return {true, std::string{}};
 }
 
-StatusWith<std::unique_ptr<UserRequest>> SaslOIDCServerMechanism::makeUserRequest() const {
-    auto swRequest = ServerMechanismBase::makeUserRequest();
+StatusWith<std::unique_ptr<UserRequest>> SaslOIDCServerMechanism::makeUserRequest(
+    OperationContext* opCtx) const {
+    auto swRequest = ServerMechanismBase::makeUserRequest(opCtx);
     if (!swRequest.isOK()) {
         return swRequest.getStatus();
     }
