@@ -317,7 +317,6 @@ function testOIDC(insertHigherTermOplogEntry) {
     // serverStatus which requires auth.
     rst.startSet({dbpath: magicRestoreUtils.getBackupDbPath()},
                  true /* restart */,
-                 null /* isMixedVersionCluster */,
                  true /* skipStepUpOnRestart */);
 
     primary = rst.getPrimary();
