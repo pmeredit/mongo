@@ -80,50 +80,51 @@ ZOOKEEPER_RM_ARGS = [
 KAFKA_UTILITY_ARGS = [DOCKER, "run", "--network=host", BITNAMI_KAFKA_CONTAINER_IMAGE]
 
 
-def _get_kafka_start_args(partition_count):
-    return [
+def _get_kafka_start_args(partition_count, broker_config_overrides):
+    kafka_start_args = [
         DOCKER,
         "run",
         "--network=host",
         "--volume={}:/etc/kafka/secrets:ro".format(CERT_DIRECTORY_PATH),
         "-e",
-        "KAFKA_BROKER_ID=1",
-        "-e",
-        f"KAFKA_ZOOKEEPER_CONNECT=localhost:{ZOOKEEPER_PORT}",
-        "-e",
-        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT,SASL_SSL:SASL_SSL",
-        "-e",
-        f"KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:{KAFKA_PORT},PLAINTEXT_INTERNAL://broker:29092,SASL_SSL://localhost:9093",
-        "-e",
-        "KAFKA_SSL_KEYSTORE_FILENAME=kafka.keystore.pkcs12",
-        "-e",
-        "KAFKA_SSL_KEYSTORE_CREDENTIALS=kafka_keystore_creds",
-        "-e",
-        "KAFKA_SSL_KEY_CREDENTIALS=kafka_sslkey_creds",
-        "-e",
-        "KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf",
-        "-e",
-        "KAFKA_LISTENER_NAME_SASL_SSL_SASL_ENABLED_MECHANISMS=PLAIN",
-        "-e",
-        "KAFKA_SASL_ENABLED_MECHANISMS=PLAIN",
-        "-e",
-        "ZOOKEEPER_SASL_ENABLED=false",
-        "-e",
-        "ZOOKEEPER_SASL_CLIENT=false",
-        "-e",
-        "KAFKA_ZOOKEEPER_SET_ACL=false",
-        "-e",
-        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
-        "-e",
-        "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
-        "-e",
-        "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
-        "-e",
         f"KAFKA_NUM_PARTITIONS={partition_count}",
+    ]
+
+    kafka_broker_config = {
+        "KAFKA_BROKER_ID": "1",
+        "KAFKA_ZOOKEEPER_CONNECT": f"localhost:{ZOOKEEPER_PORT}",
+        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP": "PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT,SASL_SSL:SASL_SSL",
+        "KAFKA_ADVERTISED_LISTENERS": f"PLAINTEXT://localhost:{KAFKA_PORT},PLAINTEXT_INTERNAL://broker:29092,SASL_SSL://localhost:9093",
+        "KAFKA_SSL_KEYSTORE_FILENAME": "kafka.keystore.pkcs12",
+        "KAFKA_SSL_KEYSTORE_CREDENTIALS": "kafka_keystore_creds",
+        "KAFKA_SSL_KEY_CREDENTIALS": "kafka_sslkey_creds",
+        "KAFKA_OPTS": "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf",
+        "KAFKA_LISTENER_NAME_SASL_SSL_SASL_ENABLED_MECHANISMS": "PLAIN",
+        "KAFKA_SASL_ENABLED_MECHANISMS": "PLAIN",
+        "ZOOKEEPER_SASL_ENABLED": "false",
+        "ZOOKEEPER_SASL_CLIENT": "false",
+        "KAFKA_ZOOKEEPER_SET_ACL": "false",
+        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR": "1",
+        "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR": "1",
+        "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR": "1",
+    }
+
+    # Override default broker configurations
+    for config_param in broker_config_overrides:
+        kafka_broker_config[config_param[0]] = config_param[1]
+
+    # Add broker configurations to start args
+    for param, value in kafka_broker_config.items():
+        kafka_start_args.append("-e")
+        kafka_start_args.append(f"{param}={value}")
+
+    kafka_start_args += [
         "-d",
         f"--name={KAFKA_CONTAINER_NAME}",
         KAFKA_CONTAINER_IMAGE,
     ]
+
+    return kafka_start_args
 
 
 def _get_kafka_ready(port):
@@ -196,7 +197,7 @@ def start(args) -> int:
             raise RuntimeError("Failed to start zookeeper with error code: {ret}")
         _wait_for_port(ZOOKEEPER_PORT)
         # Start kafka
-        ret = _run_process(_get_kafka_start_args(args.partitions))
+        ret = _run_process(_get_kafka_start_args(args.partitions, args.kafka_arg))
         if ret != 0:
             raise RuntimeError("Failed to start kafka with error code: {ret}")
         _wait_for_port(KAFKA_PORT)
@@ -348,6 +349,9 @@ def main() -> None:
     sub = parser.add_subparsers(title="Kafka container subcommands", help="sub-command help")
 
     start_cmd = sub.add_parser("start", help="Start the Kafka broker")
+    start_cmd.add_argument(
+        "-ka", "--kafka-arg", required=False, action="append", nargs=2, default=[]
+    )
     start_cmd.set_defaults(func=start)
 
     stop_cmd = sub.add_parser("stop", help="Stop the Kafka broker")

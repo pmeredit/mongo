@@ -1761,6 +1761,43 @@ function testKafkaAsyncError() {
     stopStreamProcessor(startCmd.name);
 }
 
+// Verify that a streamProcessor goes into an error status when emitting to new topics for a Kafka
+// broker with setting auto.create.topic = false
+function testKafkaAutoCreateTopicFalseError() {
+    dropCollections();
+
+    // Bring up a Kafka.
+    const partitionCount = 1;
+    let kafkaThatWillFail = new LocalKafkaCluster();
+    kafkaThatWillFail.start(partitionCount, {KAFKA_AUTO_CREATE_TOPICS_ENABLE: false});
+
+    // Start a mongo->kafka processor
+    const startCmd = makeMongoToKafkaStartCmd(
+        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaPlaintextName});
+    assert.commandWorked(db.runCommand(startCmd));
+
+    // Sleep prior to the first document being produced. This ensures Kafka producer fetches topic
+    // metadata and KafkaEmitOperator::_producer.produce returns the expected error when processing
+    // the stream doc.
+    sleep(30 * 1000);
+
+    // Insert on source collection
+    sourceColl1.insert({a: 1});
+
+    // Assert that SP goes into error state with the expected error
+    assert.soon(() => {
+        let result = listStreamProcessors();
+        let mongoToKafka = result.streamProcessors.filter(s => s.name == mongoToKafkaName)[0];
+        jsTestLog(mongoToKafka);
+        return mongoToKafka.status == "error" &&
+            mongoToKafka.error.reason ===
+            `Failed to emit to topic ${topicName1} due to error: Local: Unknown topic (-188)`;
+    }, "expected mongoToKafka processor to go into failed state");
+
+    // Now stop stream processors.
+    stopStreamProcessor(startCmd.name);
+}
+
 // Starts a mongo->kafka->mongo setup and tests that in the SP that is
 // processing incoming kafka events, we see an offset lag in the verbose stats
 function testKafkaOffsetLag(
@@ -2062,6 +2099,7 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "rela
 runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "canonicalJson"}));
 
 testKafkaAsyncError();
+testKafkaAutoCreateTopicFalseError();
 
 // binData key field
 runKafkaTest(kafka, () => mongoToKafkaToMongo({

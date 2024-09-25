@@ -6,17 +6,29 @@ export class LocalKafkaCluster {
         this.partitionCount = 0;
     }
 
-    start(partitionCount) {
+    start(partitionCount, kafkaConfigOverrides) {
         this.partitionCount = partitionCount;
         // Stop any previously running containers to ensure we are running from a clean state.
         this.stop();
+
+        // Build array of kafka command line override arguments
+        let overrideCLIArgs = new Array();
+        if (kafkaConfigOverrides) {
+            for (let [param, val] of Object.entries(kafkaConfigOverrides)) {
+                overrideCLIArgs.push("-ka");
+                overrideCLIArgs.push(`${param}`);
+                overrideCLIArgs.push(`${val}`);
+            }
+        }
+
         // Start the kafka containers.
         let ret = runMongoProgram(getPython3Binary(),
                                   "-u",
                                   this.python_file,
                                   "-v",
                                   `--partitions=${[partitionCount]}`,
-                                  "start");
+                                  "start",
+                                  ...overrideCLIArgs);
         assert.eq(ret, 0, "Could not start Kafka containers.");
     }
 

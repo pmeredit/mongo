@@ -98,6 +98,7 @@ void KafkaEmitOperator::Connector::testConnection() {
         RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
             false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
         std::unique_ptr<RdKafka::Metadata> deleter(metadata);
+
         uassert(
             ErrorCodes::StreamProcessorKafkaConnectionError,
             "$emit to Kafka topic encountered error while connecting, kafka error code: {}"_format(
@@ -535,8 +536,10 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         if (headers != nullptr) {
             delete headers;
         }
+
         uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                  "Failed to emit to topic {} due to error: {}"_format(topicName, err));
+                  "Failed to emit to topic {} due to error: {} ({})"_format(
+                      topicName, RdKafka::err2str(err), err));
     }
 }
 
