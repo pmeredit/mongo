@@ -74,11 +74,6 @@ public:
                                    const UserRequest& userReq,
                                    const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
-    Status hasAnyUserDocuments(OperationContext* opCtx,
-                               const boost::optional<TenantId>& tenantId) final {
-        return _wrappedExternalState->hasAnyUserDocuments(opCtx, tenantId);
-    }
-
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */

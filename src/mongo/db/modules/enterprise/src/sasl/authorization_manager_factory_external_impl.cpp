@@ -4,9 +4,12 @@
 
 #include "sasl/authorization_manager_factory_external_impl.h"
 
+#include "ldap/authorization_backend_ldap.h"
 #include "ldap/authz_manager_external_state_ldap.h"
 #include "ldap/ldap_options.h"
+
 #include "mongo/base/init.h"
+#include "mongo/db/auth/authorization_backend_local.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_manager_impl.h"
 #include "mongo/db/auth/authz_manager_external_state.h"
@@ -43,6 +46,16 @@ std::unique_ptr<AuthorizationManager> AuthorizationManagerFactoryExternalImpl::c
     }
 
     return std::make_unique<AuthorizationManagerImpl>(service, std::move(externalState));
+}
+
+std::unique_ptr<auth::AuthorizationBackendInterface>
+AuthorizationManagerFactoryExternalImpl::createBackendInterface(Service* service) {
+    invariant(service->role().has(ClusterRole::ShardServer) ||
+              service->role().has(ClusterRole::ConfigServer));
+    if (globalLDAPParams->isLDAPAuthzEnabled()) {
+        return std::make_unique<auth::AuthorizationBackendLDAP>();
+    }
+    return std::make_unique<auth::AuthorizationBackendLocal>();
 }
 
 namespace {

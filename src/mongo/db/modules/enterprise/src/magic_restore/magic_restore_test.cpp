@@ -8,6 +8,10 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/timestamp.h"
+#include "mongo/db/auth/authorization_backend_interface.h"
+#include "mongo/db/auth/authorization_backend_mock.h"
+#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_manager_factory_mock.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
@@ -1166,13 +1170,17 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
 
     // The update code path checks if the role and user exist in the mock authorization manager
     // external state, so we need to set it up.
-    auto localExternalState = std::make_unique<AuthzManagerExternalStateMock>();
-    auto externalState = localExternalState.get();
-    auto localAuthzManager =
-        std::make_unique<AuthorizationManagerImpl>(getService(), std::move(localExternalState));
+    auto localAuthzManager = std::make_unique<AuthorizationManagerImpl>(
+        getService(), std::make_unique<AuthzManagerExternalStateMock>());
     auto authzManager = localAuthzManager.get();
     authzManager->setAuthEnabled(true);
     AuthorizationManager::set(getService(), std::move(localAuthzManager));
+    auto globalAuthzManagerFactory = std::make_unique<AuthorizationManagerFactoryMock>();
+    auth::AuthorizationBackendInterface::set(
+        getService(), globalAuthzManagerFactory->createBackendInterface(getService()));
+    auto mockBackend = reinterpret_cast<auth::AuthorizationBackendMock*>(
+        auth::AuthorizationBackendInterface::get(getService()));
+
 
     // Re-initialize the client after setting the AuthorizationManager to get an
     // AuthorizationSession.
@@ -1228,8 +1236,8 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
                             << "testUser"
                             << "db"
                             << "admin");
-        ASSERT_OK(externalState->insert(opCtx, NamespaceString::kAdminRolesNamespace, roleDoc, {}));
-        ASSERT_OK(externalState->insert(opCtx, NamespaceString::kAdminUsersNamespace, userDoc, {}));
+        ASSERT_OK(mockBackend->insert(opCtx, NamespaceString::kAdminRolesNamespace, roleDoc, {}));
+        ASSERT_OK(mockBackend->insert(opCtx, NamespaceString::kAdminUsersNamespace, userDoc, {}));
 
         auto docs = getDocuments(opCtx, storage, NamespaceString::kAdminRolesNamespace);
         ASSERT_EQ(1, docs.size());

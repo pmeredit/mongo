@@ -51,11 +51,6 @@ public:
                                    const UserRequest& userReq,
                                    const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
-    Status hasAnyUserDocuments(OperationContext* opCtx,
-                               const boost::optional<TenantId>& tenantId) final {
-        return _wrappedExternalState->hasAnyUserDocuments(opCtx, tenantId);
-    }
-
     Status rolesExist(OperationContext* opCtx, const std::vector<RoleName>& roleNames) final {
         return _wrappedExternalState->rolesExist(opCtx, roleNames);
     }

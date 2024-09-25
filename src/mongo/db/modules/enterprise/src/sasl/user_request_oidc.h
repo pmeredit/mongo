@@ -44,8 +44,11 @@ public:
         return _jwtString;
     }
 
-    StatusWith<std::unique_ptr<UserRequest>> clone() const final {
-        return makeUserRequestOIDC(getUserName(), getRoles(), getJWTString().toString(), false);
+    std::unique_ptr<UserRequest> clone() const final {
+        // Since we are invoking the non-reacquire version of makeUserRequestOIDC,
+        // we can be certain that the uassert below will not throw.
+        return uassertStatusOK(
+            makeUserRequestOIDC(getUserName(), getRoles(), getJWTString().toString(), false));
     }
 
     /**

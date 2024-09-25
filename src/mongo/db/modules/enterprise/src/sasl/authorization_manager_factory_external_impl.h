@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "ldap/authorization_backend_ldap.h"
+
 #include "mongo/db/auth/authorization_client_handle.h"
 #include "mongo/db/auth/authorization_client_handle_router.h"
 #include "mongo/db/auth/authorization_client_handle_shard.h"
@@ -30,6 +32,9 @@ class AuthorizationManagerFactoryExternalImpl : public AuthorizationManagerFacto
     std::unique_ptr<AuthorizationClientHandle> createClientHandleShard(Service* service) final {
         return std::make_unique<AuthorizationClientHandleShard>();
     }
+
+    std::unique_ptr<auth::AuthorizationBackendInterface> createBackendInterface(
+        Service* service) final;
 };
 
 }  // namespace mongo
