@@ -127,7 +127,8 @@ function makeMongoToKafkaStartCmd({
     jsonType,
     parseOnly = false,
     compressionType,
-    processorName = null
+    acks,
+    processorName = null,
 }) {
     let processorId = `processor-coll_${collName}-to-topic${Math.floor(Math.random() * 10000)}`;
     const emitOptions = {
@@ -149,6 +150,9 @@ function makeMongoToKafkaStartCmd({
     }
     if (compressionType != null) {
         emitOptions.config.compression_type = compressionType;
+    }
+    if (acks != null) {
+        emitOptions.config.acks = acks;
     }
     let options = {
         checkpointOptions: {
@@ -351,6 +355,7 @@ function mongoToKafkaToMongo({
     sourceKeyFormatError,
     jsonType,
     compressionType,
+    acks,
 } = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
@@ -391,6 +396,7 @@ function mongoToKafkaToMongo({
         sinkHeaders,
         jsonType,
         compressionType,
+        acks,
     })));
 
     // Write input to the 'sourceColl'.
@@ -2078,6 +2084,12 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "snappy"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "lz4"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "zstd"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "none"}));
+
+runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "all"}));
+runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "-1"}));
+runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "0"}));
+runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "1"}));
+
 runKafkaTest(kafka,
              () => mongoToKafkaToMongoMaintainStreamMeta({$limit: 1} /* nonGroupWindowStage */));
 runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({

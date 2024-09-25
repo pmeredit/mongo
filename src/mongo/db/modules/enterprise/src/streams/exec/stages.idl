@@ -126,6 +126,15 @@ enums:
             lz4: "lz4"
             zstd: "zstd"
 
+    KafkaAcks:
+        type: string
+        description: "The supported kafka acks"
+        values:
+            All: "all"
+            Negative: "-1"
+            None: "0"
+            One: "1"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -357,6 +366,11 @@ structs:
                 cpp_name: compressionType
                 type: KafkaCompressionType
                 default: none
+            acks:
+                description: "The number of acknowledgements the producer requires kafka to have received"
+                optional: true
+                type: KafkaAcks
+                default: All
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."

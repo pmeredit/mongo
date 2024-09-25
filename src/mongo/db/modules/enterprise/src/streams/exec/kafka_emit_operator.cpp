@@ -170,6 +170,8 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     setConf("compression.type",
             KafkaCompressionType_serializer(_options.compressionType).toString());
 
+    setConf("acks", KafkaAcks_serializer(_options.acks).toString());
+
     // Configure the underlying kafka producer queue with sensible defaults. In particular:
     // - We wish to allow up to one second for events to accumulate (this reduces the overhead for
     // sending messages to our broker).

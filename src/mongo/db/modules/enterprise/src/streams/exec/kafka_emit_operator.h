@@ -61,6 +61,8 @@ public:
         mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
         // compression.type setting
         mongo::KafkaCompressionTypeEnum compressionType{mongo::KafkaCompressionTypeEnum::none};
+        // acks setting
+        mongo::KafkaAcksEnum acks{mongo::KafkaAcksEnum::All};
     };
 
     KafkaEmitOperator(Context* context, Options options);
