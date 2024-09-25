@@ -49,6 +49,7 @@ public:
 
         TopicPartition(std::string topicName, int32_t partition);
         bool operator==(const TopicPartition& other) const = default;
+        mongo::BSONObj toBSON() const;
     };
 
     struct Options : public SourceOperator::Options {

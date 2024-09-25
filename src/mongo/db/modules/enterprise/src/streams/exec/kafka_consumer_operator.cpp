@@ -133,6 +133,10 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
 KafkaConsumerOperator::TopicPartition::TopicPartition(std::string topicName, int32_t partition)
     : topic{std::move(topicName)}, partitionId{partition} {}
 
+mongo::BSONObj KafkaConsumerOperator::TopicPartition::toBSON() const {
+    return BSON("topic" << topic << "partition" << partitionId);
+}
+
 KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
     : _context(context), _options(std::move(options)) {
 
@@ -317,6 +321,10 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
     }
 
     std::sort(topicPartitions.begin(), topicPartitions.end(), TopicPartitionCmp());
+    LOGV2_INFO(9523301,
+               "Found topic/partitions: ",
+               "context"_attr = _context,
+               "topicPartitions"_attr = topicPartitions);
 
     stdx::lock_guard<Latch> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};
