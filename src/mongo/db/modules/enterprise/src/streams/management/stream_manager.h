@@ -21,6 +21,7 @@
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stream_processor_feature_flags.h"
+#include "streams/management/container_stats.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {
@@ -106,6 +107,10 @@ public:
     // Returns a GetMetricsReply message that contains current values of all the metrics
     // in the MetricManager.
     mongo::GetMetricsReply getMetrics();
+
+    // Returns a GetMetricsReply message that contains current values of all customer visible
+    // metrics
+    mongo::GetMetricsReply getExternalMetrics();
 
     // Stops all the running streamProcessors and shuts down the StreamManager.
     // Called while processing a SIGTERM from Kubernetes in the Atlas Stream Processing service.
@@ -277,6 +282,7 @@ private:
 
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
+    ContainerStats _containerStats;
 };
 
 // Get the global StreamManager instance.

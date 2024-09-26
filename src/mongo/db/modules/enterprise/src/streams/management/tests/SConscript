@@ -44,3 +44,27 @@ env.CppUnitTest(
         "../streams_management",
     ],
 )
+
+env.CppUnitTest(
+    target="container_stats_utils_test",
+    source=[
+        "container_stats_utils_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../../exec/tests/streams_test_utils",
+        "../streams_management",
+    ],
+)
+
+env.CppUnitTest(
+    target="container_stats_test",
+    source=[
+        "container_stats_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../../exec/tests/streams_test_utils",
+        "../streams_management",
+    ],
+)

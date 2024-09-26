@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
+ *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "mongo/util/assert_util.h"
 #include <chrono>
@@ -412,6 +412,7 @@ StreamManager::~StreamManager() {
         _backgroundjob.stop();
         _backgroundjob.detach();
     }
+    _containerStats.shutdown();
 
     stdx::lock_guard<Latch> lk(_mutex);
     tassert(8874300, "_tenantProcessors is not empty at shutdown", _tenantProcessors.empty());
@@ -1481,6 +1482,29 @@ void StreamManager::testOnlyInsertDocuments(const mongo::TestOnlyInsertCommand& 
 }
 
 using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
+
+GetMetricsReply StreamManager::getExternalMetrics() {
+    GetMetricsReply reply;
+    MetricsVisitor::MetricContainer<CounterMetricValue> counterMap;
+    MetricsVisitor::MetricContainer<GaugeMetricValue> gaugeMap;
+    MetricsVisitor::MetricContainer<HistogramMetricValue> histogramMap;
+
+    // to visit all metrics that are outside of executors.
+    _containerStats.getMetricManager()->takeSnapshot();
+    MetricsVisitor metricsVisitor(&counterMap, &gaugeMap, &histogramMap);
+    _containerStats.getMetricManager()->visitAllMetrics(&metricsVisitor);
+    std::vector<CounterMetricValue> counters;
+    mapToVec(counterMap, counters);
+    std::vector<GaugeMetricValue> gauges;
+    mapToVec(gaugeMap, gauges);
+    std::vector<HistogramMetricValue> histograms;
+    mapToVec(histogramMap, histograms);
+
+    reply.setCounters(std::move(counters));
+    reply.setGauges(std::move(gauges));
+    reply.setHistograms(std::move(histograms));
+    return reply;
+}
 
 GetMetricsReply StreamManager::getMetrics() {
     GetMetricsReply reply;

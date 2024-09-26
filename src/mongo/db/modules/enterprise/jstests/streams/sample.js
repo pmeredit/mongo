@@ -30,6 +30,12 @@ counterValue =
     metricValue.filter(mv => mv.labels[0].value === "stop" && mv.labels[1].value === "true");
 let initialStopSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
 
+let intelMetrics = {streams_getMetrics: '', externalMetrics: true};
+result = db.runCommand(intelMetrics);
+assert.eq(result["ok"], 1);
+jsTestLog(result);
+let value = result.gauges.filter(metric => metric.name == "system_cpu_percent");
+assert.gt(value.length, 0);
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',

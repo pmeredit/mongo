@@ -38,7 +38,11 @@ public:
     public:
         using InvocationBase::InvocationBase;
         Reply typedRun(OperationContext* opCtx) {
+            const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
+            if (requestParams.getExternalMetrics()) {
+                return streamManager->getExternalMetrics();
+            }
             return streamManager->getMetrics();
         }
 

@@ -34,6 +34,8 @@ env.Library(
     target="streams_management",
     source=[
         "stream_manager.cpp",
+        "container_stats.cpp",
+        "container_group_stats_provider.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",

@@ -752,6 +752,11 @@ commands:
         reply_type: GetMetricsReply
         access_check:
             none: true
+        fields:
+            externalMetrics:
+                description: Returns customer visible metrics only.
+                type: bool
+                default: false
 
     streams_sendEvent:
         description: "Called by the streams Agent to notify mongostream of an important event."
