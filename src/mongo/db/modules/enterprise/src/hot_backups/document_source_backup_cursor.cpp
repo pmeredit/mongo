@@ -148,8 +148,8 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
         pExpCtx->noForeignNamespaces());
 
     uassert(ErrorCodes::CannotBackup,
-            str::stream() << kStageName << " cannot be executed against a MongoS.",
-            !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
+            str::stream() << kStageName << " cannot be executed against a router.",
+            !pExpCtx->inRouter && !pExpCtx->fromRouter && !pExpCtx->needsMerge);
 
     // Parse $backupCursor arguments for incremental backups.
     BackupCursorParameters params = BackupCursorParameters::parse(IDLParserContext(""), spec.Obj());

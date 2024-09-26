@@ -70,8 +70,8 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
         pExpCtx->noForeignNamespaces());
 
     uassert(ErrorCodes::CannotBackup,
-            str::stream() << kStageName << " cannot be executed against a MongoS.",
-            !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
+            str::stream() << kStageName << " cannot be executed against a router.",
+            !pExpCtx->inRouter && !pExpCtx->fromRouter && !pExpCtx->needsMerge);
 
     boost::optional<UUID> backupId = boost::none;
     boost::optional<Timestamp> extendTo = boost::none;
