@@ -23,6 +23,10 @@
 #include "regex_rewrite_rule.h"
 #include "rewrite_rule.h"
 
+#ifdef __APPLE__
+#error This test should not build on macOS
+#endif
+
 namespace mongo {
 
 namespace {

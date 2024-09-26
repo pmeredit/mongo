@@ -37,6 +37,10 @@
 #include <sanitizer/lsan_interface.h>
 #endif
 
+#ifdef __APPLE__
+#error This test should not build on macOS
+#endif
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 
