@@ -68,11 +68,11 @@ BSONObj StreamControlMsg::toBSONForLogging() const {
         builder.append("eofSignal", eofSignal);
     }
     if (checkpointMsg) {
-        builder.append("checkpointId", checkpointMsg->id);
+        builder.append("checkpointMsg.checkpointId", checkpointMsg->id);
     }
     if (watermarkMsg) {
-        builder.append("watermarkEventTime", watermarkMsg->eventTimeWatermarkMs);
-        builder.append("watermarkStatus", watermarkMsg->watermarkStatus);
+        builder.append("watermarkMsg.watermarkEventTime", watermarkMsg->eventTimeWatermarkMs);
+        builder.append("watermarkMsg.watermarkStatus", watermarkMsg->watermarkStatus);
     }
     if (windowCloseSignal) {
         builder.append("windowCloseSignal.Partition", windowCloseSignal->partition.toString());

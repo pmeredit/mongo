@@ -67,6 +67,7 @@ void Operator::onDataMsg(int32_t inputIdx,
         }
     });
 
+    auto startTime = _operatorTimer.seconds();
     OperatorStats stats;
     stats.numInputDocs += dataMsg.docs.size();
     if (shouldComputeInputByteStats()) {
@@ -76,7 +77,18 @@ void Operator::onDataMsg(int32_t inputIdx,
     }
     incOperatorStats(std::move(stats));
 
+    auto dataMsgSize = dataMsg.docs.size();
     doOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
+
+    auto endTime = _operatorTimer.seconds();
+    if (Seconds{endTime - startTime} > Seconds{120}) {
+        LOGV2_INFO(76454,
+                   "Spent too much time in Operator::onDataMsg()",
+                   "context"_attr = _context,
+                   "operatorName"_attr = getName(),
+                   "executionTime"_attr = Seconds{endTime - startTime},
+                   "dataMsgSize"_attr = dataMsgSize);
+    }
 }
 
 void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
@@ -91,6 +103,8 @@ void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
         }
     });
 
+    auto startTime = _operatorTimer.seconds();
+
     if (isSource()) {
         // For a $source, inputIdx == 0 is used to for checkpoint messages.
         invariant(inputIdx == 0);
@@ -102,7 +116,18 @@ void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
         invariant(_context->checkpointStorage);
     }
 
+    auto controlMsgObj = toBSON(controlMsg);
     doOnControlMsg(inputIdx, std::move(controlMsg));
+
+    auto endTime = _operatorTimer.seconds();
+    if (Seconds{endTime - startTime} > Seconds{120}) {
+        LOGV2_INFO(76455,
+                   "Spent too much time in Operator::onControlMsg()",
+                   "context"_attr = _context,
+                   "operatorName"_attr = getName(),
+                   "executionTime"_attr = Seconds{endTime - startTime},
+                   "controlMsg"_attr = controlMsgObj);
+    }
 }
 
 OperatorStats Operator::getStats() {
