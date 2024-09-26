@@ -1775,7 +1775,7 @@ function testKafkaAsyncError() {
 
 // Verify that a streamProcessor goes into an error status when emitting to new topics for a Kafka
 // broker with setting auto.create.topic = false
-function testKafkaAutoCreateTopicFalseError() {
+function testKafkaSinkAutoCreateTopicFalseError() {
     dropCollections();
 
     // Bring up a Kafka.
@@ -1808,6 +1808,31 @@ function testKafkaAutoCreateTopicFalseError() {
 
     // Now stop stream processors.
     stopStreamProcessor(startCmd.name);
+}
+
+// Verify that starting a stream processor returns an error when a Kafka with setting
+// auto.create.topic = true is set as source with a non-existent topic
+// TODO(SERVER-80885): Change this test assert that stream processor is succesfully started
+function testKafkaSourceAutoCreateTopicTrueError() {
+    dropCollections();
+
+    // Bring up a Kafka.
+    const partitionCount = 1;
+    let kafkaThatWillFail = new LocalKafkaCluster();
+    kafkaThatWillFail.start(partitionCount, {KAFKA_AUTO_CREATE_TOPICS_ENABLE: true});
+
+    // Build command to start a processor with kafka source that specifies a non-existent topic
+    const nonExistentTopic = "nonExistentTopic";
+    const startCmd = makeKafkaToMongoStartCmd({
+        topicName: nonExistentTopic,
+        collName: sinkColl1,
+    });
+
+    // Assert that starting the processor returns the expected error
+    let result = db.runCommand(startCmd);
+    assert.neq(result["errmsg"], undefined);
+    assert.eq(result["errmsg"],
+              `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
 }
 
 // Starts a mongo->kafka->mongo setup and tests that in the SP that is
@@ -2117,7 +2142,8 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "rela
 runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "canonicalJson"}));
 
 testKafkaAsyncError();
-testKafkaAutoCreateTopicFalseError();
+testKafkaSinkAutoCreateTopicFalseError();
+testKafkaSourceAutoCreateTopicTrueError();
 
 // binData key field
 runKafkaTest(kafka, () => mongoToKafkaToMongo({
