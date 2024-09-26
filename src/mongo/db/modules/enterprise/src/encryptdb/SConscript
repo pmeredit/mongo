@@ -37,23 +37,6 @@ wtEnv.Library(
     ],
 )
 
-env.Library(
-    target="keystore_metadata",
-    source=[
-        "keystore_metadata_gen.cpp",
-        "keystore_metadata.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
-        "../../symmetric_crypto_enterprise",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/db/storage/storage_engine_metadata",
-    ],
-)
-
 wtEnv.Library(
     target="encryptdb",
     source=[
@@ -80,17 +63,6 @@ wtEnv.Library(
     ],
     EXPORT_SYMBOLS=[
         "mongo_addWiredTigerEncryptors",
-    ],
-)
-
-env.Library(
-    target="key_acquisition",
-    source=[
-        "encryption_key_acquisition.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/security_file",
-        "$BUILD_DIR/mongo/db/modules/enterprise/kmip",
     ],
 )
 

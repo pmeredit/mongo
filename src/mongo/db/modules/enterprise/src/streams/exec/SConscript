@@ -31,23 +31,6 @@ else:
 env.SConscript(must_exist=1, dirs=["tests"], exports=["env"])
 
 env.Library(
-    target="streams_exec_util",
-    source=[
-        "document_timestamp_extractor.cpp",
-        "event_deserializer.cpp",
-        "json_event_deserializer.cpp",
-        "source_buffer_manager.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx",
-        "$BUILD_DIR/mongo/db/query_expressions",
-        "$BUILD_DIR/third_party/libbson/bson",
-        "../util/streams_util",
-    ],
-)
-
-env.Library(
     target="streams_operators",
     source=[
         "change_stream_source_operator.cpp",
@@ -157,6 +140,9 @@ env.Benchmark(
         "streams_operators",
         "tests/streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.Benchmark(
@@ -171,6 +157,9 @@ env.Benchmark(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "streams_operators",
         "tests/streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -187,5 +176,8 @@ env.Benchmark(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "streams_operators",
         "tests/streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )

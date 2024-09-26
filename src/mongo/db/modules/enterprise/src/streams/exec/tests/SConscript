@@ -17,6 +17,9 @@ env.Library(
         "$BUILD_DIR/mongo/db/server_base",
         "$BUILD_DIR/mongo/unittest/unittest",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -36,6 +39,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -46,6 +52,9 @@ env.CppUnitTest(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -66,6 +75,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -85,6 +97,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -95,6 +110,9 @@ env.CppUnitTest(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -114,6 +132,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "$BUILD_DIR/mongo/db/storage/storage_options",
         "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -152,6 +173,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -170,6 +194,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "../streams_operators",
         "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -191,6 +218,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -210,6 +240,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -228,6 +261,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "../streams_operators",
         "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -250,6 +286,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -269,6 +308,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -280,6 +322,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -290,6 +335,9 @@ env.CppUnitTest(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -312,6 +360,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -333,6 +384,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -352,6 +406,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -370,6 +427,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "../streams_operators",
         "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -401,6 +461,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -420,6 +483,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -438,6 +504,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "../streams_operators",
         "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -459,6 +528,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -477,6 +549,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/db/service_context_test_fixture",
         "../streams_operators",
         "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -497,6 +572,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.Program(
@@ -516,6 +594,9 @@ env.Program(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -534,6 +615,9 @@ env.CppUnitTest(
         "../streams_operators",
         "streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -544,6 +628,9 @@ env.CppUnitTest(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "../streams_exec_util",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -556,6 +643,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -567,6 +657,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
@@ -577,6 +670,9 @@ env.CppUnitTest(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 
@@ -600,6 +696,9 @@ env.CppUnitTest(
         "$BUILD_DIR/mongo/base",
         "../streams_operators",
         "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )
 

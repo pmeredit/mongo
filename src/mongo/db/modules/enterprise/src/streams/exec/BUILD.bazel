@@ -9,6 +9,19 @@ exports_files(
     ]),
 )
 
+# TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
+MONGOCXX_COPTS = [
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist",
+] + select({
+    "@platforms//cpu:x86_64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64",
+    ],
+    "@platforms//cpu:aarch64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64",
+    ],
+    "//conditions:default": [],
+})
+
 idl_generator(
     name = "stages_gen",
     src = "stages.idl",
@@ -102,5 +115,31 @@ mongo_cc_library(
         "//src/mongo/db/pipeline:aggregation_request_helper",
         "//src/mongo/db/pipeline:document_sources_idl",
         "//src/mongo/idl:idl_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "streams_exec_util",
+    srcs = [
+        "document_timestamp_extractor.cpp",
+        "event_deserializer.cpp",
+        "json_event_deserializer.cpp",
+        "source_buffer_manager.cpp",
+    ],
+    hdrs = [
+        "document_timestamp_extractor.h",
+        "event_deserializer.h",
+        "json_event_deserializer.h",
+        "mongocxx_utils.h",
+        "source_buffer_manager.h",
+        ":stages_gen",
+    ],
+    copts = MONGOCXX_COPTS,
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db:query_expressions",
+        "//src/mongo/db/modules/enterprise/src/streams/third_party/mongocxx",
+        "//src/mongo/db/modules/enterprise/src/streams/util:streams_util",
+        "//src/third_party/libbson:bson",
     ],
 )

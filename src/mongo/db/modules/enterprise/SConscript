@@ -98,62 +98,6 @@ env.SConscript(
 )
 
 if "encryptdb" in env["MONGO_ENTERPRISE_FEATURES"] or "audit" in env["MONGO_ENTERPRISE_FEATURES"]:
-    env.Library(
-        target="kmip_configuration",
-        source=[
-            "src/kmip/kmip_options_gen.cpp",
-        ],
-        LIBDEPS_PRIVATE=[
-            "$BUILD_DIR/mongo/util/options_parser/options_parser",
-        ],
-        LIBDEPS_TAGS=[
-            "lint-allow-nonprivate-on-deps-dependents",
-            "lint-allow-bidirectional-edges",
-        ],
-    )
-
-    env.Library(
-        target="symmetric_crypto_enterprise",
-        source=[
-            "src/kmip/kmip_options.cpp",
-            "src/encryptdb/symmetric_crypto.cpp",
-            "src/encryptdb/symmetric_crypto_smoke.cpp",
-            "src/encryptdb/encryption_options.cpp",
-            "src/encryptdb/encryption_options_gen.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/base/secure_allocator",
-            "$BUILD_DIR/mongo/crypto/symmetric_crypto",
-            "$BUILD_DIR/mongo/util/net/ssl_manager",
-            "$BUILD_DIR/mongo/util/secure_zero_memory",
-            "kmip_configuration",
-        ],
-        LIBDEPS_PRIVATE=[
-            "$BUILD_DIR/mongo/util/options_parser/options_parser",
-            "src/encryptdb/log_redact_options",
-        ],
-    )
-
-    env.Library(
-        target="kmip",
-        source=[
-            "src/kmip/kmip_key_active_periodic_job.cpp",
-            "src/kmip/kmip_request.cpp",
-            "src/kmip/kmip_response.cpp",
-            "src/kmip/kmip_service.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/crypto/symmetric_crypto",
-            "$BUILD_DIR/mongo/db/service_context",
-            "$BUILD_DIR/mongo/util/net/network",
-            "kmip_configuration",
-            "symmetric_crypto_enterprise",
-        ],
-        LIBDEPS_PRIVATE=[
-            "$BUILD_DIR/mongo/db/server_base",
-        ],
-    )
-
     env.CppUnitTest(
         target="kmip_test",
         source=[

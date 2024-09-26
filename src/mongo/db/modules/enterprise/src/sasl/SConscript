@@ -21,22 +21,8 @@ if env.TargetOSIs("windows"):
         AIB_COMPONENT="dist-test",
     )
 
-saslconf = Configure(env)
-
 if not have_sasl_lib:
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
-
-if saslconf.env.TargetOSIs("windows"):
-    saslconf.env["MONGO_GSSAPI_IMPL"] = "sspi"
-    saslconf.env["MONGO_GSSAPI_LIB"] = ["secur32"]
-else:
-    if saslconf.CheckLib(library="gssapi_krb5", autoadd=False):
-        saslconf.env["MONGO_GSSAPI_IMPL"] = "gssapi"
-        if saslconf.env.TargetOSIs("freebsd"):
-            saslconf.env.AppendUnique(MONGO_GSSAPI_LIB=["gssapi"])
-        saslconf.env.AppendUnique(MONGO_GSSAPI_LIB=["gssapi_krb5"])
-
-env = saslconf.Finish()
 
 env.Library(
     target="oidc_external_state_vars",
@@ -131,25 +117,6 @@ if not env.TargetOSIs("darwin"):
         ],
     )
 
-env.Library(
-    target="mongosaslservercommon",
-    source=[
-        "cyrus_sasl_authentication_session.cpp",
-        "ldap_sasl_authentication_session.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/query/query_stats/query_stats",
-        "../ldap/ldap_manager",
-        "../ldap/ldap_name_map",
-        "mongosaslserversession",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-    SYSLIBDEPS=["sasl2"] + env["MONGO_GSSAPI_LIB"],
-)
-
 if env.TargetOSIs("windows"):
     # Ensure we're building with /MD or /MDd
     mdFlags = ["/MD", "/MDd"]
@@ -186,5 +153,5 @@ elif not env.TargetOSIs("darwin"):
             "mongosaslservercommon",
             "mongosaslserversession",
         ],
-        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
+        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []) + env.get("MONGO_GSSAPI_LIB", []) + ["sasl2"],
     )

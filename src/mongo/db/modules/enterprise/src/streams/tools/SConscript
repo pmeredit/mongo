@@ -40,6 +40,9 @@ env.Program(
         "../exec/streams_operators",
         "../exec/tests/streams_test_utils",
     ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.Program(
@@ -53,5 +56,8 @@ env.Program(
         "$BUILD_DIR/mongo/db/query/query_test_service_context",
         "../exec/streams_operators",
         "../exec/tests/streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
     ],
 )

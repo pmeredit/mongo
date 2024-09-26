@@ -51,3 +51,35 @@ mongo_cc_library(
         "//src/mongo/util/options_parser",
     ],
 )
+
+mongo_cc_library(
+    name = "key_acquisition",
+    srcs = [
+        "encryption_key_acquisition.cpp",
+    ],
+    hdrs = [
+        "encryption_key_acquisition.h",
+    ],
+    deps = [
+        "//src/mongo/db/auth:security_file",
+        "//src/mongo/db/modules/enterprise:kmip",
+    ],
+)
+
+mongo_cc_library(
+    name = "keystore_metadata",
+    srcs = [
+        "keystore_metadata.cpp",
+        "keystore_metadata_gen",
+    ],
+    hdrs = [
+        "keystore_metadata.h",
+    ],
+    deps = [
+        "//src/mongo/crypto:symmetric_crypto",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+        "//src/mongo/db/storage:storage_engine_metadata",
+    ],
+)
