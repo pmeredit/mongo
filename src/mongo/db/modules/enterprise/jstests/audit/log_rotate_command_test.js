@@ -100,18 +100,18 @@ function testRotateLogs(fixture) {
         assert.commandWorked(admin.adminCommand({logRotate: "audit"}));
         sleep(1000);
 
-        const auditLogs = JSON.parse(audit.getAllLines());
+        audit.resetAuditLine();
+        const auditLine = audit.assertEntry("rotateLog");
 
-        assert.eq(auditLogs.atype, "rotateLog");
         // Check that a log rotation status was logged
-        assert.neq(auditLogs.param.logRotationStatus, undefined);
-        assert.neq(auditLogs.param.pid, undefined);
-        assert.neq(auditLogs.param.osInfo, undefined);
-        assert.neq(auditLogs.param.osInfo.name, undefined);
-        assert.neq(auditLogs.param.osInfo.version, undefined);
+        assert.neq(auditLine.param.logRotationStatus, undefined);
+        assert.neq(auditLine.param.pid, undefined);
+        assert.neq(auditLine.param.osInfo, undefined);
+        assert.neq(auditLine.param.osInfo.name, undefined);
+        assert.neq(auditLine.param.osInfo.version, undefined);
         // Ensure we have a client connection
-        assert.neq(auditLogs.local, undefined);
-        assert.neq(auditLogs.remote, undefined);
+        assert.neq(auditLine.local, undefined);
+        assert.neq(auditLine.remote, undefined);
 
         assert(checkLog.checkContainsOnceJson(conn, kLogRotationInitiatedID, {"logType": "audit"}));
 
