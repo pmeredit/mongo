@@ -38,9 +38,8 @@ public:
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    std::unique_ptr<AuthzSessionExternalState> makeAuthzSessionExternalState(
-        AuthorizationManager* authzManager) final {
-        return _wrappedExternalState->makeAuthzSessionExternalState(authzManager);
+    std::unique_ptr<AuthzSessionExternalState> makeAuthzSessionExternalState(Client* client) final {
+        return _wrappedExternalState->makeAuthzSessionExternalState(client);
     }
 
     Status hasValidStoredAuthorizationVersion(OperationContext* opCtx,

@@ -141,7 +141,7 @@ protected:
 SaslConversationGssapi::SaslConversationGssapi() : mechanism("GSSAPI") {
     opCtx = makeOperationContext();
     authManager = AuthorizationManager::get(opCtx->getService());
-    authSession = authManager->makeAuthorizationSession();
+    authSession = authManager->makeAuthorizationSession(opCtx->getClient());
 
     client.reset(SaslClientSession::create(mechanism));
 

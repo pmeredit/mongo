@@ -140,7 +140,7 @@ struct SetAuditConfigCmd {
             AlternativeClientRegion clientRegion(altClient);
             auto altOpCtx = cc().makeOperationContext();
             auto as = AuthorizationSession::get(cc());
-            as->grantInternalAuthorization(altOpCtx.get());
+            as->grantInternalAuthorization();
 
             forwardableOpMetadata.setOn(altOpCtx.get());
             as->setImpersonatedUserData(std::move(impersonatedClientAttrs.userName),

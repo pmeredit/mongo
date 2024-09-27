@@ -137,7 +137,7 @@ bool shouldSkipSynchronizeOnFCV(const multiversion::FeatureCompatibilityVersion&
 void synchronize(Client* client) try {
     auto opCtx = client->makeOperationContext();
     auto as = AuthorizationSession::get(client);
-    as->grantInternalAuthorization(opCtx.get());
+    as->grantInternalAuthorization();
 
     AuditConfigDocument auditConfigDoc;
     boost::optional<FixedFCVRegion> fixedFcvRegion;
