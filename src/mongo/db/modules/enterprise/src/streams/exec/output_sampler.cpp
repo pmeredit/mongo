@@ -20,7 +20,7 @@ OutputSampler::OutputSampler(Options options) : _options(std::move(options)) {
 }
 
 void OutputSampler::addDataMsg(const StreamDataMsg& dataMsg) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     int32_t numDocs = _numDocsSampled;
     int32_t numBytes = _numBytesSampled;
 
@@ -50,7 +50,7 @@ std::vector<mongo::BSONObj> OutputSampler::getNext(int32_t batchSize) {
     std::vector<BSONObj> outputDocs;
     outputDocs.reserve(batchSize);
 
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _getNextCallTimestamp = Date_t::now();
 
     int32_t numDocsNeeded{batchSize};
@@ -81,27 +81,27 @@ std::vector<mongo::BSONObj> OutputSampler::getNext(int32_t batchSize) {
 }
 
 void OutputSampler::cancel() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _isCancelled = true;
 }
 
 bool OutputSampler::doneSampling() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _doneSampling;
 }
 
 bool OutputSampler::done() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _exhausted;
 }
 
 mongo::Date_t OutputSampler::getNextCallTimestamp() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _getNextCallTimestamp;
 }
 
 bool OutputSampler::isCancelled() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _isCancelled;
 }
 

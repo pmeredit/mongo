@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/string_map.h"
 #include "streams/util/metrics.h"
 

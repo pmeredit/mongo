@@ -11,7 +11,7 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
@@ -204,7 +204,7 @@ KafkaPartitionConsumer::~KafkaPartitionConsumer() {
     if (_consumerThread.joinable()) {
         {
             // Make sure that stop() has already been called if necessary.
-            stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+            stdx::lock_guard<stdx::mutex> fLock(_finalizedDocBatch.mutex);
             dassert(_finalizedDocBatch.shutdown);
         }
 
@@ -227,29 +227,29 @@ void KafkaPartitionConsumer::doStop() {
     }
 
     if (_consumerThread.joinable()) {
-        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+        stdx::lock_guard<stdx::mutex> fLock(_finalizedDocBatch.mutex);
         _finalizedDocBatch.shutdown = true;
         _consumerThreadWakeUpCond.notify_one();
     }
 }
 
 ConnectionStatus KafkaPartitionConsumer::doGetConnectionStatus() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _connectionStatus;
 }
 
 boost::optional<int64_t> KafkaPartitionConsumer::doGetStartOffset() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _startOffset;
 }
 
 std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
     std::vector<KafkaSourceDocument> docs;
     {
-        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+        stdx::lock_guard<stdx::mutex> fLock(_finalizedDocBatch.mutex);
         if (_finalizedDocBatch.empty()) {
             // Move docs from _activeDocBatch to _finalizedDocBatch.
-            stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
+            stdx::lock_guard<stdx::mutex> aLock(_activeDocBatch.mutex);
             while (!_activeDocBatch.empty()) {
                 dassert(!_activeDocBatch.docVecs.empty());
                 auto docVec = _activeDocBatch.popDocVec();
@@ -278,7 +278,7 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 }
 
 OperatorStats KafkaPartitionConsumer::doGetStats() {
-    stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+    stdx::lock_guard<stdx::mutex> fLock(_finalizedDocBatch.mutex);
     return _stats;
 }
 
@@ -390,7 +390,7 @@ void KafkaPartitionConsumer::connectToSource() {
                "partition"_attr = partition());
 
     // Set the state to connected.
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};
     _startOffset = startOffset;
 }
@@ -501,7 +501,7 @@ boost::optional<int64_t> KafkaPartitionConsumer::doGetLatestOffsetAtBroker() con
 void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
     int32_t numActiveDocVecs{0};
     {
-        stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
+        stdx::lock_guard<stdx::mutex> aLock(_activeDocBatch.mutex);
         int64_t prevSize = _activeDocBatch.size();
         int64_t prevByteSize = _activeDocBatch.getByteSize();
 
@@ -529,8 +529,8 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
         // Move all full DocVecs from _activeDocBatch to _finalizedDocBatch.
         // Note that we released _activeDocBatch.mutex above, so the state of _activeDocBatch
         // could now be different.
-        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
-        stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
+        stdx::lock_guard<stdx::mutex> fLock(_finalizedDocBatch.mutex);
+        stdx::lock_guard<stdx::mutex> aLock(_activeDocBatch.mutex);
         while (!_activeDocBatch.docVecs.empty()) {
             // Avoid pushing DocVec into _finalizedDocBatch until it's full.
             if (isDocVecFull(_activeDocBatch.docVecs.front())) {
@@ -573,7 +573,7 @@ void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
 
 void KafkaPartitionConsumer::onError(SPStatus status) {
     status = _eventCallback->appendRecentErrorsToStatus(status);
-    stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+    stdx::lock_guard<stdx::mutex> fLock(_finalizedDocBatch.mutex);
     _finalizedDocBatch.shutdown = true;
     if (_finalizedDocBatch.status.isOK()) {
         _finalizedDocBatch.status = std::move(status);
@@ -582,7 +582,7 @@ void KafkaPartitionConsumer::onError(SPStatus status) {
 
 void KafkaPartitionConsumer::onConnectionError(SPStatus status) {
     status = _eventCallback->appendRecentErrorsToStatus(status);
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
 }
 

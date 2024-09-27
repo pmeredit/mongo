@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "streams/util/exception.h"
 
 #include <deque>

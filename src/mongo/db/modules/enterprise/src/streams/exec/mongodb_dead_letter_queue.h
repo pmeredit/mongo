@@ -10,8 +10,8 @@
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
 
-#include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/producer_consumer_queue.h"
 #include "streams/exec/dead_letter_queue.h"

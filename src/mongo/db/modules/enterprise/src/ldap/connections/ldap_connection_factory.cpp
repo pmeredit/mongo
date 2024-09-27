@@ -15,7 +15,7 @@
 #include "mongo/executor/connection_pool.h"
 #include "mongo/executor/connection_pool_stats.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/alarm.h"
 #include "mongo/util/alarm_runner_background_thread.h"
@@ -49,12 +49,12 @@ using namespace executor;
 class LDAPHostTimingData {
 public:
     void markFailed() {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         _failed = true;
     }
 
     void updateLatency(Milliseconds millis) {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         if (_failed) {
             _latency = millis;
             _failed = false;
@@ -68,7 +68,7 @@ public:
     }
 
     Milliseconds getLatency() const {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         return _failed ? Milliseconds::max() : _latency;
     }
 
@@ -684,7 +684,7 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
     LDAPConnectionOptions options(Milliseconds::min(), {currentHost});
 
     auto timingData = [&] {
-        stdx::lock_guard<Latch> lk(_timingData->mutex);
+        stdx::lock_guard<stdx::mutex> lk(_timingData->mutex);
         auto it = _timingData->timingData.find(host);
         if (it != _timingData->timingData.end()) {
             return it->second;
@@ -734,7 +734,7 @@ BSONObj LDAPConnectionFactory::generateServerStatusData() const {
     _pool->appendConnectionStats(&connPoolStats);
     const auto timingData = [&] {
         const auto& timingData = _typeFactory->getTimingData();
-        stdx::lock_guard<Latch> lk(timingData->mutex);
+        stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
         return timingData->timingData;
     }();
 
@@ -820,7 +820,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
         // is under way. To avoid this race, getLatencyFor will use a snapshot of the timingData.
         stdx::unordered_map<HostAndPort, Milliseconds> latenciesSnapshot;
         {
-            stdx::lock_guard<Latch> lk(timingData->mutex);
+            stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
             for (const auto& entry : timingData->timingData) {
                 latenciesSnapshot.insert({entry.first, entry.second->getLatency()});
             }
@@ -898,7 +898,7 @@ void LDAPConnectionFactory::dropRemovedHosts(const stdx::unordered_set<HostAndPo
     const auto& timingData = _typeFactory->getTimingData();
     stdx::unordered_set<HostAndPort> hostsSnapshot;
     {
-        stdx::lock_guard<Latch> lk(timingData->mutex);
+        stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
         for (const auto& entry : timingData->timingData) {
             hostsSnapshot.insert({entry.first});
         }

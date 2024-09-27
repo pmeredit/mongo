@@ -439,7 +439,7 @@ Status setConfigFromBSONObj(BSONArray config) try {
     LOGV2_DEBUG(7070204, 3, "Loaded new OIDC IDP definitions", "numIDPs"_attr = idpManager->size());
 
     // Wake up JWKS refresher so it recomputes the next refresh time.
-    stdx::unique_lock<Latch> lock(refreshIntervalMutex);
+    stdx::unique_lock<stdx::mutex> lock(refreshIntervalMutex);
     refreshIntervalChanged.notify_all();
 
     return Status::OK();
@@ -623,7 +623,7 @@ void JWKSetRefreshJob::run() {
         {
             // refreshIntervalChanged allows the job to wake up if an IDP reconfig causes the next
             // refresh time to potentially change.
-            stdx::unique_lock<Latch> lock(refreshIntervalMutex);
+            stdx::unique_lock<stdx::mutex> lock(refreshIntervalMutex);
             do {
                 wakeupTime = idpManager->getNextRefreshTime();
                 refreshIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());

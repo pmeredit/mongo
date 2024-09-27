@@ -20,7 +20,7 @@
 #include "mongo/config.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/secure_zero_memory.h"

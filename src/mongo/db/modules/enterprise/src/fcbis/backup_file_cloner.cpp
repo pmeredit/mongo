@@ -73,7 +73,7 @@ BaseCloner::ClonerStages BackupFileCloner::getStages() {
 
 
 void BackupFileCloner::preStage() {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     _stats.start = getSharedData()->getClock()->now();
 
     // Construct local path name from the relative path and the local dbpath and initial sync dir.
@@ -117,7 +117,7 @@ void BackupFileCloner::preStage() {
 
 void BackupFileCloner::postStage() {
     _localFile.close();
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     _stats.end = getSharedData()->getClock()->now();
 }
 
@@ -138,7 +138,7 @@ BaseCloner::AfterStageBehavior BackupFileCloner::queryStage() {
 }
 
 size_t BackupFileCloner::getFileOffset() {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     return _fileOffset;
 }
 
@@ -199,7 +199,7 @@ void BackupFileCloner::handleNextBatch(DBClientCursor& cursor) {
         }
     }
     while (cursor.moreInCurrentBatch()) {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         _stats.receivedBatches++;
         while (cursor.moreInCurrentBatch()) {
             _dataToWrite.emplace_back(cursor.nextSafe());
@@ -250,7 +250,7 @@ void BackupFileCloner::writeDataToFilesystemCallback(
                 "error"_attr = cbd.status);
     uassertStatusOK(cbd.status);
     {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         if (!getStatus(lk).isOK()) {
             // If we've already failed, must not continue running here, because we'll
             // probably invariant if we do.
@@ -324,12 +324,12 @@ bool BackupFileCloner::isMyFailPoint(const BSONObj& data) const {
 void BackupFileCloner::waitForFilesystemWorkToComplete() {
     _fsWorkTaskRunner.join();
     // We may have failed in the file system work.
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassertStatusOK(getStatus(lk));
 }
 
 BackupFileCloner::Stats BackupFileCloner::getStats() const {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     return _stats;
 }
 

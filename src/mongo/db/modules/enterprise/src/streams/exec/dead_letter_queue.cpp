@@ -64,12 +64,12 @@ SPStatus DeadLetterQueue::getStatus() {
 }
 
 void DeadLetterQueue::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _outputSamplers.emplace_back(std::move(sampler));
 }
 
 void DeadLetterQueue::sendOutputToSamplers(const BSONObj& msg) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     if (_outputSamplers.empty()) {
         return;
     }

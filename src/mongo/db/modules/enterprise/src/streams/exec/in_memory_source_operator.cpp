@@ -40,7 +40,7 @@ void InMemorySourceOperator::addDataMsgInner(StreamDataMsg dataMsg,
     incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getByteSize()});
 
     {
-        stdx::unique_lock<Latch> lock(_mutex);
+        stdx::unique_lock<stdx::mutex> lock(_mutex);
         _messages.push_back(std::move(msg));
     }
 
@@ -57,7 +57,7 @@ void InMemorySourceOperator::addControlMsgInner(StreamControlMsg controlMsg) {
     StreamMsgUnion msg;
     msg.controlMsg = std::move(controlMsg);
 
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _messages.push_back(std::move(msg));
 }
 

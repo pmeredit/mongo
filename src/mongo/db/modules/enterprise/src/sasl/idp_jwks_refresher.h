@@ -6,7 +6,7 @@
 
 #include "mongo/crypto/jwk_manager.h"
 #include "mongo/crypto/jwks_fetcher_factory.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/duration.h"
 #include "sasl/oidc_parameters_gen.h"
 

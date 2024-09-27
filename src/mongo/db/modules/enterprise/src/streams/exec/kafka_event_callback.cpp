@@ -30,7 +30,7 @@ constexpr static int kMaxErrorBufferSize{5};
 }  // namespace
 
 void KafkaEventCallback::processErrorEvent(RdKafka::Event& event) {
-    stdx::unique_lock<Latch> lock(_mutex);
+    stdx::unique_lock<stdx::mutex> lock(_mutex);
     if (event.fatal()) {
         _hasError = true;
     }
@@ -41,14 +41,14 @@ void KafkaEventCallback::processErrorEvent(RdKafka::Event& event) {
 }
 
 bool KafkaEventCallback::hasError() {
-    stdx::unique_lock<Latch> lock(_mutex);
+    stdx::unique_lock<stdx::mutex> lock(_mutex);
     return _hasError;
 }
 
 SPStatus KafkaEventCallback::appendRecentErrorsToStatus(SPStatus status) {
     std::deque<std::string> kafkaMessages;
     {
-        stdx::unique_lock<Latch> lock(_mutex);
+        stdx::unique_lock<stdx::mutex> lock(_mutex);
         std::swap(_errorBuffer, kafkaMessages);
     }
 

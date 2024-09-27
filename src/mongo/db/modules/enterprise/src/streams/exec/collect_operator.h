@@ -6,7 +6,6 @@
 
 #include <deque>
 
-#include "mongo/platform/mutex.h"
 #include "streams/exec/message.h"
 #include "streams/exec/sink_operator.h"
 

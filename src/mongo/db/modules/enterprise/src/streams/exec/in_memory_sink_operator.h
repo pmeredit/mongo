@@ -6,7 +6,7 @@
 
 #include <deque>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "streams/exec/collect_operator.h"
 #include "streams/exec/message.h"
 

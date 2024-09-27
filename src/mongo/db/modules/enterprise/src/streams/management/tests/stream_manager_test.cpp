@@ -51,14 +51,14 @@ public:
     bool streamProcessorExists(StreamManager* streamManager,
                                std::string tenantId,
                                std::string name) {
-        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
         return streamManager->tryGetProcessorInfo(lk, tenantId, name);
     }
 
     bool isStreamProcessorConnected(StreamManager* streamManager,
                                     std::string tenantId,
                                     std::string name) {
-        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
         auto spInfo = streamManager->tryGetProcessorInfo(lk, tenantId, name);
         if (!spInfo) {
             return false;
@@ -70,7 +70,7 @@ public:
         StreamManager* streamManager,
         StartStreamProcessorCommand request,
         int64_t testOnlyDocsQueueMaxSizeBytes = std::numeric_limits<int64_t>::max()) {
-        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
         auto tenantInfo =
             streamManager->getOrCreateTenantInfo(lk, request.getTenantId().toString());
         auto info = streamManager->createStreamProcessorInfo(lk, request);
@@ -120,7 +120,7 @@ public:
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
                                                                std::string tenantId,
                                                                std::string name) {
-        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
         return streamManager->getProcessorInfo(lk, tenantId, name);
     }
 
@@ -152,7 +152,7 @@ public:
                             std::string tenantId,
                             std::string name,
                             int64_t expectedMemoryUsage) const {
-        stdx::lock_guard<Latch> lk(streamManager->_mutex);
+        stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
         auto spInfo = streamManager->getProcessorInfo(lk, tenantId, name);
         ASSERT_EQUALS(expectedMemoryUsage,
                       spInfo->context->memoryAggregator->getCurrentMemoryUsageBytes());
@@ -188,7 +188,7 @@ public:
 
     void updateContextFeatureFlags(StreamManager::StreamProcessorInfo* processorInfo,
                                    std::shared_ptr<TenantFeatureFlags> featureFlags) {
-        stdx::lock_guard<Latch> lock(processorInfo->executor->_mutex);
+        stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
         processorInfo->executor->_tenantFeatureFlagsUpdate = std::move(featureFlags);
         processorInfo->executor->updateContextFeatureFlags();
     }

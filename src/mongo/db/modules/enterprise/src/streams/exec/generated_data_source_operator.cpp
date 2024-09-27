@@ -26,7 +26,7 @@ void GeneratedDataSourceOperator::doStart() {
 int64_t GeneratedDataSourceOperator::doRunOnce() {
     int64_t numDocsFlushed{0};
 
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto msgs = getMessages(lock);
     bool emptyBatch = msgs.empty();
     for (auto& msg : msgs) {

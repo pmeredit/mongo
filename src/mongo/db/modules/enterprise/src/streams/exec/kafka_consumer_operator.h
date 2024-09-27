@@ -8,7 +8,7 @@
 #include <queue>
 #include <rdkafkacpp.h>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/chunked_memory_aggregator.h"

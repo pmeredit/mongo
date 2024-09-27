@@ -171,7 +171,7 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
     invariant(opCtx);
     invariant(initialSyncMaxAttempts >= 1U);
 
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     switch (_state) {
         case State::kPreStart:
             _state = State::kRunning;
@@ -221,7 +221,7 @@ void FileCopyBasedInitialSyncer::_updateLastAppliedOptime() {
         return;
     }
 
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto opCtx = cc().makeOperationContext();
     _lastApplied = _getTopOfOplogOpTimeAndWallTime(opCtx.get());
     invariant(_lastApplied.opTime.getTimestamp() >= _syncingFilesState.lastSyncedStableTimestamp);
@@ -259,7 +259,7 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
     _lastApplied = {OpTime(), Date_t()};
 
     return AsyncTry([this, self = shared_from_this(), executor, token] {
-               stdx::lock_guard<Latch> lock(_mutex);
+               stdx::lock_guard<stdx::mutex> lock(_mutex);
                _attemptCancellationSource = CancellationSource(token);
                return _selectAndValidateSyncSource(
                           lock, executor, _attemptCancellationSource.token())
@@ -281,7 +281,7 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
             // Always release the global lock.
             _releaseGlobalLock();
 
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             auto runTime = _stats.attemptTimer.millis();
             int operationsRetried = 0;
             int totalTimeUnreachableMillis = 0;
@@ -345,7 +345,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
     _chooseSyncSourceMaxAttempts = static_cast<std::uint32_t>(numInitialSyncConnectAttempts.load());
 
     return AsyncTry([this, self = shared_from_this(), executor, token] {
-               stdx::lock_guard<Latch> lock(_mutex);
+               stdx::lock_guard<stdx::mutex> lock(_mutex);
                auto syncSource = _chooseSyncSource(lock);
                if (!syncSource.isOK()) {
                    uassertStatusOK({ErrorCodes::InvalidSyncSource,
@@ -365,7 +365,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                return executor->scheduleRemoteCommand(std::move(request), token)
                    .then([this, self = shared_from_this(), syncSource](
                              const executor::TaskExecutor::ResponseStatus& response) {
-                       stdx::lock_guard<Latch> lock(_mutex);
+                       stdx::lock_guard<stdx::mutex> lock(_mutex);
                        uassertStatusOK(response.status);
                        auto commandStatus = getStatusFromCommandResult(response.data);
                        uassertStatusOK(commandStatus);
@@ -404,7 +404,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                        return Status::OK();
                    })
                    .then([this, self = shared_from_this(), syncSource, executor, token]() {
-                       stdx::lock_guard<Latch> lock(_mutex);
+                       stdx::lock_guard<stdx::mutex> lock(_mutex);
 
                        const executor::RemoteCommandRequest request(
                            syncSource.getValue(),
@@ -417,7 +417,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                        return executor->scheduleRemoteCommand(std::move(request), token)
                            .then([this, self = shared_from_this(), syncSource](
                                      const executor::TaskExecutor::ResponseStatus& response) {
-                               stdx::lock_guard<Latch> lock(_mutex);
+                               stdx::lock_guard<stdx::mutex> lock(_mutex);
                                uassertStatusOK(response.status);
                                auto commandStatus = getStatusFromCommandResult(response.data);
                                uassertStatusOK(commandStatus);
@@ -453,7 +453,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                            });
                    })
                    .then([this, self = shared_from_this(), syncSource, executor, token]() {
-                       stdx::lock_guard<Latch> lock(_mutex);
+                       stdx::lock_guard<stdx::mutex> lock(_mutex);
                        const executor::RemoteCommandRequest request(syncSource.getValue(),
                                                                     DatabaseName::kAdmin,
                                                                     BSON("serverStatus" << 1),
@@ -464,7 +464,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                            .then([this, self = shared_from_this(), syncSource](
                                      const executor::TaskExecutor::ResponseStatus& response)
                                      -> StatusWith<HostAndPort> {
-                               stdx::lock_guard<Latch> lock(_mutex);
+                               stdx::lock_guard<stdx::mutex> lock(_mutex);
                                uassertStatusOK(response.status);
                                auto commandStatus = getStatusFromCommandResult(response.data);
                                uassertStatusOK(commandStatus);
@@ -519,7 +519,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                    });
            })
         .until([this, self = shared_from_this()](StatusWith<HostAndPort> status) mutable {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             if (!status.isOK()) {
                 LOGV2(5780601,
                       "File copy based initial sync failed to choose sync source",
@@ -703,7 +703,7 @@ BSONElement FileCopyBasedInitialSyncer::_getBSONField(const BSONObj& obj,
 
 ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTimeFromSyncSource() {
     return AsyncTry([this, self = shared_from_this()] {
-               stdx::lock_guard<Latch> lock(_mutex);
+               stdx::lock_guard<stdx::mutex> lock(_mutex);
                executor::RemoteCommandRequest request(_syncSource,
                                                       DatabaseName::kAdmin,
                                                       std::move(BSON("replSetGetStatus" << 1)),
@@ -743,7 +743,7 @@ ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTi
         .until([this, self = shared_from_this()](StatusWith<Timestamp> result) {
             fCBISHangAfterAttemptingGetLastApplied.pauseWhileSetAndNotCanceled(
                 Interruptible::notInterruptible(), _syncingFilesState.token);
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             return !_shouldRetryError(lock, result.getStatus());
         })
         .on(_syncingFilesState.executor, _syncingFilesState.token);
@@ -821,7 +821,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
 
         const auto& data = dataStatus.getValue();
         for (const BSONObj& doc : data.documents) {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             if (!_syncingFilesState.backupId) {
                 // First batch must contain the metadata.
                 // Parsing the metadata to get backupId and checkpointTimestamp for the
@@ -904,7 +904,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursorWithRetry(
         .until([this, self = shared_from_this()](Status error) {
             fCBISHangAfterAttemptingExtendBackupCursor.pauseWhileSetAndNotCanceled(
                 Interruptible::notInterruptible(), _syncingFilesState.token);
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             return !_shouldRetryError(lock, error);
         })
         .on(_syncingFilesState.executor, _syncingFilesState.token);
@@ -938,7 +938,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                                const Fetcher::QueryResponseStatus& dataStatus,
                                Fetcher::NextAction* nextAction,
                                BSONObjBuilder* getMoreBob) {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         // Throw out any accumulated results on error
         if (!dataStatus.isOK()) {
             *fetchStatus = dataStatus.getStatus();
@@ -995,7 +995,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                returnedFiles,
                extendedFiles,
                statsPtr = &_stats] {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             if (!*fetchStatus) {
                 // The callback never got invoked.
                 uasserted(5782301, "Internal error running cursor callback in command");
@@ -1028,7 +1028,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
                 return status;
             })
             .then([this, self = shared_from_this(), returnedFiles] {
-                stdx::lock_guard<Latch> lock(_mutex);
+                stdx::lock_guard<stdx::mutex> lock(_mutex);
                 _keepBackupCursorAlive(lock);
                 _syncingFilesState.backupCursorFiles = returnedFiles;
                 return _hangAsyncIfFailPointEnabled("fCBISHangAfterOpeningBackupCursor",
@@ -1051,7 +1051,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
     auto returnedFiles = std::make_shared<BackupFileMetadataCollection>();
     return _extendBackupCursorWithRetry(returnedFiles)
         .then([this, self = shared_from_this(), returnedFiles] {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             _syncingFilesState.lastSyncedStableTimestamp =
                 _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
             return _hangAsyncIfFailPointEnabled("fCBISHangAfterExtendingBackupCursor",
@@ -1059,14 +1059,14 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
                                                 _syncingFilesState.token);
         })
         .then([this, self = shared_from_this(), returnedFiles] {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             return _cloneFiles(returnedFiles);
         });
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto retryPeriod = initialSyncTransientErrorRetryPeriodSeconds.load();
     auto maxIdleTime = getCursorTimeoutMillis();
     // There's no point in waiting out an outage longer than our idle time, as the source will have
@@ -1114,12 +1114,12 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
                    })
                    .then([this,
                           self = shared_from_this()](mongo::Timestamp lastAppliedOpTimeOnSyncSrc) {
-                       stdx::lock_guard<Latch> lock(_mutex);
+                       stdx::lock_guard<stdx::mutex> lock(_mutex);
                        _syncingFilesState.lastAppliedOpTimeOnSyncSrc = lastAppliedOpTimeOnSyncSrc;
                    });
            })
         .until([this, self = shared_from_this()](Status cloningStatus) mutable {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             if (!cloningStatus.isOK()) {
                 // Returns the error to the caller.
                 return true;
@@ -1565,7 +1565,7 @@ Status FileCopyBasedInitialSyncer::shutdown() {
     // We check the optional inside the lock but don't want to wait on the future inside the lock.
     boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         switch (_state) {
             case State::kPreStart:
                 // Transition directly from PreStart to Complete if not started yet.
@@ -1682,7 +1682,7 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
 
 void FileCopyBasedInitialSyncer::join() {
     {
-        stdx::unique_lock<Latch> lk(_mutex);
+        stdx::unique_lock<stdx::mutex> lk(_mutex);
         _stateCondition.wait(lk, [this, &lk]() { return !_isActive(lk); });
     }
     if (_startInitialSyncAttemptFuture) {
@@ -1691,7 +1691,7 @@ void FileCopyBasedInitialSyncer::join() {
 }
 
 bool FileCopyBasedInitialSyncer::isActive() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _isActive(lock);
 }
 
@@ -1861,7 +1861,7 @@ BSONObj FileCopyBasedInitialSyncer::_getInitialSyncProgress(WithLock) const {
 }
 
 BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     // We return an empty BSON object after an initial sync attempt has been successfully
     // completed.
     if (initial_sync_common_stats::initialSyncCompletes.get() > 0 &&
@@ -1896,7 +1896,7 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
     // before we transition the state to Complete.
     decltype(_onCompletion) onCompletion;
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         _updateStorageTimestampsAfterInitialSync(lastApplied);
         invariant(_onCompletion);
         std::swap(_onCompletion, onCompletion);
@@ -1933,7 +1933,7 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
     onCompletion = {};
 
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         invariant(_state != State::kComplete);
         _state = State::kComplete;
         _markInitialSyncCompleted(lock, lastApplied);
@@ -2011,7 +2011,7 @@ void FileCopyBasedInitialSyncer::_runPostReplicationStartupStorageInitialization
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _isShuttingDown_inlock();
 }
 
@@ -2044,7 +2044,7 @@ HostAndPort FileCopyBasedInitialSyncer::getSyncSource_forTest() {
 }
 
 void FileCopyBasedInitialSyncer::setCreateClientFn_forTest(const CreateClientFn& createClientFn) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     _createClientFn = createClientFn;
 }
 

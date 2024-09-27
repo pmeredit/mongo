@@ -12,7 +12,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/lru_cache.h"
 #include "mongo/util/string_map.h"
 #include "mongo/util/synchronized_value.h"
@@ -338,7 +338,7 @@ public:
         if (rid == _parent->_rolloverId) {
             bool inserted;
             {
-                stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
+                stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
                 std::tie(std::ignore, inserted) =
                     _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().value()});
             }
@@ -401,7 +401,7 @@ private:
                 }
                 [[fallthrough]];
             case FindMode::kCurrent: {
-                stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
+                stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
                 auto it = _parent->_dbNameToKeyIdCurrent.find(keyId.name());
                 if (it == _parent->_dbNameToKeyIdCurrent.end()) {
                     return {boost::none};
@@ -500,7 +500,7 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
 }
 
 void KeystoreImplV1::rollOverKeys() {
-    stdx::lock_guard<Latch> lk(_dbNameToKeyIdCurrentMutex);
+    stdx::lock_guard<stdx::mutex> lk(_dbNameToKeyIdCurrentMutex);
 
     _rolloverId++;
     _dbNameToKeyIdCurrent.clear();

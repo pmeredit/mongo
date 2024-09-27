@@ -6,7 +6,7 @@
 
 #include <queue>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/intrusive_counter.h"
 #include "streams/exec/message.h"
 

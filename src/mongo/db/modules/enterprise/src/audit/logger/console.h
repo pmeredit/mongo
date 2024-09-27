@@ -6,7 +6,7 @@
 
 #include <iosfwd>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 
 namespace mongo {
 

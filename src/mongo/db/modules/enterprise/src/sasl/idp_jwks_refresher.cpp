@@ -36,7 +36,7 @@ StatusWith<bool> IDPJWKSRefresher::refreshKeys(const JWKSFetcherFactory& factory
         return false;
     }
 
-    stdx::unique_lock<Mutex> lk(_refreshMutex, stdx::try_to_lock);
+    stdx::unique_lock<stdx::mutex> lk(_refreshMutex, stdx::try_to_lock);
     if (!lk.owns_lock()) {
         // A refresh is currently in progress in another thread.
         // Block on that thread to let the refresh complete, then return success

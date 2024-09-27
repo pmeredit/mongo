@@ -77,7 +77,7 @@ void KafkaEmitOperator::Connector::stop() {
 }
 
 ConnectionStatus KafkaEmitOperator::Connector::getConnectionStatus() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _connectionStatus;
 }
 

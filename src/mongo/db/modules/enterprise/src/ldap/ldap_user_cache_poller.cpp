@@ -12,8 +12,8 @@
 #include "mongo/base/parse_number.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/exit.h"
 
 #include "ldap_options.h"
@@ -70,7 +70,7 @@ Status LDAPUserCacheInvalidationIntervalParameter::setFromString(StringData str,
         return parsedSeconds.getStatus();
     }
 
-    stdx::unique_lock<Latch> lock(invalidationIntervalMutex);
+    stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
     ldapUserCacheInvalidationInterval.store(parsedSeconds.getValue());
     invalidationIntervalChanged.notify_all();
 
@@ -91,7 +91,7 @@ Status LDAPUserCacheRefreshIntervalParameter::setFromString(StringData str,
         return parsedSeconds.getStatus();
     }
 
-    stdx::unique_lock<Latch> lock(refreshIntervalMutex);
+    stdx::unique_lock<stdx::mutex> lock(refreshIntervalMutex);
     ldapUserCacheRefreshInterval.store(parsedSeconds.getValue());
     refreshIntervalChanged.notify_all();
 
@@ -112,7 +112,7 @@ Status LDAPUserCacheStalenessIntervalParameter::setFromString(StringData str,
         return parsedSeconds.getStatus();
     }
 
-    stdx::unique_lock<Latch> lock(stalenessIntervalMutex);
+    stdx::unique_lock<stdx::mutex> lock(stalenessIntervalMutex);
     ldapUserCacheStalenessInterval.store(parsedSeconds.getValue());
 
     return Status::OK();
@@ -134,7 +134,7 @@ Date_t LDAPUserCachePoller::refreshExternalEntries(Client* client, Date_t lastSu
     Date_t start = Date_t::now();
     Date_t wakeupTime;
     {
-        stdx::unique_lock<Latch> lock(refreshIntervalMutex);
+        stdx::unique_lock<stdx::mutex> lock(refreshIntervalMutex);
         do {
             wakeupTime = start + Seconds(ldapUserCacheRefreshInterval.load());
             refreshIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
@@ -155,7 +155,7 @@ Date_t LDAPUserCachePoller::refreshExternalEntries(Client* client, Date_t lastSu
         // users to prevent keeping stale entries.
         Date_t latestStaleTime;
         {
-            stdx::lock_guard<Latch> lg(stalenessIntervalMutex);
+            stdx::lock_guard<stdx::mutex> lg(stalenessIntervalMutex);
             latestStaleTime =
                 lastSuccessfulRefresh + Seconds(ldapUserCacheStalenessInterval.load());
         }
@@ -176,7 +176,7 @@ void LDAPUserCachePoller::waitAndInvalidateExternalEntries(Client* client) {
     Date_t start = Date_t::now();
     Date_t wakeupTime;
     {
-        stdx::unique_lock<Latch> lock(invalidationIntervalMutex);
+        stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
         do {
             wakeupTime = start + Seconds(ldapUserCacheInvalidationInterval.load());
             invalidationIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());

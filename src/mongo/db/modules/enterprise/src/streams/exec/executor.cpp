@@ -151,7 +151,7 @@ Future<void> Executor::start() {
                         *_context->restoreCheckpointId);
                     _context->restoredCheckpointDescription->setRestoreDurationMs(duration);
                     {
-                        stdx::lock_guard<Latch> lock(_mutex);
+                        stdx::lock_guard<stdx::mutex> lock(_mutex);
                         _restoredCheckpointDescription = _context->restoredCheckpointDescription;
                     }
                 }
@@ -211,35 +211,35 @@ Future<void> Executor::start() {
 }
 
 void Executor::stop(StopReason stopReason) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _shutdown = true;
     _stopReason = stopReason;
     _stopDeadline = Date_t::now() + _options.stopTimeout;
 }
 
 std::vector<OperatorStats> Executor::getOperatorStats() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _streamStats.operatorStats;
 }
 
 std::vector<KafkaConsumerPartitionState> Executor::getKafkaConsumerPartitionStates() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _kafkaConsumerPartitionStates;
 }
 
 void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     dassert(sampler);
     _outputSamplers.push_back(std::move(sampler));
 }
 
 boost::optional<mongo::CheckpointDescription> Executor::getLastCommittedCheckpointDescription() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _lastCommittedCheckpointDescription;
 }
 
 boost::optional<mongo::CheckpointDescription> Executor::getRestoredCheckpointDescription() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _restoredCheckpointDescription;
 }
 
@@ -251,18 +251,18 @@ void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
 }
 
 void Executor::testOnlyInjectException(std::exception_ptr exception) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _testOnlyException = std::move(exception);
 }
 
 bool Executor::isConnected() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _connected;
 }
 
 std::pair<boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>, mongo::Seconds>
 Executor::getChangeStreamState() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return {_changeStreamState, _changeStreamLag};
 }
 
@@ -352,7 +352,7 @@ Executor::RunStatus Executor::runOnce() {
     }
 
     do {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
 
         // Only shutdown if the inserted test documents have all been processed.
         if (_shutdown && _testOnlyDocsQueue.getStats().queueDepth == 0) {
@@ -394,7 +394,7 @@ Executor::RunStatus Executor::runOnce() {
         StopReason stopReason;
         mongo::Date_t stopDeadline;
         {
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             stopReason = _stopReason;
             stopDeadline = _stopDeadline;
         }
@@ -512,13 +512,13 @@ void Executor::processFlushedCheckpoint(mongo::CheckpointDescription checkpointD
 
     checkpointDescription.setSourceState(std::move(state));
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         _lastCommittedCheckpointDescription = std::move(checkpointDescription);
     }
 }
 
 bool Executor::isShutdown() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _shutdown;
 }
 
@@ -526,14 +526,14 @@ void Executor::onCheckpointFlushed(CheckpointId checkpointId) {
     tassert(ErrorCodes::InternalError,
             "Expected checkpointStorage to be set in Executor::onCheckpointFlushed.",
             _context->checkpointStorage);
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _checkpointFlushEvents.push_back(checkpointId);
 }
 
 std::deque<CheckpointId> Executor::processFlushedCheckpoints() {
     std::deque<CheckpointId> checkpointFlushEvents;
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         std::swap(_checkpointFlushEvents, checkpointFlushEvents);
     }
 
@@ -577,7 +577,7 @@ void Executor::ensureConnected(Date_t deadline) {
 
         if (sourceStatus.isConnected() && sinkStatus.isConnected()) {
             LOGV2_INFO(75381, "succesfully connected", "context"_attr = _context);
-            stdx::lock_guard<Latch> lock(_mutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             _connected = true;
             break;
         } else if (sourceStatus.isError()) {
@@ -634,7 +634,7 @@ void Executor::runLoop() {
 }
 
 BSONObj Executor::testOnlyGetFeatureFlags() const {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     mongo::MutableDocument doc;
     if (_context->featureFlags) {
         for (auto [k, v] : _context->featureFlags->testOnlyGetFeatureFlags()) {
@@ -675,7 +675,7 @@ void Executor::updateContextFeatureFlags() {
 }
 
 void Executor::onFeatureFlagsUpdated(std::shared_ptr<TenantFeatureFlags> tenantFeatureFlags) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _tenantFeatureFlagsUpdate = std::move(tenantFeatureFlags);
 }
 

@@ -9,7 +9,7 @@
 #include <string>
 
 #include "mongo/base/status.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 
 namespace mongo {
 namespace logger {
@@ -98,7 +98,7 @@ public:
         Status _openFileStream(bool append);
 
         RotatableFileWriter* _writer;
-        stdx::unique_lock<Latch> _lock;
+        stdx::unique_lock<stdx::mutex> _lock;
     };
 
 private:

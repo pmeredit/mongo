@@ -16,7 +16,7 @@ namespace streams {
 using namespace mongo;
 
 void FakeKafkaPartitionConsumer::addDocuments(std::vector<KafkaSourceDocument> docs) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
 
     // Report current memory usage to SourceBufferManager and allocate one page of memory from it.
     bool allocSuccess = _context->sourceBufferManager->allocPages(
@@ -46,7 +46,7 @@ void FakeKafkaPartitionConsumer::doStart() {
 }
 
 std::vector<KafkaSourceDocument> FakeKafkaPartitionConsumer::doGetDocuments() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
 
     std::vector<KafkaSourceDocument> results;
     results.reserve(std::min(_docs.size() - _currentOffset, size_t(_docsPerChunk)));

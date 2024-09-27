@@ -51,7 +51,7 @@ StatusWith<LDAPResolvedHost> LDAPDNSResolverCache::resolve(const LDAPHost& host)
     }
 
     {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         auto cachedHost = _dnsCache.find({host.getType(), host.getName()});
         if (cachedHost != _dnsCache.end() && !(cachedHost->second.expiration <= Date_t::now())) {
             return _getResolvedHost(host, cachedHost->second);
@@ -63,7 +63,7 @@ StatusWith<LDAPResolvedHost> LDAPDNSResolverCache::resolve(const LDAPHost& host)
         auto resolvedHost = _resolveHost(host);
 
         {
-            stdx::lock_guard<Latch> lk(_mutex);
+            stdx::lock_guard<stdx::mutex> lk(_mutex);
             _dnsCache.insert({{host.getType(), host.getName()}, resolvedHost});
             return _getResolvedHost(host, resolvedHost);
         }

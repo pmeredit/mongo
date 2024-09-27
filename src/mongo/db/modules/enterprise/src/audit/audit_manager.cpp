@@ -89,7 +89,7 @@ void AuditManager::setConfigurationUsingFormatIfNotSet(Client* client,
             "Unable to update runtime audit configuration when it has not been enabled",
             _enabled && _runtimeConfiguration);
 
-    stdx::unique_lock<Mutex> lk(_setConfigurationMutex);
+    stdx::unique_lock<stdx::mutex> lk(_setConfigurationMutex);
 
     auto filterBSON = config.getFilter().getOwned();
     auto filter = parseFilter(filterBSON);

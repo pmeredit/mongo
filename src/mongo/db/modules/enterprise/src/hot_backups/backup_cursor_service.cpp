@@ -85,7 +85,7 @@ void populateMetadataFromCursor(
 }  // namespace
 
 void BackupCursorService::fsyncLock(OperationContext* opCtx) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassert(50885, "The node is already fsyncLocked.", _state.load() != kFsyncLocked);
     uassert(50884,
             "The existing backup cursor must be closed before fsyncLock can succeed.",
@@ -95,7 +95,7 @@ void BackupCursorService::fsyncLock(OperationContext* opCtx) {
 }
 
 void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassert(50888, "The node is not fsyncLocked.", _state.load() == kFsyncLocked);
     opCtx->getServiceContext()->getStorageEngine()->endBackup(opCtx);
     _state.store(kInactive);
@@ -106,7 +106,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // Prevent rollback
     repl::ReplicationStateTransitionLockGuard rstl(opCtx, MODE_IX);
 
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassert(50887, "The node is currently fsyncLocked.", _state.load() != kFsyncLocked);
     uassert(50886,
             "The existing backup cursor must be closed before $backupCursor can succeed.",
@@ -275,26 +275,26 @@ BackupCursorState BackupCursorService::openBackupCursor(
 }
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     _closeBackupCursor(opCtx, backupId, lk);
 }
 
 void BackupCursorService::addFile(const UUID& backupId, boost::filesystem::path filePath) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     tassert(57807, "_activeBackupId should equal backupId", _activeBackupId == backupId);
     _returnedFilePaths.insert(filePath.string());
 }
 
 bool BackupCursorService::isFileReturnedByCursor(const UUID& backupId,
                                                  boost::filesystem::path filePath) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     return _activeBackupId == backupId && _returnedFilePaths.contains(filePath.string());
 }
 
 BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
                                                                 const UUID& backupId,
                                                                 const Timestamp& extendTo) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassert(51011,
             str::stream() << "Cannot extend backup cursor, backupId was not found. BackupId: "
                           << backupId,

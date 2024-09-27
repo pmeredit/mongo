@@ -6,7 +6,7 @@
 
 #include <queue>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/delayed_watermark_generator.h"

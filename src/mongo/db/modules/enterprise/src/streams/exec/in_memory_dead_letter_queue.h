@@ -8,7 +8,7 @@
 #include <string>
 
 #include "mongo/platform/basic.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/message.h"
 

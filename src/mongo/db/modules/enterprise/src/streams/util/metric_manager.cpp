@@ -11,7 +11,7 @@ namespace streams {
 std::shared_ptr<Counter> MetricManager::registerCounter(std::string name,
                                                         std::string description,
                                                         LabelsVec labels) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto counter = std::make_shared<Counter>();
     auto metricInfo = std::make_shared<MetricInfo>();
     metricInfo->name = std::move(name);
@@ -26,7 +26,7 @@ std::shared_ptr<Gauge> MetricManager::registerGauge(std::string name,
                                                     std::string description,
                                                     LabelsVec labels,
                                                     double initialValue) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto gauge = std::make_shared<Gauge>();
     gauge->set(initialValue);
     auto metricInfo = std::make_shared<MetricInfo>();
@@ -42,7 +42,7 @@ std::shared_ptr<IntGauge> MetricManager::registerIntGauge(std::string name,
                                                           std::string description,
                                                           LabelsVec labels,
                                                           int64_t initialValue) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto gauge = std::make_shared<IntGauge>();
     gauge->set(initialValue);
     auto metricInfo = std::make_shared<MetricInfo>();
@@ -58,7 +58,7 @@ std::shared_ptr<CallbackGauge> MetricManager::registerCallbackGauge(std::string 
                                                                     std::string description,
                                                                     LabelsVec labels,
                                                                     CallbackGauge::CallbackFn fn) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto gauge = std::make_shared<CallbackGauge>(std::move(fn));
     auto metricInfo = std::make_shared<MetricInfo>();
     metricInfo->name = std::move(name);
@@ -73,7 +73,7 @@ std::shared_ptr<Histogram> MetricManager::registerHistogram(std::string name,
                                                             std::string description,
                                                             LabelsVec labels,
                                                             std::vector<int64_t> buckets) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     auto histogram = std::make_shared<Histogram>(std::move(buckets));
     auto metricInfo = std::make_shared<MetricInfo>();
     metricInfo->name = std::move(name);
@@ -96,7 +96,7 @@ void MetricManager::takeSnapshot() {
 }
 
 std::vector<std::shared_ptr<MetricManager::MetricInfo>> MetricManager::computeMetricsToVisit() {
-    mongo::stdx::lock_guard<mongo::Latch> lock(_mutex);
+    mongo::stdx::lock_guard<mongo::stdx::mutex> lock(_mutex);
     std::vector<std::shared_ptr<MetricInfo>> metricsToVisit;
     metricsToVisit.reserve(_metrics.size());
     auto it = _metrics.begin();

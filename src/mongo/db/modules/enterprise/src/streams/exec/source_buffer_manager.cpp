@@ -83,7 +83,7 @@ void SourceBufferManager::deregisterSourceBuffer(SourceBufferManager::SourceBuff
     // Assert that the source buffer has already released all the buffer space allocated to it.
     auto bufferInfo = it->second;
     {
-        stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+        stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
         uassert(mongo::ErrorCodes::InternalError,
                 "source buffer did not release all the memory allocated to it "
                 "before deregistering itself",
@@ -113,7 +113,7 @@ bool SourceBufferManager::allocPages(SourceBufferManager::SourceBuffer* sourceBu
     uassert(mongo::ErrorCodes::InternalError, "source buffer not found", it != _buffers.end());
     auto bufferInfo = it->second;
 
-    stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+    stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
     if (bufferInfo->size != curSize) {
         int32_t oldTotalPages = toPages(bufferInfo->size);
         int32_t newTotalPages = toPages(curSize);
@@ -187,7 +187,7 @@ void SourceBufferManager::recomputePreallocatedPages(const mongo::WriteRarelyRWM
 
     // Recompute _availablePages due to the change in _sourceBufferPreallocatedPages.
     for (auto& [_, bufferInfo] : _buffers) {
-        stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+        stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
 
         int32_t totalPages = toPages(bufferInfo->size);
         int32_t pagesAllocated = std::max(totalPages - _sourceBufferPreallocatedPages, 0);

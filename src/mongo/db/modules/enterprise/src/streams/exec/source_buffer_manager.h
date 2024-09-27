@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "mongo/platform/mutex.h"
 #include "mongo/platform/rwmutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "streams/util/metric_manager.h"

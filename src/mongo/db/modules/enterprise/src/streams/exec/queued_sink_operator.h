@@ -10,8 +10,8 @@
 #include <memory>
 #include <string>
 
-#include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/producer_consumer_queue.h"
 #include "streams/exec/message.h"

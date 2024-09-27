@@ -26,7 +26,7 @@
 #include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/net/sockaddr.h"
 #include "mongo/util/str.h"
@@ -693,7 +693,7 @@ Status OpenLDAPConnection::connect() {
     int err;
     {
 
-        stdx::lock_guard<Latch> lock(libldapGlobalMutex);
+        stdx::lock_guard<stdx::mutex> lock(libldapGlobalMutex);
         err = ldap_initialize(&_pimpl->getSession(), hostURIs.c_str());
     }
 

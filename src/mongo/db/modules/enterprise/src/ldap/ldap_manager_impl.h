@@ -5,7 +5,7 @@
 #pragma once
 
 #include "mongo/base/secure_allocator.h"
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 
 #include "ldap_host.h"
 #include "ldap_manager.h"

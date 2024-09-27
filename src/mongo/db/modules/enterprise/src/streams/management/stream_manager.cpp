@@ -414,7 +414,7 @@ StreamManager::~StreamManager() {
     }
     _containerStats.shutdown();
 
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     tassert(8874300, "_tenantProcessors is not empty at shutdown", _tenantProcessors.empty());
 }
 
@@ -423,7 +423,7 @@ void StreamManager::backgroundLoop() {
 }
 
 void StreamManager::pruneOutputSamplers() {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     for (auto& tenantIter : _tenantProcessors) {
         for (auto& iter : tenantIter.second->processors) {
             // Prune OutputSampler instances that haven't been polled by the client in over 5mins.
@@ -516,7 +516,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
     auto processorId = request.getProcessorId();
     auto getExecutorStartStatus =
         [this, tenantId, name, processorId]() -> boost::optional<mongo::Status> {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
 
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
         if (!processorInfo) {
@@ -555,7 +555,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
     {
         // Log state of all stream processors to help with analyzing rogue SP incidents
         ScopeGuard guard([&] {
-            stdx::lock_guard<Latch> lk(_mutex);
+            stdx::lock_guard<stdx::mutex> lk(_mutex);
             for (const auto& tenant : _tenantProcessors) {
                 for (const auto& [name, processorInfo] : tenant.second->processors) {
                     LOGV2_INFO(
@@ -625,7 +625,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
 
     bool shouldStopStreamProcessor = false;
     {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         uassert(ErrorCodes::StreamProcessorWorkerShuttingDown,
                 "Worker is shutting down, start cannot be called",
                 !_shutdown);
@@ -660,7 +660,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
     boost::optional<int64_t> sampleCursorId;
     mongo::Future<void> executorFuture;
     {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
 
         uassert(ErrorCodes::StreamProcessorAlreadyExists,
                 str::stream() << "stream processor name already exists: " << name,
@@ -964,7 +964,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 }
 
 void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
@@ -1015,7 +1015,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
     auto processorId = request.getProcessorId();
     auto getExecutorStopStatus =
         [this, tenantId, name, processorId]() -> boost::optional<mongo::Status> {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
 
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
         if (!processorInfo) {
@@ -1057,7 +1057,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
     // Remove the streamProcessor from the map.
     std::unique_ptr<StreamProcessorInfo> processorInfo;
     {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         auto tenantInfo = _tenantProcessors.find(tenantId);
         if (tenantInfo == _tenantProcessors.end()) {
             uasserted(ErrorCodes::StreamProcessorDoesNotExist,
@@ -1080,7 +1080,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
 
     {
         // Delete TenantInfo if we just stopped the last stream processor of the tenant.
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         auto tenantInfo = _tenantProcessors.find(tenantId);
         if (tenantInfo != _tenantProcessors.end() && tenantInfo->second->processors.empty()) {
             _tenantProcessors.erase(tenantId);
@@ -1092,7 +1092,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
 
 void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCommand& request,
                                              StopReason stopReason) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
@@ -1141,7 +1141,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     });
     activeGauge->incBy(1);
 
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
@@ -1186,7 +1186,7 @@ int64_t StreamManager::startSample(mongo::WithLock,
 
 StreamManager::OutputSample StreamManager::getMoreFromSample(
     const mongo::GetMoreStreamSampleCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
@@ -1219,7 +1219,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(
 }
 
 GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     assertTenantIdIsValid(lk, request.getTenantId());
     return getStats(
         lk,
@@ -1418,7 +1418,7 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
     });
     activeGauge->incBy(1);
 
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     if (request.getTenantId()) {
         assertTenantIdIsValid(lk, *request.getTenantId());
@@ -1464,7 +1464,7 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
 }
 
 void StreamManager::testOnlyInsertDocuments(const mongo::TestOnlyInsertCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
@@ -1515,7 +1515,7 @@ GetMetricsReply StreamManager::getMetrics() {
     numStreamProcessorsByStatus.fill(0);
 
     {
-        stdx::lock_guard<Latch> lk(_mutex);
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
         for (const auto& tenantIter : _tenantProcessors) {
             for (const auto& [_, sp] : tenantIter.second->processors) {
                 MetricsVisitor metricsVisitor(&counterMap, &gaugeMap, &histogramMap);
@@ -1550,7 +1550,7 @@ GetMetricsReply StreamManager::getMetrics() {
 
 mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
     const mongo::UpdateFeatureFlagsCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 
@@ -1566,7 +1566,7 @@ mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
 
 mongo::GetFeatureFlagsReply StreamManager::testOnlyGetFeatureFlags(
     const mongo::GetFeatureFlagsCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
     assertTenantIdIsValid(lk, request.getTenantId());
 
     std::string tenantId = request.getTenantId().toString();
@@ -1578,7 +1578,7 @@ mongo::GetFeatureFlagsReply StreamManager::testOnlyGetFeatureFlags(
 }
 
 void StreamManager::onExecutorShutdown(std::string tenantId, std::string name, Status status) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
     if (!processorInfo) {
@@ -1603,7 +1603,7 @@ void StreamManager::onExecutorShutdown(std::string tenantId, std::string name, S
 
 void StreamManager::shutdown() {
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         // After setting this bit, startStreamProcessor calls will fail.
         // Other methods can still be called.
         _shutdown = true;
@@ -1614,7 +1614,7 @@ void StreamManager::shutdown() {
 void StreamManager::stopAllStreamProcessors() {
     std::vector<StopStreamProcessorCommand> stopCommands;
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         for (auto& tenantIter : _tenantProcessors) {
             if (stopCommands.empty()) {
                 stopCommands.reserve(tenantIter.second->processors.size());
@@ -1650,7 +1650,7 @@ mongo::SendEventReply StreamManager::sendEvent(const mongo::SendEventCommand& re
             "Expected checkpointFlushed command",
             request.getCheckpointFlushedEvent());
 
-    stdx::lock_guard<Latch> lk(_mutex);
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
 
     assertTenantIdIsValid(lk, request.getTenantId());
 

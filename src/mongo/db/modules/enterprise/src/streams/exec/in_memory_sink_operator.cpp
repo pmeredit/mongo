@@ -19,26 +19,26 @@ InMemorySinkOperator::InMemorySinkOperator(Context* context, int32_t numInputs)
 }
 
 std::deque<StreamMsgUnion> InMemorySinkOperator::doGetMessages() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return CollectOperator::doGetMessages();
 }
 
 void InMemorySinkOperator::doSinkOnDataMsg(int32_t inputIdx,
                                            StreamDataMsg dataMsg,
                                            boost::optional<StreamControlMsg> controlMsg) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _stats.numOutputDocs = _stats.numInputDocs;
     _stats.numOutputBytes = _stats.numInputBytes;
     return CollectOperator::doSinkOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 
 void InMemorySinkOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return CollectOperator::doSinkOnControlMsg(inputIdx, std::move(controlMsg));
 }
 
 OperatorStats InMemorySinkOperator::doGetStats() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return CollectOperator::doGetStats();
 }
 

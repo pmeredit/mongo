@@ -202,7 +202,7 @@ mongo::Seconds ChangeStreamSourceOperator::getChangeStreamLag() const {
 OperatorStats ChangeStreamSourceOperator::doGetStats() {
     OperatorStats stats{_stats};
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         stats += _consumerStats;
 
         // Always expose memory usage from the memory usage handle so that
@@ -226,7 +226,7 @@ void ChangeStreamSourceOperator::registerMetrics(MetricManager* metricManager) {
 }
 
 ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     // Throw '_exception' to the caller if one was raised.
     if (_exception) {
         uasserted(8112601,
@@ -616,7 +616,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     }
 
     {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         const auto capacity = _options.maxNumDocsToReturn;
         // Create a new vector if none exist or if the last vector is full.
         if (_changeEvents.empty() || int32_t(_changeEvents.back().size()) == capacity ||

@@ -199,7 +199,7 @@ void KafkaConsumerOperator::Connector::start() {
 
 void KafkaConsumerOperator::Connector::onConnectionError(SPStatus status) {
     status = _eventCallback->appendRecentErrorsToStatus(status);
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
 }
 
@@ -207,7 +207,7 @@ void KafkaConsumerOperator::Connector::stop() {
     // Stop the connection thread.
     bool joinThread{false};
     if (_connectionThread.joinable()) {
-        stdx::lock_guard<Latch> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         _shutdown = true;
         joinThread = true;
     }
@@ -229,7 +229,7 @@ void KafkaConsumerOperator::Connector::stop() {
 }
 
 ConnectionStatus KafkaConsumerOperator::Connector::getConnectionStatus() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _connectionStatus;
 }
 
@@ -240,7 +240,7 @@ void KafkaConsumerOperator::Connector::setConnectionStatus(ConnectionStatus stat
 
 std::vector<KafkaConsumerOperator::TopicPartition>
 KafkaConsumerOperator::Connector::getTopicPartitions() {
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _topicPartitions;
 }
 
@@ -326,7 +326,7 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
                "context"_attr = _context,
                "topicPartitions"_attr = topicPartitions);
 
-    stdx::lock_guard<Latch> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     _connectionStatus = ConnectionStatus{ConnectionStatus::Status::kConnected};
     _topicPartitions = std::move(topicPartitions);
 }

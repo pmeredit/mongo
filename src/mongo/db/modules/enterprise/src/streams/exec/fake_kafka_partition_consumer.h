@@ -6,7 +6,7 @@
 
 #include <vector>
 
-#include "mongo/platform/mutex.h"
+#include "mongo/stdx/mutex.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"

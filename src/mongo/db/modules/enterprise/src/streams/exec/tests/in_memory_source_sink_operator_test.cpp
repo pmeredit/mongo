@@ -44,7 +44,7 @@ InMemorySourceOperator::Options InMemorySourceSinkOperatorTest::makeSourceOption
 
 std::vector<StreamMsgUnion> InMemorySourceSinkOperatorTest::getSourceMessages(
     InMemorySourceOperator& source) {
-    stdx::lock_guard<Latch> lock(source._mutex);
+    stdx::lock_guard<stdx::mutex> lock(source._mutex);
     auto msgs = source.getMessages(lock);
     return msgs;
 }

@@ -164,7 +164,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
     // Call allocPages() with numPages=0 to simply report curSize=0.
     ASSERT_TRUE(_bufMgr->allocPages(handle1.get(), 0 /* curSize */, 0 /* numPages */));
     {
-        stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+        stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
         ASSERT_EQUALS(bufferInfo1->size, 0);
     }
     assertAvailablePagesEquals(5);
@@ -174,7 +174,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle1.get(), i * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, (i + 1) * options.pageSize);
         }
         assertAvailablePagesEquals(5);
@@ -185,7 +185,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle1.get(), i * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, (i + 1) * options.pageSize);
         }
         assertAvailablePagesEquals(10 - i - 1);
@@ -214,7 +214,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle1.get(), (9 - i) * options.pageSize /* curSize */, 0 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, (9 - i) * options.pageSize);
         }
         assertAvailablePagesEquals(-3 + i + 1);
@@ -230,7 +230,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle2.get(), i * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo2->mutex);
             ASSERT_EQUALS(bufferInfo2->size, (i + 1) * options.pageSize);
         }
         assertAvailablePagesEquals(0);
@@ -243,7 +243,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle1.get(), 6 * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, 7 * options.pageSize);
         }
         assertAvailablePagesEquals(0);
@@ -258,7 +258,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
     ASSERT_TRUE(
         _bufMgr->allocPages(handle1.get(), 5 * options.pageSize /* curSize */, 0 /* numPages */));
     {
-        stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+        stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
         ASSERT_EQUALS(bufferInfo1->size, 5 * options.pageSize);
     }
     assertAvailablePagesEquals(2);
@@ -268,7 +268,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle2.get(), i * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo2->mutex);
             ASSERT_EQUALS(bufferInfo2->size, (i + 1) * options.pageSize);
         }
     }
@@ -281,7 +281,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle1.get(), 4 * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
             ASSERT_EQUALS(bufferInfo1->size, 5 * options.pageSize);
         }
 
@@ -290,7 +290,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
         ASSERT_TRUE(_bufMgr->allocPages(
             handle2.get(), 4 * options.pageSize /* curSize */, 1 /* numPages */));
         {
-            stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
+            stdx::lock_guard<stdx::mutex> lk(bufferInfo2->mutex);
             ASSERT_EQUALS(bufferInfo2->size, 5 * options.pageSize);
         }
         assertAvailablePagesEquals(0);
@@ -299,13 +299,13 @@ TEST_F(SourceBufferManagerTest, AllocPagesTwoSourceBuffers) {
     // Deallocate all memory to exit gracefully.
     _bufMgr->allocPages(handle1.get(), 0 /* curSize */, 0 /* numPages */);
     {
-        stdx::lock_guard<Latch> lk(bufferInfo1->mutex);
+        stdx::lock_guard<stdx::mutex> lk(bufferInfo1->mutex);
         ASSERT_EQUALS(bufferInfo1->size, 0);
     }
     assertAvailablePagesEquals(2);
     _bufMgr->allocPages(handle2.get(), 0 /* curSize */, 0 /* numPages */);
     {
-        stdx::lock_guard<Latch> lk(bufferInfo2->mutex);
+        stdx::lock_guard<stdx::mutex> lk(bufferInfo2->mutex);
         ASSERT_EQUALS(bufferInfo2->size, 0);
     }
     assertAvailablePagesEquals(4);
@@ -366,7 +366,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesAlwaysSuccessful) {
                 }
 
                 {
-                    stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+                    stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
                     ASSERT_EQUALS(bufferInfo->size, numPagesAllocated * options.pageSize);
                 }
             }
@@ -374,7 +374,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesAlwaysSuccessful) {
             // Deallocate all memory to exit gracefully.
             _bufMgr->allocPages(handle.get(), 0 /* curSize */, 0 /* numPages */);
             {
-                stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+                stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
                 ASSERT_EQUALS(bufferInfo->size, 0);
             }
             std::cout << str::stream() << "thread " << threadId
@@ -449,7 +449,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesFailsSometimes) {
                     }
 
                     {
-                        stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+                        stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
                         ASSERT_EQUALS(bufferInfo->size, numPagesAllocated * options.pageSize);
                     }
                 }
@@ -457,7 +457,7 @@ TEST_F(SourceBufferManagerTest, AllocPagesFailsSometimes) {
                 // Deallocate all memory to exit gracefully.
                 _bufMgr->allocPages(handle.get(), 0 /* curSize */, 0 /* numPages */);
                 {
-                    stdx::lock_guard<Latch> lk(bufferInfo->mutex);
+                    stdx::lock_guard<stdx::mutex> lk(bufferInfo->mutex);
                     ASSERT_EQUALS(bufferInfo->size, 0);
                 }
                 std::cout << str::stream()

@@ -14,8 +14,8 @@
 #include "mongo/base/data_range_cursor.h"
 #include "mongo/base/data_type_validated.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/platform/mutex.h"
 #include "mongo/platform/random.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/str.h"
 
@@ -140,7 +140,7 @@ std::array<char, 32> awsIam::generateServerNonce() {
     std::array<char, awsIam::kServerFirstNoncePieceLength> ret;
 
     {
-        stdx::lock_guard<Latch> lk(saslAWSServerMutex);
+        stdx::lock_guard<stdx::mutex> lk(saslAWSServerMutex);
         saslAWSServerGen.fill(&ret, ret.size());
     }
 

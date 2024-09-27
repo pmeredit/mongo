@@ -79,7 +79,7 @@ void MongoDBDeadLetterQueue::registerMetrics(MetricManager* metricManager) {
 }
 
 void MongoDBDeadLetterQueue::doStart() {
-    stdx::unique_lock<Latch> lock(_consumerMutex);
+    stdx::unique_lock<stdx::mutex> lock(_consumerMutex);
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() {
@@ -91,7 +91,7 @@ void MongoDBDeadLetterQueue::doStart() {
 
         if (!status.isOK()) {
             // Error connecting, quit early.
-            stdx::lock_guard<Latch> lock(_consumerMutex);
+            stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
             _consumerThreadRunning = false;
             _consumerStatus = std::move(status);
             _flushedCv.notify_all();
@@ -114,13 +114,13 @@ void MongoDBDeadLetterQueue::doStop() {
 }
 
 SPStatus MongoDBDeadLetterQueue::doGetStatus() {
-    stdx::lock_guard<Latch> lock(_consumerMutex);
+    stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
     return _consumerStatus;
 }
 
 void MongoDBDeadLetterQueue::doFlush() {
     // Wait until all the messages in the queue have been consumed and inserted into mongodb.
-    stdx::unique_lock<Latch> lock(_consumerMutex);
+    stdx::unique_lock<stdx::mutex> lock(_consumerMutex);
 
     dassert(!_pendingFlush);
     _pendingFlush = true;
@@ -172,7 +172,7 @@ void MongoDBDeadLetterQueue::consumeLoop() {
             }
 
             if (status.isOK() && flushSignal) {
-                stdx::lock_guard<Latch> lock(_consumerMutex);
+                stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
                 _pendingFlush = false;
                 _flushedCv.notify_all();
             }
@@ -202,7 +202,7 @@ void MongoDBDeadLetterQueue::consumeLoop() {
     // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
     // loop because of an exception, then the flush in the executor thread will fail after
     // it receives the flushed condvar signal.
-    stdx::lock_guard<Latch> lock(_consumerMutex);
+    stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
     _consumerThreadRunning = false;
     _consumerStatus = std::move(status);
     if (!_consumerStatus.isOK()) {

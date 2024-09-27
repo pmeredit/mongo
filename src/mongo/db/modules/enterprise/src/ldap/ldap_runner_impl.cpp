@@ -56,7 +56,7 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
     for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
         LDAPConnectionOptions connectionOptions;
         {
-            stdx::lock_guard<Latch> lock(_memberAccessMutex);
+            stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
             connectionOptions = _options;
         }
 
@@ -89,7 +89,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection(
     LDAPConnectionOptions connectionOptions;
 
     {
-        stdx::lock_guard<Latch> lock(_memberAccessMutex);
+        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
         connectionOptions = _options;
     }
     return getConnectionWithOptions(connectionOptions, tickSource, userAcquisitionStats);
@@ -105,7 +105,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
         LDAPBindOptions bindOptions;
         std::vector<SecureString> bindPasswords;
         {
-            stdx::lock_guard<Latch> lock(_memberAccessMutex);
+            stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
             bindOptions = _defaultBindOptions;
             bindPasswords = _bindPasswords;
         }
@@ -199,12 +199,12 @@ Status LDAPRunnerImpl::checkLivenessNotPooled(
 }
 
 std::vector<LDAPHost> LDAPRunnerImpl::getHosts() const {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     return _options.hosts;
 }
 
 void LDAPRunnerImpl::setHosts(std::vector<LDAPHost> hosts) {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
 
     // Drop pooled connections to any hosts that have been removed.
     stdx::unordered_set<HostAndPort> newHosts;
@@ -217,17 +217,17 @@ void LDAPRunnerImpl::setHosts(std::vector<LDAPHost> hosts) {
 }
 
 bool LDAPRunnerImpl::hasHosts() const {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     return !_options.hosts.empty();
 }
 
 Milliseconds LDAPRunnerImpl::getTimeout() const {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     return _options.timeout;
 }
 
 void LDAPRunnerImpl::setTimeout(Milliseconds timeout) {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     _options.timeout = timeout;
 
     // Drop pooled connections to all hosts so that fresh connections with the
@@ -236,35 +236,35 @@ void LDAPRunnerImpl::setTimeout(Milliseconds timeout) {
 }
 
 int LDAPRunnerImpl::getRetryCount() const {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     return _options.retryCount;
 }
 
 void LDAPRunnerImpl::setRetryCount(int retryCount) {
     uassert(6709400, "LDAP retry count can not be negative.", retryCount >= 0);
 
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     _options.retryCount = retryCount;
 }
 
 
 std::string LDAPRunnerImpl::getBindDN() const {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     return _defaultBindOptions.bindDN;
 }
 
 void LDAPRunnerImpl::setBindDN(const std::string& bindDN) {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     _defaultBindOptions.bindDN = bindDN;
 }
 
 void LDAPRunnerImpl::setBindPasswords(std::vector<SecureString> pwds) {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     _bindPasswords = std::move(pwds);
 }
 
 void LDAPRunnerImpl::setUseConnectionPool(bool val) {
-    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     _options.usePooledConnection = val;
 }
 
