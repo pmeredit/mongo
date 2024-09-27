@@ -215,3 +215,20 @@ mongo_cc_library(
         "//src/mongo/util/options_parser",
     ],
 )
+
+mongo_cc_library(
+    name = "ldap_health_observer",
+    srcs = [
+        "ldap_health_observer.cpp",
+    ],
+    hdrs = [
+        "ldap_health_observer.h",
+    ],
+    deps = [
+        "ldap_connection",
+        "ldap_manager",
+        "ldap_manager_impl",
+        "ldap_query",
+        "//src/mongo/db/process_health:fault_manager",
+    ],
+)

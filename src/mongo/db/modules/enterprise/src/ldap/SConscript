@@ -26,24 +26,6 @@ env.Library(
     ],
 )
 
-env.Library(
-    target="ldap_health_observer",
-    source=[
-        "ldap_health_observer.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/process_health/fault_manager",
-        "ldap_connection",
-        "ldap_manager",
-        "ldap_manager_impl",
-        "ldap_query",
-    ],
-    LIBDEPS_TAGS=[
-        # To link the enterprise_ldap_test only.
-        "lint-allow-bidirectional-edges",
-    ],
-)
-
 if not env.TargetOSIs("darwin"):
     env.CppUnitTest(
         target="enterprise_ldap_test",
