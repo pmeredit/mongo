@@ -2,8 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include <cstdio>  // For tmpnam, tmpfile
-#include <fstream>
 
 #include "mongo/unittest/assert.h"
 #include "streams/management/container_group_stats_provider.h"
@@ -13,8 +11,13 @@ namespace streams {
 using namespace mongo;
 
 TEST(ContainerStatsUtilsTest, readInt64ValueFromFileTest) {
-    char* tempFileName = tmpnam(nullptr);  // Generate a unique filename
-    ASSERT_TRUE(tempFileName != nullptr);
+    char tempFileName[] = "/tmp/tempfile.XXXXXX";
+
+    // Create a temporary file using mkstemp
+    int fd = mkstemp(tempFileName);
+    ASSERT_GTE(fd, 0);
+    close(fd);
+
     FILE* fl = fopen(tempFileName, "w");
     const int64_t value = 12345678901234;
     fprintf(fl, "%ld", value);
@@ -43,17 +46,19 @@ TEST(ContainerStatsUtilsTest, readInt64ValueFromFileTest) {
 
 
 TEST(ContainerStatsUtilsTest, readCgroupV2StatFileTest) {
-    char* tempFileName = tmpnam(nullptr);  // Generate a unique filename
-    ASSERT_TRUE(tempFileName != nullptr);
-    FILE* fl = fopen(tempFileName, "w");
-    fclose(fl);
+    char tempFileName[] = "/tmp/tempfile.XXXXXX";
+
+    // Create a temporary file using mkstemp
+    int fd = mkstemp(tempFileName);
+    ASSERT_GTE(fd, 0);
+    close(fd);
     // read from empty file.
     auto val = readCgroupV2StatFile(std::string{tempFileName});
     ASSERT_FALSE(val);
     remove(tempFileName);
 
     // test basic.
-    fl = fopen(tempFileName, "w");
+    FILE* fl = fopen(tempFileName, "w");
     const int64_t value = 12345678901234;
     fprintf(fl, "usage_usec %ld", value);
     fclose(fl);
@@ -80,10 +85,12 @@ TEST(ContainerStatsUtilsTest, readCgroupV2StatFileTest) {
 }
 
 TEST(ContainerStatsTest, readCgroupV2MaxFileTest) {
-    char* tempFileName = tmpnam(nullptr);  // Generate a unique filename
-    ASSERT_TRUE(tempFileName != nullptr);
-    FILE* fl = fopen(tempFileName, "w");
-    fclose(fl);
+    char tempFileName[] = "/tmp/tempfile.XXXXXX";
+
+    // Create a temporary file using mkstemp
+    int fd = mkstemp(tempFileName);
+    ASSERT_GTE(fd, 0);
+    close(fd);
     // read from empty file.
     auto val = readCgroupV2MaxFile(std::string{tempFileName});
     ASSERT_FALSE(val);
@@ -91,7 +98,7 @@ TEST(ContainerStatsTest, readCgroupV2MaxFileTest) {
 
     int64_t val1 = 12345L;
     int64_t val2 = 67890L;
-    fl = fopen(tempFileName, "w");
+    FILE* fl = fopen(tempFileName, "w");
     fprintf(fl, "%ld %ld", val1, val2);
     fclose(fl);
     val = readCgroupV2MaxFile(std::string{tempFileName});
