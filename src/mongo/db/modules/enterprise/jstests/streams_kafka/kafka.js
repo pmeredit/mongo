@@ -2015,6 +2015,68 @@ function honorSourceBufferSizeLimit() {
     sourceColl1.drop();
 }
 
+function testSourceBufferManagerErrorHandling() {
+    let processorName = 'sp';
+    sp.createStreamProcessor(processorName, [
+        {$source: {connectionName: dbConnName, db: dbName, coll: sourceColl1.getName()}},
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        {$project: {_stream_meta: 0}},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {outputFormat: 'canonicalJson'}
+            }
+        }
+    ]);
+
+    let processor = sp[processorName];
+    processor.start();
+
+    // Add 100 input docs to the input collection.
+    let numDocs = 100;
+    Array.from({length: numDocs}, (_, i) => i)
+        .forEach(idx => { assert.commandWorked(sourceColl1.insert({_id: idx})); });
+
+    // Wait until all the docs are emitted.
+    assert.soon(() => {
+        let statsResult = getStats(processorName);
+        return statsResult.outputMessageCount == numDocs;
+    });
+
+    processor.stop();
+
+    sp.createStreamProcessor(processorName, [
+        {
+            $source: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {auto_offset_reset: "earliest"},
+            }
+        },
+        {$emit: {connectionName: '__testMemory'}}
+    ]);
+
+    processor = sp[processorName];
+
+    let featureFlags = {
+        sourceBufferTotalSize: NumberLong(2 * 1024),
+        sourceBufferPreallocationFraction: 1.0,
+        sourceBufferMaxSize: NumberLong(1024),
+        sourceBufferPageSize: NumberLong(1024)
+    };
+    let result = processor.start({featureFlags: featureFlags}, /* assertWorked */ false);
+    assert.commandFailedWithCode(result, ErrorCodes.InternalError);
+    assert(result.errmsg.includes(
+               "Cannot preallocate even a single page to all the available source buffers"),
+           tojson(result));
+    result = processor.stop(/* assertWorked */ false);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorDoesNotExist);
+
+    sourceColl1.drop();
+}
+
 // Test that content-based routing feature of $emit works as expected.
 function contentBasedRouting() {
     // Start a stream processor that reads from sourceColl1 and writes to the Kafka topic.
@@ -2317,6 +2379,8 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({
 runKafkaTest(kafka, mongoToKafkaToMongoGetConnectionNames);
 
 runKafkaTest(kafka, honorSourceBufferSizeLimit);
+
+runKafkaTest(kafka, testSourceBufferManagerErrorHandling, 10);
 
 runKafkaTest(kafka, () => {
     // The tests many small batches of 1 document flowing into $emit.

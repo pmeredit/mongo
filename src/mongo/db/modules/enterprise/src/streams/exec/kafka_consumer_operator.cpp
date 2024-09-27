@@ -521,13 +521,10 @@ void KafkaConsumerOperator::initFromCheckpoint() {
             _partitionOffsets.push_back(tp.get());
             _partitionOffsetsHolder.push_back(std::move(tp));
         }
-        _consumers.push_back(std::move(consumerInfo));
-    }
 
-    // Start all partition consumers.
-    for (auto& consumerInfo : _consumers) {
         consumerInfo.consumer->init();
         consumerInfo.consumer->start();
+        _consumers.push_back(std::move(consumerInfo));
     }
 }
 
@@ -574,13 +571,10 @@ void KafkaConsumerOperator::initFromOptions() {
             _partitionOffsets.push_back(tp.get());
             _partitionOffsetsHolder.push_back(std::move(tp));
         }
-        _consumers.push_back(std::move(consumerInfo));
-    }
 
-    // Start all partition consumers.
-    for (auto& consumerInfo : _consumers) {
         consumerInfo.consumer->init();
         consumerInfo.consumer->start();
+        _consumers.push_back(std::move(consumerInfo));
     }
 }
 

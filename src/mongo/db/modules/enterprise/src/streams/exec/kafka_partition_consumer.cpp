@@ -214,6 +214,7 @@ KafkaPartitionConsumer::~KafkaPartitionConsumer() {
 }
 
 void KafkaPartitionConsumer::doStop() {
+    uassert(ErrorCodes::InternalError, "_consumer is null", _consumer);
     // Stop the consumer first before shutting down our consumer thread. Stopping
     // the consumer will purge the entire buffered queue within rdkafka and force
     // `consume_callback` to exit quickly.
