@@ -1,15 +1,12 @@
 /**
- * A simple case of sharded incremental backup/restore with directoryPerDb and
- * wiredTigerDirectoryForIndexes options enabled.
+ * A simple case of sharded snapshot selective backup/restore for time-series collections.
  *
  * @tags: [
  *   requires_persistence,
  *   requires_wiredtiger,
- *   resource_intensive,
  * ]
  */
 
-// TODO(SERVER-90072): Does not currently work on Windows.
 if (_isWindows()) {
     print("Skipping test on windows");
     quit();
@@ -22,11 +19,11 @@ import {
 
 let msg =
     new ShardedBackupRestoreTest(
-        new NoopWorker(), /*isDirectoryPerDb=*/ true, /*isWiredTigerDirectoryForIndexes=*/ false)
+        new NoopWorker(), /*isDirectoryPerDb=*/ false, /*isWiredTigerDirectoryForIndexes=*/ false)
         .run({
             isPitRestore: false,
-            isSelectiveRestore: false,
-            isIncrementalBackup: true,
+            isSelectiveRestore: true,
+            collectionOptions: {timeseries: {timeField: "time", metaField: "numForPartition"}},
             backupBinaryVersion: "latest"
         });
 assert.eq(msg, "Test succeeded.");

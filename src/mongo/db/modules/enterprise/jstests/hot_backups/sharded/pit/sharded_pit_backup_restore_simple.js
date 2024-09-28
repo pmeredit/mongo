@@ -22,18 +22,3 @@ msg = new ShardedBackupRestoreTest(
           new NoopWorker(), /*isDirectoryPerDb=*/ true, /*isWiredTigerDirectoryForIndexes=*/ false)
           .run({isPitRestore: true, isSelectiveRestore: false, backupBinaryVersion: "latest"});
 assert.eq(msg, "Test succeeded.");
-
-// TODO(SERVER-89919): Re-enable these test cases in separate files. Currently run into test
-// infra/evergreen limits.
-
-// msg = new ShardedBackupRestoreTest(
-//           new NoopWorker(), /*isDirectoryPerDb=*/ false, /*isWiredTigerDirectoryForIndexes=*/
-//           true) .run({isPitRestore: true, isSelectiveRestore: false, backupBinaryVersion:
-//           "latest"});
-// assert.eq(msg, "Test succeeded.");
-
-// msg = new ShardedBackupRestoreTest(
-//           new NoopWorker(), /*isDirectoryPerDb=*/ true, /*isWiredTigerDirectoryForIndexes=*/
-//           true) .run({isPitRestore: true, isSelectiveRestore: false, backupBinaryVersion:
-//           "latest"});
-// assert.eq(msg, "Test succeeded.");

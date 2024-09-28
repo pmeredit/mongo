@@ -7,7 +7,6 @@
  * ]
  */
 
-// TODO(SERVER-90072): Does not currently work on Windows.
 if (_isWindows()) {
     print("Skipping test on windows");
     quit();
@@ -20,9 +19,9 @@ import {
 
 let msg =
     new ShardedBackupRestoreTest(
-        new NoopWorker(), /*isDirectoryPerDb=*/ false, /*isWiredTigerDirectoryForIndexes=*/ false)
+        new NoopWorker(), /*isDirectoryPerDb=*/ true, /*isWiredTigerDirectoryForIndexes=*/ true)
         .run({
-            isPitRestore: true,
+            isPitRestore: false,
             isSelectiveRestore: true,
             collectionOptions: {timeseries: {timeField: "time", metaField: "numForPartition"}},
             backupBinaryVersion: "latest"

@@ -1,5 +1,5 @@
 /**
- * A simple case of sharded PIT selective backup/restore.
+ * A simple case of sharded snapshot selective backup/restore.
  *
  * @tags: [
  *   requires_persistence,
@@ -7,7 +7,6 @@
  * ]
  */
 
-// TODO(SERVER-90072): Does not currently work on Windows.
 if (_isWindows()) {
     print("Skipping test on windows");
     quit();
@@ -20,5 +19,5 @@ import {
 
 let msg = new ShardedBackupRestoreTest(new NoopWorker(), {
               configShard: true
-          }).run({isPitRestore: true, isSelectiveRestore: true, backupBinaryVersion: "latest"});
+          }).run({isPitRestore: false, isSelectiveRestore: true, backupBinaryVersion: "latest"});
 assert.eq(msg, "Test succeeded.");

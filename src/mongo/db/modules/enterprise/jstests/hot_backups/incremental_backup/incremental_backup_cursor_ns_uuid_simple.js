@@ -8,35 +8,8 @@
  * ]
  */
 
-import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {checkBackup, getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
-
-function checkBackup(backupCursor) {
-    // Print the metadata document.
-    assert(backupCursor.hasNext());
-    jsTestLog(backupCursor.next());
-
-    while (backupCursor.hasNext()) {
-        let doc = backupCursor.next();
-
-        jsTestLog("File for backup: " + tojson(doc));
-
-        if (!doc.required) {
-            assert.neq(doc.ns, "");
-            assert.neq(doc.uuid, "");
-        } else {
-            let pathsep = _isWindows() ? '\\' : '/';
-            let stem = doc.filename.substr(doc.filename.lastIndexOf(pathsep) + 1);
-            // Denylisting internal files that don't need to have ns/uuid set. Denylisting known
-            // patterns will help catch subtle API changes if new filename patterns are added that
-            // don't generate ns/uuid.
-            if (!stem.startsWith("size") && !stem.startsWith("Wired") && !stem.startsWith("_")) {
-                assert.neq(doc.ns, "");
-                assert.neq(doc.uuid, "");
-            }
-        }
-    }
-}
 
 function runTest(nodeOptionsArg) {
     jsTestLog("runTest( nodeOptions: " + tojson(nodeOptionsArg) + " )");
@@ -93,7 +66,3 @@ function runTest(nodeOptionsArg) {
 
 runTest({});
 runTest({directoryperdb: ""});
-// TODO(SERVER-89919): Re-enable these test cases in separate files. Currently run into test
-// infra/evergreen limits.
-// runTest({wiredTigerDirectoryForIndexes: ""});
-// runTest({wiredTigerDirectoryForIndexes: "", directoryperdb: ""});
