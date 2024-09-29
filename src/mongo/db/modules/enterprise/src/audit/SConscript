@@ -34,6 +34,27 @@ env.Program(
 )
 
 env.Library(
+    # This can't be included in audit_enterprise directly
+    # since we need mongo/s/grid which
+    # depends on audit which depends on audit_enterprise.
+    # Avoid the dependency cycle by pulling this out separately.
+    target="audit_synchronize_job",
+    source=[
+        "audit_synchronize_job.cpp",
+    ],
+    LIBDEPS_PRIVATE=[
+        "$BUILD_DIR/mongo/db/audit",
+        "$BUILD_DIR/mongo/db/commands/mongod_fcv",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/db/transaction/transaction_api",
+        "$BUILD_DIR/mongo/executor/inline_executor",
+        "$BUILD_DIR/mongo/s/sharding_router_api",
+        "audit_config",
+        "audit_enterprise",
+    ],
+)
+
+env.Library(
     target="audit_mongod",
     source=[
         "audit_mongod.cpp",
@@ -126,6 +147,27 @@ env.Library(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+    ],
+)
+
+env.Library(
+    target="audit_mongos",
+    source=[
+        "audit_mongos.cpp",
+    ],
+    LIBDEPS_PRIVATE=[
+        "$BUILD_DIR/mongo/db/auth/auth",
+        "$BUILD_DIR/mongo/db/auth/authprivilege",
+        "$BUILD_DIR/mongo/db/commands",
+        "$BUILD_DIR/mongo/db/dbdirectclient",
+        "$BUILD_DIR/mongo/idl/cluster_server_parameter_refresher",
+        "$BUILD_DIR/mongo/s/grid",
+        "audit_config",
+        "audit_enterprise",
+        "audit_synchronize_job",
+    ],
+    LIBDEPS_TAGS=[
+        "lint-allow-nonprivate-on-deps-dependents",
     ],
 )
 
