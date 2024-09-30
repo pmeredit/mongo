@@ -16,7 +16,7 @@ StreamProcessorFeatureFlags::StreamProcessorFeatureFlags(
     : _featureFlags(std::move(featureFlags)), _featureFlagsUpdatedTime(updateTime) {}
 
 void StreamProcessorFeatureFlags::updateFeatureFlags(StreamProcessorFeatureFlags featureFlags) {
-    if (featureFlags._featureFlagsUpdatedTime > _featureFlagsUpdatedTime) {
+    if (featureFlags._featureFlagsUpdatedTime >= _featureFlagsUpdatedTime) {
         _featureFlags = std::move(featureFlags._featureFlags);
         _featureFlagsUpdatedTime = featureFlags._featureFlagsUpdatedTime;
     }

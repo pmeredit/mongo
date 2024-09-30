@@ -126,6 +126,12 @@ const FeatureFlagDefinition FeatureFlags::kTestOnlyStringType{
     mongo::Value{std::string("string")},
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kEnableExternalAPIOperator{
+    "enableExternalAPIOperator",
+    "If true, the $externalAPI operator is enabled.",
+    mongo::Value(false),
+    {}};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -139,6 +145,7 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kSourceBufferMaxSize.name, FeatureFlags::kSourceBufferMaxSize},
     {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
     {FeatureFlags::kSourceBufferPageSize.name, FeatureFlags::kSourceBufferPageSize},
+    {FeatureFlags::kEnableExternalAPIOperator.name, FeatureFlags::kEnableExternalAPIOperator},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {

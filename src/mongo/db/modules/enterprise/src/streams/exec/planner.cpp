@@ -48,6 +48,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
+#include "streams/exec/document_source_external_api_stub.h"
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
@@ -140,6 +141,7 @@ enum class StageType {
     kCount,  // This gets converted into DocumentSourceGroup and DocumentSourceProject.
     kLimit,
     kEmit,
+    kExternalAPI,
 };
 
 // Encapsulates traits of a stage.
@@ -173,6 +175,7 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$count", {StageType::kCount, false, true}},
         {"$limit", {StageType::kLimit, false, true}},
         {"$emit", {StageType::kEmit, true, false}},
+        {"$externalAPI", {StageType::kExternalAPI, true, true}},
     };
 
 // Default fast checkpoint interval: 5 minutes.
@@ -1627,6 +1630,18 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
                 dassert(lookupSource);
                 optimizedPipeline.push_back(planLookUp(lookupSource, serialize(stage)));
+                break;
+            }
+            case StageType::kExternalAPI: {
+                auto enabled = _context->featureFlags
+                    ? _context->featureFlags
+                          ->getFeatureFlagValue(FeatureFlags::kEnableExternalAPIOperator)
+                          .getBool()
+                    : boost::none;
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                        "Unsupported stage: $externalAPI",
+                        enabled && *enabled);
+                // TODO(SERVER-95029): Implement initial implementation of $external API operator.
                 break;
             }
             default:

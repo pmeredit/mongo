@@ -45,6 +45,7 @@ env.Library(
         "connection_status.cpp",
         "dead_letter_queue.cpp",
         "delayed_watermark_generator.cpp",
+        "document_source_external_api_stub.cpp",
         "document_source_feeder.cpp",
         "document_source_remote_db_cursor.cpp",
         "document_source_validate_stub.cpp",

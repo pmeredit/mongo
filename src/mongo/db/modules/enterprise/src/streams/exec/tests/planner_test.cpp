@@ -28,6 +28,8 @@
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
+#include "mongo/util/scopeguard.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/change_stream_source_operator.h"
@@ -47,6 +49,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
@@ -2406,5 +2409,79 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
                                 expectedWhat);
 }
 
+/**
+Parse a pipeline containing $externalAPI in it. Verify that it fails when not supplied the correct
+feature flag.
+*/
+TEST_F(PlannerTest, ExternalAPIFailsWithoutFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalAPI: {} }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
+                                DBException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                "StreamProcessorInvalidOptions: Unsupported stage: $externalAPI");
+}
+
+/**
+Parse a pipeline containing $externalAPI in it. Verify that it still fails when the feature flag is
+defined but set to false.
+*/
+TEST_F(PlannerTest, ExternalAPIWithFalseFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalAPI: {} }
+]
+    )";
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
+                                DBException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                "StreamProcessorInvalidOptions: Unsupported stage: $externalAPI");
+}
+
+/**
+Parse a pipeline containing $externalAPI in it. Verify that it does not fail when not supplied
+the correct feature flag.
+*/
+TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalAPI: {} }
+]
+    )";
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+
+    auto dag = addSourceSinkAndParse(pipeline);
+    auto& ops = dag->operators();
+    // TODO(SERVER-95029): There are temporarily 0 middle stages because the planner doesn't
+    // know how to plan the $externalAPI stage.
+    ASSERT_EQ(ops.size(), 0 /* pipeline stages */ + 2 /* Source and Sink */);
+}
 }  // namespace
 }  // namespace streams
