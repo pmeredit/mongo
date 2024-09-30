@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_utils.h"
 #include <chrono>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -351,10 +352,8 @@ int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
                                                &highOffset,
                                                _options.kafkaRequestTimeoutMs.count());
         if (resp != RdKafka::ERR_NO_ERROR) {
-            auto errStr =
-                fmt::format("query_watermark_offsets failed for partition {} with error {}",
-                            partition(),
-                            RdKafka::err2str(resp));
+            auto errStr = kafkaErrToString(
+                fmt::format("query_watermark_offsets failed for partition {}", partition()), resp);
             uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, errStr);
         }
 
@@ -382,7 +381,7 @@ void KafkaPartitionConsumer::connectToSource() {
 
     RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, startOffset);
     uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
-            str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
+            kafkaErrToString("Failed to start consumer with error", resp),
             resp == RdKafka::ERR_NO_ERROR);
 
     LOGV2_INFO(9219600,

@@ -119,10 +119,9 @@ function badKafkaSourceStartError() {
     });
     assert.commandFailed(result);
     assert.eq(ErrorCodes.StreamProcessorKafkaConnectionError, result.code);
-    assert(
-        result.errmsg.includes(
-            "Could not connect to the Kafka topic with kafka error code: -195, message: Local: Broker transport failure."),
-        result.errmsg);
+    assert(result.errmsg.includes(
+               "Could not connect to the Kafka topic: Local: Broker transport failure (-195)"),
+           result.errmsg);
     assert(
         result.errmsg.includes(
             "foohost:9092/bootstrap: Failed to resolve 'foohost:9092': Temporary failure in name resolution") ||
@@ -343,7 +342,7 @@ function badKafkaEmit() {
     assert.commandFailed(result);
     jsTestLog(result);
     assert(result.errmsg.includes(
-        "$emit to Kafka topic encountered error while connecting, kafka error code: -195"));
+        "$emit to Kafka topic encountered error while connecting: Local: Broker transport failure (-195)"));
     assert(
         result.errmsg.includes(
             "foohost:9092/bootstrap: Failed to resolve 'foohost:9092': Temporary failure in name resolution") ||
@@ -377,7 +376,7 @@ function badKafkaEmit() {
     });
     assert.commandFailed(result);
     assert(result.errmsg.includes(
-        "$emit to Kafka encountered error while connecting, kafka error code: -195"));
+        "$emit to Kafka topic encountered error while connecting: Local: Broker transport failure (-195)"));
     assert(
         result.errmsg.includes(
             "foohost:9092/bootstrap: Failed to resolve 'foohost:9092': Temporary failure in name resolution") ||

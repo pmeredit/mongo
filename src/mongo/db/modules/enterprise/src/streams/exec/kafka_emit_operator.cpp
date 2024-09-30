@@ -2,7 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/util/scopeguard.h"
 #include <exception>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -15,10 +14,12 @@
 #include "mongo/bson/bsontypes_util.h"
 #include "mongo/bson/json.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/kafka_event_callback.h"
+#include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/util/exception.h"
@@ -84,6 +85,7 @@ ConnectionStatus KafkaEmitOperator::Connector::getConnectionStatus() {
 void KafkaEmitOperator::Connector::testConnection() {
     // Validate that the connection can be established by querying metadata.
     RdKafka::Metadata* metadata{nullptr};
+    RdKafka::ErrorCode kafkaErrorCode{RdKafka::ERR_NO_ERROR};
     if (_options.topicName) {
         std::string errstr;
         std::unique_ptr<RdKafka::Topic> topic{RdKafka::Topic::create(_options.producer,
@@ -95,24 +97,18 @@ void KafkaEmitOperator::Connector::testConnection() {
                       "$emit to Kafka failed to connect to topic with error: {}"_format(errstr));
         }
 
-        RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
+        kafkaErrorCode = _options.producer->metadata(
             false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
-        std::unique_ptr<RdKafka::Metadata> deleter(metadata);
-
-        uassert(
-            ErrorCodes::StreamProcessorKafkaConnectionError,
-            "$emit to Kafka topic encountered error while connecting, kafka error code: {}"_format(
-                kafkaErrorCode),
-            kafkaErrorCode == RdKafka::ERR_NO_ERROR);
     } else {
-        RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
+        kafkaErrorCode = _options.producer->metadata(
             true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
-        std::unique_ptr<RdKafka::Metadata> deleter(metadata);
-        uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
-                "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(
-                    kafkaErrorCode),
-                kafkaErrorCode == RdKafka::ERR_NO_ERROR);
     }
+
+    std::unique_ptr<RdKafka::Metadata> deleter(metadata);
+    uassert(
+        ErrorCodes::StreamProcessorKafkaConnectionError,
+        kafkaErrToString("$emit to Kafka topic encountered error while connecting", kafkaErrorCode),
+        kafkaErrorCode == RdKafka::ERR_NO_ERROR);
 }
 
 
@@ -284,9 +280,11 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
                                 const void* valuePointer,
                                 size_t valueLength) {
         err = headers->add(key, valuePointer, valueLength);
-        uassert(9136400,
-                "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
-                    topicName, err),
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                kafkaErrToString(
+                    "Failed to emit to topic {} due to error during adding to Kafka headers"_format(
+                        topicName),
+                    err),
                 err == RdKafka::ERR_NO_ERROR);
     };
 
@@ -294,9 +292,11 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
                                 const std::string& key,
                                 const std::string& value) {
         err = headers->add(key, value);
-        uassert(9136401,
-                "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
-                    topicName, err),
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                kafkaErrToString(
+                    "Failed to emit to topic {} due to error during adding to Kafka headers"_format(
+                        topicName),
+                    err),
                 err == RdKafka::ERR_NO_ERROR);
     };
 
@@ -538,10 +538,9 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         if (headers != nullptr) {
             delete headers;
         }
-
-        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                  "Failed to emit to topic {} due to error: {} ({})"_format(
-                      topicName, RdKafka::err2str(err), err));
+        uasserted(
+            ErrorCodes::StreamProcessorKafkaConnectionError,
+            kafkaErrToString("Failed to emit to topic {} due to error"_format(topicName), err));
     }
 }
 

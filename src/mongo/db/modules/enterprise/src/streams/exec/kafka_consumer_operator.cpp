@@ -20,6 +20,7 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
@@ -277,10 +278,7 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
                        "errorCode"_attr = resp,
                        "errorMsg"_attr = RdKafka::err2str(resp));
             uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                      fmt::format("Could not connect to the Kafka topic with kafka error code: "
-                                  "{}, message: {}.",
-                                  resp,
-                                  RdKafka::err2str(resp)));
+                      kafkaErrToString("Could not connect to the Kafka topic", resp));
         }
 
         auto* partitions = metadataHolder->topics()->at(0)->partitions();
@@ -1155,11 +1153,9 @@ KafkaConsumerOperator::TopicPartitionOffsetMap KafkaConsumerOperator::getCommitt
     tassert(8674601, "Expected _groupConsumer to be set", _groupConsumer);
     RdKafka::ErrorCode errCode =
         _groupConsumer->committed(partitions, _options.kafkaRequestTimeoutMs.count());
-    uassert(
-        8385400,
-        str::stream() << "KafkaConsumerOperator failed to get committed offsets with error code: "
-                      << errCode,
-        errCode == RdKafka::ERR_NO_ERROR);
+    uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+            kafkaErrToString("KafkaConsumerOperator failed to get committed offsets", errCode),
+            errCode == RdKafka::ERR_NO_ERROR);
     tassert(8385401,
             "KafkaConsumerOperator unexpected number of partitions received from the topic",
             partitions.size() == _topicPartitions.size());
@@ -1234,8 +1230,7 @@ BSONObj KafkaConsumerOperator::doOnCheckpointFlush(CheckpointId checkpointId) {
         // Increment offsets here if we are not already doing so when reading from source.
         RdKafka::ErrorCode errCode = _groupConsumer->commitAsync(topicPartitions);
         uassert(8674605,
-                str::stream() << "KafkaConsumerOperator failed to commit offsets with error code: "
-                              << errCode << " and msg: " << RdKafka::err2str(errCode),
+                kafkaErrToString("KafkaConsumerOperator failed to commit offsets", errCode),
                 errCode == RdKafka::ERR_NO_ERROR);
     }
 
