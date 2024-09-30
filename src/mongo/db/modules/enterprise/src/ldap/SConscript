@@ -1,6 +1,6 @@
 # -*- mode: python -*-
 
-Import("env")
+Import(["env", "http_client"])
 
 env = env.Clone()
 
@@ -82,5 +82,13 @@ env.Program(
         "ldap_options_mongod",
         "ldap_query",
     ],
-    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
+    # TODO(SERVER-95322) Remove sys deps after converted to Bazel
+    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
+    + (
+        [
+            "winhttp" if env.TargetOSIs("windows") else "curl",
+        ]
+        if http_client == "on"
+        else []
+    ),
 )
