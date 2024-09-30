@@ -4,46 +4,6 @@ Import("env")
 
 env = env.Clone()
 
-env.Library(
-    target="query_analysis",
-    source=[
-        "agg_expression_encryption_intender_base.cpp",
-        "aggregate_expression_intender.cpp",
-        "aggregate_expression_intender_entry.cpp",
-        "aggregate_expression_intender_range.cpp",
-        "collator_factory_cryptd.cpp",
-        "encryption_schema_tree.cpp",
-        "expression_schema_walker.cpp",
-        "fle_match_expression.cpp",
-        "fle_pipeline.cpp",
-        "query_analysis.cpp",
-        "resolved_encryption_info.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/crypto/encrypted_field_config",
-        "$BUILD_DIR/mongo/crypto/fle_crypto",
-        "$BUILD_DIR/mongo/crypto/fle_fields",
-        "$BUILD_DIR/mongo/db/coll_mod_command_idl",
-        "$BUILD_DIR/mongo/db/commands",
-        "$BUILD_DIR/mongo/db/commands/create_command",
-        "$BUILD_DIR/mongo/db/commands/query_cmd/bulk_write_common",
-        "$BUILD_DIR/mongo/db/index_commands_idl",
-        "$BUILD_DIR/mongo/db/pipeline/accumulator",
-        "$BUILD_DIR/mongo/db/pipeline/change_stream_pipeline",
-        "$BUILD_DIR/mongo/db/pipeline/pipeline",
-        "$BUILD_DIR/mongo/db/query/command_request_response",
-        "$BUILD_DIR/mongo/db/query/query_planner",
-        "$BUILD_DIR/mongo/db/query/query_request",
-        "$BUILD_DIR/mongo/db/query/write_ops/write_ops_parsers",
-        "$BUILD_DIR/mongo/db/query_exec",
-        "$BUILD_DIR/mongo/db/query_expressions",
-        "$BUILD_DIR/mongo/db/shard_role_api",
-        "$BUILD_DIR/mongo/db/update/update_driver",
-        "$BUILD_DIR/mongo/util/pcre_wrapper",
-    ],
-)
-
 env.CppUnitTest(
     target="enterprise_fle_query_analysis_test",
     source=[
