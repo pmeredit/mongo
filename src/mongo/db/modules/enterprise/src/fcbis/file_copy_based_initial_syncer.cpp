@@ -670,6 +670,7 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     backupCursorId = 0;
     backupCursorCollection = {};
     lastSyncedStableTimestamp = {};
+    extendBackupAttemptTimedOut = false;
     extendedCursorFiles.clear();
     fileBasedInitialSyncCycle = 1;
     currentBackupFileCloner.reset();
@@ -1000,6 +1001,12 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                 // The callback never got invoked.
                 uasserted(5782301, "Internal error running cursor callback in command");
             }
+            // If there is a MaxTimeMSExpired error, set this field to true so when the error is
+            // returned to the caller, it will end the extension round but still continue with
+            // initial sync.
+            if (fetchStatus->get().code() == ErrorCodes::MaxTimeMSExpired) {
+                _syncingFilesState.extendBackupAttemptTimedOut = true;
+            }
             uassertStatusOK(fetchStatus->get());
             *returnedFiles = _syncingFilesState.getNewFilesToClone(*extendedFiles, statsPtr, lock);
         });
@@ -1124,7 +1131,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
                 // Returns the error to the caller.
                 return true;
             }
-
             auto lagInSecs =
                 static_cast<int>(_syncingFilesState.lastAppliedOpTimeOnSyncSrc.getSecs() -
                                  _syncingFilesState.lastSyncedStableTimestamp.getSecs());
@@ -1151,6 +1157,22 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
         .onCompletion([this, self = shared_from_this()](Status cloningStatus) {
             // Make sure to kill the backupCursor whether cloning succeeds or fails.
             _killBackupCursor();
+            auto lagInSecs =
+                static_cast<int>(_syncingFilesState.lastAppliedOpTimeOnSyncSrc.getSecs() -
+                                 _syncingFilesState.lastSyncedStableTimestamp.getSecs());
+            if (_syncingFilesState.extendBackupAttemptTimedOut) {
+                // If this field was set during the extension round, then there was a MaxTimeMS
+                // Error raised. Since it occurred during the extension round, we can still continue
+                // with initial sync, so we log a warning that there was an undesired lag, and
+                // return Status::OK,  then continue rather than failing.
+                LOGV2_WARNING(7929800,
+                              "Finishing File Copy Based initial sync with undesired lag",
+                              "currentLagInSec"_attr = lagInSecs,
+                              "fileBasedInitialSyncMaxLagSec"_attr = fileBasedInitialSyncMaxLagSec,
+                              "fileBasedInitialSyncMaxCyclesWithoutProgress"_attr =
+                                  fileBasedInitialSyncMaxCyclesWithoutProgress);
+                return Status::OK();
+            }
             return cloningStatus;
         });
 }

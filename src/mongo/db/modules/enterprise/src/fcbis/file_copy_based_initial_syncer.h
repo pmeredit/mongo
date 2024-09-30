@@ -527,6 +527,9 @@ private:
         // Holds the files returned by extending the backupCursor.
         StringSet extendedCursorFiles;
         int fileBasedInitialSyncCycle = 1;
+        // If a MaxTimeMSExpired Error is raised during the extension round, the node will exit the
+        // extension round but still continue with intial sync.
+        bool extendBackupAttemptTimedOut = false;
 
         // The dbpath on the remote host, used for computing relative paths.
         std::string remoteDbpath;                                    // (X)
