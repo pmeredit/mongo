@@ -50,6 +50,7 @@ public:
     static const FeatureFlagDefinition kSourceBufferPageSize;
     static const FeatureFlagDefinition kTestOnlyStringType;
     static const FeatureFlagDefinition kEnableExternalAPIOperator;
+    static const FeatureFlagDefinition kExternalAPIRateLimitPerSecond;
 };
 
 }  // namespace streams

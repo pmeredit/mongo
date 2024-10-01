@@ -2,10 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/feature_flag.h"
+#include <string>
+
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/feature_flag.h"
 #include "streams/exec/config_gen.h"
+#include "streams/exec/feature_flag.h"
 #include "streams/exec/operator.h"
 
 namespace streams {
@@ -132,6 +135,11 @@ const FeatureFlagDefinition FeatureFlags::kEnableExternalAPIOperator{
     mongo::Value(false),
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kExternalAPIRateLimitPerSecond{
+    "externalAPIRateLimitPerSecond",
+    "Specifies rate limit to be used by $externalAPI",
+    mongo::Value::createIntOrLong(10L * 1000)};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -146,6 +154,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
     {FeatureFlags::kSourceBufferPageSize.name, FeatureFlags::kSourceBufferPageSize},
     {FeatureFlags::kEnableExternalAPIOperator.name, FeatureFlags::kEnableExternalAPIOperator},
+    {FeatureFlags::kExternalAPIRateLimitPerSecond.name,
+     FeatureFlags::kExternalAPIRateLimitPerSecond},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
