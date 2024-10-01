@@ -629,7 +629,9 @@ protected:
         helloResp.append("secondary", secondary);
         helloResp.append("maxWireVersion", maxWireVersion);
         helloResp.append("ok", 1);
-        _mock->expect(BSON("hello" << 1), RemoteCommandResponse({helloResp.obj(), Milliseconds()}))
+        _mock
+            ->expect(BSON("hello" << 1),
+                     RemoteCommandResponse::make_forTest(helloResp.obj(), Milliseconds()))
             .times(1);
         _mock->runUntilExpectationsSatisfied();
     }
@@ -652,7 +654,7 @@ protected:
             "\"wiredTigerDirectoryForIndexes\"}, 1]}},{$expr: {$eq:[{$getField: "
             "\"storageGlobalParams.directoryperdb\"}, 1]}}]}");
         _mock->expect(getParameterReq,
-                      RemoteCommandResponse({getParameterResp.obj(), Milliseconds()}));
+                      RemoteCommandResponse::make_forTest(getParameterResp.obj(), Milliseconds()));
         _mock->runUntilExpectationsSatisfied();
     }
 
@@ -662,11 +664,11 @@ protected:
 
     void expectServerStatusCommandWithResponse(std::string storageEngine, bool encryptionEnabled) {
         _mock->expect(BSON("serverStatus" << 1),
-                      RemoteCommandResponse(
-                          {BSON("storageEngine"
-                                << BSON("name" << storageEngine) << "encryptionAtRest"
-                                << BSON("encryptionEnabled" << encryptionEnabled) << "ok" << 1),
-                           Milliseconds()}));
+                      RemoteCommandResponse::make_forTest(
+                          BSON("storageEngine"
+                               << BSON("name" << storageEngine) << "encryptionAtRest"
+                               << BSON("encryptionEnabled" << encryptionEnabled) << "ok" << 1),
+                          Milliseconds()));
         _mock->runUntilExpectationsSatisfied();
     }
 
@@ -683,9 +685,9 @@ protected:
         auto getMoreRequest = BSON("getMore" << cursorDataMock.backupCursorId << "collection"
                                              << cursorDataMock.nss.coll());
         // For keeping the backup cursor alive.
-        _mock->defaultExpect(
-            getMoreRequest,
-            RemoteCommandResponse({cursorDataMock.getBackupCursorBatches(-1), Milliseconds()}));
+        _mock->defaultExpect(getMoreRequest,
+                             RemoteCommandResponse::make_forTest(
+                                 cursorDataMock.getBackupCursorBatches(-1), Milliseconds()));
 
         // The sync source satisfies requirements for FCBIS.
         expectSuccessfulSyncSourceValidation();
@@ -694,19 +696,19 @@ protected:
             MockNetwork::InSequence seq(*_mock);
             _mock
                 ->expect(backupCursorRequest,
-                         RemoteCommandResponse(
-                             {cursorDataMock.getBackupCursorBatches(0), Milliseconds()}))
+                         RemoteCommandResponse::make_forTest(
+                             cursorDataMock.getBackupCursorBatches(0), Milliseconds()))
                 .times(1);
             _mock
                 ->expect(getMoreRequest,
-                         RemoteCommandResponse(
-                             {cursorDataMock.getBackupCursorBatches(1), Milliseconds()}))
+                         RemoteCommandResponse::make_forTest(
+                             cursorDataMock.getBackupCursorBatches(1), Milliseconds()))
                 .times(1);
 
             _mock
                 ->expect(getMoreRequest,
-                         RemoteCommandResponse(
-                             {cursorDataMock.getBackupCursorBatches(-1), Milliseconds()}))
+                         RemoteCommandResponse::make_forTest(
+                             cursorDataMock.getBackupCursorBatches(-1), Milliseconds()))
                 .times(1);
         }
 
@@ -717,9 +719,9 @@ protected:
         auto getMoreRequest = BSON("getMore" << cursorDataMock.backupCursorId << "collection"
                                              << cursorDataMock.nss.coll());
         _mock
-            ->expect(
-                getMoreRequest,
-                RemoteCommandResponse({cursorDataMock.getBackupCursorBatches(-1), Milliseconds()}))
+            ->expect(getMoreRequest,
+                     RemoteCommandResponse::make_forTest(cursorDataMock.getBackupCursorBatches(-1),
+                                                         Milliseconds()))
             .times(1);
         _mock->runUntilExpectationsSatisfied();
     }
@@ -732,8 +734,8 @@ protected:
                                                                    << "timestamp" << extendTo))));
         _mock
             ->expect(extendedBackupCursorRequest,
-                     RemoteCommandResponse(
-                         {cursorDataMock.getExtendedCursorBatches(cursorIndex), Milliseconds()}))
+                     RemoteCommandResponse::make_forTest(
+                         cursorDataMock.getExtendedCursorBatches(cursorIndex), Milliseconds()))
             .times(1);
         _mock->runUntilExpectationsSatisfied();
     }
@@ -743,7 +745,7 @@ protected:
             BSON("ok" << 1.0 << "optimes" << BSON("appliedOpTime" << BSON("ts" << appliedOpTime)));
         _mock
             ->expect(BSON("replSetGetStatus" << 1),
-                     RemoteCommandResponse({response, Milliseconds()}))
+                     RemoteCommandResponse::make_forTest(response, Milliseconds()))
             .times(1);
         if (run)
             _mock->runUntilExpectationsSatisfied();
@@ -754,7 +756,7 @@ protected:
         auto response = BSON("ok" << 0 << "code" << ErrorCodes::UnknownError);
         _mock
             ->expect(BSON("replSetGetStatus" << 1),
-                     RemoteCommandResponse({response, Milliseconds()}))
+                     RemoteCommandResponse::make_forTest(response, Milliseconds()))
             .times(1);
         _mock->runUntilExpectationsSatisfied();
     }
@@ -765,7 +767,8 @@ protected:
         auto response =
             BSON("ok" << 1.0 << "cursorsKilled" << BSON_ARRAY(cursorDataMock.backupCursorId));
 
-        _mock->expect(request, RemoteCommandResponse({response, Milliseconds()})).times(1);
+        _mock->expect(request, RemoteCommandResponse::make_forTest(response, Milliseconds()))
+            .times(1);
         _mock->runUntilExpectationsSatisfied();
     }
 
@@ -1317,10 +1320,10 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISSucceedsIfBothNodesAreNotUsingEncryp
     // The sync source does not have the encryptionAtRest field, which should not cause an error.
     // The local node is also not using the encrypted storage engine, so FCBIS should succeed.
     _mock->expect(BSON("serverStatus" << 1),
-                  RemoteCommandResponse({BSON("storageEngine" << BSON("name"
-                                                                      << "wiredTiger")
-                                                              << "ok" << 1),
-                                         Milliseconds()}));
+                  RemoteCommandResponse::make_forTest(BSON("storageEngine" << BSON("name"
+                                                                                   << "wiredTiger")
+                                                                           << "ok" << 1),
+                                                      Milliseconds()));
     _mock->runUntilExpectationsSatisfied();
 
     fileCopyBasedInitialSyncer->join();
@@ -1418,11 +1421,13 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfBackupCursorAlreadyOpen) {
     expectSuccessfulSyncSourceValidation();
     auto errorCode = 50886;
     _mock
-        ->expect(backupCursorRequest,
-                 RemoteCommandResponse(
-                     ErrorCodes::Error(errorCode),
-                     "The existing backup cursor must be closed before $backupCursor can succeed.",
-                     Milliseconds()))
+        ->expect(
+            backupCursorRequest,
+            RemoteCommandResponse::make_forTest(
+                Status(
+                    ErrorCodes::Error(errorCode),
+                    "The existing backup cursor must be closed before $backupCursor can succeed."),
+                Milliseconds()))
         .times(1);
 
     _mock->runUntilExpectationsSatisfied();
@@ -1449,9 +1454,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISFailsIfSyncSourceIsFsyncLocked) {
     auto errorCode = 50887;
     _mock
         ->expect(backupCursorRequest,
-                 RemoteCommandResponse(ErrorCodes::Error(errorCode),
-                                       "The node is currently fsyncLocked.",
-                                       Milliseconds()))
+                 RemoteCommandResponse::make_forTest(
+                     Status(ErrorCodes::Error(errorCode), "The node is currently fsyncLocked."),
+                     Milliseconds()))
         .times(1);
 
     _mock->runUntilExpectationsSatisfied();
@@ -1479,9 +1484,10 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISFailsIfBackupCursorCommandNotSupport
     auto errorCode = 40324;
     _mock
         ->expect(backupCursorRequest,
-                 RemoteCommandResponse(ErrorCodes::Error(errorCode),
-                                       "Unrecognized pipeline stage name: '$backupCursor'",
-                                       Milliseconds()))
+                 RemoteCommandResponse::make_forTest(
+                     Status(ErrorCodes::Error(errorCode),
+                            "Unrecognized pipeline stage name: '$backupCursor'"),
+                     Milliseconds()))
         .times(1);
 
     _mock->runUntilExpectationsSatisfied();
