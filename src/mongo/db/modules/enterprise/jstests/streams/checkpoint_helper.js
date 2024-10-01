@@ -119,6 +119,24 @@ export function flushUntilStopped(
 
         // Flush any committed checkpoints we haven't flushed already.
         const spCheckpointDir = `${checkpointBaseDir}/${tenantId}/${processorId}`;
+        let files = [];
+        try {
+            files = listFiles(spCheckpointDir);
+        } catch (e) {
+            let stats = db.runCommand(
+                {streams_getStats: '', tenantId: tenantId, name: name, verbose: true});
+            jsTestLog(`Hit exception in flushUntilStopped: ${tojson({
+                name: name,
+                tenantId: tenantId,
+                checkpointBaseDir: checkpointBaseDir,
+                alreadyFlushedCheckpointIds: alreadyFlushedCheckpointIds,
+                listStreamProcessors: result,
+                spCheckpointDir: spCheckpointDir,
+                stats: stats,
+                exception: e
+            })}`);
+            throw e;
+        }
         const checkpointIds =
             listFiles(spCheckpointDir)
                 .filter((e) => e.isDirectory)
