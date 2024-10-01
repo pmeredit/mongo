@@ -65,9 +65,10 @@ void GroupOperator::doProcessDocs(Window* window, std::vector<StreamDocument> st
             std::max(window->maxEventTimestampMs, streamDoc.maxEventTimestampMs);
 
         processor->accumulate(*groupIter, accumulatorArgs);
+
+        groupWindow->stats.numInputDocs++;
+        updateStats(window);
     }
-    groupWindow->stats.numInputDocs += streamDocs.size();
-    updateStats(window);
 }
 
 std::unique_ptr<WindowAwareOperator::Window> GroupOperator::doMakeWindow(Window baseState) {

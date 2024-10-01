@@ -53,9 +53,10 @@ void SortOperator::doProcessDocs(Window* window, std::vector<StreamDocument> str
             std::max(window->maxEventTimestampMs, streamDoc.maxEventTimestampMs);
 
         processor->add(sortKey, streamDoc.doc);
+
+        window->stats.numInputDocs++;
+        updateStats(window);
     }
-    window->stats.numInputDocs += streamDocs.size();
-    updateStats(window);
 }
 
 void SortOperator::doCloseWindow(Window* window) {

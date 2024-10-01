@@ -371,6 +371,7 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
             nextRecord->getField(WindowOperatorCheckpointRecord::kWindowEndFieldName).missing()) {
             // Ask the derived class to restore its window state for this record.
             doRestoreWindowState(window, std::move(*nextRecord));
+            updateStats(window);
             nextRecord = _context->checkpointStorage->getNextRecord(reader.get());
             tassert(8279706, "Expected window record.", nextRecord);
         }
@@ -386,7 +387,6 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
         tassert(8279709,
                 "Unexpected window end marker.",
                 windowEndMarker.getLong() == startTime.getLong());
-        updateStats(window);
     }
 }
 
@@ -523,7 +523,6 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
 }
 
 // Below method are for the $sessionWindow implementation.
-
 void WindowAwareOperator::onDataMsgSessionWindow(int32_t inputIdx,
                                                  StreamDataMsg dataMsg,
                                                  boost::optional<StreamControlMsg> controlMsg) {
