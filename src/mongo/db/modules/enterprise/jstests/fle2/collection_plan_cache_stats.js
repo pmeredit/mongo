@@ -18,7 +18,7 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-import {getPlanCacheKeyFromShape} from "jstests/libs/analyze_plan.js";
+import {getPlanCacheKeyFromShape} from "jstests/libs/query/analyze_plan.js";
 
 // Asserts the number of expected documents and cached plans are found.
 function assertDocumentAndPlanEntryCount(

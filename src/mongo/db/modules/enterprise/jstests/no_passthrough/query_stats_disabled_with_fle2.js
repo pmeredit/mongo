@@ -4,7 +4,7 @@
  */
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-import {getQueryStatsAggCmd, getQueryStatsFindCmd} from "jstests/libs/query_stats_utils.js";
+import {getQueryStatsAggCmd, getQueryStatsFindCmd} from "jstests/libs/query/query_stats_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 
