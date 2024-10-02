@@ -1,9 +1,8 @@
 /**
- * A simple case of sharded snapshot backup/restore where the backup was taken with a 'last-lts'
+ * A simple case of sharded PIT backup/restore where the backup was taken with a 'last-lts'
  * binary version.
  *
- * @tags: [backport_required_multiversion,
- *         requires_wiredtiger,
+ * @tags: [requires_wiredtiger,
  *         requires_persistence]
  */
 
@@ -14,5 +13,5 @@ import {
 
 let msg = new ShardedBackupRestoreTest(new NoopWorker(), {
               configShard: true
-          }).run({isPitRestore: false, isSelectiveRestore: false, backupBinaryVersion: "last-lts"});
+          }).run({isPitRestore: true, isSelectiveRestore: false, backupBinaryVersion: "last-lts"});
 assert.eq(msg, "Test succeeded.");
