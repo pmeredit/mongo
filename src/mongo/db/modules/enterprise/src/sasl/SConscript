@@ -153,6 +153,4 @@ elif not env.TargetOSIs("darwin"):
             "mongosaslservercommon",
             "mongosaslserversession",
         ],
-        # TODO(SERVER-95322) Remove sysdeps after converted to Bazel
-        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []) + env.get("MONGO_GSSAPI_LIB", []) + ["sasl2"],
     )

@@ -48,7 +48,6 @@ if not env.TargetOSIs("darwin"):
             "ldap_name_map",
             "ldap_query",
         ],
-        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
     )
 
 env.Program(
@@ -82,13 +81,4 @@ env.Program(
         "ldap_options_mongod",
         "ldap_query",
     ],
-    # TODO(SERVER-95322) Remove sys deps after converted to Bazel
-    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
-    + (
-        [
-            "winhttp" if env.TargetOSIs("windows") else "curl",
-        ]
-        if http_client == "on"
-        else []
-    ),
 )
