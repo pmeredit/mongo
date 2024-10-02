@@ -8,11 +8,11 @@
  * pre-populated pre-images collections and FCBIS restarts.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-import {assertDropAndRecreateCollection} from "jstests/libs/collection_drop_recreate.js";
-import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {
     getPreImagesCollection,
-} from "jstests/libs/query/change_stream_util.js";
+} from "jstests/libs/change_stream_util.js";
+import {assertDropAndRecreateCollection} from "jstests/libs/collection_drop_recreate.js";
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
