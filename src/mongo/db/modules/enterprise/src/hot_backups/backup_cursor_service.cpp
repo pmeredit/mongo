@@ -56,6 +56,14 @@ void populateMetadataFromCursor(
             continue;
         }
 
+        LOGV2_DEBUG(9538601,
+                    2,
+                    "Parsing catalog entry for backup",
+                    "catalogId"_attr = entry->catalogId,
+                    "ident"_attr = entry->ident,
+                    "indexIdents"_attr = entry->indexIdents,
+                    "md"_attr = entry->metadata->toBSON());
+
         NamespaceString nss = entry->metadata->nss;
 
         // Remove "system.buckets." from time-series collection namespaces since it is an internal
@@ -120,6 +128,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
             DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
     } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
         // The catalog was not part of a checkpoint yet, do nothing.
+        LOGV2_DEBUG(9538602, 2, "Cannot open a checkpoint cursor on the catalog");
     }
 
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
@@ -175,9 +184,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
                   "checkpointIdAfter"_attr = checkpointId,
                   "checkpointTimestampBefore"_attr = checkpointTimestamp,
                   "checkpointTimestampAfter"_attr = checkpointTimestampAfter);
-            uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
-                    "A checkpoint took place while opening a backup cursor.",
-                    false);
+            uasserted(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
+                      "A checkpoint took place while opening a backup cursor.");
         }
     }
 
