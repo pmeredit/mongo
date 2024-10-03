@@ -7,7 +7,7 @@
  * ]
  */
 import {kSafeContentField, runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
-import {isExpress} from "jstests/libs/analyze_plan.js";
+import {isExpress} from "jstests/libs/query/analyze_plan.js";
 import {
     matchExpressionFLETestCases
 } from "src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js";

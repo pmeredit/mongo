@@ -11,7 +11,7 @@
  * ]
  */
 import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
-import {getPlanStage} from "jstests/libs/analyze_plan.js";
+import {getPlanStage} from "jstests/libs/query/analyze_plan.js";
 
 const dbName = jsTestName();
 const dbTest = db.getSiblingDB(dbName);
