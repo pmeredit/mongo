@@ -52,7 +52,6 @@ using namespace repl;
 using namespace test::mock;
 
 using executor::NetworkInterfaceMock;
-using executor::RemoteCommandRequest;
 using executor::RemoteCommandResponse;
 using LockGuard = stdx::lock_guard<stdx::mutex>;
 
