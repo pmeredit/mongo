@@ -94,16 +94,23 @@ function getRestoreDirectory(processorId) {
     return util.getRestoreDirectory(util.latestCheckpointId);
 }
 
-function stopStreamProcessor(name, alreadyFlushedIds = []) {
+function stopStreamProcessor(name, alreadyFlushedIds = [], skipCheckpointFlush = false) {
     jsTestLog(`Stopping ${name}`);
     let result = db.runCommand({streams_listStreamProcessors: '', tenantId: TEST_TENANT_ID});
     assert.commandWorked(result);
     const processor = result.streamProcessors.filter(s => s.name == name)[0];
     assert(processor != null);
-    const processorId = processor.processorId;
-    let flushThread = new Thread(
-        flushUntilStopped, name, TEST_TENANT_ID, processorId, checkpointBaseDir, alreadyFlushedIds);
-    flushThread.start();
+    let flushThread = null;
+    if (!skipCheckpointFlush) {
+        const processorId = processor.processorId;
+        flushThread = new Thread(flushUntilStopped,
+                                 name,
+                                 TEST_TENANT_ID,
+                                 processorId,
+                                 checkpointBaseDir,
+                                 alreadyFlushedIds);
+        flushThread.start();
+    }
 
     let stopCmd = {
         streams_stopStreamProcessor: '',
@@ -201,7 +208,8 @@ function makeKafkaToMongoStartCmd({
     parseOnly = false,
     enableAutoCommit,
     consumerGroupId,
-    restoreDirectory = null
+    restoreDirectory = null,
+    ephemeral = false,
 }) {
     let topicNameForProcessorId;
     if (Array.isArray(topicName)) {
@@ -223,6 +231,7 @@ function makeKafkaToMongoStartCmd({
         },
         dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
         featureFlags: {useExecutionPlanFromCheckpoint: true},
+        ephemeral,
     };
     if (parseOnly) {
         options.parseOnly = true;
@@ -1223,7 +1232,7 @@ function writeToTopic(topicName, input) {
     stopStreamProcessor(startCmd.name);
 }
 
-function kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka) {
+function kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {enableAutoCommit, ephemeral} = {}) {
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
     const topicName = topicName1;
@@ -1231,7 +1240,8 @@ function kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka) {
     const consumerGroupId = "consumer-group-withEnableAutoCommit";
 
     // Start KafkaToMongo SP with default enableAutoCommit (true).
-    const startCmd = makeKafkaToMongoStartCmd({topicName, collName, consumerGroupId});
+    const startCmd = makeKafkaToMongoStartCmd(
+        {topicName, collName, consumerGroupId, enableAutoCommit, ephemeral});
     assert.commandWorked(db.runCommand(startCmd));
 
     const docsToInsert = [{a: 1}, {b: 1}, {c: 1}];
@@ -1265,7 +1275,11 @@ function kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka) {
         return res[0]?.current_offset == docsToInsert.length + additionalDocsCount;
     }, `waiting for current_offset == ${docsToInsert.length + additionalDocsCount}`);
 
-    stopStreamProcessor(startCmd.name);
+    if (ephemeral) {
+        stopStreamProcessor(startCmd.name, [], true /* skipCheckpoint */);
+    } else {
+        stopStreamProcessor(startCmd.name);
+    }
 }
 
 function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
@@ -2187,6 +2201,9 @@ runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka));
+runKafkaTest(kafka,
+             () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {enableAutoCommit: true}));
+runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {ephemeral: true}));
 runKafkaTest(kafka, kafkaStartAtEarliestTest);
 
 // offset lag in verbose stats

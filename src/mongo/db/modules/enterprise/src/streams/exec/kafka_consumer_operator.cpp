@@ -64,7 +64,7 @@ using namespace mongo;
 // and from KafkaConsumerOperator.
 std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
     std::string bootstrapServers,
-    boost::optional<std::string> consumerGroupId,
+    std::string consumerGroupId,
     bool shouldEnableAutoCommit,
     mongo::stdx::unordered_map<std::string, std::string> authConfig,
     RdKafka::ResolveCb* resolveCb,
@@ -91,13 +91,11 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
     setConf("topic.metadata.refresh.interval.ms", "-1");
 
     setConf("enable.auto.commit", "false");
-    if (consumerGroupId) {
-        setConf("group.id", *consumerGroupId);
+    setConf("group.id", consumerGroupId);
 
-        if (shouldEnableAutoCommit) {
-            setConf("enable.auto.commit", "true");
-            setConf("auto.commit.interval.ms", "500");
-        }
+    if (shouldEnableAutoCommit) {
+        setConf("enable.auto.commit", "true");
+        setConf("auto.commit.interval.ms", "500");
     }
 
     setConf("enable.auto.offset.store", "false");
@@ -462,7 +460,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     // Create KafkaPartitionConsumer instances from the checkpoint data.
     auto numPartitions = partitions.size();
     _consumers.reserve(numPartitions);
-    if (_options.consumerGroupId) {
+    if (_options.enableAutoCommit) {
         _partitionOffsets.reserve(numPartitions);
         _partitionOffsetsHolder.reserve(numPartitions);
     }
@@ -513,7 +511,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
                 *inputIdx, _watermarkCombiner.get(), watermark);
         }
 
-        if (_options.consumerGroupId) {
+        if (_options.enableAutoCommit) {
             std::unique_ptr<RdKafka::TopicPartition> tp{
                 RdKafka::TopicPartition::create(consumerInfo.topic, consumerInfo.partition)};
             _partitionOffsets.push_back(tp.get());
@@ -533,7 +531,7 @@ void KafkaConsumerOperator::initFromOptions() {
     // Create KafkaPartitionConsumer instances, one for each topic partition.
     auto numTopicPartitions = _topicPartitions.size();
     _consumers.reserve(numTopicPartitions);
-    if (_options.consumerGroupId) {
+    if (_options.enableAutoCommit) {
         _partitionOffsets.reserve(numTopicPartitions);
         _partitionOffsetsHolder.reserve(numTopicPartitions);
     }
@@ -563,7 +561,7 @@ void KafkaConsumerOperator::initFromOptions() {
             // idleness detection as it provides a baseline for subsequent events to compare to.
             consumerInfo.lastEventReadTimestamp = stdx::chrono::steady_clock::now();
         }
-        if (_options.consumerGroupId) {
+        if (_options.enableAutoCommit) {
             std::unique_ptr<RdKafka::TopicPartition> tp{
                 RdKafka::TopicPartition::create(consumerInfo.topic, consumerInfo.partition)};
             _partitionOffsets.push_back(tp.get());
@@ -662,7 +660,7 @@ void KafkaConsumerOperator::init() {
             std::make_unique<WatermarkCombiner>((int32_t)(_topicPartitions.size()));
     }
 
-    if (!_options.isTest && _options.consumerGroupId) {
+    if (!_options.isTest) {
         // _groupConsumer is not used to actually read messages.
         // It's used only for retrieving and committing offsets for a Kafka consumer group.
         _groupConsumer = createKafkaConsumer();
@@ -1334,9 +1332,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
 
     KafkaSourceCheckpointState state;
     state.setPartitions(std::move(partitions));
-    if (_options.consumerGroupId) {
-        state.setConsumerGroupId(StringData(*_options.consumerGroupId));
-    }
+    state.setConsumerGroupId(StringData(_options.consumerGroupId));
     _unflushedStateContainer.add(controlMsg.checkpointMsg->id, state.toBSON());
     LOGV2_INFO(77177,
                "KafkaConsumerOperator adding state to checkpoint",

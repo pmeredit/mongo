@@ -583,25 +583,22 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
         internalOptions.keyFormatError = config->getKeyFormatError();
     }
 
-    if (config && config->getGroupId()) {
+    auto groupIdDefined = config && config->getGroupId();
+    if (groupIdDefined) {
         internalOptions.consumerGroupId = std::string{*config->getGroupId()};
-    } else if (!_context->isEphemeral) {
-        // Only generate consumerGroupId for non-ephemeral SPs if not supplied.
+    } else {
         internalOptions.consumerGroupId =
             fmt::format("asp-{}-consumer", _context->streamProcessorId);
     }
     _context->kafkaConsumerGroup = internalOptions.consumerGroupId;
 
     auto enableAutoCommitDefined = config && config->getEnableAutoCommit();
-    if (internalOptions.consumerGroupId) {
+    if (_context->isEphemeral && !groupIdDefined) {
+        internalOptions.enableAutoCommit =
+            (enableAutoCommitDefined) ? *config->getEnableAutoCommit() : false;
+    } else {
         internalOptions.enableAutoCommit =
             (enableAutoCommitDefined) ? *config->getEnableAutoCommit() : true;
-    } else {
-        internalOptions.enableAutoCommit = false;
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot set enable_auto_commit for ephemeral processors when consumer group ID has "
-                "not been specified.",
-                !(enableAutoCommitDefined && *config->getEnableAutoCommit()));
     }
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;

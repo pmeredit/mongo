@@ -705,7 +705,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         // Get the state from checkpoint1 and verify each partitions offset.
         auto state1 = getStateFromCheckpoint(checkpointId1, source->getOperatorId());
         ASSERT_TRUE(state1.getConsumerGroupId());
-        ASSERT_EQ(*source->getOptions().consumerGroupId, *state1.getConsumerGroupId());
+        ASSERT_EQ(source->getOptions().consumerGroupId, *state1.getConsumerGroupId());
         ASSERT_EQ(partitionCount, state1.getPartitions().size());
         for (int32_t partition = 0; partition < partitionCount; ++partition) {
             auto& partitionState = state1.getPartitions()[partition];
@@ -746,7 +746,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         int64_t docsSentFromOffsets{0};
         auto state2 = getStateFromCheckpoint(checkpointId2, source->getOperatorId());
         ASSERT_TRUE(state2.getConsumerGroupId());
-        ASSERT_EQ(*source->getOptions().consumerGroupId, *state2.getConsumerGroupId());
+        ASSERT_EQ(source->getOptions().consumerGroupId, *state2.getConsumerGroupId());
         ASSERT_EQ(partitionCount, state2.getPartitions().size());
         for (int32_t partition = 0; partition < partitionCount; ++partition) {
             docsSentFromOffsets += state2.getPartitions()[partition].getOffset() -

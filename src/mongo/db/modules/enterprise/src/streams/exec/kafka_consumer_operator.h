@@ -67,7 +67,7 @@ public:
         // user on creation, then an auto-generated one will be used (when the stream is not
         // ephemeral) which will look like: `asp-{streamProcessorId}-consumer` . On checkpoint
         // restoration, the consumer group ID stored on the checkpoint will be used.
-        boost::optional<std::string> consumerGroupId;
+        std::string consumerGroupId;
         // This represents the partitions for each topic. When it is not provided, we fetch it from
         // the kafka cluster. Currently, this is only provided when FakeKafkaPartitionConsumer is
         // used (i.e. in unittests).
@@ -168,7 +168,7 @@ private:
             // Sleep duration after Kafka api calls fail.
             mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
             std::string bootstrapServers;
-            boost::optional<std::string> consumerGroupId;
+            std::string consumerGroupId;
             mongo::stdx::unordered_map<std::string, std::string> authConfig;
             boost::optional<std::string> gwproxyEndpoint;
             boost::optional<std::string> gwproxyKey;
