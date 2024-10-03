@@ -65,6 +65,7 @@ env.Library(
         "kafka_partition_consumer.cpp",
         "kafka_partition_consumer_base.cpp",
         "kafka_resolve_callback.cpp",
+        "kafka_utils.cpp",
         "log_dead_letter_queue.cpp",
         "log_sink_operator.cpp",
         "log_util.cpp",
