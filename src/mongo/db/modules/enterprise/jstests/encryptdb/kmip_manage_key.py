@@ -2,7 +2,6 @@ import argparse
 import logging
 import sys
 from kmip.core.enums import (
-    AttributeType,
     CryptographicAlgorithm,
     RevocationReasonCode,
     State,

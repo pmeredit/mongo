@@ -1,6 +1,5 @@
 import os
 import os.path
-import SCons.Script.Main
 
 
 def configure(conf, env):

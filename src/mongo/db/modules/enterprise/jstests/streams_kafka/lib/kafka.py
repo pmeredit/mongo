@@ -13,10 +13,9 @@ from pathlib import Path
 import re
 import socket
 import subprocess
-import sys
 import time
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 LOGGER = logging.getLogger(__name__)
 DOCKER = "docker"

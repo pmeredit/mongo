@@ -8,7 +8,6 @@ import uuid
 import logging
 import os
 import sys
-from typing import List
 
 import boto3
 import botocore.session

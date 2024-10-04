@@ -19,11 +19,8 @@ import argparse
 import http.server
 import json
 import logging
-import socketserver
-import sys
 import urllib
 
-import oidc_vars_gen
 
 jwk_map = {}
 

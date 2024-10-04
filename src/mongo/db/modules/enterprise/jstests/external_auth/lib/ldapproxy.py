@@ -19,7 +19,6 @@ from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
 from ldaptor.protocols.ldap.proxybase import ProxyBase
 from ldaptor.protocols.pureldap import LDAPSearchRequest, LDAPResult, LDAPFilter_equalityMatch
 from twisted.internet import defer, protocol, reactor, ssl, task
-from twisted.internet.endpoints import serverFromString, clientFromString, connectProtocol
 from twisted.python import log, usage
 from functools import partial
 import sys

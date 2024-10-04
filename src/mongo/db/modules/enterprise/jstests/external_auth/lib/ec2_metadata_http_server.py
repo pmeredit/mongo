@@ -2,15 +2,10 @@
 """Mock AWS EC2 Metadata Endpoint."""
 
 import argparse
-import collections
-import base64
 import http.server
-import json
 import logging
-import socketserver
 import sys
 import urllib.parse
-import ssl
 
 import aws_common
 

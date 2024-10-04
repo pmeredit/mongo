@@ -2,17 +2,12 @@
 """Mock AWS STS Endpoint."""
 
 import argparse
-import base64
-import collections
 import http.server
-import json
 import logging
-import socketserver
 import sys
 import urllib.parse
-import ssl
 
-from botocore.auth import SigV4Auth, S3SigV4Auth
+from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 

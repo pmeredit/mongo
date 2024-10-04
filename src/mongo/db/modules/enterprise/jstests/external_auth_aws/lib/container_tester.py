@@ -8,17 +8,12 @@ Assumes remote host is Linux
 
 import argparse
 import datetime
-import json
 import logging
 import os
 import pprint
-import re
 import subprocess
-import sys
-import threading
 import time
 import uuid
-from typing import List
 
 import boto3
 import botocore

@@ -1,8 +1,5 @@
 # -*- mode: python; -*-
 
-import SCons
-
-from libdeps_tool import deptype
 
 Import("env")
 Import("ssl_provider")

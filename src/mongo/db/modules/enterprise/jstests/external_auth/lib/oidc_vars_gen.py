@@ -26,13 +26,10 @@ payloads:                           # Sequence(optional) Top-level field contain
 import argparse
 from Cheetah.Template import Template
 import base64
-import bson
-import json
-import jwt
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import yaml
 
 ENTERPRISE = "src/mongo/db/modules/enterprise/"

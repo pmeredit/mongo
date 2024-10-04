@@ -2,12 +2,8 @@
 """Mock AWS ECS Metadata Endpoint."""
 
 import argparse
-import collections
-import base64
 import http.server
-import json
 import logging
-import socketserver
 import sys
 import urllib.parse
 

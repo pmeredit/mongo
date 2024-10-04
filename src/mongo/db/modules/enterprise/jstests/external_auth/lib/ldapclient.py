@@ -10,7 +10,7 @@ from twisted.python import log, usage
 from ldaptor import delta
 from ldaptor.protocols.ldap.ldapclient import LDAPClient
 from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
-from ldaptor.protocols import pureber, pureldap
+from ldaptor.protocols import pureldap
 
 
 class Options(usage.Options):

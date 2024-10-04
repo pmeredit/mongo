@@ -6,7 +6,6 @@ Script for setting up a local GWProxy container using docker.
 import argparse
 import base64
 import boto3
-from io import StringIO
 import logging
 import os
 from pathlib import Path
@@ -16,7 +15,7 @@ import sys
 import time
 from botocore.credentials import InstanceMetadataProvider, InstanceMetadataFetcher
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
 LOGGER = logging.getLogger(__name__)
 DOCKER = "docker"
