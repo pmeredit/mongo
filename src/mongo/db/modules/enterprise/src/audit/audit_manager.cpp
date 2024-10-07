@@ -56,35 +56,7 @@ void AuditManager::setAuditAuthorizationSuccess(bool val) {
     _config->auditAuthorizationSuccess.store(val);
 }
 
-AuditManager::OIDorLogicalTime AuditManager::parseGenerationOrTimestamp(
-    const AuditConfigDocument& config) {
-    auto generation = config.getGeneration();
-    auto timestamp = config.getClusterParameterTime();
-    if (generation) {
-        uassert(ErrorCodes::BadValue,
-                "Cannot set both generation and timestamp on AuditConfigDocument",
-                !timestamp);
-        return *generation;
-    } else if (timestamp) {
-        return *timestamp;
-    } else {
-        return std::monostate();
-    }
-}
-
-void AuditManager::setConfiguration(Client* client,
-                                    const AuditConfigDocument& config,
-                                    const ServerGlobalParams::FCVSnapshot& fcvSnapshot) {
-    auto inferredFormat =
-        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(fcvSnapshot)
-        ? AuditConfigFormat::WithTimestamp
-        : AuditConfigFormat::WithGeneration;
-    return setConfigurationUsingFormatIfNotSet(client, config, inferredFormat);
-}
-
-void AuditManager::setConfigurationUsingFormatIfNotSet(Client* client,
-                                                       const AuditConfigDocument& config,
-                                                       AuditConfigFormat format) {
+void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& config) {
     uassert(ErrorCodes::RuntimeAuditConfigurationNotEnabled,
             "Unable to update runtime audit configuration when it has not been enabled",
             _enabled && _runtimeConfiguration);
@@ -96,50 +68,30 @@ void AuditManager::setConfigurationUsingFormatIfNotSet(Client* client,
 
     // auditConfigure events are always emitted, regardless of filter settings.
     auto interface = AuditInterface::get(client->getServiceContext());
-    interface->logConfigEvent(client, config, format);
+    interface->logConfigEvent(client, config);
 
     // Swap in the new configuration.
     auto newConfig = std::make_shared<RuntimeConfiguration>();
     newConfig->filterBSON = std::move(filterBSON);
     newConfig->filter = std::move(filter);
     newConfig->auditAuthorizationSuccess.store(config.getAuditAuthorizationSuccess());
-    newConfig->generationOrTimestamp = parseGenerationOrTimestamp(config);
+    newConfig->timestamp = config.getClusterParameterTime();
 
     std::atomic_exchange(&_config, newConfig);  // NOLINT
     LOGV2(5497401, "Updated runtime audit configuration", "config"_attr = config);
 }
 
-AuditConfigDocument AuditManager::getAuditConfigUsingFormatIfNotSet(
-    AuditConfigFormat format) const {
+AuditConfigDocument AuditManager::getAuditConfig() const {
     // Snapshot configuration at a point in time.
     auto current = std::atomic_load(&_config);
 
     AuditConfigDocument config;
-    visit(OverloadedVisitor{[&](std::monostate) {
-                                if (format == AuditConfigFormat::WithTimestamp) {
-                                    config.setClusterParameterTime(LogicalTime::kUninitialized);
-                                } else {
-                                    config.setGeneration(OID());
-                                }
-                            },
-                            [&](const OID& oid) { config.setGeneration(oid); },
-                            [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
-          current->generationOrTimestamp);
+    config.setClusterParameterTime(current->timestamp);
     config.setFilter(current->filterBSON.getOwned());
     config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
 
     return config;
 }
-
-AuditConfigDocument AuditManager::getAuditConfig(
-    const ServerGlobalParams::FCVSnapshot& fcvSnapshot) const {
-    auto inferredFormat =
-        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(fcvSnapshot)
-        ? AuditConfigFormat::WithTimestamp
-        : AuditConfigFormat::WithGeneration;
-    return getAuditConfigUsingFormatIfNotSet(inferredFormat);
-}
-
 std::unique_ptr<MatchExpression> AuditManager::parseFilter(BSONObj filter) {
     invariant(filter.isOwned());
     // We pass in a null OperationContext pointer here, since we do not have access to an
@@ -308,31 +260,11 @@ void AuditManager::initialize(const moe::Environment& params) {
     _initializeAuditLog(params);
 }
 
-void AuditManager::resetConfiguration(Client* client,
-                                      const ServerGlobalParams::FCVSnapshot& fcvSnapshot) {
+void AuditManager::resetConfiguration(Client* client) {
     if (_enabled && _runtimeConfiguration) {
-        setConfiguration(client, {{}, false /* auditAuthorizationSuccess */}, fcvSnapshot);
+        setConfiguration(client,
+                         {{}, false /* auditAuthorizationSuccess */, LogicalTime::kUninitialized});
     }
-}
-
-void AuditManager::resetConfigurationUsingFormatIfNotSet(Client* client, AuditConfigFormat format) {
-    if (_enabled && _runtimeConfiguration) {
-        setConfigurationUsingFormatIfNotSet(
-            client, {{}, false /* auditAuthorizationSuccess */}, format);
-    }
-}
-
-OID AuditManager::getConfigGeneration() const {
-    return visit(OverloadedVisitor{[](std::monostate) { return OID(); },
-                                   [](const OID& oid) { return oid; },
-                                   [](const LogicalTime& time) {
-                                       // This rare case occurs when we receive a
-                                       // getAuditConfigGeneration during FCV downgrade, after
-                                       // we have set the FCV version to transitional but
-                                       // before we have done anything to the audit config.
-                                       return OID();
-                                   }},
-                 getConfig()->generationOrTimestamp);
 }
 
 const AuditEncryptionCompressionManager* AuditManager::getAuditEncryptionCompressionManager() {

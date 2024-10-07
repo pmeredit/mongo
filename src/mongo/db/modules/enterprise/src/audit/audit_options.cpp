@@ -86,10 +86,9 @@ void AuditConfigParameter::append(OperationContext*,
                                   StringData name,
                                   const boost::optional<TenantId>&) {
     b->append("_id"_sd, kAuditConfigParameter);
-    b->append(name,
-              getGlobalAuditManager()
-                  ->getAuditConfigUsingFormatIfNotSet(AuditConfigFormat::WithTimestamp)
-                  .toBSON());
+
+    BSONObjBuilder configBuilder(b->subobjStart(name));
+    getGlobalAuditManager()->getAuditConfig().serialize(&configBuilder);
 }
 
 Status AuditConfigParameter::set(const BSONElement& newValueElement,
@@ -97,8 +96,7 @@ Status AuditConfigParameter::set(const BSONElement& newValueElement,
     AuditConfigDocument newDoc =
         AuditConfigDocument::parse(IDLParserContext("auditConfigDocument"), newValueElement.Obj());
 
-    getGlobalAuditManager()->setConfigurationUsingFormatIfNotSet(
-        Client::getCurrent(), newDoc, AuditConfigFormat::WithTimestamp);
+    getGlobalAuditManager()->setConfiguration(Client::getCurrent(), newDoc);
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
@@ -122,21 +120,14 @@ Status AuditConfigParameter::validate(const BSONElement& newValueElement,
 }
 
 Status AuditConfigParameter::reset(const boost::optional<TenantId>&) try {
-    getGlobalAuditManager()->resetConfigurationUsingFormatIfNotSet(
-        Client::getCurrent(), AuditConfigFormat::WithTimestamp);
+    getGlobalAuditManager()->resetConfiguration(Client::getCurrent());
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
 LogicalTime AuditConfigParameter::getClusterParameterTime(const boost::optional<TenantId>&) const {
-    auto cpt = getGlobalAuditManager()
-                   ->getAuditConfigUsingFormatIfNotSet(AuditConfigFormat::WithTimestamp)
-                   .getClusterParameterTime();
-    if (!cpt) {
-        return LogicalTime::kUninitialized;
-    }
-    return *cpt;
+    return getGlobalAuditManager()->getAuditConfig().getClusterParameterTime();
 }
 
 }  // namespace audit

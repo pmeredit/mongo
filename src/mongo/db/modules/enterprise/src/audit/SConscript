@@ -34,7 +34,6 @@ env.Library(
     target="audit_mongod",
     source=[
         "audit_mongod.cpp",
-        "audit_op_observer.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/auth/auth",
@@ -51,34 +50,12 @@ env.Library(
         "$BUILD_DIR/mongo/s/write_ops/batch_write_types",
         "audit_enc_comp_manager",
         "audit_enterprise",
-        "audit_synchronize_job",
-    ],
-)
-
-env.Library(
-    # We need to reverse link audit_mongod_impl into mongod,
-    # but audit_op_observer_test needs a forward link into it.
-    # Meanwhile, scons doesn't like that.
-    # So we use this proxy to link the mongod implementation back.
-    target="audit_mongod_proxy",
-    source=[
-        # macOS will refuse to link this proxy without source files.
-        # Windows will "succeed", but produce no output .lib.
-        # Work around this by declaring a dummy TU with a symbol.
-        "audit_mongod_proxy.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "audit_mongod",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
     ],
 )
 
 env.CppUnitTest(
     target="audit_test",
     source=[
-        "audit_op_observer_test.cpp",
         "audit_enc_comp_manager_test.cpp",
         "audit_file_header_test.cpp",
         "audit_key_manager_test.cpp",

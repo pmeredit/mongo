@@ -33,24 +33,7 @@ imports:
     - "mongo/db/basic_types.idl"
     - "audit/audit_config.idl"
 
-structs:
-    GetAuditConfigGenerationReply:
-        description: "Reply to _getAuditConfigGeneration command"
-        strict: false
-        fields:
-            generation: objectid
-
 commands:
-    getAuditConfigGeneration:
-        description: "Internal Command. Query the current audit config generation"
-        command_name: _getAuditConfigGeneration
-        cpp_name: GetAuditConfigGenerationCommand
-        namespace: ignored
-        api_version: ""
-        strict: true
-        reply_type: GetAuditConfigGenerationReply
-        fields: {}
-
     getAuditConfig:
         description: "Returns the current audit configuration"
         command_name: getAuditConfig

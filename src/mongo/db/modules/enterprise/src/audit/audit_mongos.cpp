@@ -52,41 +52,6 @@ struct SetAuditConfigCmd {
 };
 MONGO_REGISTER_COMMAND(AuditConfigCmd<SetAuditConfigCmd>).forRouter();
 
-struct GetAuditConfigGenerationCmd {
-    using Request = GetAuditConfigGenerationCommand;
-    using Reply = GetAuditConfigGenerationReply;
-    static constexpr StringData kUnauthorizedMessage =
-        "Not authorized to read audit configuration"_sd;
-    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
-    static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
-        // (Ignore FCV check): This check is on mongos so we expect to ignore FCV here.
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCVUnsafe()) {
-            // Forward the command to the config server, as we are unsure of whether the feature
-            // flag is active on the cluster.
-            auto response = uassertStatusOK(
-                Grid::get(opCtx)
-                    ->shardRegistry()
-                    ->getConfigShard()
-                    ->runCommandWithFixedRetryAttempts(
-                        opCtx,
-                        ReadPreferenceSetting(ReadPreference::PrimaryOnly),
-                        cmd.getDbName(),
-                        CommandHelpers::filterCommandRequestForPassthrough(cmd.toBSON()),
-                        Milliseconds(defaultConfigCommandTimeoutMS.load()),
-                        Shard::RetryPolicy::kIdempotent));
-
-            uassertStatusOK(response.commandStatus);
-            BSONObjBuilder result;
-            CommandHelpers::filterCommandReplyForPassthrough(response.response, &result);
-            return Reply::parse(IDLParserContext{"GetAuditConfigGenerationReply"},
-                                result.obj().removeField("ok"_sd));
-        }
-        // Grab generation locally
-        return Reply(getGlobalAuditManager()->getConfigGeneration());
-    }
-};
-MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigGenerationCmd>).forRouter();
-
 struct GetAuditConfigCmd {
     using Request = GetAuditConfigCommand;
     using Reply = AuditConfigDocument;
@@ -94,19 +59,9 @@ struct GetAuditConfigCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
-        // (Generic FCV reference): We use the latest FCV to determine the default format for the
-        // audit config, since we don't have the cluster FCV.
-        static const auto fixedFcvSnapshot =
-            ServerGlobalParams::FCVSnapshot(multiversion::GenericFCV::kLatest);
-        // (Ignore FCV check): This check is on mongos so we expect to ignore FCV here.
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCVUnsafe()) {
-            // If the feature flag is enabled, we refresh our audit configuration. If FCV is high
-            // enough that the feature flag is active on the cluster, the in-memory audit config
-            // will be updated by this refresh. Otherwise, we will be refreshing the audit config
-            // with the auditSynchronizeJob, so we can just return the in-memory state here.
-            uassertStatusOK(ClusterServerParameterRefresher::get(opCtx)->refreshParameters(opCtx));
-        }
-        return getGlobalAuditManager()->getAuditConfig(fixedFcvSnapshot);
+        // Refresh cluster parameters to get the latest audit config.
+        uassertStatusOK(ClusterServerParameterRefresher::get(opCtx)->refreshParameters(opCtx));
+        return getGlobalAuditManager()->getAuditConfig();
     }
 };
 MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>).forRouter();
