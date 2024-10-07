@@ -30,6 +30,10 @@
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
+// Increase oplog size to prevent the test from truncating the oplog during our replica set
+// consistency checks, which can result in CappedPositionLost errors.
+const oplogSizeMB = 1000;
+
 const rst = new ReplSetTest({
     nodes: [
         {},
@@ -40,7 +44,8 @@ const rst = new ReplSetTest({
                 votes: 0,
             },
         },
-    ]
+    ],
+    oplogSize: oplogSizeMB,
 });
 rst.startSet();
 rst.initiate();
