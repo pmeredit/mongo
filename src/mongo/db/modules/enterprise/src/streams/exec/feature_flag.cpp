@@ -140,6 +140,12 @@ const FeatureFlagDefinition FeatureFlags::kExternalAPIRateLimitPerSecond{
     "Specifies rate limit to be used by $externalAPI",
     mongo::Value::createIntOrLong(10L * 1000)};
 
+const FeatureFlagDefinition FeatureFlags::kUseWatchToInitClusterChangestream{
+    "useWatchToInitClusterChangestream",
+    "If true, use a dummy session and watch command to get the operationTime to initialize a "
+    "whole-cluster change stream $source",
+    mongo::Value(true)};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},

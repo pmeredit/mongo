@@ -43,5 +43,7 @@ private:
 };
 
 int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags);
+bool shouldUseWatchToInitClusterChangestream(
+    boost::optional<StreamProcessorFeatureFlags> featureFlags);
 
 }  // namespace streams

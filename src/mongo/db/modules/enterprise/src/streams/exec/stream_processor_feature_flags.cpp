@@ -54,4 +54,11 @@ int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featur
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kMaxQueueSizeBytes).getInt();
 }
 
+bool shouldUseWatchToInitClusterChangestream(
+    boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(8748201, "Feature flags should be set", featureFlags);
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kUseWatchToInitClusterChangestream)
+                .getBool();
+}
+
 }  // namespace streams

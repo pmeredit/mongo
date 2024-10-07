@@ -4,12 +4,6 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
-#include "mongo/base/error_codes.h"
-#include "mongo/bson/bsontypes.h"
-#include "mongo/db/pipeline/document_source_change_stream_gen.h"
-#include "mongo/db/pipeline/resume_token.h"
-#include "mongo/idl/idl_parser.h"
-#include "streams/exec/message.h"
 #include "streams/util/exception.h"
 #include <boost/optional/optional.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
@@ -25,11 +19,16 @@
 #include <mutex>
 #include <variant>
 
+#include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/bsontypes.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "mongo/db/pipeline/resume_token.h"
+#include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
@@ -38,8 +37,10 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/log_util.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 
@@ -66,14 +67,36 @@ static constexpr char kErrorCodeFieldName[] = "code";
 
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
-mongo::Timestamp getLatestOplogTime(mongocxx::database* database, mongocxx::client* client) {
+mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
+                                    mongocxx::client* client,
+                                    bool shouldUseWatchToInitClusterChangestream) {
+    if (!database && shouldUseWatchToInitClusterChangestream) {
+        // When targetting a whole cluster change stream, use a client_session
+        // and dummy watch call to get an initial clusterTime. Prior to this, we were
+        // calling hello on the config database, which requires Atlas Admin privileges for Atlas
+        // clusters.
+        mongocxx::client_session session{client->start_session()};
+        mongocxx::options::change_stream options;
+        auto cursor = std::make_unique<mongocxx::change_stream>(client->watch(session, options));
+        auto response = session.cluster_time();
+        auto clusterTime = response.find("clusterTime");
+        uassert(8748304,
+                "Expected an clusterTime in the response. Is the change stream $source a replset?",
+                clusterTime != response.end());
+        uassert(8748305,
+                "Expected a clusterTime timestamp field.",
+                clusterTime->type() == bsoncxx::type::k_timestamp);
+        auto timestamp = clusterTime->get_timestamp();
+        return {timestamp.timestamp, timestamp.increment};
+    }
+
     // Run the hello command to test the connection and retrieve the current operationTime.
     // A failure will throw an exception.
     bsoncxx::document::value helloResponse{bsoncxx::document::view()};
-
     auto helloRequest = make_document(kvp("hello", "1"));
-
     if (database) {
+        // TODO(SERVER-95515): Remove this block once shouldUseWatchToInitClusterChangestream
+        // feature flag is removed.
         helloResponse = database->run_command(std::move(helloRequest));
     } else {
         // Use the config database because the driver requires us to call run_command under a
@@ -85,7 +108,7 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database, mongocxx::clie
     auto operationTime = helloResponse.find("operationTime");
     // With Atlas sources, we don't expect to hit this.
     uassert(8748300,
-            "Expected an operationTime in the response. Is the changestream $source a replset?",
+            "Expected an operationTime in the response. Is the change stream $source a replset?",
             operationTime != helloResponse.end());
     uassert(8308700,
             "Expected an operationTime timestamp field.",
@@ -275,7 +298,9 @@ void ChangeStreamSourceOperator::connectToSource() {
 
     if (!_state.getStartingPoint()) {
         _state.setStartingPoint(std::variant<mongo::BSONObj, mongo::Timestamp>(
-            getLatestOplogTime(_database.get(), _client.get())));
+            getLatestOplogTime(_database.get(),
+                               _client.get(),
+                               shouldUseWatchToInitClusterChangestream(_context->featureFlags))));
     }
 
     // Establish our change stream cursor.
