@@ -476,6 +476,9 @@ function mongoToKafkaToMongo({
         assert.eq('ChangeStreamConsumerOperator', mongoSourceStats.name);
     }
 
+    jsTestLog(`Stats for: ${kafkaToMongoName}, ${tojson(getStats(kafkaToMongoName))}`);
+    jsTestLog(`Stats for: ${mongoToKafkaName}, ${tojson(getStats(mongoToKafkaName))}`);
+
     // Stop the streamProcessors.
     stopStreamProcessor(kafkaToMongoName);
     stopStreamProcessor(mongoToKafkaName);
@@ -531,6 +534,11 @@ function resumeFromCheckpointVersion2(numPartitions) {
         let statsResult = getStats(kafkaToMongoName);
         jsTestLog("statsResult *********");
         jsTestLog(statsResult);
+        // Verify the expected message counts in the stats response.
+        // These are restored from the checkpoint.
+        assert.eq(10000, statsResult.inputMessageCount);
+        assert.eq(10000, statsResult.outputMessageCount);
+        assert.eq(0, statsResult.dlqMessageCount);
 
         if (!Object.hasOwn(statsResult, 'kafkaPartitions')) {
             return false;
@@ -618,6 +626,10 @@ function resumeFromCheckpointVersion3(numPartitions) {
     // by a SP that had started using the new syntax and so cannot be rolled back.
     assert.eq(manifest['metadata']['executionPlan'][0]['$source']['topic'], 'outputTopic1');
 
+    // there should not be a summaryStats or pipelineVersion field
+    assert(!manifest['metadata'].hasOwnProperty('summaryStats'));
+    assert(!manifest['metadata'].hasOwnProperty('pipelineVersion'));
+
     // some other misc sanity checks.
     assert.eq(manifest['metadata']['checkpointId'], chkptId);
     assert.eq(manifest['metadata']['operatorStats'][0]['stats']['name'], 'KafkaConsumerOperator');
@@ -656,6 +668,11 @@ function resumeFromCheckpointVersion3(numPartitions) {
         let statsResult = getStats(kafkaToMongoName);
         jsTestLog("statsResult *********");
         jsTestLog(statsResult);
+        // Verify the expected message counts in the stats response.
+        // These are restored from the checkpoint.
+        assert.eq(10000, statsResult.inputMessageCount);
+        assert.eq(10000, statsResult.outputMessageCount);
+        assert.eq(0, statsResult.dlqMessageCount);
 
         if (!Object.hasOwn(statsResult, 'kafkaPartitions')) {
             return false;
@@ -690,6 +707,111 @@ function resumeFromCheckpointVersion3(numPartitions) {
 
         return true;
     }, "checking kafkaPartition states of resumed from checkpoint", 90000, 1000);
+
+    // Stop the streamProcessor.
+    stopStreamProcessor(kafkaToMongoName);
+}
+
+// test that we can resume from a v4 checkpoint
+function resumeFromCheckpointVersion4(numPartitions) {
+    assert.eq(numPartitions, 12);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName, 0);
+    // Cleanup the source collection.
+    sourceColl1.drop();
+
+    // Now the Kafka topic exists, and it has at least count events in it.
+    // Start kafkaToMongo, but set it up to resume from a previously taken checkpoint
+    const kafkaToMongoProcessorId = `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`;
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, TEST_TENANT_ID, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
+
+    // This is the stored checkpoint with version4 that we will resume from
+    const chkptId = "1728399161398";
+    const srcDir =
+        "src/mongo/db/modules/enterprise/jstests/streams_kafka/data/resume_test/checkpointVer4/" +
+        chkptId;
+
+    // sanity check to make sure that the checkpoint we are reading from is indeed a ver 4
+    // checkpoint eslint-disable-next-line
+    let manifest = _readDumpFile(srcDir + "/manifest.bson");
+    manifest = manifest[0];
+    assert.eq(manifest['version'], 4);
+
+    // sanity check to make sure that in the execution plan, the $source option has the topic
+    // specified as a string. If topic is in an array format, that means this checkpoint was taken
+    // by a SP that had started using the new syntax and so cannot be rolled back.
+    assert.eq(manifest['metadata']['executionPlan'][0]['$source']['topic'], 'outputTopic1');
+
+    // there should be a summaryStats and pipelineVersion field
+    assert(manifest['metadata'].hasOwnProperty('summaryStats'));
+    assert(manifest['metadata'].hasOwnProperty('pipelineVersion'));
+
+    // some other misc sanity checks.
+    assert.eq(manifest['metadata']['checkpointId'], chkptId);
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['name'], 'KafkaConsumerOperator');
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['inputDocs'], 10000);
+    assert.eq(manifest['metadata']['operatorStats'][0]['stats']['outputDocs'], 10000);
+
+    const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
+    mkdir(destDir);
+    // eslint-disable-next-line
+    copyDir(srcDir, destDir);
+
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        topicName: topicName1,
+        collName: sinkColl1.getName(),
+        restoreDirectory: checkpointUtils.getRestoreDirectory(chkptId),
+    });
+
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+
+    // Make sure that the useExecutionPlanFromCheckpoint feature flag is set to true. This
+    // ensures that the current code is indeed parsing the pipeline from the checkpoint instead
+    // of using the pipeline from the start request's options (where we will not have the array of
+    // topics syntax)
+    assert.soon(() => {
+        let result = db.runCommand({
+            streams_testOnlyGetFeatureFlags: '',
+            tenantId: TEST_TENANT_ID,
+            name: kafkaToMongoName
+        });
+        return (result.featureFlags.hasOwnProperty("useExecutionPlanFromCheckpoint") &&
+                result.featureFlags['useExecutionPlanFromCheckpoint'] == true);
+    });
+
+    let statsResult = getStats(kafkaToMongoName);
+    jsTestLog("statsResult *********");
+    jsTestLog(statsResult);
+    // Verify the expected message counts in the stats response.
+    // These are restored from the checkpoint.
+    assert.eq(10000, statsResult.inputMessageCount);
+    assert.eq(10000, statsResult.outputMessageCount);
+    assert.eq(0, statsResult.dlqMessageCount);
+
+    assert(Object.hasOwn(statsResult, 'kafkaPartitions'));
+
+    let kafkaPartitions = statsResult["kafkaPartitions"];
+    assert.eq(kafkaPartitions.length, 12);
+    for (let partition = 0; partition < 12; partition += 1) {
+        assert.eq("outputTopic1", kafkaPartitions[0].topic);
+        assert.eq(partition, kafkaPartitions[partition].partition);
+    }
+
+    // Verify the offsets in the stats (from the restore checkpoint).
+    assert.eq(4223, kafkaPartitions[0].currentOffset);
+    assert.eq(0, kafkaPartitions[1].currentOffset);
+    assert.eq(0, kafkaPartitions[2].currentOffset);
+    assert.eq(0, kafkaPartitions[3].currentOffset);
+    assert.eq(1, kafkaPartitions[4].currentOffset);
+    assert.eq(0, kafkaPartitions[5].currentOffset);
+    assert.eq(0, kafkaPartitions[6].currentOffset);
+    assert.eq(0, kafkaPartitions[7].currentOffset);
+    assert.eq(0, kafkaPartitions[8].currentOffset);
+    assert.eq(5776, kafkaPartitions[9].currentOffset);
+    assert.eq(1, kafkaPartitions[10].currentOffset);
+    assert.eq(0, kafkaPartitions[11].currentOffset);
 
     // Stop the streamProcessor.
     stopStreamProcessor(kafkaToMongoName);
@@ -2172,6 +2294,7 @@ runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 
 runKafkaTest(kafka, () => resumeFromCheckpointVersion2(12), 12);
 runKafkaTest(kafka, () => resumeFromCheckpointVersion3(12), 12);
+runKafkaTest(kafka, () => resumeFromCheckpointVersion4(12), 12);
 
 runKafkaTest(kafka, () => mongoToKafkaToMongoMultiTopic({numTopics: 1, numPartitions: 10}), 10);
 runKafkaTest(kafka, () => mongoToKafkaToMongoMultiTopic({numTopics: 2, numPartitions: 5}), 5);
