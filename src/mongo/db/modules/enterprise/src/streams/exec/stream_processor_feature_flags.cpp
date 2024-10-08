@@ -54,6 +54,15 @@ int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featur
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kMaxQueueSizeBytes).getInt();
 }
 
+int64_t getKafkaProduceTimeoutMs(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(8748203, "Feature flags should be set", featureFlags);
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaProduceTimeout).getInt();
+    if (val) {
+        return *val;
+    }
+    return FeatureFlags::kKafkaProduceTimeout.defaultValue.getInt();
+}
+
 bool shouldUseWatchToInitClusterChangestream(
     boost::optional<StreamProcessorFeatureFlags> featureFlags) {
     tassert(8748201, "Feature flags should be set", featureFlags);

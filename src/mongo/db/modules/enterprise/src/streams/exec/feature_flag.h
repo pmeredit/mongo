@@ -51,6 +51,7 @@ public:
     static const FeatureFlagDefinition kTestOnlyStringType;
     static const FeatureFlagDefinition kEnableExternalAPIOperator;
     static const FeatureFlagDefinition kExternalAPIRateLimitPerSecond;
+    static const FeatureFlagDefinition kKafkaProduceTimeout;
     static const FeatureFlagDefinition kUseWatchToInitClusterChangestream;
 };
 

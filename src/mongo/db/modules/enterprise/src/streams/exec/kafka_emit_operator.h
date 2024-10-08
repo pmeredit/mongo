@@ -196,9 +196,5 @@ private:
 
     // Set to true depending on a feature flag.
     bool _useDeliveryCallback{false};
-    // Poll thread, which calls the producer poll method to serve any
-    // delivery callbacks.
-    mongo::stdx::thread _pollThread;
-    mongo::Atomic<bool> _pollShutdown{false};
 };
 }  // namespace streams

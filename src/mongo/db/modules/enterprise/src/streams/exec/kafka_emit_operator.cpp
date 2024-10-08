@@ -477,8 +477,7 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto docAsStr = tojson(streamDoc.doc.toBson(), _options.jsonStringFormat);
     auto docSize = docAsStr.size();
 
-    constexpr int flags = RdKafka::Producer::RK_MSG_BLOCK /* block if queue is full */ |
-        RdKafka::Producer::RK_MSG_COPY /* Copy payload */;
+    constexpr int flags = RdKafka::Producer::RK_MSG_COPY /* Copy payload */;
 
     auto topicName = _options.topicName.isLiteral()
         ? _options.topicName.getLiteral()
@@ -518,19 +517,26 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
 
     RdKafka::Headers* headers = createKafkaHeaders(streamDoc, topicName);
 
-    // TODO(SERVER-80742): Validate the connection is still established.
-    // This call to produce will succeed even if the actual connection to Kafka is down.
-    RdKafka::ErrorCode err =
-        _producer->produce(topicName,
-                           _outputPartition,
-                           flags,
-                           const_cast<char*>(docAsStr.c_str()),
-                           docSize,
-                           keyPointer,
-                           keyLength,
-                           0 /* timestamp */,
-                           headers,
-                           nullptr /* Per-message opaque value passed to delivery report */);
+    auto pollAndProduce = [&]() {
+        // Call poll to serve any queued delivery callbacks.
+        // We use a 0 timeout_ms for a non-blocking call.
+        _producer->poll(0 /* timeout_ms */);
+        return _producer->produce(topicName,
+                                  _outputPartition,
+                                  flags,
+                                  const_cast<char*>(docAsStr.c_str()),
+                                  docSize,
+                                  keyPointer,
+                                  keyLength,
+                                  0 /* timestamp */,
+                                  headers,
+                                  nullptr /* Per-message opaque value passed to delivery report */);
+    };
+    auto deadline = Date_t::now() + Milliseconds{getKafkaProduceTimeoutMs(_context->featureFlags)};
+    auto err = pollAndProduce();
+    while (err == RdKafka::ERR__QUEUE_FULL && Date_t::now() < deadline) {
+        err = pollAndProduce();
+    }
 
     // If there is no error, we will need to clean up the header ourselves. Otherwise, the API above
     // has already freed up the headers for us.
@@ -556,31 +562,9 @@ void KafkaEmitOperator::doStart() {
     options.kafkaEventCallback = _eventCbImpl.get();
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
-
-    if (_useDeliveryCallback) {
-        _pollThread = stdx::thread([this]() {
-            while (!_pollShutdown.load()) {
-                // Call poll with a brief timeout.
-                // We want to rely on rdkafka's timeout because only it knows when a delivery
-                // callback is available. We want to call poll as soon as a callback is available
-                // because it can help throughput-- if callbacks aren't served by poll, the local
-                // producer queue can block.
-                // So we don't use a condition variable here. Unfortunately, this means stop()
-                // might take up to a second to wait on this thread to shutdown.
-                _producer->poll(1000 /* timeout_ms */);
-            }
-        });
-    }
 }
 
 void KafkaEmitOperator::doStop() {
-    ScopeGuard scopeGuard([&] {
-        if (_pollThread.joinable()) {
-            _pollShutdown.store(true);
-            _pollThread.join();
-        }
-    });
-
     if (_connector) {
         _connector->stop();
         _connector.reset();

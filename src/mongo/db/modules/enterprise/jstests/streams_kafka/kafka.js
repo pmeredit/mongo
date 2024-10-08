@@ -2424,4 +2424,31 @@ runKafkaTest(kafka, () => {
     sp[spName].stop();
 });
 
+runKafkaTest(kafka, () => {
+    // This tests a single large batch (500k documents) flowing into $emit.
+    const numDocsInBatch = 500001;
+    let arr = [];
+    for (let i = 0; i < numDocsInBatch; i += 1) {
+        arr.push({i: i});
+    }
+    let inputData = [{a: 1, arr: arr}];
+    const spName = "manyTinyBatches";
+    sp.createStreamProcessor(spName, [
+        {$source: {'connectionName': '__testMemory'}},
+        {$unwind: "$arr"},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+            }
+        }
+    ]);
+    sp[spName].start();
+    for (const doc of inputData) {
+        sp[spName].testInsert(doc);
+    }
+    assert.soon(() => { return sp[spName].stats().outputMessageCount == numDocsInBatch; });
+    sp[spName].stop();
+});
+
 runKafkaTest(kafka, contentBasedRouting);

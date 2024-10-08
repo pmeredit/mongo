@@ -146,6 +146,11 @@ const FeatureFlagDefinition FeatureFlags::kUseWatchToInitClusterChangestream{
     "whole-cluster change stream $source",
     mongo::Value(true)};
 
+const FeatureFlagDefinition FeatureFlags::kKafkaProduceTimeout{
+    "kafkaProduceTimeout",
+    "The produce timeout in milliseconds",
+    mongo::Value::createIntOrLong(10L * 60 * 1000)};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
