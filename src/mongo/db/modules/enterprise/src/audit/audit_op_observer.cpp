@@ -198,6 +198,7 @@ repl::OpTime AuditOpObserver::onDropCollection(OperationContext* opCtx,
                                                const NamespaceString& collectionName,
                                                const UUID& uuid,
                                                std::uint64_t numRecords,
+                                               CollectionDropType dropType,
                                                bool markFromMigrate) {
     if (isFCVUninitializedOrTooHigh()) {
         return {};
