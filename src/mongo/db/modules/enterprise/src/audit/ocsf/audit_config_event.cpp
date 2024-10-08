@@ -13,7 +13,9 @@
 
 namespace mongo::audit {
 
-void AuditOCSF::logConfigEvent(Client* client, const AuditConfigDocument& config) const {
+void AuditOCSF::logConfigEvent(Client* client,
+                               const AuditConfigDocument& config,
+                               AuditConfigFormat formatIfPrevConfigNotSet) const {
     logEvent(AuditOCSF::AuditEventOCSF(
         {client,
          ocsf::OCSFEventCategory::kDiscovery,
@@ -24,7 +26,7 @@ void AuditOCSF::logConfigEvent(Client* client, const AuditConfigDocument& config
              BSONObjBuilder unmapped(params->subobjStart(ocsf::kUnmappedFieldName));
              unmapped.append(ocsf::kATypeFieldName,
                              AuditEventType_serializer(AuditEventType::kAuditConfigure));
-             buildMongoConfigEventParams(&unmapped, config);
+             buildMongoConfigEventParams(&unmapped, config, formatIfPrevConfigNotSet);
          },
          ErrorCodes::OK}));
 }
