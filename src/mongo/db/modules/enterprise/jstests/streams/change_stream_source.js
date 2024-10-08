@@ -641,7 +641,8 @@ function verifyUpdateFullDocument() {
         }
 
         let outputColl = db.getSiblingDB(outputDB)[outputCollName];
-        waitForCount(outputColl, 101);
+        // Wait for all the output to show up.
+        assert.soon(() => { return outputColl.find({operationType: "update"}).count() == 100; });
         let output =
             outputColl.find({operationType: "update"}).sort({"fullDocument.a": 1}).toArray();
         assert.eq(100, output.length);

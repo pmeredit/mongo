@@ -80,6 +80,17 @@ function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
     test.checkpoint();
     assert.soon(() => { return test.getCheckpointIds().length == numChkpts + 1; });
 
+    // In BF-35182, sometimes the test would call checkpoint(true) before the executor
+    // has unset it's _writeCheckpointCommand. This effectively causes the checkpoint(true)
+    // to be ignored. So we wait for runOnce to be incremented to prevent this.
+    const getRunOnceCount = () => {
+        const metrics = db.runCommand({streams_getMetrics: ''});
+        assert.commandWorked(metrics);
+        return metrics['counters'].find(c => c.name == 'runonce_count').value;
+    };
+    const runOnceCount = getRunOnceCount();
+    assert.soon(() => getRunOnceCount() > runOnceCount);
+
     // Nothing has changed so normally a checkpoint() request will have no effect.
     // So set force and ensure that a new checkpoint was indeed taken
     test.checkpoint(true);
