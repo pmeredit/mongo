@@ -862,13 +862,32 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                        "context"_attr = processorInfo->context.get(),
                        "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
 
+            // Note: Here we call startCheckpointRestore so we can get the stats from the
+            // checkpoint. The Executor will later call checkpointRestored in its background
+            // thread once the operator dag has been fully restored.
+            processorInfo->context->restoredCheckpointInfo =
+                processorInfo->context->checkpointStorage->startCheckpointRestore(
+                    *processorInfo->context->restoreCheckpointId);
+            tassert(9417503,
+                    "Expected restored checkpoint fields to be set",
+                    processorInfo->context->restoredCheckpointInfo &&
+                        processorInfo->context->restoredCheckpointInfo->operatorInfo);
+            if (!processorInfo->context->restoredCheckpointInfo->summaryStats) {
+                // TODO(STREAMS-950): Remove this block once restoredCheckpointSummaryStats
+                // is set in all checkpoints (all checkpoints are >= version 4).
+                auto restoreStats =
+                    toOperatorStats(*processorInfo->context->restoredCheckpointInfo->operatorInfo);
+                processorInfo->context->restoredCheckpointInfo->summaryStats =
+                    toSummaryStatsDoc(computeStreamSummaryStats(restoreStats));
+            }
+
             // TODO(SERVER-92447): Remove this check.
             auto useExecutionPlanFromCheckpoint =
                 processorInfo->context->featureFlags
                     ->getFeatureFlagValue(FeatureFlags::kUseExecutionPlanFromCheckpoint)
                     .getBool();
             if (useExecutionPlanFromCheckpoint && *useExecutionPlanFromCheckpoint) {
-                if (processorInfo->context->executionPlan.empty()) {
+                if (processorInfo->context->restoredCheckpointInfo->executionPlan.empty()) {
                     LOGV2_WARNING(75908,
                                   "Execution plan not found in the checkpoint ",
                                   "context"_attr = processorInfo->context.get(),
@@ -881,7 +900,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                "checkpointId"_attr = processorInfo->context->restoreCheckpointId,
                                "executionPlan"_attr = processorInfo->context->executionPlan);
                     plannerOptions.shouldOptimize = false;
-                    executionPlan = processorInfo->context->executionPlan;
+                    executionPlan = processorInfo->context->restoredCheckpointInfo->executionPlan;
                 }
             }
         }
@@ -893,6 +912,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     processorInfo->operatorDag =
         streamPlanner.plan(executionPlan.empty() ? userPipeline : executionPlan);
+    processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
 
     if (checkpointEnabled) {
         auto isCheckpointSuportedForSource =
@@ -903,19 +923,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                 processorInfo->operatorDag->source()->getName()),
                     isCheckpointSuportedForSource);
 
-            // Note: Here we call startCheckpointRestore so we can get the stats from the
-            // checkpoint. The Executor will later call checkpointRestored in its background
-            // thread once the operator dag has been fully restored.
-            processorInfo->context->restoredCheckpointDescription =
-                processorInfo->context->checkpointStorage->startCheckpointRestore(
-                    *processorInfo->context->restoreCheckpointId);
-            processorInfo->restoreCheckpointOperatorInfo =
-                processorInfo->context->checkpointStorage->getRestoreCheckpointOperatorInfo();
-
             // TODO(SERVER-92447): Remove the validate operator check.
             // Validate the operators in the checkpoint match the OperatorDag we've created.
-            validateOperatorsInCheckpoint(*processorInfo->restoreCheckpointOperatorInfo,
-                                          processorInfo->operatorDag->operators());
+            validateOperatorsInCheckpoint(
+                *processorInfo->context->restoredCheckpointInfo->operatorInfo,
+                processorInfo->operatorDag->operators());
         }
 
         // Start the checkpoint coordinator if checkpoint is supported for the given source.
@@ -927,7 +939,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                     stdx::chrono::milliseconds{*checkpointOptions->getDebugOnlyIntervalMs()};
             }
 
-            processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
             processorInfo->checkpointCoordinator =
                 std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
                     .processorId = processorInfo->context->streamProcessorId,
@@ -935,7 +946,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                     .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
                         !processorInfo->context->restoreCheckpointId,
                     .checkpointIntervalMs = processorInfo->context->checkpointInterval,
-                    .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo,
                     .storage = processorInfo->context->checkpointStorage.get(),
                 });
         } else {
@@ -1314,21 +1324,29 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     reply.setStatus(processorInfo->streamStatus);
     reply.setScaleFactor(scale);
 
-    auto operatorStats = processorInfo->executor->getOperatorStats();
-    if (processorInfo->restoreCheckpointOperatorInfo) {
-        std::vector<OperatorStats> checkpointStats;
-        checkpointStats.reserve(processorInfo->restoreCheckpointOperatorInfo->size());
-        for (auto& opInfo : *processorInfo->restoreCheckpointOperatorInfo) {
-            checkpointStats.push_back(toOperatorStats(opInfo.getStats()));
-        }
-        if (operatorStats.empty()) {
+    // Per-operator stats for this execution.
+    auto currentOperatorStats = processorInfo->executor->getOperatorStats();
+    // Per-operator stats for the lifetime of the processor (including stats in checkpoint).
+    std::vector<OperatorStats> fullOperatorStats{currentOperatorStats};
+    const auto& restoredCheckpointInfo = processorInfo->context->restoredCheckpointInfo;
+    if (restoredCheckpointInfo && restoredCheckpointInfo->operatorInfo) {
+        auto checkpointStats = toOperatorStats(*restoredCheckpointInfo->operatorInfo);
+        if (currentOperatorStats.empty()) {
             // This can happen when the OperatorDag is still not fully initialized.
-            operatorStats = checkpointStats;
+            currentOperatorStats = checkpointStats;
+            fullOperatorStats = checkpointStats;
         } else {
-            operatorStats = combineAdditiveStats(operatorStats, checkpointStats);
+            fullOperatorStats = combineAdditiveStats(currentOperatorStats, checkpointStats);
         }
     }
-    auto summaryStats = computeStreamSummaryStats(operatorStats);
+
+    StreamSummaryStats summaryStats = computeStreamSummaryStats(currentOperatorStats);
+    if (restoredCheckpointInfo) {
+        tassert(ErrorCodes::InternalError,
+                "Expected summaryStats to be set",
+                restoredCheckpointInfo->summaryStats);
+        summaryStats += toSummaryStats(*restoredCheckpointInfo->summaryStats);
+    }
 
     reply.setInputMessageCount(summaryStats.numInputDocs);
     reply.setInputMessageSize(double(summaryStats.numInputBytes) / scale);
@@ -1383,9 +1401,9 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
         }
 
         std::vector<mongo::VerboseOperatorStats> out;
-        out.reserve(operatorStats.size());
-        for (size_t i = 0; i < operatorStats.size(); ++i) {
-            auto& s = operatorStats[i];
+        out.reserve(fullOperatorStats.size());
+        for (size_t i = 0; i < fullOperatorStats.size(); ++i) {
+            auto& s = fullOperatorStats[i];
             out.push_back({s.operatorName,
                            s.numInputDocs,
                            (double)s.numInputBytes / scale,

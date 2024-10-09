@@ -120,6 +120,17 @@ struct StreamSummaryStats {
         return *this;
     }
 
+    StreamSummaryStats& operator+=(const StreamSummaryStats& other) {
+        numInputDocs += other.numInputDocs;
+        numInputBytes += other.numInputBytes;
+        numOutputDocs += other.numOutputDocs;
+        numOutputBytes += other.numOutputBytes;
+        numDlqDocs += other.numDlqDocs;
+        numDlqBytes += other.numDlqBytes;
+        memoryUsageBytes += other.memoryUsageBytes;
+        return *this;
+    }
+
     StreamSummaryStats operator-(const StreamSummaryStats& rhs) {
         auto clone = *this;
         clone -= rhs;

@@ -79,12 +79,6 @@ CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
     _lastCheckpointTimestamp = steady_clock::now();
     invariant(_options.storage);
     CheckpointId id = _options.storage->startCheckpoint();
-    if (_options.restoreCheckpointOperatorInfo) {
-        for (auto& opInfo : *_options.restoreCheckpointOperatorInfo) {
-            auto checkpointStats = toOperatorStats(opInfo.getStats()).getAdditiveStats();
-            _options.storage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
-        }
-    }
     return CheckpointControlMsg{.id = std::move(id)};
 }
 

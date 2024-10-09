@@ -157,8 +157,6 @@ private:
         mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::Created};
         // CheckpointCoordinator for this streamProcessor.
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
-        // Operator info in the restore checkpoint.
-        boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
     };
 
     // Encapsulates state for a tenant.

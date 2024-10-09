@@ -38,8 +38,6 @@ public:
         bool writeFirstCheckpoint{false};
         // Determines the frequency at which checkpoint messages are created.
         mongo::stdx::chrono::milliseconds checkpointIntervalMs;
-        // Operator info, like stats, in the restore checkpoint.
-        boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
         // The checkpoint storage.
         CheckpointStorage* storage{nullptr};
     };

@@ -2,11 +2,14 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
 #include "streams/exec/checkpoint_coordinator.h"
+#include "streams/exec/stats_utils.h"
 #include <algorithm>
 #include <boost/none.hpp>
 #include <chrono>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <rdkafkacpp.h>
@@ -70,6 +73,7 @@ public:
         Input input;
         std::vector<BSONObj> userBson;
         std::unique_ptr<MetricManager> metricManager;
+        std::filesystem::path checkpointWriteDir;
     };
 
     CheckpointTestWorkload(std::string pipeline, Input input, ServiceContext* svcCtx) {
@@ -82,8 +86,20 @@ public:
         std::unique_ptr<Executor> executor;
         std::tie(_props.context, executor) =
             getTestContext(nullptr, UUID::gen().toString(), UUID::gen().toString());
-        _props.context->checkpointStorage =
-            std::make_unique<InMemoryCheckpointStorage>(_props.context.get());
+
+        _props.context->tenantId = UUID::gen().toString();
+        _props.context->streamProcessorId = UUID::gen().toString();
+
+        _props.checkpointWriteDir = std::filesystem::path{"/tmp/streams_checkpoint_test/write"} /
+            _props.context->tenantId / _props.context->streamProcessorId;
+
+        _props.context->checkpointStorage = std::make_unique<LocalDiskCheckpointStorage>(
+            LocalDiskCheckpointStorage::Options{.writeRootDir = _props.checkpointWriteDir,
+                                                .restoreRootDir = std::filesystem::path{},
+                                                .hostName = "test",
+                                                .userPipeline = _props.userBson},
+            _props.context.get());
+
         _props.context->checkpointStorage->registerMetrics(executor->getMetricManager());
         _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
         _props.context->connections = testKafkaConnectionRegistry();
@@ -121,6 +137,38 @@ public:
         return *checkpointControlMsg;
     }
 
+    // Write a checkpoint, restore the operators from it, then call runOnce.
+    auto checkpointRestoreAndRun() {
+        // Create a checkpoint and send it through the operator dag.
+        auto checkpointControlMsg = _props.checkpointCoordinator->getCheckpointControlMsgIfReady(
+            CheckpointCoordinator::CheckpointRequest{.writeCheckpointCommand =
+                                                         WriteCheckpointCommand::kForce});
+        _props.source->onControlMsg(0 /* inputIdx */,
+                                    StreamControlMsg{.checkpointMsg = *checkpointControlMsg});
+
+        // Restore the operators from the checkpoint. These re-created operators will
+        // be used in the runOnce call below.
+        startCheckpointRestore(checkpointControlMsg->id);
+
+        Planner planner{props().context.get(), Planner::Options{.shouldOptimize = false}};
+        auto checkpointId = getLatestCommittedCheckpointId();
+        auto dag = planner.plan(props().userBson);
+        props().dag = std::move(dag);
+        init();
+
+        // Verify the expected context properties are set after checkpoint restore.
+        ASSERT(props().context->restoredCheckpointInfo->operatorInfo);
+        ASSERT(props().context->restoredCheckpointInfo->pipelineVersion >= 0);
+        ASSERT(!props().context->restoredCheckpointInfo->userPipeline.empty());
+        ASSERT(props().context->restoredCheckpointInfo->summaryStats);
+        props().context->checkpointStorage->checkpointRestored(*checkpointId);
+
+        auto checkpointOpInfo = *props().context->restoredCheckpointInfo->operatorInfo;
+
+        _props.executor->runOnce();
+        return std::make_tuple(*checkpointControlMsg, std::move(checkpointOpInfo));
+    }
+
     void runAll() {
         while (_props.executor->runOnce() == Executor::RunStatus::kActive) {
         }
@@ -151,6 +199,8 @@ public:
     }
 
     void restore(CheckpointId checkpointId) {
+        startCheckpointRestore(checkpointId);
+
         _props.context->restoreCheckpointId = checkpointId;
         _props.context->connections = testKafkaConnectionRegistry();
 
@@ -159,18 +209,42 @@ public:
         _props.dag = planner.plan(_props.context->executionPlan);
 
         init();
+
+        props().context->checkpointStorage->checkpointRestored(checkpointId);
     }
 
     boost::optional<CheckpointId> getLatestCommittedCheckpointId() {
-        auto inMemoryStorage =
-            dynamic_cast<InMemoryCheckpointStorage*>(_props.context->checkpointStorage.get());
-        return inMemoryStorage->getLatestCommittedCheckpointId();
+        std::vector<CheckpointId> checkpoints;
+        for (const auto& dirEntry :
+             std::filesystem::recursive_directory_iterator(_props.checkpointWriteDir)) {
+            if (dirEntry.path().filename() == "MANIFEST") {
+                auto checkpointPath = dirEntry.path().parent_path();
+                auto checkpointIdStr = checkpointPath.filename().string();
+                checkpoints.push_back(CheckpointId{std::stoll(checkpointIdStr)});
+            }
+        }
+
+        std::sort(checkpoints.begin(), checkpoints.end(), std::greater<>());
+        if (checkpoints.empty()) {
+            return boost::none;
+        }
+        return checkpoints[0];
     }
 
     bool isCheckpointCommitted(CheckpointId id) {
-        auto storageV1 =
-            dynamic_cast<InMemoryCheckpointStorage*>(_props.context->checkpointStorage.get());
-        return storageV1->_checkpoints[id].committed;
+        return std::filesystem::exists(std::filesystem::path(_props.checkpointWriteDir) /
+                                       std::to_string(id) / "MANIFEST");
+    }
+
+    void startCheckpointRestore(CheckpointId checkpointId) {
+        props().context->executionPlan = {};
+        auto localDisk =
+            dynamic_cast<LocalDiskCheckpointStorage*>(props().context->checkpointStorage.get());
+        localDisk->_opts.restoreRootDir = props().checkpointWriteDir / std::to_string(checkpointId);
+        localDisk->populateManifestInfo(localDisk->_opts.restoreRootDir / "MANIFEST");
+        props().context->restoredCheckpointInfo = localDisk->startCheckpointRestore(checkpointId);
+        props().context->restoreCheckpointId = checkpointId;
+        props().context->executionPlan = props().context->restoredCheckpointInfo->executionPlan;
     }
 
     boost::optional<BSONObj> getSingleState(CheckpointId checkpointId, OperatorId operatorId) {
@@ -184,7 +258,6 @@ public:
         return boost::none;
     }
 
-private:
     void init() {
         invariant(_props.dag && _props.context && _props.metricManager &&
                   (_props.context->checkpointStorage));
@@ -226,6 +299,7 @@ private:
         _props.source->_testOnlyDataMsgMaxDocSize = totalDocsPerChunk;
     }
 
+private:
     Properties _props;
 };
 
@@ -283,6 +357,8 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline(bool useNewStorage) {
         ASSERT_NE(lastId, *checkpointId);
         lastId = *checkpointId;
 
+        workload.startCheckpointRestore(*checkpointId);
+
         // Verify the $source operator state in the checkpoint.
         ASSERT_EQ(0, workload.props().source->getOperatorId());
         auto state =
@@ -305,10 +381,12 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline(bool useNewStorage) {
         auto it = workload.props().dag->operators().begin() + 1;
         while (it != workload.props().dag->operators().end()) {
             auto operatorId = (*it)->getOperatorId();
-            state = workload.getSingleState(*checkpointId, operatorId);
-            ASSERT_FALSE(state);
+            ASSERT_THROWS_CODE(
+                workload.getSingleState(*checkpointId, operatorId), DBException, 7863423);
             it = next(it);
         }
+
+        workload.props().context->checkpointStorage->checkpointRestored(*checkpointId);
 
         // Save the checkpoint ID for later.
         checkpointIds.push_back(*checkpointId);
@@ -477,6 +555,8 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
         auto checkpointId = workload.getLatestCommittedCheckpointId();
         ASSERT(checkpointId);
 
+        workload.startCheckpointRestore(*checkpointId);
+
         // Verify the $source operator state in the checkpoint.
         ASSERT_EQ(0, workload.props().source->getOperatorId());
         auto state =
@@ -497,13 +577,16 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
         auto it = workload.props().dag->operators().begin() + 1;
         while (it != workload.props().dag->operators().end()) {
             auto operatorId = (*it)->getOperatorId();
-            ASSERT_FALSE(workload.getSingleState(*checkpointId, operatorId));
+            ASSERT_THROWS_CODE(
+                workload.getSingleState(*checkpointId, operatorId), DBException, 7863423);
             it = next(it);
         }
 
         // Save the checkpoint ID for later.
         checkpointIds.push_back(*checkpointId);
         expectedCountOutputAfterRestore[*checkpointId] = docsRemaining(inputIdxSnapshot);
+
+        workload.props().context->checkpointStorage->checkpointRestored(*checkpointId);
     }
 
     for (CheckpointId checkpointId : checkpointIds) {
@@ -604,28 +687,32 @@ TEST_F(CheckpointTest, CheckpointStats) {
     std::vector<BSONObj> fullResults;
     CheckpointId lastId{-1};
     std::vector<CheckpointId> checkpointIds;
+
+    // Initialize the expectedStats.
+    std::map<OperatorId, OperatorStats> expectedStats;
+    for (auto& op : workload.props().dag->operators()) {
+        expectedStats[op->getOperatorId()] = op->getStats();
+    }
+
     for (size_t idx = 0; idx < input.size() + 1; ++idx) {
-        std::map<OperatorId, OperatorStats> expectedStats;
-        for (auto& op : workload.props().dag->operators()) {
-            expectedStats[op->getOperatorId()] = op->getStats();
-        }
-        // Checkpoint then send a single document through the DAG.
-        workload.checkpointAndRun();
+        // Checkpoint, restore from it, then send a single document through the DAG.
+        auto [checkpointMsg, checkpointOpInfo] = workload.checkpointRestoreAndRun();
+
         // Verify the valid committed checkpointId in checkpoint storage.
-        auto checkpointId = workload.getLatestCommittedCheckpointId();
-        ASSERT(checkpointId);
-        ASSERT_NE(lastId, *checkpointId);
-        lastId = *checkpointId;
-        checkpointIds.push_back(*checkpointId);
+        auto checkpointId = checkpointMsg.id;
+        ASSERT_NE(lastId, checkpointId);
+        lastId = checkpointId;
+        checkpointIds.push_back(checkpointId);
+
+        // Get the operator stats after this checkpointAndRun.
+        std::map<OperatorId, OperatorStats> statsFromThisRun;
+        for (auto& op : workload.props().dag->operators()) {
+            statsFromThisRun[op->getOperatorId()] = op->getStats().getAdditiveStats();
+        }
+
         // Verify the stats in the checkpoint for each operator.
-        workload.props().context->checkpointStorage->startCheckpointRestore(*checkpointId);
-        auto opInfo =
-            workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
-        workload.props().context->checkpointStorage->checkpointRestored(*checkpointId);
-
-
-        ASSERT_EQ(expectedStats.size(), opInfo.size());
-        for (auto& op : opInfo) {
+        ASSERT_EQ(expectedStats.size(), checkpointOpInfo.size());
+        for (auto& op : checkpointOpInfo) {
             auto operatorId = op.getOperatorId();
             auto& expected = expectedStats[operatorId];
             auto& stat = op.getStats();
@@ -634,13 +721,17 @@ TEST_F(CheckpointTest, CheckpointStats) {
             ASSERT_EQ(expected.numOutputBytes, stat.getOutputBytes());
             ASSERT_EQ(expected.numOutputDocs, stat.getOutputDocs());
         }
+
+        // Increment the next iteration's expectedStats by this iteration's stats.
+        for (const auto& [opId, stats] : statsFromThisRun) {
+            expectedStats[opId] += stats.getAdditiveStats();
+        }
     }
     // Verify the expected number of checkpoints.
     ASSERT_EQ(input.size() + 1, checkpointIds.size());
     // Verify the stats in the last checkpoint after all the input.
-    workload.props().context->checkpointStorage->startCheckpointRestore(
-        *workload.getLatestCommittedCheckpointId());
-    auto stats = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+    workload.startCheckpointRestore(*workload.getLatestCommittedCheckpointId());
+    auto stats = *workload.props().context->restoredCheckpointInfo->operatorInfo;
     workload.props().context->checkpointStorage->checkpointRestored(
         *workload.getLatestCommittedCheckpointId());
 
@@ -704,8 +795,8 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     ASSERT_EQ(input.size() + 1, checkpointIds.size());
     // Verify the stats in the first checkpoint before any input.
 
-    workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[0]);
-    auto opInfo = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+    workload.startCheckpointRestore(checkpointIds[0]);
+    auto opInfo = *workload.props().context->restoredCheckpointInfo->operatorInfo;
     workload.props().context->checkpointStorage->checkpointRestored(checkpointIds[0]);
     ASSERT_EQ(4, opInfo.size());
     // Verify the operator IDs.
@@ -727,8 +818,8 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
         ASSERT_EQ(0, stats.getDlqDocs());
     }
     // Verify the stats in checkpoint1, $source.
-    workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[1]);
-    opInfo = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+    workload.startCheckpointRestore(checkpointIds[1]);
+    opInfo = *workload.props().context->restoredCheckpointInfo->operatorInfo;
     workload.props().context->checkpointStorage->checkpointRestored(checkpointIds[1]);
 
     auto stats = opInfo[0].getStats();
@@ -737,8 +828,8 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     ASSERT_GT(stats.getInputBytes(), 0);
     ASSERT_EQ(0, stats.getDlqDocs());
     // Verify the stats in checkpoint2, $source.
-    workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[2]);
-    opInfo = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+    workload.startCheckpointRestore(checkpointIds[2]);
+    opInfo = *workload.props().context->restoredCheckpointInfo->operatorInfo;
     workload.props().context->checkpointStorage->checkpointRestored(checkpointIds[2]);
     stats = opInfo[0].getStats();
     ASSERT_EQ(2, stats.getInputDocs());
@@ -749,8 +840,8 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     // Verify the stats in checkpoint1 and checkpoint2 for the $group, for checkpoints 1 and 2.
     // During each of these checkpoints there is one open window.
     for (auto idx : std::vector<size_t>{1, 2}) {
-        workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[idx]);
-        opInfo = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+        workload.startCheckpointRestore(checkpointIds[idx]);
+        opInfo = *workload.props().context->restoredCheckpointInfo->operatorInfo;
         workload.props().context->checkpointStorage->checkpointRestored(checkpointIds[idx]);
 
         stats = opInfo[1].getStats();
@@ -764,8 +855,8 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     }
 
     // Verify the stats in checkpoint3.
-    workload.props().context->checkpointStorage->startCheckpointRestore(checkpointIds[3]);
-    opInfo = workload.props().context->checkpointStorage->getRestoreCheckpointOperatorInfo();
+    workload.startCheckpointRestore(checkpointIds[3]);
+    opInfo = *workload.props().context->restoredCheckpointInfo->operatorInfo;
     workload.props().context->checkpointStorage->checkpointRestored(checkpointIds[3]);
     stats = opInfo[1].getStats();
     ASSERT_EQ(3, stats.getInputDocs());

@@ -10,6 +10,7 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
+#include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/unflushed_state_container.h"
 #include "streams/util/metric_manager.h"
@@ -93,7 +94,7 @@ public:
     void commitCheckpoint(CheckpointId id);
 
     // Start a checkpoint restore for the specified checkpoint ID.
-    mongo::CheckpointDescription startCheckpointRestore(CheckpointId chkId);
+    RestoredCheckpointInfo startCheckpointRestore(CheckpointId chkId);
 
     // Mark the checkpoint restore as complete. Returns the restore duration in milliseconds.
     // TODO(SERVER-82127): Once Executor kicks off restore, just have Executor compute the restore
@@ -129,13 +130,6 @@ public:
     // Add operator stats to the checkpoint.
     void addStats(CheckpointId checkpointId, OperatorId operatorId, const OperatorStats& stats) {
         doAddStats(checkpointId, operatorId, stats);
-    }
-
-    // Get the CheckpointOperatorInfo from the restore checkpoint, which currently just contains
-    // operator stats. It is expected that startCheckpointRestore is called before this method is
-    // called.
-    std::vector<mongo::CheckpointOperatorInfo> getRestoreCheckpointOperatorInfo() {
-        return doGetRestoreCheckpointOperatorInfo();
     }
 
     // This should be called once, any time after CheckpointStorage was constructed
@@ -186,7 +180,7 @@ private:
 
     virtual CheckpointId doStartCheckpoint() = 0;
     virtual void doCommitCheckpoint(CheckpointId chkId) = 0;
-    virtual mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId chkId) = 0;
+    virtual RestoredCheckpointInfo doStartCheckpointRestore(CheckpointId chkId) = 0;
     virtual void doMarkCheckpointRestored(CheckpointId chkId) = 0;
     virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
     virtual std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) = 0;
@@ -197,7 +191,6 @@ private:
     virtual void doAddStats(CheckpointId checkpointId,
                             OperatorId operatorId,
                             const OperatorStats& stats) = 0;
-    virtual std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() = 0;
     virtual boost::optional<CheckpointId> doGetRestoreCheckpointId() = 0;
     void closeStateReader(ReaderHandle* reader) {
         doCloseStateReader(reader);

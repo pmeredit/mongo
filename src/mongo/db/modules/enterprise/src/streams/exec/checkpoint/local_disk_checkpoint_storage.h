@@ -71,9 +71,9 @@ public:
                     OperatorId operatorId,
                     const OperatorStats& stats) override;
 
-    std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() override;
-
 private:
+    friend class CheckpointTestWorkload;
+
     using WriterHandle = CheckpointStorage::WriterHandle;
     using ReaderHandle = CheckpointStorage::ReaderHandle;
     using OpsRangeMap = Restorer::OpsRangeMap;
@@ -91,6 +91,10 @@ private:
         int64_t checkpointSizeBytes{0};
         // The write duration of the checkpoint in milliseconds.
         mongo::Milliseconds writeDurationMs{0};
+        // The metadata in the checkpoint manifest.
+        mongo::CheckpointMetadata metadata;
+        // The checkpoint data version.
+        int version{0};
     };
 
     // The next group of methods implement the CheckpointStorage interface
@@ -100,7 +104,7 @@ private:
     // A stream processor SP expects that the files related to checkpoint chk1 are present in dir
     // writeRootDir/SP/chk1/... . In general rootDir need not (and likely will not) be the same as
     // the writeRootDir under which the SP is saving new checkpoint data
-    mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId chkId) override;
+    RestoredCheckpointInfo doStartCheckpointRestore(CheckpointId chkId) override;
 
     void doMarkCheckpointRestored(CheckpointId chkId) override;
     std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) override;

@@ -22,6 +22,7 @@ void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     _mostRecentCommitted = id;
     _lastCheckpointSizeBytes = _currentMemoryBytes;
     _currentMemoryBytes = 0;
+
     addUnflushedCheckpoint(id,
                            {*_mostRecentCommitted,
                             "inmemory",
@@ -29,6 +30,32 @@ void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
                             mongo::Date_t::now(),
                             Milliseconds{1} /* writeDurationMs */});
     _checkpoints[id].committed = true;
+
+    // Compute the summary stats for this checkpoint.
+    // This is the current $source and sink operator stats, plus the summary stats
+    // in the restore checkpoint.
+    auto& metadata = _checkpoints[id].checkpointInfo;
+    std::vector<OperatorStats> operatorStats;
+    for (const auto& [opId, stats] : _checkpoints[id].operatorStats) {
+        operatorStats.push_back(stats);
+    }
+    auto summaryStats = computeStreamSummaryStats(operatorStats);
+    if (_context->restoredCheckpointInfo) {
+        summaryStats += toSummaryStats(*_context->restoredCheckpointInfo->summaryStats);
+    }
+    metadata.setSummaryStats(toSummaryStatsDoc(std::move(summaryStats)));
+
+    if (_context->restoredCheckpointInfo && _context->restoredCheckpointInfo->operatorInfo) {
+        // If there is a restore checkpoint, add its stats to the current operator stats.
+        operatorStats = combineAdditiveStats(
+            operatorStats, toOperatorStats(*_context->restoredCheckpointInfo->operatorInfo));
+    }
+    // Save the operator level stats in the checkpoint.
+    metadata.setOperatorStats(toCheckpointOpInfo(operatorStats));
+
+    metadata.setExecutionPlan(_context->executionPlan);
+    metadata.setUserPipeline(std::vector<BSONObj>{});
+    _checkpoints[id].checkpointInfo.setPipelineVersion(_context->pipelineVersion);
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCreateStateWriter(
@@ -40,6 +67,25 @@ std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCr
     auto writer = std::unique_ptr<WriterHandle>(new WriterHandle(opts));
     _writer = WriterInfo{id, opId};
     return writer;
+}
+
+RestoredCheckpointInfo InMemoryCheckpointStorage::doStartCheckpointRestore(CheckpointId id) {
+    _restoreCheckpoint = id;
+    auto& manifest = _checkpoints[id].checkpointInfo;
+    return RestoredCheckpointInfo{
+        .description =
+            mongo::CheckpointDescription{
+                *_mostRecentCommitted,
+                "inmemory",
+                _lastCheckpointSizeBytes,
+                mongo::Date_t::now(), /* we do not track the actual commit
+                                         ts, so just return now() instead */
+                mongo::Milliseconds{1} /* writeDurationMs */},
+        .userPipeline = *manifest.getUserPipeline(),
+        .pipelineVersion = *manifest.getPipelineVersion(),
+        .summaryStats = manifest.getSummaryStats(),
+        .operatorInfo = manifest.getOperatorStats(),
+        .executionPlan = *manifest.getExecutionPlan()};
 }
 
 std::unique_ptr<CheckpointStorage::ReaderHandle> InMemoryCheckpointStorage::doCreateStateReader(
@@ -94,15 +140,6 @@ void InMemoryCheckpointStorage::doAddStats(CheckpointId checkpointId,
             std::make_pair(operatorId, OperatorStats{.operatorName = stats.operatorName}));
     }
     statsMap[operatorId] += stats;
-}
-
-std::vector<mongo::CheckpointOperatorInfo>
-InMemoryCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
-    std::vector<mongo::CheckpointOperatorInfo> results;
-    for (auto& [operatorId, stats] : _checkpoints[*_restoreCheckpoint].operatorStats) {
-        results.push_back(CheckpointOperatorInfo{operatorId, toOperatorStatsDoc(stats)});
-    }
-    return results;
 }
 
 boost::optional<CheckpointId> InMemoryCheckpointStorage::doGetRestoreCheckpointId() {

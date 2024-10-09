@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/stats_utils.h"
+#include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/stream_stats.h"
 
 using namespace mongo;
 
@@ -33,6 +35,17 @@ mongo::OperatorStatsDoc toOperatorStatsDoc(const OperatorStats& stats) {
     return statsDoc;
 }
 
+mongo::CheckpointSummaryStats toSummaryStatsDoc(const StreamSummaryStats& stats) {
+    mongo::CheckpointSummaryStats statsDoc;
+    statsDoc.setInputMessageCount(stats.numInputDocs);
+    statsDoc.setInputMessageSize(stats.numInputBytes);
+    statsDoc.setOutputMessageCount(stats.numOutputDocs);
+    statsDoc.setOutputMessageSize(stats.numOutputBytes);
+    statsDoc.setDlqMessageCount(stats.numDlqDocs);
+    statsDoc.setDlqMessageSize(stats.numDlqBytes);
+    return statsDoc;
+}
+
 std::vector<OperatorStats> combineAdditiveStats(
     const std::vector<OperatorStats>& operatorStats,
     const std::vector<OperatorStats>& restoreCheckpointStats) {
@@ -50,6 +63,36 @@ std::vector<OperatorStats> combineAdditiveStats(
         result.push_back(stats);
     }
     return result;
+}
+
+std::vector<mongo::CheckpointOperatorInfo> toCheckpointOpInfo(
+    const std::vector<OperatorStats>& operatorStats) {
+    std::vector<CheckpointOperatorInfo> checkpointOpInfo;
+    checkpointOpInfo.reserve(operatorStats.size());
+    for (size_t opId = 0; opId < operatorStats.size(); ++opId) {
+        checkpointOpInfo.push_back(
+            CheckpointOperatorInfo{int(opId), toOperatorStatsDoc(operatorStats[opId])});
+    }
+    return checkpointOpInfo;
+}
+
+std::vector<OperatorStats> toOperatorStats(
+    const std::vector<mongo::CheckpointOperatorInfo>& restoreCheckpointOpInfo) {
+    std::vector<OperatorStats> result;
+    result.reserve(restoreCheckpointOpInfo.size());
+    for (const auto& op : restoreCheckpointOpInfo) {
+        result.push_back(toOperatorStats(op.getStats()));
+    }
+    return result;
+}
+
+StreamSummaryStats toSummaryStats(const mongo::CheckpointSummaryStats& stats) {
+    return StreamSummaryStats{.numInputDocs = stats.getInputMessageCount(),
+                              .numOutputDocs = stats.getOutputMessageCount(),
+                              .numInputBytes = stats.getInputMessageSize(),
+                              .numOutputBytes = stats.getOutputMessageSize(),
+                              .numDlqDocs = stats.getDlqMessageCount(),
+                              .numDlqBytes = stats.getDlqMessageSize()};
 }
 
 }  // namespace streams

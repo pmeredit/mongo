@@ -144,15 +144,15 @@ Future<void> Executor::start() {
                 if (_context->checkpointStorage && _context->restoreCheckpointId) {
                     tassert(8444407,
                             "Expected a restoreCheckpointDescription",
-                            _context->restoredCheckpointDescription);
-                    _context->restoredCheckpointDescription->setSourceState(
-                        _options.operatorDag->source()->getRestoredState());
+                            _context->restoredCheckpointInfo);
+                    auto description = _context->restoredCheckpointInfo->description;
+                    description.setSourceState(_options.operatorDag->source()->getRestoredState());
                     auto duration = _context->checkpointStorage->checkpointRestored(
                         *_context->restoreCheckpointId);
-                    _context->restoredCheckpointDescription->setRestoreDurationMs(duration);
+                    description.setRestoreDurationMs(duration);
                     {
                         stdx::lock_guard<stdx::mutex> lock(_mutex);
-                        _restoredCheckpointDescription = _context->restoredCheckpointDescription;
+                        _restoredCheckpointDescription = std::move(description);
                     }
                 }
 

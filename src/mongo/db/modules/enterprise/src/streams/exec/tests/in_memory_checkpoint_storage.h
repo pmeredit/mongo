@@ -25,7 +25,7 @@ public:
 
 private:
     struct Checkpoint {
-        mongo::CheckpointInfo checkpointInfo;
+        mongo::CheckpointMetadata checkpointInfo;
         bool committed{false};
         mongo::stdx::unordered_map<OperatorId, std::vector<mongo::Document>> operatorState;
         std::map<OperatorId, OperatorStats> operatorStats;
@@ -52,16 +52,7 @@ private:
 
     void doCommitCheckpoint(CheckpointId id) override;
 
-    mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId id) override {
-        _restoreCheckpoint = id;
-        return mongo::CheckpointDescription{
-            *_mostRecentCommitted,
-            "inmemory",
-            _lastCheckpointSizeBytes,
-            mongo::Date_t::now(), /* we do not track the actual commit ts, so
-                                                            just return now() instead */
-            mongo::Milliseconds{1} /* writeDurationMs */};
-    }
+    RestoredCheckpointInfo doStartCheckpointRestore(CheckpointId id) override;
 
     void doMarkCheckpointRestored(CheckpointId id) override {
         _restoreCheckpoint = boost::none;
@@ -82,8 +73,6 @@ private:
     void doAddStats(CheckpointId checkpointId,
                     OperatorId operatorId,
                     const OperatorStats& stats) override;
-
-    std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() override;
 
     mongo::stdx::unordered_map<CheckpointId, Checkpoint> _checkpoints;
 

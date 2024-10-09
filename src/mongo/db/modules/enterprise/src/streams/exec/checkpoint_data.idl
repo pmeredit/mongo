@@ -19,6 +19,29 @@ structs:
             eventTimeMs:
                 type: safeInt64
 
+    CheckpointSummaryStats:
+        description: Summary statistics for the stream processor.
+        strict: false
+        fields:
+            inputMessageCount:
+                description: Total number of input messages read, including docs that were rejected.
+                type: safeInt64
+            inputMessageSize:
+                description: Total number of input bytes read, including messages that were rejected.
+                type: safeInt64
+            outputMessageCount:
+                description: Total number of output messages emitted.
+                type: safeInt64
+            outputMessageSize:
+                description: Total number of output bytes emitted.
+                type: safeInt64
+            dlqMessageCount:
+                description: Total number of messages that were sent to the DLQ
+                type: safeInt64
+            dlqMessageSize:
+                description: Total number of bytes sent to the DLQ
+                type: safeInt64
+
     KafkaPartitionCheckpointState:
         description: Checkpoint state of a single Kafka topic partition in a $source operator.
         strict: false
@@ -87,17 +110,6 @@ structs:
             stats:
                 description: The operator's stats at the time of checkpooint.
                 type: OperatorStatsDoc
-
-    CheckpointInfo:
-        description: A CheckpointInfo document is written when a checkpoint is committed. Corresponding OperatorState is considered valid when this document exists.
-        strict: false
-        fields:
-            _id:
-                description: A string ID in the form checkpoint-{tenantId}-{streamProcessorId}-{timestamp}.
-                type: string
-            operatorInfo:
-                description: High level information about operators in a checkpoint, like stats.
-                type: array<CheckpointOperatorInfo>
 
     WindowOperatorStateFastMode:
         description: WindowOperator state when using fast mode checkpointing.
@@ -252,6 +264,12 @@ structs:
                 optional: true
             operatorStats:
                 type: array<CheckpointOperatorInfo>
+                optional: true
+            pipelineVersion:
+                type: int
+                optional: true
+            summaryStats:
+                type: CheckpointSummaryStats
                 optional: true
 
     CheckpointFileRange:

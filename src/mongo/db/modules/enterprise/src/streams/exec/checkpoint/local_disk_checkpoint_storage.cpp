@@ -223,14 +223,36 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
 
     metadata.setExecutionPlan(_context->executionPlan);
     metadata.setUserPipeline(_opts.userPipeline);
-    std::vector<CheckpointOperatorInfo> checkpointStats;
-    for (auto& [opId, stats] : _activeCheckpointSave->stats) {
-        checkpointStats.push_back(CheckpointOperatorInfo{opId, toOperatorStatsDoc(stats)});
+
+    // Compute the summary stats for this checkpoint.
+    // This is the current $source and sink operator stats, plus the summary stats
+    // in the restore checkpoint.
+    std::vector<OperatorStats> operatorStats;
+    for (const auto& [opId, stats] : _activeCheckpointSave->stats) {
+        operatorStats.push_back(stats);
     }
-    metadata.setOperatorStats(std::move(checkpointStats));
+    auto summaryStats = computeStreamSummaryStats(operatorStats);
+    if (_context->restoredCheckpointInfo) {
+        tassert(ErrorCodes::InternalError,
+                "Expected summaryStats to be set",
+                _context->restoredCheckpointInfo->summaryStats);
+        summaryStats += toSummaryStats(*_context->restoredCheckpointInfo->summaryStats);
+        if (_context->restoredCheckpointInfo->operatorInfo) {
+            // If there is a restore checkpoint, add its stats to the current operator stats.
+            operatorStats = combineAdditiveStats(
+                operatorStats, toOperatorStats(*_context->restoredCheckpointInfo->operatorInfo));
+        }
+    }
+    metadata.setSummaryStats(toSummaryStatsDoc(std::move(summaryStats)));
+
+    // Save the operator level stats in the checkpoint.
+    metadata.setOperatorStats(toCheckpointOpInfo(operatorStats));
+
     int64_t writeDurationMs =
         Milliseconds{metadata.getCheckpointEndTime() - metadata.getCheckpointStartTime()}.count();
     std::string directory = _activeCheckpointSave->directory.string();
+
+    metadata.setPipelineVersion(_context->pipelineVersion);
 
     addUnflushedCheckpoint(chkId,
                            CheckpointDescription{chkId,
@@ -390,22 +412,11 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
     _restoredManifestInfo->writeDurationMs = manifest.getMetadata().getCheckpointEndTime() -
         manifest.getMetadata().getCheckpointStartTime();
 
-    // Populate the execution plan.
-    auto executionPlanOpt = manifest.getMetadata().getExecutionPlan();
-    // TODO(SERVER-92447): Add a tassert to check for the presence of execution plan in the
-    // checkpoint.
-    if (executionPlanOpt) {
-        for (const auto& ex : executionPlanOpt.value()) {
-            _context->executionPlan.push_back(ex.getOwned());
-        }
-    } else {
-        // TODO(SERVER-92447): Remove the else block.
-        int version = manifest.getVersion();
-        tassert(
-            ErrorCodes::InternalError,
-            fmt::format("Missing execution plan in checkpoint for manifest version {}", version),
-            version == ManifestBuilder::kVersionWithNoExecutionPlan);
-    }
+    _restoredManifestInfo->version = manifest.getVersion();
+
+    _restoredManifestInfo->metadata = CheckpointMetadata::parseOwned(
+        IDLParserContext("LocalDiskCheckpointStorage::populateManifestInfo"),
+        manifest.getMetadata().toBSON());
 }
 
 boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpointId() {
@@ -422,8 +433,7 @@ boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpoint
 
 // Currently, this will be called from the stream manager thread before
 // the executor is started. So, for e.g. metrics are not yet available
-mongo::CheckpointDescription LocalDiskCheckpointStorage::doStartCheckpointRestore(
-    CheckpointId chkId) {
+RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(CheckpointId chkId) {
     invariant(!_activeRestorer);
     tassert(
         ErrorCodes::InternalError, "Expected the restored ManifestInfo.", _restoredManifestInfo);
@@ -434,7 +444,9 @@ mongo::CheckpointDescription LocalDiskCheckpointStorage::doStartCheckpointRestor
           stats,
           lastCheckpointCommitTs,
           lastCheckpointSizeBytes,
-          writeDurationMs] = *_restoredManifestInfo;
+          writeDurationMs,
+          metadata,
+          version] = *_restoredManifestInfo;
     // Most of the time, we will be restoring from the last committed checkpoint, so using the size
     // of the checkpoint being restored as the lastCheckpointSizeBytes should be fine
     _lastCheckpointCommitTs = lastCheckpointCommitTs;
@@ -451,13 +463,56 @@ mongo::CheckpointDescription LocalDiskCheckpointStorage::doStartCheckpointRestor
                "context"_attr = _context,
                "checkpointId"_attr = chkId);
 
+    tassert(ErrorCodes::InternalError,
+            "Expected operatorStats to be set in checkpoint",
+            metadata.getOperatorStats());
+    tassert(ErrorCodes::InternalError,
+            "Expected userPipeline to be set in checkpoint",
+            metadata.getUserPipeline());
+    if (_restoredManifestInfo->version > ManifestBuilder::kVersionWithNoSummaryStats) {
+        tassert(ErrorCodes::InternalError,
+                "Expected summaryStats to be set in checkpoint",
+                metadata.getSummaryStats());
+        tassert(ErrorCodes::InternalError,
+                "Expected pipelineVersion to be set in checkpoint",
+                metadata.getPipelineVersion());
+    }
+
+    RestoredCheckpointInfo info;
+    info.operatorInfo = metadata.getOperatorStats();
+    info.summaryStats = metadata.getSummaryStats();
+    if (metadata.getPipelineVersion()) {
+        info.pipelineVersion = *metadata.getPipelineVersion();
+    }
+    info.userPipeline = std::vector<BSONObj>{};
+    info.userPipeline.reserve(metadata.getUserPipeline()->size());
+    for (const auto& stage : *metadata.getUserPipeline()) {
+        info.userPipeline.push_back(stage.getOwned());
+    }
     CheckpointDescription details;
     details.setFilepath(_activeRestorer->restoreRootDir().string());
     details.setId(_activeRestorer->getCheckpointId());
     details.setCheckpointSizeBytes(_lastCheckpointSizeBytes);
     details.setCheckpointTimestamp(_lastCheckpointCommitTs);
     details.setWriteDurationMs(Milliseconds{writeDurationMs});
-    return details;
+    info.description = std::move(details);
+
+    // Populate the execution plan from the restore checkpoint.
+    const auto& executionPlan = metadata.getExecutionPlan();
+    if (executionPlan) {
+        info.executionPlan.reserve(executionPlan->size());
+        for (const auto& stage : *executionPlan) {
+            info.executionPlan.push_back(stage.getOwned());
+        }
+    } else {
+        // TODO(SERVER-92447): Remove the else block.
+        tassert(ErrorCodes::InternalError,
+                fmt::format("Missing execution plan in checkpoint for manifest version {}",
+                            _restoredManifestInfo->version),
+                _restoredManifestInfo->version <= ManifestBuilder::kVersionWithNoExecutionPlan);
+    }
+
+    return info;
 }
 
 std::unique_ptr<CheckpointStorage::ReaderHandle> LocalDiskCheckpointStorage::doCreateStateReader(
@@ -517,13 +572,6 @@ void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,
             OperatorStats{.operatorName = stats.operatorName};
     }
     _activeCheckpointSave->stats[operatorId] += stats;
-}
-
-std::vector<mongo::CheckpointOperatorInfo>
-LocalDiskCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
-    tassert(ErrorCodes::InternalError, "Expected an active restorer", _activeRestorer);
-
-    return _activeRestorer->getStats();
 }
 
 }  // namespace streams

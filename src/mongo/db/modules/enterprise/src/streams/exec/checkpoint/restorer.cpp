@@ -135,7 +135,7 @@ boost::optional<mongo::Document> Restorer::getNextRecord(OperatorId opId) {
             _currOpRestorer->opId == opId);
     } else {
         auto itr = _opRanges.find(opId);
-        tassert(7863423, fmt::format("opId - {} - not found.", opId), itr != _opRanges.end());
+        uassert(7863423, fmt::format("opId - {} - not found.", opId), itr != _opRanges.end());
         _currOpRestorer.emplace(opId, itr->second, this);
     }
 

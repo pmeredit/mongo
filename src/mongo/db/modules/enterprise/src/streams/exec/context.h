@@ -18,6 +18,7 @@
 #include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 
@@ -48,16 +49,19 @@ struct Context {
 
     // The CheckpointId the streamProcessor was restored from.
     boost::optional<CheckpointId> restoreCheckpointId;
-    // A description of the restore checkpoint, if there is one.
-    // TODO(SERVER-82127): Get rid of this in context, let the Executor return this value to
-    // StreamManager.
-    boost::optional<mongo::CheckpointDescription> restoredCheckpointDescription;
+
+    // Pipeline version specified in the start request.
+    int pipelineVersion{0};
+
+    // Information about the restored checkpoint. Populated in CheckpointStorage
+    // when startCheckpointRestore is called.
+    boost::optional<RestoredCheckpointInfo> restoredCheckpointInfo;
+
+    // The optimized execution plan used for this execution.
+    std::vector<mongo::BSONObj> executionPlan;
 
     // The new checkpoint storage interface. This is currently only set in unit tests.
     std::unique_ptr<CheckpointStorage> checkpointStorage;
-
-    // The optimized execution plan.
-    std::vector<mongo::BSONObj> executionPlan;
 
     // Defines the checkpoint interval used for periodic checkpoints.
     // Set in the Planner depending on the plan.

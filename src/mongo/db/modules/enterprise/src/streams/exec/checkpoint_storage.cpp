@@ -69,7 +69,7 @@ void CheckpointStorage::addUnflushedCheckpoint(CheckpointId checkpointId,
     _unflushedCheckpoints.add(checkpointId, description.toBSON());
 }
 
-mongo::CheckpointDescription CheckpointStorage::startCheckpointRestore(CheckpointId chkId) {
+RestoredCheckpointInfo CheckpointStorage::startCheckpointRestore(CheckpointId chkId) {
     _lastCheckpointRestoreStartTs = mongo::Date_t::now();
     return doStartCheckpointRestore(chkId);
 }

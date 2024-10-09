@@ -54,6 +54,7 @@ public:
     static const int kVersionWithNoExecutionPlan;
     static const int kVersion;
     static const int kMinAllowedVersion;
+    static const int kVersionWithNoSummaryStats;
 
     ManifestBuilder(CheckpointId checkpointId,
                     Context* context,

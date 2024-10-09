@@ -632,6 +632,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         // Create the source and sink and connect them.
         auto source = std::make_unique<KafkaConsumerOperator>(context.get(), std::move(options));
         auto sink = std::make_unique<InMemorySinkOperator>(context.get(), /*numInputs*/ 1);
+        sink->setOperatorId(1);
         source->addOutput(sink.get(), 0);
         return std::make_pair(std::move(source), std::move(sink));
     };
