@@ -1664,8 +1664,9 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
         _context->checkpointInterval = kFastCheckpointInterval;
     }
 
+    std::unique_ptr<OperatorDag> result;
     try {
-        return planInner(bsonPipeline);
+        result = planInner(bsonPipeline);
     } catch (const DBException& e) {
         if (e.code() == ErrorCodes::InternalError || e.code() == ErrorCodes::UnknownError) {
             // We don't expect these errors (even if the user's pipeline is bad), so we throw
@@ -1677,6 +1678,19 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
         // as a user error: StreamProcessorInvalidOptions.
         uasserted(ErrorCodes::StreamProcessorInvalidOptions, e.toString());
     }
+
+    if (_options.shouldValidateModifyRequest) {
+        tassert(ErrorCodes::InternalError,
+                "shouldOptimize should be true when validating a pipeline edit.",
+                _options.shouldOptimize);
+        tassert(ErrorCodes::InternalError,
+                "restoredCheckpointUserPipeline should be set when validating a pipeline edit.",
+                _context->restoredCheckpointInfo &&
+                    !_context->restoredCheckpointInfo->userPipeline.empty());
+        validatePipelineModify(_context->restoredCheckpointInfo->userPipeline, bsonPipeline);
+    }
+
+    return result;
 }
 
 std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
@@ -1921,6 +1935,47 @@ void Planner::verifyOneWindowStage() {
             "Only one window stage is allowed in a pipeline.",
             !_hasWindow);
     _hasWindow = true;
+}
+
+void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserPipeline,
+                                     const std::vector<mongo::BSONObj>& newUserPipeline) {
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Pipeline must have at least 1 stage.",
+            !oldUserPipeline.empty() && !newUserPipeline.empty());
+
+    // Validate the old and new $source exactly match.
+    const auto& oldSourceSpec = oldUserPipeline[0];
+    const auto& newSourceSpec = newUserPipeline[0];
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "resumeFromCheckpoint must be false to modify a stream processor's $source stage",
+            SimpleBSONObjComparator::kInstance.evaluate(oldSourceSpec == newSourceSpec));
+
+    auto hasWindow = [](const std::vector<BSONObj>& pipeline) {
+        for (const auto& stage : pipeline) {
+            if (isWindowStage(stage.firstElementFieldNameStringData())) {
+                return true;
+            }
+        }
+        return false;
+    };
+    bool oldHasWindow = hasWindow(oldUserPipeline);
+    bool newHasWindow = hasWindow(newUserPipeline);
+    if (oldHasWindow && newHasWindow) {
+        // TODO(SERVER-94179): Remove this restriction. Change this to validate the
+        // window type and boundary has not changed. Also, we need to validate
+        // the source offsets still exist.
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  "resumeFromCheckpoint must be false to modify a stream processor with a window");
+    }
+    if (!oldHasWindow && newHasWindow) {
+        // TODO(SERVER-95185): Support adding a window stage with resumeFromCheckpoint=true.
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  "resumeFromCheckpoint must be false to add a window to a stream processor");
+    }
+    if (oldHasWindow && !newHasWindow) {
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  "resumeFromCheckpoint must be false to remove a window from a stream processor");
+    }
 }
 
 };  // namespace streams

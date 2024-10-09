@@ -112,10 +112,6 @@ Future<void> Executor::start() {
         bool promiseFulfilled{false};
         Date_t deadline = Date_t::now() + _options.connectTimeout;
         try {
-            if (_context->checkpointStorage) {
-                _context->checkpointStorage->registerMetrics(_metricManager.get());
-            }
-
             _context->dlq->registerMetrics(_metricManager.get());
             // Start the DLQ.
             _context->dlq->start();

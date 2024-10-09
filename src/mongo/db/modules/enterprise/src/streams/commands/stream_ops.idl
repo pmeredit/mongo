@@ -454,6 +454,10 @@ structs:
                 description: "Checkpoint options. These options are supplied by the service components, they are not exposed to the end customer."
                 type: CheckpointOptions
                 optional: true
+            resumeFromCheckpointAfterModify:
+                description: If true, after a modify pipeline operation, resume from the restore checkpoint written by the old pipeline. If false, only the summary stats are used from the restore checkpoint.
+                type: bool
+                default: true
             validateOnly:
                 description: If true, the command will parse and set the streamProcessor, but not start it.
                              The command will not output anything to the external connections in the streamProcessor definition.
@@ -529,6 +533,10 @@ commands:
                 description: "Instance name."
                 type: string
                 optional: true
+            pipelineVersion:
+                description: "Pipeline version. Starts at zero and incremented after the user performs a modify operation."
+                type: int
+                default: 0
 
     streams_stopStreamProcessor:
         description: "Command to stop a stream processor"

@@ -265,7 +265,16 @@ export class TestHelper {
                 options: {},
             }
         ];
+        this.useTimeField = useTimeField;
 
+        this._buildPipeline(middlePipeline);
+
+        this.sp = new Streams(this.tenantId, this.connectionRegistry, this.db);
+        this.checkpointUtil =
+            new LocalDiskCheckpointUtil(this.writeDir, this.tenantId, this.processorId);
+    }
+
+    _buildPipeline(middlePipeline) {
         // Setup the pipeline.
         this.pipeline = [];
         // First, append either a kafka or changestream source.
@@ -275,13 +284,13 @@ export class TestHelper {
                 topic: this.kafkaTopic,
                 testOnlyPartitionCount: NumberInt(1),
             };
-            if (useTimeField) {
+            if (this.useTimeField) {
                 sourceSpec.timeField = {$toDate: "$ts"};
             }
             this.pipeline.push({$source: sourceSpec});
         } else if (this.sourceType === 'memory') {
             let sourceSpec = {connectionName: '__testMemory'};
-            if (useTimeField) {
+            if (this.useTimeField) {
                 sourceSpec.timeField = {$toDate: "$ts"};
             }
             this.pipeline.push({$source: sourceSpec});
@@ -291,10 +300,11 @@ export class TestHelper {
                 db: this.dbName,
                 coll: this.inputCollName,
             };
-            if (useTimeField) {
+            if (this.useTimeField) {
                 sourceSpec.timeField = {$toDate: "$fullDocument.ts"};
             }
-            this.pipeline.push({$source: sourceSpec});
+            this.sourceSpec = sourceSpec;
+            this.pipeline.push({$source: this.sourceSpec});
         }
         for (let stage of middlePipeline) {
             this.pipeline.push(stage);
@@ -312,9 +322,6 @@ export class TestHelper {
                 }
             });
         }
-        this.sp = new Streams(this.tenantId, this.connectionRegistry, this.db);
-        this.checkpointUtil =
-            new LocalDiskCheckpointUtil(this.writeDir, this.tenantId, this.processorId);
     }
 
     // Helper functions.
@@ -335,7 +342,10 @@ export class TestHelper {
         }
     }
 
-    startFromLatestCheckpoint(assertWorked = true, checkpointOnStart = false) {
+    startFromLatestCheckpoint(assertWorked = true,
+                              checkpointOnStart = false,
+                              validateOnly = false,
+                              resumeFromCheckpointAfterModify) {
         // Set the restore directory to the latest committed checkpoint on disk.
         let idsOnDisk = this.getCheckpointIds();
         if (idsOnDisk.length > 0) {
@@ -349,9 +359,66 @@ export class TestHelper {
         this.startOptions.checkpointOnStart = checkpointOnStart;
 
         this.sp.createStreamProcessor(this.spName, this.pipeline);
-        jsTestLog(`Starting ${this.spName} with pipeline ${this.pipeline}, options ${
+        if (validateOnly) {
+            this.startOptions.validateOnly = true;
+        } else {
+            this.startOptions.validateOnly = undefined;
+        }
+        this.startOptions.resumeFromCheckpointAfterModify = resumeFromCheckpointAfterModify;
+
+        jsTestLog(`Starting ${this.spName} with pipeline ${tojson(this.pipeline)}, options ${
             tojson(this.startOptions)}`);
-        return this.sp[this.spName].start(this.startOptions, assertWorked);
+        return this.sp[this.spName].start(this.startOptions, assertWorked, this.pipelineVersion);
+    }
+
+    modifyAndStart({
+        newPipeline,
+        validateShouldSucceed = true,
+        modifyCollectionName = undefined,
+        modifiedSourceSpec = undefined,
+        resumeFromCheckpointAfterModify = true
+    }) {
+        if (modifyCollectionName) {
+            // If specified, change the output collection name for the $merge in the pipeline.
+            this.outputCollName = modifyCollectionName;
+            this.outputColl =
+                this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.outputCollName];
+        }
+        this._buildPipeline(newPipeline);
+        if (modifiedSourceSpec) {
+            // If specified, change the $source in the pipeline.
+            this.sourceSpec = modifiedSourceSpec;
+            this.pipeline[0] = {$source: modifiedSourceSpec};
+            this.inputCollName = this.sourceSpec.coll;
+            this.inputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.inputCollName];
+        }
+
+        // Increment the pipeline version.
+        if (this.pipelineVersion === undefined) {
+            this.pipelineVersion = 1;
+        } else {
+            this.pipelineVersion += 1;
+        }
+
+        // Validate the modify operation.
+        const validateResult =
+            this.startFromLatestCheckpoint(validateShouldSucceed /* assertWorked */,
+                                           false /* checkpointOnStart */,
+                                           true /* validateOnly */,
+                                           resumeFromCheckpointAfterModify);
+        if (!validateShouldSucceed) {
+            return validateResult;
+        }
+        // Stream processor should not exist after validateOnly operation.
+        assert.eq([], this.list());
+
+        // Start the modified stream processor.
+        this.startFromLatestCheckpoint(true /* validateShouldSucceed */,
+                                       false /* checkpointOnStart */,
+                                       false /* validateOnly */,
+                                       resumeFromCheckpointAfterModify);
+        assert.eq(1, this.list().length);
+        return validateResult;
     }
 
     stop(assertWorked = true) {

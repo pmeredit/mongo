@@ -25,6 +25,7 @@ export class StreamProcessor {
         this._connectionRegistry = connectionRegistry;
         this._processorId = this._name;
         this._db = db;
+        this._pipelineVersion = undefined;
         if (dbForTest != null) {
             this._db = dbForTest;
         }
@@ -42,14 +43,16 @@ export class StreamProcessor {
             processorId: this._name,
             pipeline: this._pipeline,
             connections: this._connectionRegistry,
+            pipelineVersion: NumberInt(this._pipelineVersion),
             options: options,
             correlationId: Math.random() < 0.2 ? null : 'userRequest1'
         };
     }
 
     // Start the streamProcessor.
-    start(options, assertWorked = true) {
+    start(options, assertWorked = true, pipelineVersion = undefined) {
         this._startOptions = options;
+        this._pipelineVersion = pipelineVersion;
         const result = this._db.runCommand(this.makeStartCmd(options));
         if (assertWorked) {
             assert.commandWorked(result);

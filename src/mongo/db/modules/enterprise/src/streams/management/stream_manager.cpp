@@ -817,18 +817,15 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     if (options.getEphemeral() && *options.getEphemeral()) {
         context->isEphemeral = true;
     }
+    context->pipelineVersion = request.getPipelineVersion();
 
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
-    // Configure checkpointing.
-    Planner::Options plannerOptions;
-    const auto& userPipeline = request.getPipeline();
-    std::vector<mongo::BSONObj> executionPlan;
-
-    bool checkpointEnabled = request.getOptions().getCheckpointOptions() &&
-        !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral;
-
+    bool checkpointEnabled =
+        request.getOptions().getCheckpointOptions() && !processorInfo->context->isEphemeral;
+    bool isModifyRequest = false;
+    std::vector<BSONObj> executionPlan;
     if (checkpointEnabled) {
         const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
 
@@ -852,6 +849,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                                 .hostName = getHostNameCached(),
                                                 .userPipeline = request.getPipeline()},
             processorInfo->context.get());
+        processorInfo->context->checkpointStorage->registerMetrics(_metricManager.get());
+
         // restoreCheckpointId will only be set if a restoreDir path is set.
         processorInfo->context->restoreCheckpointId =
             processorInfo->context->checkpointStorage->getRestoreCheckpointId();
@@ -882,6 +881,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             }
 
             // TODO(SERVER-92447): Remove this check.
+            // If the feature flag is on, restore the stream processor using the execution plan
+            // in the checkpoint.
             auto useExecutionPlanFromCheckpoint =
                 processorInfo->context->featureFlags
                     ->getFeatureFlagValue(FeatureFlags::kUseExecutionPlanFromCheckpoint)
@@ -899,19 +900,68 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                "context"_attr = processorInfo->context.get(),
                                "checkpointId"_attr = processorInfo->context->restoreCheckpointId,
                                "executionPlan"_attr = processorInfo->context->executionPlan);
-                    plannerOptions.shouldOptimize = false;
-                    executionPlan = processorInfo->context->restoredCheckpointInfo->executionPlan;
+                }
+                executionPlan = processorInfo->context->restoredCheckpointInfo->executionPlan;
+            }
+
+            // Check if the pipelineVersion in the start request is different than the
+            // pipelineVersion in the checkpoint. If so, this is an modify request.
+            isModifyRequest = processorInfo->context->restoredCheckpointInfo->pipelineVersion !=
+                request.getPipelineVersion();
+            if (isValidateOnlyRequest(request)) {
+                tassert(ErrorCodes::InternalError,
+                        "validateOnly requests should only have a restore checkpoint if they "
+                        "are validating a modify operation.",
+                        isModifyRequest);
+            }
+            if (isModifyRequest) {
+                LOGV2_INFO(9417500,
+                           "Resuming a stream processor after an edit",
+                           "context"_attr = processorInfo->context.get());
+                // After an modify we don't use the executionPlan in the checkpoint.
+                // This might change for "no-op" modify requests in SERVER-94910.
+                executionPlan = {};
+                // After an modify we don't use the operator level stats in the checkpoint.
+                processorInfo->context->restoredCheckpointInfo->operatorInfo = boost::none;
+
+                bool resumeFromCheckpointAfterModify =
+                    request.getOptions().getResumeFromCheckpointAfterModify();
+                if (isValidateOnlyRequest(request) || !resumeFromCheckpointAfterModify) {
+                    // Mark the checkpoint as restored. For validateOnly and
+                    // resumeFromCheckpointAfterModify=false requests, we won't use the restore
+                    // checkpoint any further, i.e. operators won't restore their state from it.
+                    processorInfo->context->checkpointStorage->checkpointRestored(
+                        *processorInfo->context->restoreCheckpointId);
+                }
+                if (!resumeFromCheckpointAfterModify) {
+                    // If resumeFromCheckpoint is false, unset the restoreCheckpointId so
+                    // operators don't restore from their state in the restore checkpoint.
+                    processorInfo->context->restoreCheckpointId = boost::none;
                 }
             }
         }
     }
 
-    Planner streamPlanner(processorInfo->context.get(), plannerOptions);
+    Planner::Options plannerOptions;
+    bool planUserPipeline = executionPlan.empty();
+    if (planUserPipeline) {
+        // Plan the OperatorDag using a user supplied pipeline.
+        plannerOptions.shouldOptimize = true;
+        // During a customer's modify request, SPM sends a mongostream.validateOnly request with
+        // a restore checkpoint. When resumeFromCheckpointAfterModify is true, we set
+        // shouldValidateModifyRequest so the planner validates the modify is allowed.
+        plannerOptions.shouldValidateModifyRequest = isValidateOnlyRequest(request) &&
+            isModifyRequest && request.getOptions().getResumeFromCheckpointAfterModify();
+    } else {
+        // Plan the OperatorDag using an execution plan stored in checkpoints.
+        plannerOptions.shouldOptimize = false;
+    }
 
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
 
+    Planner streamPlanner(processorInfo->context.get(), std::move(plannerOptions));
     processorInfo->operatorDag =
-        streamPlanner.plan(executionPlan.empty() ? userPipeline : executionPlan);
+        streamPlanner.plan(executionPlan.empty() ? request.getPipeline() : executionPlan);
     processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
 
     if (checkpointEnabled) {
@@ -922,12 +972,17 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                     fmt::format("Checkpoint not supported for the source: {}",
                                 processorInfo->operatorDag->source()->getName()),
                     isCheckpointSuportedForSource);
+            tassert(8874305,
+                    "Expected restoredCheckpointInfo to be set",
+                    processorInfo->context->restoredCheckpointInfo);
 
-            // TODO(SERVER-92447): Remove the validate operator check.
-            // Validate the operators in the checkpoint match the OperatorDag we've created.
-            validateOperatorsInCheckpoint(
-                *processorInfo->context->restoredCheckpointInfo->operatorInfo,
-                processorInfo->operatorDag->operators());
+            if (processorInfo->context->restoredCheckpointInfo->operatorInfo) {
+                // TODO(SERVER-92447): Remove the validate operator check.
+                // Validate the operators in the checkpoint match the OperatorDag we've created.
+                validateOperatorsInCheckpoint(
+                    *processorInfo->context->restoredCheckpointInfo->operatorInfo,
+                    processorInfo->operatorDag->operators());
+            }
         }
 
         // Start the checkpoint coordinator if checkpoint is supported for the given source.

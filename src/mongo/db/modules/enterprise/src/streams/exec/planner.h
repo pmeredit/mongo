@@ -47,10 +47,12 @@ public:
         bool planMainPipeline{true};
         // The minimum OperatorId to use for the created Operator instances.
         OperatorId minOperatorId{0};
-        // If true, the pipelines are optimized. Currently this is always true except in some unit
-        // tests. Once SERVER-78464 is completed, this will be set to false when restoring from
-        // a checkpoint and supplying Planner the optimized execution plan.
+        // If true, the pipeline is optimized during planning.
+        // Set to false when restoring from an execution plan.
         bool shouldOptimize{true};
+        // Set to true when validating an modify request when the user specifies
+        // resumeFromCheckpoint=true.
+        bool shouldValidateModifyRequest{false};
     };
 
     Planner(Context* context, Options options);
@@ -170,6 +172,11 @@ private:
 
     // Helper function that throws an error if hasWindow has already been set, and sets it if not.
     void verifyOneWindowStage();
+
+    // Used to validate a pipeline modify with resumeFromCheckpoint=true. Throws an exception if
+    // the modify is not valid.
+    void validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserPipeline,
+                                const std::vector<mongo::BSONObj>& newUserPipeline);
 
     Context* _context{nullptr};
     Options _options;
