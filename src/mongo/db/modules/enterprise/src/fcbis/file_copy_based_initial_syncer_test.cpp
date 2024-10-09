@@ -39,6 +39,7 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
+#include "mongo/util/scopeguard.h"
 #include "mongo/watchdog/watchdog.h"
 #include "mongo/watchdog/watchdog_mock.h"
 #include <boost/filesystem.hpp>
@@ -332,6 +333,7 @@ protected:
             return;
         }
         getExecutor().shutdown();
+        _mock->runUntilIdle();
         getExecutor().join();
         _executorThreadShutdownComplete = true;
     }
@@ -1359,6 +1361,10 @@ TEST_F(FileCopyBasedInitialSyncerTest,
 
 TEST_F(FileCopyBasedInitialSyncerTest,
        FCBISReturnsCallbackCanceledIfShutdownWhileRetryingSyncSourceSelection) {
+    auto fCBISHangAfterShutdownCancellationFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterShutdownCancellation");
+    auto timesEnteredFailPoint =
+        fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::alwaysOn);
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
 
@@ -1373,9 +1379,18 @@ TEST_F(FileCopyBasedInitialSyncerTest,
         ASSERT_EQUALS(when, net->runUntil(when));
     }
 
-    // This will cancel the _chooseSyncSourceCallback() task scheduled at getNet()->now() +
-    // '_options.syncSourceRetryWait'
-    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    unittest::ThreadAssertionMonitor monitor;
+    // In shutdown, cancellation occurs, then futures which expect cancellation are waited on, so
+    // mock network needs to run at the same time to process the responses from cancellation.
+    auto shutdownThread = monitor.spawnController([&] {
+        // This will cancel the _chooseSyncSourceCallback() task scheduled at getNet()->now() +
+        // '_options.syncSourceRetryWait'
+        ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    });
+    ON_BLOCK_EXIT([&] { shutdownThread.join(); });
+    fCBISHangAfterShutdownCancellationFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+    fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::off);
+    _mock->runUntilIdle();
 
     fileCopyBasedInitialSyncer->join();
 
