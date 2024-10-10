@@ -41,24 +41,33 @@ const userTwoAuthOptions = {
 // Expected logs.
 const waitTimeRegex = new RegExp('^[1-9][0-9]*$', 'i');
 const logID = 51803;
-const expectedSaslStartCommandLog = {
-    saslStart: 1
+const expectedUserOneUsersInfoCommandLog = {
+    usersInfo: {
+        user: user1,
+        db: "$external",
+    },
 };
-let expectedCommandUserOneAuth = {
+const expectedUserTwoUsersInfoCommandLog = {
+    usersInfo: {
+        user: user2,
+        db: "$external",
+    },
+};
+let expectedUserOneUsersInfoStats = {
     LDAPOperations: {
         LDAPNumberOfSuccessfulReferrals: 1,
         LDAPNumberOfFailedReferrals: 0,
         LDAPNumberOfReferrals: 1,
-        bindStats: {numOp: 2, opDurationMicros: waitTimeRegex},
+        bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},
         searchStats: {numOp: 1, opDurationMicros: waitTimeRegex}
     },
 };
-let expectedCommandUserTwoAuth = {
+let expectedUserTwoUsersInfoStats = {
     LDAPOperations: {
         LDAPNumberOfSuccessfulReferrals: 0,
         LDAPNumberOfFailedReferrals: 4,
         LDAPNumberOfReferrals: 4,
-        bindStats: {numOp: 5, opDurationMicros: waitTimeRegex},
+        bindStats: {numOp: 4, opDurationMicros: waitTimeRegex},
         searchStats: {numOp: 4, opDurationMicros: waitTimeRegex}
     },
 };
@@ -77,8 +86,6 @@ function checkCumulativeLDAPMetrics(ldapOperations,
                                     expectedNumReferrals,
                                     expectedNumBinds,
                                     expectedNumSearches) {
-    print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
-
     assert.eq(expectedNumSuccessfulReferrals, ldapOperations.LDAPNumberOfSuccessfulReferrals);
     assert.eq(expectedNumFailedReferrals, ldapOperations.LDAPNumberOfFailedReferrals);
     assert.eq(expectedNumReferrals, ldapOperations.LDAPNumberOfReferrals);
@@ -89,29 +96,31 @@ function checkCumulativeLDAPMetrics(ldapOperations,
 }
 
 function runTest(conn) {
-    // Set logging level to 1 so that we log all operations that aren't slow
-    const adminDB = conn.getDB('admin');
-    assert.commandWorked(adminDB.runCommand({createUser: 'admin', pwd: 'pwd', roles: ['root']}));
+    // Create a separate admin-authenticated connection to run admin operations.
+    assert.commandWorked(
+        conn.getDB('admin').runCommand({createUser: 'admin', pwd: 'pwd', roles: ['root']}));
+    const adminConn = new Mongo(conn.host);
+    const adminDB = adminConn.getDB('admin');
     assert(adminDB.auth('admin', 'pwd'));
+
+    // Set logging level to 1 so that we log all operations that aren't slow
     assert.commandWorked(adminDB.runCommand({setParameter: 1, logLevel: 1}));
-    adminDB.logout();
 
     // using $external for LDAP, authorize users
     const externalDB = conn.getDB("$external");
     assert(externalDB.auth(userOneAuthOptions));
     externalDB.logout();
 
-    // Assert that the LDAP metrics are visible in the slow query log for authentication and added
-    // to the cumulative serverStatus metrics.
-    assert(adminDB.auth('admin', 'pwd'));
-    hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserOneAuth, 1);
+    // Assert that the LDAP metrics are visible in the slow query log for saslStart and usersInfo
+    // and added to the cumulative serverStatus metrics.
+    hasCommandLogEntry(
+        adminDB, logID, expectedUserOneUsersInfoCommandLog, expectedUserOneUsersInfoStats, 1);
     let ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
 
     // We expect 1 successful referral, 0 failed referrals, 1 total referral, 2 binds, and 1 search
     // operation so far. All of this should come from the userOne auth.
     checkCumulativeLDAPMetrics(ldapOperations, 1, 0, 1, 2, 1);
-    adminDB.logout();
 
     // Set a failpoint that should cause mongod to automatically fail when binding to the referred
     // server. This should be reflected in LDAPNumberOfFailedReferrals.
@@ -121,8 +130,8 @@ function runTest(conn) {
 
     // The cumulative LDAP operation stats should reflect the sum of the previous stats and the new
     // values from the failed referrals (including retries).
-    assert(adminDB.auth('admin', 'pwd'));
-    hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserTwoAuth, 1);
+    hasCommandLogEntry(
+        adminDB, logID, expectedUserTwoUsersInfoCommandLog, expectedUserTwoUsersInfoStats, 1);
     ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
 
@@ -150,6 +159,9 @@ referringLDAPServer.start();
 
 const configGenerator = setupConfigGenerator(referringLDAPServer.getHostAndPort());
 const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+
+// Set the refresh interval to a high number so intervening refreshes don't throw the stats off.
+config.setParameter.ldapUserCacheRefreshInterval = 600;
 const m = MongoRunner.runMongod(config);
 
 jsTest.log('Starting ldap_operation_stats.js Standalone');

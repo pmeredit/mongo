@@ -10,14 +10,17 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/auth/authorization_backend_interface.h"
 #include "mongo/db/auth/authorization_backend_mock.h"
+#include "mongo/db/auth/authorization_client_handle_shard.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_manager_factory_mock.h"
+#include "mongo/db/auth/authorization_router_impl.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/repl/storage_interface_impl.h"
 #include "mongo/db/service_context_d_test_fixture.h"
+#include "mongo/db/service_entry_point_shard_role.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/transport/transport_layer_mock.h"
 #include "mongo/unittest/assert.h"
@@ -454,14 +457,18 @@ protected:
         // Set up mongod.
         ServiceContextMongoDTest::setUp();
 
-        auto service = getServiceContext();
+        auto serviceContext = getServiceContext();
         _opCtx = cc().makeOperationContext();
         _storage = std::make_unique<repl::StorageInterfaceImpl>();
 
+        // Set up a ServiceEntryPoint so that commands can run as necessary.
+        serviceContext->getService()->setServiceEntryPoint(
+            std::make_unique<ServiceEntryPointShardRole>());
+
         // Set up ReplicationCoordinator and ensure that we are primary.
-        auto replCoord = std::make_unique<repl::ReplicationCoordinatorMock>(service);
+        auto replCoord = std::make_unique<repl::ReplicationCoordinatorMock>(serviceContext);
         ASSERT_OK(replCoord->setFollowerMode(repl::MemberState::RS_PRIMARY));
-        repl::ReplicationCoordinator::set(service, std::move(replCoord));
+        repl::ReplicationCoordinator::set(serviceContext, std::move(replCoord));
 
         // Set up oplog collection.
         repl::createOplog(operationContext());
@@ -1169,18 +1176,16 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
     auto storage = storageInterface();
 
     // The update code path checks if the role and user exist in the mock authorization manager
-    // external state, so we need to set it up.
-    auto localAuthzManager = std::make_unique<AuthorizationManagerImpl>(
-        getService(), std::make_unique<AuthzManagerExternalStateMock>());
-    auto authzManager = localAuthzManager.get();
-    authzManager->setAuthEnabled(true);
-    AuthorizationManager::set(getService(), std::move(localAuthzManager));
+    // backend, so we need to set it up.
     auto globalAuthzManagerFactory = std::make_unique<AuthorizationManagerFactoryMock>();
+    AuthorizationManager::set(getService(), globalAuthzManagerFactory->createShard(getService()));
+    AuthorizationManager::get(getService())->setAuthEnabled(true);
+
     auth::AuthorizationBackendInterface::set(
         getService(), globalAuthzManagerFactory->createBackendInterface(getService()));
+
     auto mockBackend = reinterpret_cast<auth::AuthorizationBackendMock*>(
         auth::AuthorizationBackendInterface::get(getService()));
-
 
     // Re-initialize the client after setting the AuthorizationManager to get an
     // AuthorizationSession.

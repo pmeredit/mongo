@@ -32,15 +32,6 @@ public:
         return _wrappedExternalState->makeAuthzSessionExternalState(client);
     }
 
-    Status hasValidStoredAuthorizationVersion(OperationContext* opCtx,
-                                              BSONObj* foundVersionDoc) final {
-        return _wrappedExternalState->hasValidStoredAuthorizationVersion(opCtx, foundVersionDoc);
-    }
-
-    Status getStoredAuthorizationVersion(OperationContext* opCtx, int* outVersion) final {
-        return _wrappedExternalState->getStoredAuthorizationVersion(opCtx, outVersion);
-    }
-
     Status getUserDescription(OperationContext* opCtx,
                               const UserRequest& userReq,
                               BSONObj* result,
@@ -78,19 +69,6 @@ public:
                                   BSONObj* result) final {
         return _wrappedExternalState->getRolesAsUserFragment(
             opCtx, roleName, showRestrictions, result);
-    }
-
-    /**
-     * Passthrough to AuthorizationManagerExternalStateMongod
-     */
-    Status getRoleDescriptionsForDB(OperationContext* opCtx,
-                                    const DatabaseName& dbname,
-                                    PrivilegeFormat showPrivileges,
-                                    AuthenticationRestrictionsFormat showRestrictions,
-                                    bool showBuiltinRoles,
-                                    std::vector<BSONObj>* result) final {
-        return _wrappedExternalState->getRoleDescriptionsForDB(
-            opCtx, dbname, showPrivileges, showRestrictions, showBuiltinRoles, result);
     }
 
     bool hasAnyPrivilegeDocuments(OperationContext* opCtx) final {

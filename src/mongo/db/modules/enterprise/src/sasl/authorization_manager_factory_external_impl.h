@@ -25,16 +25,10 @@ class AuthorizationManagerFactoryExternalImpl : public AuthorizationManagerFacto
 
     std::unique_ptr<AuthorizationManager> createShard(Service* service) final;
 
-    std::unique_ptr<AuthorizationClientHandle> createClientHandleRouter(Service* service) final {
-        return std::make_unique<AuthorizationClientHandleRouter>();
-    }
-
-    std::unique_ptr<AuthorizationClientHandle> createClientHandleShard(Service* service) final {
-        return std::make_unique<AuthorizationClientHandleShard>();
-    }
-
     std::unique_ptr<auth::AuthorizationBackendInterface> createBackendInterface(
         Service* service) final;
+
+    Status initialize(OperationContext* opCtx) final;
 };
 
 }  // namespace mongo

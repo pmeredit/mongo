@@ -12,11 +12,8 @@ import {
     setupTest
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
-function assertPostTimeoutLogExists(conn) {
-    const adminDB = conn.getDB('admin');
-    assert(adminDB.auth("siteRootAdmin", "secret"));
+function assertPostTimeoutLogExists(adminDB) {
     checkLog.containsJson(adminDB, 24060, {});
-    adminDB.logout();
 }
 
 function runTest() {
@@ -39,11 +36,11 @@ function runTest() {
     const mongos = st.s0;
     setupTest(mongos);
 
-    // Set the log level to 5.
-    const adminDB = mongos.getDB('admin');
+    // Set the log level to 5 using an admin-authenticated connection.
+    const siteRootAdminConn = new Mongo(mongos.host);
+    const adminDB = siteRootAdminConn.getDB('admin');
     assert(adminDB.auth("siteRootAdmin", "secret"));
     assert.commandWorked(adminDB.setLogLevel(5));
-    adminDB.logout();
 
     // Configure fail point to force the bind operation itself to hang as long as the fail point
     // is on.
@@ -61,7 +58,7 @@ function runTest() {
     // Now, turn the failpoint off and check that the server successfully emits a log indicating
     // that the bind completed normally after the timeout, with the result thrown away.
     bindTimeoutFp.off();
-    assertPostTimeoutLogExists(mongos);
+    assertPostTimeoutLogExists(adminDB);
 
     // TODO (SERVER-83433): Add back the test coverage for running db hash check and validation
     // on replica set that is fsync locked and has replica set endpoint enabled.

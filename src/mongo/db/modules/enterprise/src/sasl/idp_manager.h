@@ -102,6 +102,11 @@ public:
     void serializeConfig(BSONArrayBuilder*) const;
 
     /**
+     * Starts the JWKSetRefreshJob if OIDC has been enabled on this node.
+     */
+    void initialize();
+
+    /**
      * Serializes the currently loaded JWKSets for the requested identity providers.
      **/
     void serializeJWKSets(BSONObjBuilder*, const boost::optional<std::set<StringData>>&) const;
@@ -124,6 +129,13 @@ private:
         StringMap<StringMap<SharedIdentityProvider>> providersByIssuerAndAudience;
     };
     std::shared_ptr<IdentityProviderCatalog> _providerCatalog;
+
+    /**
+     * Set to 0 if the refresher has not been started, 1 if it has been started
+     */
+    AtomicWord<bool> _hasInitializedKeyRefresher;
+
+    JWKSetRefreshJob _keyRefresher;
 };
 
 }  // namespace auth

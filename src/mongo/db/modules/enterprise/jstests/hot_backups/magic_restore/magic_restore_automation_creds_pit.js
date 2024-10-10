@@ -76,11 +76,11 @@ function runTest(updateAutoCreds) {
     const checkpointTimestamp = magicRestoreUtils.getCheckpointTimestamp();
     let {lastOplogEntryTs, entriesAfterBackup} =
         magicRestoreUtils.getEntriesAfterBackup(sourcePrimary);
-    // When testing restore with credentials already inserted, there are seven extra oplog entries.
+    // When testing restore with credentials already inserted, there are six extra oplog entries.
     // The first four are the role and user auth collection and index creation entries. The
-    // following three are the role write, user write, and a write to admin.system.version to update
-    // the authSchema. These oplog entries are generated on the source before restore begins.
-    assert.eq(entriesAfterBackup.length, updateAutoCreds ? 11 : 4);
+    // following two are the role write and user write.
+    // These oplog entries are generated on the source before restore begins.
+    assert.eq(entriesAfterBackup.length, updateAutoCreds ? 10 : 4);
 
     magicRestoreUtils.copyFilesAndCloseBackup();
 

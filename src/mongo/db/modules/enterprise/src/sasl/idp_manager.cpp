@@ -81,6 +81,13 @@ IDPManager* IDPManager::get() {
     return &globalIDPManager;
 }
 
+void IDPManager::initialize() {
+    // Start JWKSetRefreshJob.
+    if (_hasInitializedKeyRefresher.swap(1) == 0) {
+        _keyRefresher.go();
+    }
+}
+
 bool IDPManager::isOIDCEnabled() {
     const auto& mechs = saslGlobalParams.authenticationMechanisms;
     return std::any_of(

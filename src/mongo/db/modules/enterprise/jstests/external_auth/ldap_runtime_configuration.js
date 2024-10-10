@@ -23,12 +23,10 @@ function authAsLDAPUser(shouldSucceed, user) {
               shouldSucceed);
 }
 
+// Conn should already be authenticated as the admin user.
 function runAdminCommand(conn, command) {
     const adminDB = conn.getDB('admin');
-    assert(adminDB.auth("siteRootAdmin", "secret"));
     const res = assert.commandWorked(adminDB.runCommand(command));
-    adminDB.logout();
-
     return res;
 }
 
@@ -81,6 +79,10 @@ function launchCluster(
  * normally again.
  */
 function runTest(fpConn, mainConn, parameterName, badParameterValue) {
+    // Admin operations will be run on the failpoint connection, so authenticate as the admin.
+    const adminDB = fpConn.getDB('admin');
+    assert(adminDB.auth("siteRootAdmin", "secret"));
+
     // Configure fail point to force the bind operation itself to hang as long as the fail point
     // is active on the fpConn.
     let bindTimeoutFp = configureFailPoint(fpConn, 'ldapBindTimeoutHangIndefinitely');
