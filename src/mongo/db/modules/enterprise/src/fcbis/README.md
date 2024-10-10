@@ -207,7 +207,6 @@ From, `_finishCallback`, we call `_updateStorageTimestampsAfterInitialSync,` whe
 - We set the oplog visibility timestamp to the lastAppliedOpTime timestamp.
 - We set the initialDataTimestamp to the lastAppliedOpTime timestamp.
 - We reconstruct prepared transactions so the node can participate in 2-phase commit.
-- We recover any Tenant Migration Access Blockers.
 
 Finally,
 
