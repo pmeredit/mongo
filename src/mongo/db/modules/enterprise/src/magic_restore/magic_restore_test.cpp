@@ -32,8 +32,8 @@
 #include <iostream>
 #include <sstream>
 
-namespace mongo {
-namespace repl {
+namespace mongo::magic_restore {
+namespace {
 
 // Used to mock an input stream for BSONStreamReader. Handles writing BSON object raw data into the
 // stream.
@@ -67,7 +67,7 @@ TEST(MagicRestore, BSONStreamReaderReadOne) {
     auto obj = BSON("_id" << 1);
     mock << obj;
 
-    auto reader = mongo::magic_restore::BSONStreamReader(mock.stream());
+    auto reader = BSONStreamReader(mock.stream());
     ASSERT(reader.hasNext());
     auto bsonObj = reader.getNext();
     ASSERT_BSONOBJ_EQ(obj, bsonObj);
@@ -89,7 +89,7 @@ TEST(MagicRestore, BSONStreamReaderReadMultiple) {
     mock << obj1;
     mock << obj2;
 
-    auto reader = mongo::magic_restore::BSONStreamReader(mock.stream());
+    auto reader = BSONStreamReader(mock.stream());
 
     ASSERT(reader.hasNext());
     ASSERT_BSONOBJ_EQ(obj1, reader.getNext());
@@ -111,7 +111,7 @@ TEST(MagicRestore, BSONStreamReaderEmptyBSON) {
     auto mock = MockStream();
     auto obj = BSONObj();
     mock << obj;
-    auto reader = mongo::magic_restore::BSONStreamReader(mock.stream());
+    auto reader = BSONStreamReader(mock.stream());
 
     // Empty BSON objects should parse correctly.
     auto readBson = reader.getNext();
@@ -120,7 +120,7 @@ TEST(MagicRestore, BSONStreamReaderEmptyBSON) {
     ASSERT_EQUALS(reader.getTotalBytesRead(), obj.objsize());
     ASSERT_EQUALS(reader.getTotalObjectsRead(), 1);
     // Empty BSON objects cannot be parsed into a valid oplog entry.
-    ASSERT_THROWS_CODE(OplogEntry(readBson), mongo::DBException, ErrorCodes::IDLFailedToParse);
+    ASSERT_THROWS_CODE(repl::OplogEntry(readBson), DBException, ErrorCodes::IDLFailedToParse);
 }
 
 TEST(MagicRestore, BSONStreamReaderSizeLarge) {
@@ -130,7 +130,7 @@ TEST(MagicRestore, BSONStreamReaderSizeLarge) {
     auto obj = BSON("_id" << std::string(BSONObjMaxUserSize + 1, 'x'));
     mock << obj;
 
-    auto reader = mongo::magic_restore::BSONStreamReader(mock.stream());
+    auto reader = BSONStreamReader(mock.stream());
     ASSERT(reader.hasNext());
     auto bsonObj = reader.getNext();
     ASSERT_BSONOBJ_EQ(obj, bsonObj);
@@ -150,7 +150,7 @@ DEATH_TEST(MagicRestore, BSONStreamReaderNegativeSize, "Parsed invalid BSON leng
                             static_cast<char>((-11 >> 24) & 0xFF)};
 
     std::stringstream stream(std::string(negativeSize, 4));
-    auto reader = mongo::magic_restore::BSONStreamReader(stream);
+    auto reader = BSONStreamReader(stream);
     auto obj = reader.getNext();
 }
 
@@ -163,7 +163,7 @@ DEATH_TEST(MagicRestore, BSONStreamReaderSmallSize, "Parsed invalid BSON length"
                          static_cast<char>((4 >> 24) & 0xFF)};
 
     std::stringstream stream(std::string(smallSize, 4));
-    auto reader = mongo::magic_restore::BSONStreamReader(stream);
+    auto reader = BSONStreamReader(stream);
     auto obj = reader.getNext();
 }
 
@@ -177,7 +177,7 @@ DEATH_TEST(MagicRestore, BSONStreamReaderSizeTooLarge, "Parsed invalid BSON leng
                        static_cast<char>((size >> 24) & 0xFF)};
 
     std::stringstream stream(std::string(bigSize, 4));
-    auto reader = mongo::magic_restore::BSONStreamReader(stream);
+    auto reader = BSONStreamReader(stream);
     auto obj = reader.getNext();
 }
 
@@ -186,7 +186,7 @@ DEATH_TEST(MagicRestore, BSONStreamReaderStreamFailbit, "Failed to read BSON len
     auto obj1 = BSON("_id" << 1);
     mock << obj1;
 
-    auto reader = mongo::magic_restore::BSONStreamReader(mock.stream());
+    auto reader = BSONStreamReader(mock.stream());
     // With the failbit set, `getNext()` should fassert.
     mock.setStreamState(std::ios::failbit);
     auto obj = reader.getNext();
@@ -203,7 +203,7 @@ DEATH_TEST(MagicRestore,
                     static_cast<char>(1)};
 
     std::stringstream stream(std::string(size, 5));
-    auto reader = mongo::magic_restore::BSONStreamReader(stream);
+    auto reader = BSONStreamReader(stream);
     auto obj = reader.getNext();
 }
 
@@ -217,12 +217,12 @@ TEST(MagicRestore, BSONStreamReaderReadSampleCloudOplogs) {
     std::ifstream stream(filePath.c_str(), std::ios::binary);
     ASSERT(stream.is_open());
 
-    auto reader = mongo::magic_restore::BSONStreamReader(stream);
+    auto reader = BSONStreamReader(stream);
     ASSERT(reader.hasNext());
     while (reader.hasNext()) {
         auto bsonObj = reader.getNext();
         // Ensure the parsed BSON object is an oplog entry.
-        ASSERT_DOES_NOT_THROW(OplogEntry o(bsonObj));
+        ASSERT_DOES_NOT_THROW(repl::OplogEntry o(bsonObj));
     }
     // The Cloud file has 12 oplog entries in it.
     ASSERT_EQUALS(reader.getTotalBytesRead(), boost::filesystem::file_size(filePath));
@@ -292,7 +292,7 @@ TEST(MagicRestore, RestoreConfigurationMissingRequiredField) {
     ASSERT_THROWS_CODE_AND_WHAT(
         magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
                                                    restoreConfig),
-        mongo::DBException,
+        DBException,
         ErrorCodes::IDLFailedToParse,
         "BSON field 'RestoreConfiguration.maxCheckpointTs' is missing but a required field");
 }
@@ -311,7 +311,7 @@ TEST(MagicRestore, RestoreConfigurationPitGreaterThanMaxTs) {
     ASSERT_THROWS_CODE_AND_WHAT(
         magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
                                                    restoreConfig),
-        mongo::DBException,
+        DBException,
         8290601,
         "The pointInTimeTimestamp must be greater than the maxCheckpointTs.");
 }
@@ -331,7 +331,7 @@ TEST(MagicRestore, RestoreConfigurationZeroRestoreToTerm) {
     ASSERT_THROWS_CODE_AND_WHAT(
         magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
                                                    restoreConfig),
-        mongo::DBException,
+        DBException,
         ErrorCodes::BadValue,
         "BSON field 'restoreToHigherTermThan' value must be >= 1, actual value '0'");
 }
@@ -360,7 +360,7 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
-                                mongo::DBException,
+                                DBException,
                                 8290602,
                                 errmsg);
 
@@ -383,7 +383,7 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
-                                mongo::DBException,
+                                DBException,
                                 8290602,
                                 errmsg);
 
@@ -401,7 +401,7 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
-                                mongo::DBException,
+                                DBException,
                                 8290602,
                                 errmsg);
 
@@ -452,7 +452,7 @@ TEST(MagicRestore, RestoreConfigurationShardingRenameNoShardIdentity) {
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
-                                mongo::DBException,
+                                DBException,
                                 8290603,
                                 "If 'shardingRename' exists in the restore configuration, "
                                 "'shardIdentityDocument' must also be passed in.");
@@ -572,12 +572,11 @@ TEST_F(MagicRestoreFixture, CreateCollectionsToRestore) {
     std::string collName1 = "testColl1";
     auto ns0 = NamespaceString::createNamespaceString_forTest(dbName, collName0);
     auto ns1 = NamespaceString::createNamespaceString_forTest(dbName, collName1);
-    auto uuid0 = mongo::UUID::gen();
-    auto uuid1 = mongo::UUID::gen();
+    auto uuid0 = UUID::gen();
+    auto uuid1 = UUID::gen();
 
-    std::vector<mongo::magic_restore::NamespaceUUIDPair> collectionsToRestore{
-        mongo::magic_restore::NamespaceUUIDPair{ns0, uuid0},
-        mongo::magic_restore::NamespaceUUIDPair{ns1, uuid1}};
+    std::vector<NamespaceUUIDPair> collectionsToRestore{NamespaceUUIDPair{ns0, uuid0},
+                                                        NamespaceUUIDPair{ns1, uuid1}};
 
     ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
                   storage->getCollectionUUID(opCtx, NamespaceString::kConfigsvrRestoreNamespace));
@@ -632,7 +631,7 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
                                         InsertStatement{previousShardIdentity}}));
 
     magic_restore::RestoreConfiguration restoreConfig;
-    restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kConfigShard);
+    restoreConfig.setNodeType(NodeTypeEnum::kConfigShard);
 
     updateShardingMetadata(opCtx, restoreConfig, storage);
 
@@ -654,16 +653,16 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataShard) {
     std::string restoreConnStr = "DestinationConnectionString";
 
     magic_restore::RestoreConfiguration restoreConfig;
-    restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kShard);
+    restoreConfig.setNodeType(NodeTypeEnum::kShard);
     std::vector<magic_restore::ShardRenameMapping> mapping{
         {backupShard, restoreShard, restoreConnStr}};
     restoreConfig.setShardingRename(mapping);
 
     std::string shardIdentityName = "test";
-    mongo::OID clusterId("11dd1017a44e231a15af5fc0");
-    mongo::ConnectionString configsvrConnectionString(
-        mongo::ConnectionString::ConnectionType::kReplicaSet, "ConfigsvrConnectionString", "repl");
-    mongo::ShardIdentity shardIdentity(shardIdentityName, clusterId, configsvrConnectionString);
+    OID clusterId("11dd1017a44e231a15af5fc0");
+    ConnectionString configsvrConnectionString(
+        ConnectionString::ConnectionType::kReplicaSet, "ConfigsvrConnectionString", "repl");
+    ShardIdentity shardIdentity(shardIdentityName, clusterId, configsvrConnectionString);
     restoreConfig.setShardIdentityDocument(shardIdentity);
 
     auto storage = storageInterface();
@@ -746,10 +745,9 @@ TEST_F(MagicRestoreFixture, SelectiveRestoreSteps) {
     auto dbName = DatabaseName::createDatabaseName_forTest(boost::none /* tenantId*/, "db");
     std::string collName = "collToRestore";
     auto ns = NamespaceString::createNamespaceString_forTest(dbName, collName);
-    auto uuid = mongo::UUID::gen();
+    auto uuid = UUID::gen();
 
-    std::vector<mongo::magic_restore::NamespaceUUIDPair> collectionsToRestore{
-        mongo::magic_restore::NamespaceUUIDPair{ns, uuid}};
+    std::vector<NamespaceUUIDPair> collectionsToRestore{NamespaceUUIDPair{ns, uuid}};
     restoreConfig.setCollectionsToRestore(collectionsToRestore);
 
     ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
@@ -1086,7 +1084,7 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
                                     << "toShardId" << backupShard1)}}));
 
     magic_restore::RestoreConfiguration restoreConfig;
-    restoreConfig.setNodeType(mongo::magic_restore::NodeTypeEnum::kShard);
+    restoreConfig.setNodeType(NodeTypeEnum::kShard);
     std::vector<magic_restore::ShardRenameMapping> mapping{
         {backupShard0, restoreShard0, restoreConnStr0},
         {backupShard1, restoreShard1, restoreConnStr1}};
@@ -1215,11 +1213,9 @@ TEST_F(MagicRestoreFixture, CreateNewAutomationCredentials) {
     createInternalCollectionsWithUuid(
         opCtx,
         storage,
-        std::vector<mongo::magic_restore::NamespaceUUIDPair>{
-            mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace,
-                                                    mongo::UUID::gen()},
-            mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace,
-                                                    mongo::UUID::gen()}});
+        std::vector<NamespaceUUIDPair>{
+            NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace, UUID::gen()},
+            NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace, UUID::gen()}});
 
     auto testRole = BSON("createRole"
                          << "testRole"
@@ -1283,11 +1279,9 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
         createInternalCollectionsWithUuid(
             opCtx,
             storage,
-            std::vector<mongo::magic_restore::NamespaceUUIDPair>{
-                mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace,
-                                                        mongo::UUID::gen()},
-                mongo::magic_restore::NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace,
-                                                        mongo::UUID::gen()}});
+            std::vector<NamespaceUUIDPair>{
+                NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace, UUID::gen()},
+                NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace, UUID::gen()}});
 
         auto testRole = BSON("createRole"
                              << "testRole"
@@ -1393,14 +1387,13 @@ TEST_F(MagicRestoreFixture, CreateInternalCollectionsWithUuid) {
     auto ns0 = NamespaceString::createNamespaceString_forTest("config", "settings");
     auto ns1 = NamespaceString::createNamespaceString_forTest("admin", "system.roles");
     auto ns2 = NamespaceString::createNamespaceString_forTest("admin", "system.users");
-    auto uuid0 = mongo::UUID::gen();
-    auto uuid1 = mongo::UUID::gen();
-    auto uuid2 = mongo::UUID::gen();
+    auto uuid0 = UUID::gen();
+    auto uuid1 = UUID::gen();
+    auto uuid2 = UUID::gen();
 
-    std::vector<mongo::magic_restore::NamespaceUUIDPair> colls{
-        mongo::magic_restore::NamespaceUUIDPair{ns0, uuid0},
-        mongo::magic_restore::NamespaceUUIDPair{ns1, uuid1},
-        mongo::magic_restore::NamespaceUUIDPair{ns2, uuid2}};
+    std::vector<NamespaceUUIDPair> colls{NamespaceUUIDPair{ns0, uuid0},
+                                         NamespaceUUIDPair{ns1, uuid1},
+                                         NamespaceUUIDPair{ns2, uuid2}};
 
     for (const auto& nsAndUuid : colls) {
         ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
@@ -1459,14 +1452,13 @@ TEST_F(MagicRestoreFixture, CreateInternalCollectionsWithUuidCollectionsAlreadyE
     auto ns0 = NamespaceString::createNamespaceString_forTest("config", "settings");
     auto ns1 = NamespaceString::createNamespaceString_forTest("admin", "system.roles");
     auto ns2 = NamespaceString::createNamespaceString_forTest("admin", "system.users");
-    auto uuid0 = mongo::UUID::gen();
-    auto uuid1 = mongo::UUID::gen();
-    auto uuid2 = mongo::UUID::gen();
+    auto uuid0 = UUID::gen();
+    auto uuid1 = UUID::gen();
+    auto uuid2 = UUID::gen();
 
-    std::vector<mongo::magic_restore::NamespaceUUIDPair> colls{
-        mongo::magic_restore::NamespaceUUIDPair{ns0, uuid0},
-        mongo::magic_restore::NamespaceUUIDPair{ns1, uuid1},
-        mongo::magic_restore::NamespaceUUIDPair{ns2, uuid2}};
+    std::vector<NamespaceUUIDPair> colls{NamespaceUUIDPair{ns0, uuid0},
+                                         NamespaceUUIDPair{ns1, uuid1},
+                                         NamespaceUUIDPair{ns2, uuid2}};
 
     for (const auto& nsAndUuid : colls) {
         ASSERT_EQUALS(ErrorCodes::CollectionIsEmpty,
@@ -1505,5 +1497,5 @@ DEATH_TEST_REGEX_F(MagicRestoreFixture,
     magic_restore::checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);
 }
 
-}  // namespace repl
-}  // namespace mongo
+}  // namespace
+}  // namespace mongo::magic_restore

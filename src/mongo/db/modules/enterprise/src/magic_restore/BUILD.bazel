@@ -41,6 +41,7 @@ mongo_cc_library(
         "//src/mongo/db:dbhelpers",
         "//src/mongo/db:mongod_options",
         "//src/mongo/db:server_base",
+        "//src/mongo/db:server_lifecycle_monitor",
         "//src/mongo/db:service_context",
         "//src/mongo/db:shard_role",
         "//src/mongo/db/collection_crud",

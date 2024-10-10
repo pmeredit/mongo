@@ -32,6 +32,7 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
+#include "mongo/db/server_lifecycle_monitor.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/balancer_configuration.h"
@@ -44,9 +45,7 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kMagicRestore
 
-namespace mongo {
-namespace magic_restore {
-
+namespace mongo::magic_restore {
 
 BSONStreamReader::BSONStreamReader(std::istream& stream) : _stream(stream) {
     _buffer = std::make_unique<char[]>(BSONObjMaxInternalSize);
@@ -102,6 +101,14 @@ int64_t BSONStreamReader::getTotalObjectsRead() {
     return _totalObjectsRead;
 }
 
+const std::array<std::string, 3> approvedClusterParameters = {
+    "defaultMaxTimeMS", "querySettings", "shardedClusterCardinalityForDirectConns"};
+
+/**
+ * Reads oplog entries from the BSONStreamReader and inserts them into the oplog. Each entry is
+ * inserted in its own write unit of work. Note that the function will hold on to the global lock in
+ * IX mode for the duration of oplog entry insertion.
+ */
 void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader) {
     LOGV2(8290818, "Writing additional PIT oplog entries into oplog");
     auto restoreConfigBytes = reader.getTotalBytesRead();
@@ -144,6 +151,11 @@ void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader)
 }
 
 
+/**
+ * Helper function to execute the automation agent credentials upsert. If a create command fails
+ * with a DuplicateKey error, the function will convert the command into an update command run it
+ * again.
+ */
 void executeCredentialsCommand(OperationContext* opCtx,
                                const BSONObj& cmd,
                                repl::StorageInterface* storageInterface) {
@@ -731,7 +743,13 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
     return opTime.getTimestamp();
 }
 
-ExitCode magicRestoreMain(ServiceContext* svcCtx) {
+namespace {
+/*
+ * Runs the entire magic restore process. It reads the restore configuration from stdin, modifies
+ * on-disk metadata to bring backed up data files to a consistent point-in-time. At the end of the
+ * restore procedure, this function will signal a clean shutdown, and the process will exit.
+ */
+void entryPoint(ServiceContext* svcCtx) {
     BSONObjBuilder magicRestoreTimeElapsedBuilder;
     BSONObjBuilder magicRestoreInfoBuilder;
 
@@ -921,12 +939,58 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     LOGV2(8290817,
           "Finished magic restore",
           "Summary of time elapsed"_attr = magicRestoreInfoBuilder.obj());
-    exitCleanly(ExitCode::clean);
-    return ExitCode::clean;
+    shutdownNoTerminate();
 }
 
-MONGO_STARTUP_OPTIONS_POST(MagicRestore)(InitializerContext*) {
-    setMagicRestoreMain(magicRestoreMain);
-}
-}  // namespace magic_restore
-}  // namespace mongo
+/**
+ * Manages the thread that runs magic restore. The manager only executes restore logic
+ * if '--magicRestore' is passed in as a startup parameter. Once completed, magic restore will
+ * signal clean shutdown.
+ */
+class Manager {
+public:
+    /**
+     * Starts magic restore on a separate thread if the required startup parameter is present.
+     * Otherwise returns early.
+     */
+    void startMagicRestoreIfNeeded() {
+        if (!storageGlobalParams.magicRestore) {
+            return;
+        }
+        // The magic restore main function executes restore logic that amends backed up data
+        // files on disk. At the conclusion of its operation, it signals clean shutdown.
+        _thread = stdx::thread([this] {
+            ServiceContext* serviceContext = getGlobalServiceContext();
+            Client::initThread("magicRestore", serviceContext->getService());
+            entryPoint(serviceContext);
+        });
+    }
+
+    /**
+     * Joins the magic restore thread if it was started.
+     */
+    ~Manager() {
+        if (_thread.joinable()) {
+            _thread.join();
+        }
+    }
+
+private:
+    /**
+     * Executes the magic restore process.
+     */
+    stdx::thread _thread;
+};
+
+const auto managerDecoration = ServiceContext::declareDecoration<Manager>();
+// Registers the magic restore initialization function with the ServerLifecycleMonitor. The monitor
+// will start magic restore once mongod startup is complete.
+bool lifecycleRegistrationDummy = [] {
+    globalServerLifecycleMonitor().addFinishingStartupCallback([] {
+        auto& sc = *getGlobalServiceContext();
+        sc[managerDecoration].startMagicRestoreIfNeeded();
+    });
+    return true;
+}();
+}  // namespace
+}  // namespace mongo::magic_restore

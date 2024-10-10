@@ -6,10 +6,8 @@
 
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
-#include "mongo/util/exit_code.h"
 
-namespace mongo {
-namespace magic_restore {
+namespace mongo::magic_restore {
 
 /*
 Implementation of a BSON reader that produces BSON objects from an arbitrary stream of data. The
@@ -55,9 +53,6 @@ private:
     int64_t _totalBytesRead = 0;
     int64_t _totalObjectsRead = 0;
 };
-
-const std::array<std::string, 3> approvedClusterParameters = {
-    "defaultMaxTimeMS", "querySettings", "shardedClusterCardinalityForDirectConns"};
 
 /**
  * Validates the magic restore configuration fields.
@@ -123,14 +118,6 @@ void dropNonRestoredClusterParameters(OperationContext* opCtx,
                                       repl::StorageInterface* storageInterface);
 
 /**
- * Reads oplog entries from the BSONStreamReader and inserts them into the oplog. Each entry is
- * inserted in its own write unit of work. Note that the function will hold on to the global lock in
- * IX mode for the duration of oplog entry insertion.
- */
-void writeOplogEntriesToOplog(ServiceContext* svcCtx, const BSONStreamReader& reader);
-
-
-/**
  * Helper function to check if the collection with the given namespace exists. If it doesn't, the
  * function will fatally assert.
  */
@@ -145,16 +132,6 @@ void createInternalCollectionsWithUuid(
     OperationContext* opCtx,
     repl::StorageInterface* storageInterface,
     const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids);
-
-/**
- * Helper function to execute the automation agent credentials upsert. If a create command fails
- * with a DuplicateKey error, the function will convert the command into an update command run it
- * again.
- *
- */
-void executeCredentialsCommand(OperationContext* opCtx,
-                               const BSONObj& cmd,
-                               repl::StorageInterface* storageInterface);
 
 /**
  * Inserts automation credentials into admin.system.roles and admin.system.users. Attempts to run
@@ -180,7 +157,4 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
                                          BSONObj& lastOplogEntry,
                                          long long higherTerm);
 
-ExitCode magicRestoreMain(ServiceContext* svcCtx);
-
-}  // namespace magic_restore
-}  // namespace mongo
+}  // namespace mongo::magic_restore
