@@ -7,11 +7,10 @@ import logging
 import sys
 import urllib.parse
 
+import aws_common
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
-
-import aws_common
 
 fault_type = None
 

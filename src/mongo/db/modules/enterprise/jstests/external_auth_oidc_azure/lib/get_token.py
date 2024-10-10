@@ -1,6 +1,6 @@
-import subprocess
-import json
 import argparse
+import json
+import subprocess
 import sys
 
 CONST_REMOTE_URL = "127.0.0.1"

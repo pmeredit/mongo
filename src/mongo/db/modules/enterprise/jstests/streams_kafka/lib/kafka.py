@@ -5,16 +5,16 @@ Script for setting up a local Kafka broker container using docker.
 
 import argparse
 import csv
-from io import StringIO
 import json
 import logging
 import os
-from pathlib import Path
+import random
 import re
 import socket
 import subprocess
 import time
-import random
+from io import StringIO
+from pathlib import Path
 from typing import Any, Dict, List
 
 LOGGER = logging.getLogger(__name__)

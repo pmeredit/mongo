@@ -4,10 +4,10 @@ Script for assuming an aws role.
 """
 
 import argparse
-import uuid
 import logging
 import os
 import sys
+import uuid
 
 import boto3
 import botocore.session

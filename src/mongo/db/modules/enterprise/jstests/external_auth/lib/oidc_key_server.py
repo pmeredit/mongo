@@ -21,7 +21,6 @@ import json
 import logging
 import urllib
 
-
 jwk_map = {}
 
 

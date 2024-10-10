@@ -33,11 +33,10 @@ from kmip.services.server.session import KmipSession
 #
 # NOTE: The big blocks of code are simply copied from the PyKMIP 0.10.0 source code, with small patch modifications that are explicitly pointed out.
 def patch_server(expected_client_version):
-    from kmip.core import enums
-    from kmip.core import exceptions
-    from kmip.core.messages import payloads
+    from kmip.core import enums, exceptions
     from kmip.core import policy as operation_policy
     from kmip.core.attributes import CryptographicParameters
+    from kmip.core.messages import payloads
 
     _OPENSSL_SEC_LEVEL = "@SECLEVEL=1"
 

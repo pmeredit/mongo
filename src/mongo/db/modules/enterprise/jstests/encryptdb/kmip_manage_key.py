@@ -1,14 +1,14 @@
 import argparse
 import logging
 import sys
+
 from kmip.core.enums import (
     CryptographicAlgorithm,
+    KMIPVersion,
     RevocationReasonCode,
     State,
-    KMIPVersion,
 )
 from kmip.pie.client import ProxyKmipClient
-
 
 LOGGER = logging.getLogger(__name__)
 STATE_ATTRIBUTE = "State"

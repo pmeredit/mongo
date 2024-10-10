@@ -14,16 +14,15 @@ in 2 hours in the event that they are not properly deleted by the teardown scrip
 
 from __future__ import annotations
 
-from collections import defaultdict
-
-from google.cloud import compute_v1
-
 import argparse
 import json
 import logging
 import os
 import sys
 import uuid
+from collections import defaultdict
+
+from google.cloud import compute_v1
 
 
 # Reads config from the file and makes assertions that the expected fields are provided.

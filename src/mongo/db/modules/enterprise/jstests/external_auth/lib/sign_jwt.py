@@ -5,6 +5,7 @@ This script accepts a JWT header, body, and key file and produces a signed JWS a
 
 import argparse
 import json
+
 import jwt
 
 

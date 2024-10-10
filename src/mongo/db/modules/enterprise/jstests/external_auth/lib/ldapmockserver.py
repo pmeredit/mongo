@@ -3,25 +3,24 @@
 import io
 import sys
 
+from ldaptor.inmemory import fromLDIFFile
+from ldaptor.interfaces import IConnectedLDAPEntry
+from ldaptor.protocols import pureldap
+from ldaptor.protocols.ldap import ldaperrors
+from ldaptor.protocols.ldap.ldapserver import LDAPServer
+from ldaptor.protocols.ldap.ldifprotocol import LDIFTruncatedError
+from ldaptor.protocols.pureber import (
+    CLASS_APPLICATION,
+    BEROctetString,
+    BERSequence,
+    berDecodeMultiple,
+)
 from twisted.application import service
 from twisted.internet import task
 from twisted.internet.endpoints import serverFromString
 from twisted.internet.protocol import ServerFactory
-from twisted.python.components import registerAdapter
 from twisted.python import log, usage
-from ldaptor.inmemory import fromLDIFFile
-from ldaptor.interfaces import IConnectedLDAPEntry
-from ldaptor.protocols.ldap import ldaperrors
-from ldaptor.protocols.ldap.ldapserver import LDAPServer
-from ldaptor.protocols.ldap.ldifprotocol import LDIFTruncatedError
-from ldaptor.protocols import pureldap
-
-from ldaptor.protocols.pureber import (
-    BEROctetString,
-    BERSequence,
-    CLASS_APPLICATION,
-    berDecodeMultiple,
-)
+from twisted.python.components import registerAdapter
 
 
 class Options(usage.Options):

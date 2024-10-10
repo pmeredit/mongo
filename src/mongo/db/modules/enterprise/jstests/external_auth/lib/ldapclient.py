@@ -2,15 +2,14 @@
 
 import sys
 
+from ldaptor import delta
+from ldaptor.protocols import pureldap
+from ldaptor.protocols.ldap.ldapclient import LDAPClient
+from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
 from twisted.internet import defer
 from twisted.internet.endpoints import clientFromString, connectProtocol
 from twisted.internet.task import react
 from twisted.python import log, usage
-
-from ldaptor import delta
-from ldaptor.protocols.ldap.ldapclient import LDAPClient
-from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
-from ldaptor.protocols import pureldap
 
 
 class Options(usage.Options):

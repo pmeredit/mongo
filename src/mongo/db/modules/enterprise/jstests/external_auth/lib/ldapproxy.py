@@ -12,16 +12,17 @@ if platform.system() == "Windows":
     iocpreactor.install()
 
 
+import sys
+from functools import partial
+
 from ldaptor.protocols import pureldap
 from ldaptor.protocols.ldap.ldapclient import LDAPClient
-from ldaptor.protocols.ldap.ldapconnector import connectToLDAPEndpoint, LDAPClientCreator
+from ldaptor.protocols.ldap.ldapconnector import LDAPClientCreator, connectToLDAPEndpoint
 from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
 from ldaptor.protocols.ldap.proxybase import ProxyBase
-from ldaptor.protocols.pureldap import LDAPSearchRequest, LDAPResult, LDAPFilter_equalityMatch
+from ldaptor.protocols.pureldap import LDAPFilter_equalityMatch, LDAPResult, LDAPSearchRequest
 from twisted.internet import defer, protocol, reactor, ssl, task
 from twisted.python import log, usage
-from functools import partial
-import sys
 
 
 class LDAPProxy(ProxyBase):

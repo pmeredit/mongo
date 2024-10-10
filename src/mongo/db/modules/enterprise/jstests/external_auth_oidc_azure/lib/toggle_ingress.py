@@ -5,11 +5,11 @@ to the host that this script is run on, as it is visible to the outside world
 """
 
 import argparse
-from enum import Enum
 import json
 import logging
 import sys
 import time
+from enum import Enum
 
 import requests
 

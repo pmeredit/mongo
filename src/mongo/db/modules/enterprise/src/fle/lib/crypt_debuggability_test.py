@@ -2,9 +2,10 @@
 
 # Run on gdb with 'gdb ./mongo_crypt_shlib_test --batch -ex "source debuggability_test.py"'
 import os
-import gdb
 import re
 import traceback
+
+import gdb
 
 DBGPROG = "mongo_crypt_shlib_test"
 LIBNAME = "mongo_crypt_v1.so"

@@ -5,12 +5,13 @@ Script for retrieving an ID token from a GCE VM.
 Requires ssh on local and remote hosts.
 """
 
-import subprocess
-import json
 import argparse
-import sys
-import jwt
+import json
 import re
+import subprocess
+import sys
+
+import jwt
 
 
 def main():

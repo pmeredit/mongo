@@ -2,9 +2,9 @@
 # It prints results to stdout.
 # Run it like: python parse_large_tumbling_window_results.py {output of checkpoint.js} >> results.json
 
-import sys
-import re
 import json
+import re
+import sys
 
 
 # Sorts a dictionary of stacks by activeBytes.

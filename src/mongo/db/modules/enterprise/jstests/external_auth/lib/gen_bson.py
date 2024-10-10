@@ -5,8 +5,9 @@ This script generates a BSON payload in base64 format from a JSON object.
 
 import argparse
 import base64
-import bson
 import json
+
+import bson
 
 
 def parse_command_line() -> argparse.Namespace:

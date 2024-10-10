@@ -24,13 +24,14 @@ payloads:                           # Sequence(optional) Top-level field contain
 """
 
 import argparse
-from Cheetah.Template import Template
 import base64
 import os
 import re
 import sys
 from typing import Any, Dict, List, Optional
+
 import yaml
+from Cheetah.Template import Template
 
 ENTERPRISE = "src/mongo/db/modules/enterprise/"
 # Default config file to use if one is not specified.

@@ -1,9 +1,10 @@
-from os import environ
 import http.server
-import requests
-import urllib.parse
-import traceback
 import json
+import traceback
+import urllib.parse
+from os import environ
+
+import requests
 
 
 class SimpleHttpServerImpl(http.server.BaseHTTPRequestHandler):
