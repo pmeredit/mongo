@@ -66,6 +66,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->dlq->registerMetrics(executor->getMetricManager());
     context->streamMetaFieldName = "_stream_meta";
     context->featureFlags = StreamProcessorFeatureFlags{{}, Date_t::now()};
+    context->concurrentCheckpointController = std::make_shared<ConcurrentCheckpointController>(1);
 
     return std::make_tuple(std::move(context), std::move(executor));
 }

@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/message.h"
 
 namespace mongo {
@@ -40,6 +41,7 @@ public:
         mongo::stdx::chrono::milliseconds checkpointIntervalMs;
         // The checkpoint storage.
         CheckpointStorage* storage{nullptr};
+        std::shared_ptr<ConcurrentCheckpointController> checkpointController;
     };
 
     struct CheckpointRequest {
@@ -59,7 +61,8 @@ public:
     // Possibly returns a CheckpointControlMsg to send through the OperatorDag.
     // If this function yields a CheckpointControlMsg, then that message cannot
     // be discarded and it _must_ be injected into the pipeline. Failure to do so
-    // will trigger an assert the next time a checkpoint needs to be taken
+    // will trigger an assert the next time a checkpoint needs to be taken as well as potentially
+    // block other processors from taking checkpoints
     boost::optional<CheckpointControlMsg> getCheckpointControlMsgIfReady(
         const CheckpointRequest& req);
 
@@ -77,6 +80,8 @@ public:
     }
 
 private:
+    enum class CreateCheckpoint { kNotNeeded, kIfRoom, kForce };
+    CreateCheckpoint evaluateIfCheckpointShouldBeWritten(const CheckpointRequest& req);
     CheckpointControlMsg createCheckpointControlMsg();
     bool _writtenFirstCheckpoint{false};
 

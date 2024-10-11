@@ -123,6 +123,13 @@ const FeatureFlagDefinition FeatureFlags::kSourceBufferPageSize{
     mongo::Value::createIntOrLong(4L * 1024 * 1024),
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kMaxConcurrentCheckpoints{
+    "maxConcurrentCheckpoints",
+    "Ensures that only N checkpoints are in progress simultaneously. This is \
+    shared across all stream processors running on this process ",
+    mongo::Value(1),
+    {}};
+
 const FeatureFlagDefinition FeatureFlags::kTestOnlyStringType{
     "stringFlag",
     "testOnly flag to set string validation",
@@ -167,7 +174,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableExternalAPIOperator.name, FeatureFlags::kEnableExternalAPIOperator},
     {FeatureFlags::kExternalAPIRateLimitPerSecond.name,
      FeatureFlags::kExternalAPIRateLimitPerSecond},
-    {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType}};
+    {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
+    {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);

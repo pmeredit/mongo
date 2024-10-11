@@ -2,13 +2,12 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/checkpoint_coordinator.h"
 
+#include <boost/none.hpp>
 #include <chrono>
 
-#include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "streams/exec/change_stream_source_operator.h"
+#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 
@@ -16,6 +15,7 @@
 
 using namespace mongo;
 using mongo::stdx::chrono::steady_clock;
+using namespace std::chrono_literals;
 
 namespace streams {
 
@@ -23,6 +23,32 @@ CheckpointCoordinator::CheckpointCoordinator(Options options)
     : _options(std::move(options)), _lastCheckpointTimestamp{steady_clock::now()} {}
 
 boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointControlMsgIfReady(
+    const CheckpointRequest& req) {
+    auto createCheckpoint = evaluateIfCheckpointShouldBeWritten(req);
+
+    if (createCheckpoint == CreateCheckpoint::kNotNeeded) {
+        return boost::none;
+    }
+
+    invariant(_options.checkpointController);
+
+    bool hasRoom = _options.checkpointController->startNewCheckpointIfRoom(
+        createCheckpoint == CreateCheckpoint::kForce);
+    if (!hasRoom && createCheckpoint == CreateCheckpoint::kIfRoom) {
+        auto minutesSinceLastCheckpoint = std::chrono::duration_cast<std::chrono::minutes>(
+            steady_clock::now() - _lastCheckpointTimestamp);
+        if (minutesSinceLastCheckpoint >= 120min) {
+            LOGV2_WARNING(8368300,
+                          "unable to take checkpoint due to max concurrent checkpoints reached",
+                          "spid"_attr = _options.processorId,
+                          "minutesSinceLastCheckpoint"_attr = minutesSinceLastCheckpoint.count());
+        }
+        return boost::none;
+    }
+    return createCheckpointControlMsg();
+}
+
+CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpointShouldBeWritten(
     const CheckpointRequest& req) {
     // The current logic is:
     // 1) When SP is started for the first time ever, we take a checkpoint.
@@ -37,42 +63,43 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
     //    be taken even if nothing has changed.
 
     if (!_options.enableDataFlow) {
-        return boost::none;
+        return CreateCheckpoint::kNotNeeded;
     }
 
     if (_options.writeFirstCheckpoint && !writtenFirstCheckpoint()) {
-        return createCheckpointControlMsg();
+        return CreateCheckpoint::kForce;
     }
 
     // A high priority request bypasses all checks and forces a checkpoint.
     if (req.writeCheckpointCommand == WriteCheckpointCommand::kForce) {
-        return createCheckpointControlMsg();
+        return CreateCheckpoint::kForce;
     }
 
     // Currently we always take a checkpoint at shutdown.
     if (req.shutdown) {
-        return createCheckpointControlMsg();
+        return CreateCheckpoint::kForce;
     }
 
     // If nothing has changed, then skip taking a checkpoint.
     if (!(req.uncheckpointedState || req.changeStreamAdvanced)) {
-        return boost::none;
+        return CreateCheckpoint::kNotNeeded;
     }
 
     // Some state has changed.
     // If we have an externally requested checkpoint, then bypass the time based wait.
     if (req.writeCheckpointCommand == WriteCheckpointCommand::kNormal) {
-        return createCheckpointControlMsg();
+        return CreateCheckpoint::kForce;
     }
 
     // Else, if sufficient time has elapsed, then take a checkpoint.
     auto now = steady_clock::now();
     dassert(_lastCheckpointTimestamp <= now);
     if (now - _lastCheckpointTimestamp <= _options.checkpointIntervalMs) {
-        return boost::none;
+        return CreateCheckpoint::kNotNeeded;
     }
-    return createCheckpointControlMsg();
+    return CreateCheckpoint::kIfRoom;
 }
+
 
 CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
     _writtenFirstCheckpoint = true;

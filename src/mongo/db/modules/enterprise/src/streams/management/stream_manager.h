@@ -13,6 +13,7 @@
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
+#include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/log_util.h"
@@ -254,10 +255,15 @@ private:
     void createSourceBufferManager(const StreamProcessorFeatureFlags& featureFlags,
                                    const std::string& tenantIdLabel);
 
+    // Create the _concurrentCheckpointController.
+    void createConcurrentCheckpointController(const StreamProcessorFeatureFlags& featureFlags);
+
     Options _options;
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::stdx::mutex _mutex;
+    // The thread-safe concurrency monitor shared across all checkpoint coordinators/executors
+    std::shared_ptr<ConcurrentCheckpointController> _concurrentCheckpointController;
     // The callback that `_memoryAggregator` invokes when the memory usage increases.
     std::shared_ptr<KillAllMemoryUsageMonitor> _memoryUsageMonitor;
     // Memory aggregator that tracks memory usage across all active stream processors. This must be

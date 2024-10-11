@@ -28,6 +28,7 @@
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/constants.h"
@@ -671,6 +672,10 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
             if (!_sourceBufferManager) {
                 createSourceBufferManager(featureFlags, "*" /* tenantIdLabel */);
             }
+
+            if (!_concurrentCheckpointController) {
+                createConcurrentCheckpointController(featureFlags);
+            }
         } else {
             // Ensure all SPs running on this process belong to the same tenant ID.
             assertTenantIdIsValid(lk, tenantId);
@@ -682,8 +687,12 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
                 // Recreate _sourceBufferManager for the new tenantId.
                 _sourceBufferManager.reset();
                 createSourceBufferManager(featureFlags, tenantId);
+
+                _concurrentCheckpointController.reset();
+                createConcurrentCheckpointController(featureFlags);
             }
         }
+
 
         // Reset the `exceeded memory limit` signal after all the stream processors have been
         // stopped so that new stream processors can get scheduled on this worker.
@@ -765,6 +774,18 @@ void StreamManager::createSourceBufferManager(const StreamProcessorFeatureFlags&
     _sourceBufferManager = std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));
 }
 
+void StreamManager::createConcurrentCheckpointController(
+    const StreamProcessorFeatureFlags& featureFlags) {
+    tassert(9395901,
+            "Expected _concurrentCheckpointController not to be set",
+            !_concurrentCheckpointController);
+    SourceBufferManager::Options srcBufferOptions;
+    auto maxConcurrentCheckpoints =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kMaxConcurrentCheckpoints).getInt();
+    _concurrentCheckpointController =
+        std::make_shared<ConcurrentCheckpointController>(maxConcurrentCheckpoints);
+}
+
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfo(
     mongo::WithLock lk, const mongo::StartStreamProcessorCommand& request) {
     ServiceContext* svcCtx = getGlobalServiceContext();
@@ -818,6 +839,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         context->isEphemeral = true;
     }
     context->pipelineVersion = request.getPipelineVersion();
+
+    context->concurrentCheckpointController = _concurrentCheckpointController;
 
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
@@ -1002,6 +1025,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                         !processorInfo->context->restoreCheckpointId,
                     .checkpointIntervalMs = processorInfo->context->checkpointInterval,
                     .storage = processorInfo->context->checkpointStorage.get(),
+                    .checkpointController = _concurrentCheckpointController,
                 });
         } else {
             // Checkpoint is not supported for the given source, cleanup the CheckpointStorage
@@ -1632,6 +1656,15 @@ mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
         auto tenantFeatureFlags = std::make_shared<TenantFeatureFlags>(request.getFeatureFlags());
         for (auto& iter : tenantInfo->second->processors) {
             iter.second->executor->onFeatureFlagsUpdated(tenantFeatureFlags);
+        }
+        auto featureFlags = tenantFeatureFlags->getStreamProcessorFeatureFlags("");
+        if (featureFlags.isOverridden(FeatureFlags::kMaxConcurrentCheckpoints)) {
+            auto val =
+                featureFlags.getFeatureFlagValue(FeatureFlags::kMaxConcurrentCheckpoints).getInt();
+            if (val) {
+                _concurrentCheckpointController->setMaxInprogressCheckpoints(
+                    static_cast<int32_t>(*val));
+            }
         }
     }
     return mongo::UpdateFeatureFlagsReply{};

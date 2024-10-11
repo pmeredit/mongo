@@ -41,6 +41,7 @@ env.Library(
         "checkpoint/restorer.cpp",
         "checkpoint_coordinator.cpp",
         "collect_operator.cpp",
+        "concurrent_checkpoint_monitor.cpp",
         "context.cpp",
         "connection_status.cpp",
         "dead_letter_queue.cpp",

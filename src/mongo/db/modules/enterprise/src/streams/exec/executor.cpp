@@ -10,6 +10,7 @@
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/time_support.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_coordinator.h"
@@ -433,6 +434,8 @@ Executor::RunStatus Executor::runOnce() {
                     .writeCheckpointCommand = _writeCheckpointCommand.load(),
                     .shutdown = true});
             if (checkpointControlMsg) {
+                ScopeGuard guard(
+                    [&] { _context->concurrentCheckpointController->onCheckpointComplete(); });
                 sendCheckpointControlMsg(*checkpointControlMsg);
                 _lastCheckpointId = checkpointControlMsg->id;
                 LOGV2_INFO(8914501,
@@ -457,6 +460,8 @@ Executor::RunStatus Executor::runOnce() {
                                                      .shutdown = false});
 
         if (checkpointControlMsg) {
+            ScopeGuard guard(
+                [&] { _context->concurrentCheckpointController->onCheckpointComplete(); });
             LOGV2_DEBUG(8017802,
                         2,
                         "sending checkpointcontrolmsg",

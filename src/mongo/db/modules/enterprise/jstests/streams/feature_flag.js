@@ -125,7 +125,7 @@ ff = {
 };
 result =
     db.runCommand({streams_updateFeatureFlags: '', tenantId: TEST_TENANT_ID, featureFlags: ff});
-assert.eq(result.ok, true);
+assert.eq(result.ok, false);
 
 assert.soon(() => {
     result = listStreamProcessors();

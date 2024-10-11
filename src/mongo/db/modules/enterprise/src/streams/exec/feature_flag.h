@@ -53,6 +53,7 @@ public:
     static const FeatureFlagDefinition kExternalAPIRateLimitPerSecond;
     static const FeatureFlagDefinition kKafkaProduceTimeout;
     static const FeatureFlagDefinition kUseWatchToInitClusterChangestream;
+    static const FeatureFlagDefinition kMaxConcurrentCheckpoints;
 };
 
 }  // namespace streams

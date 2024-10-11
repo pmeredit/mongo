@@ -2,18 +2,15 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
-#include "streams/exec/checkpoint_coordinator.h"
-#include "streams/exec/stats_utils.h"
+
 #include <algorithm>
 #include <boost/none.hpp>
 #include <chrono>
 #include <exception>
 #include <filesystem>
-#include <iostream>
+#include <functional>
 #include <memory>
 #include <rdkafkacpp.h>
-#include <string>
 #include <vector>
 
 #include "mongo/bson/bsonelement.h"
@@ -27,7 +24,10 @@
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/periodic_runner_factory.h"
+#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
+#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
@@ -39,6 +39,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/stats_utils.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
@@ -109,7 +110,8 @@ public:
 
         CheckpointCoordinator::Options coordinatorOptions{
             .processorId = _props.context->streamProcessorId,
-            .storage = _props.context->checkpointStorage.get()};
+            .storage = _props.context->checkpointStorage.get(),
+            .checkpointController = _props.context->concurrentCheckpointController};
         _props.checkpointCoordinator =
             std::make_unique<CheckpointCoordinator>(std::move(coordinatorOptions));
 
@@ -131,8 +133,7 @@ public:
         auto checkpointControlMsg = _props.checkpointCoordinator->getCheckpointControlMsgIfReady(
             CheckpointCoordinator::CheckpointRequest{.writeCheckpointCommand =
                                                          WriteCheckpointCommand::kForce});
-        _props.source->onControlMsg(0 /* inputIdx */,
-                                    StreamControlMsg{.checkpointMsg = *checkpointControlMsg});
+        _props.executor->sendCheckpointControlMsg(*checkpointControlMsg);
         _props.executor->runOnce();
         return *checkpointControlMsg;
     }
@@ -306,7 +307,8 @@ private:
 class CheckpointTest : public AggregationContextFixture {
 public:
     CheckpointTest() {
-        // Set up the periodic runner to allow background job execution for tests that require it.
+        // Set up the periodic runner to allow background job execution for tests that require
+        // it.
         auto runner = makePeriodicRunner(_serviceContext);
         _serviceContext->setPeriodicRunner(std::move(runner));
     }
@@ -319,6 +321,7 @@ public:
     void Test_AlwaysCheckpoint_EmptyPipeline(bool useNewStorage);
     void Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool useNewStorage);
     void Test_CoordinatorWallclockTime(bool useNewStorage);
+    void Test_CoordinatorGetCheckpointControlMsgIfReady();
 
 protected:
     ServiceContext* _serviceContext{getServiceContext()};
@@ -627,11 +630,12 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
         std::tie(context, executor) = getTestContext(_serviceContext);
         auto storage = std::make_unique<InMemoryCheckpointStorage>(context.get());
         storage->registerMetrics(executor->getMetricManager());
-        auto coordinator = std::make_unique<CheckpointCoordinator>(
-            CheckpointCoordinator::Options{.processorId = "",
-                                           .writeFirstCheckpoint = false,
-                                           .checkpointIntervalMs = spec.checkpointInterval,
-                                           .storage = storage.get()});
+        auto coordinator = std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
+            .processorId = "",
+            .writeFirstCheckpoint = false,
+            .checkpointIntervalMs = spec.checkpointInterval,
+            .storage = storage.get(),
+            .checkpointController = context->concurrentCheckpointController});
         auto start = stdx::chrono::steady_clock::now();
         std::vector<CheckpointId> checkpoints;
         while (stdx::chrono::steady_clock::now() - start < spec.runtime) {
@@ -639,6 +643,7 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
                 CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true});
             if (checkpointMsg) {
                 checkpoints.push_back(checkpointMsg->id);
+                context->concurrentCheckpointController->onCheckpointComplete();
             }
         }
         ASSERT_LTE(std::abs<int>(checkpoints.size() - spec.expectedCheckpointCount),
@@ -656,6 +661,227 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
 TEST_F(CheckpointTest, CoordinatorWallclockTime) {
     Test_CoordinatorWallclockTime(false /* useNewStorage */);
     Test_CoordinatorWallclockTime(true /* useNewStorage */);
+}
+
+typedef void (*CoordinatorTestCase)(
+    std::shared_ptr<CheckpointCoordinator> coordinator,
+    std::shared_ptr<ConcurrentCheckpointController> CheckpointController);
+
+void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
+    struct Spec {
+        milliseconds checkpointInterval{0};
+        bool writeFirstCheckpoint{false};
+        bool enableDataFlow{true};
+        std::function<void(std::shared_ptr<CheckpointCoordinator> coordinator,
+                           std::shared_ptr<ConcurrentCheckpointController> CheckpointController)>
+            tc;
+    };
+
+    auto runTestCase = [&](Spec spec) {
+        CheckpointTestWorkload workload("[]", std::vector<BSONObj>{}, _serviceContext);
+        auto metricManager = std::make_unique<MetricManager>();
+        std::unique_ptr<Context> context;
+        std::unique_ptr<Executor> executor;
+        std::tie(context, executor) = getTestContext(_serviceContext);
+        auto storage = std::make_unique<InMemoryCheckpointStorage>(context.get());
+        storage->registerMetrics(executor->getMetricManager());
+        auto coordinator = std::make_shared<CheckpointCoordinator>(CheckpointCoordinator::Options{
+            .processorId = "",
+            .enableDataFlow = spec.enableDataFlow,
+            .writeFirstCheckpoint = spec.writeFirstCheckpoint,
+            .checkpointIntervalMs = spec.checkpointInterval,
+            .storage = storage.get(),
+            .checkpointController = context->concurrentCheckpointController});
+
+        spec.tc(coordinator, context->concurrentCheckpointController);
+    };
+
+    auto firstCheckpointTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            // ensure that checkpoint is blocked for workload
+            ASSERT_TRUE(CheckpointController->startNewCheckpointIfRoom(false));
+
+            bool checkpointCompleted = false;
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+
+            CheckpointController->onCheckpointComplete();
+        };
+
+    runTestCase(Spec{.writeFirstCheckpoint = true, .tc = firstCheckpointTc});
+
+    auto iterativeCheckpointNotTakenTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            ASSERT_TRUE(CheckpointController->startNewCheckpointIfRoom(false));
+
+            bool checkpointCompleted = false;
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_FALSE(checkpointCompleted);
+
+            CheckpointController->onCheckpointComplete();
+        };
+
+    runTestCase(Spec{.tc = iterativeCheckpointNotTakenTc});
+
+    auto iterativeCheckpointTakenTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.tc = iterativeCheckpointTakenTc});
+
+    auto iterativeCheckpointTakenWhenRoomBecomesAvailableTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            ASSERT_TRUE(CheckpointController->startNewCheckpointIfRoom(false));
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_FALSE(checkpointCompleted);
+
+            CheckpointController->onCheckpointComplete();
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.tc = iterativeCheckpointTakenWhenRoomBecomesAvailableTc});
+
+    auto checkpointFromShutdownTakenTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.shutdown = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.tc = checkpointFromShutdownTakenTc});
+
+    auto checkpointFromForceCommandTakenTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.writeCheckpointCommand =
+                                                                 WriteCheckpointCommand::kForce})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.tc = checkpointFromForceCommandTakenTc});
+
+    auto checkpointFromNormalCommandTakenTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{
+                        .uncheckpointedState = true,
+                        .writeCheckpointCommand = WriteCheckpointCommand::kNormal})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.tc = checkpointFromNormalCommandTakenTc});
+
+    auto checkpointSkippedFromNothingChangedTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_FALSE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.tc = checkpointSkippedFromNothingChangedTc});
+
+    auto checkpointSkippedFromInsufficentTimeElapseTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_FALSE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.checkpointInterval = milliseconds{10000},
+                     .tc = checkpointSkippedFromInsufficentTimeElapseTc});
+
+    auto checkpointSkippedFromDisabledDataFlowTc =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_FALSE(checkpointCompleted);
+        };
+
+    runTestCase(Spec{.enableDataFlow = false, .tc = checkpointSkippedFromDisabledDataFlowTc});
+}
+
+
+TEST_F(CheckpointTest, CoordinatorGetCheckpointControlMsgIfReady) {
+    Test_CoordinatorGetCheckpointControlMsgIfReady();
 }
 
 TEST_F(CheckpointTest, CheckpointStats) {
