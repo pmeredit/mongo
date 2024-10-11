@@ -686,7 +686,9 @@ const kMaxDynamicTargets = 1000;
         let result = startStreamProcessor([{$source: {'connectionName': '__testMemory'}}, merge],
                                           goodUri,
                                           false /* validateSuccess */);
-        assert.commandFailedWithCode(result, 8186209);
+        assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
+        jsTestLog(result);
+        assert.eq(result.errorLabels[0], "StreamProcessorUserError");
     };
 
     good(null /* setup */, {

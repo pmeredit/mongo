@@ -255,7 +255,9 @@ function resetOutputColl(shardKey, coll) {
             }
         ],
         false /*assertWorked*/);
-    assert.commandFailedWithCode(result, 8186209);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
+    jsTestLog(result);
+    assert.eq(result.errorLabels[0], "StreamProcessorUserError");
 })();
 
 (function testOnFieldsContainShardKeyAndIndexIsNotUnique() {
@@ -283,7 +285,9 @@ function resetOutputColl(shardKey, coll) {
             }
         ],
         false /*assertWorked*/);
-    assert.commandFailedWithCode(result, 8186209);
+    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
+    jsTestLog(result);
+    assert.eq(result.errorLabels[0], "StreamProcessorUserError");
 })();
 
 (function testOnFieldsContainShardKeyAndIndexExists() {

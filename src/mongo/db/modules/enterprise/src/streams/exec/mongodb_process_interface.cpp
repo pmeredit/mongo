@@ -348,7 +348,7 @@ MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
 
     if (fieldPaths) {
         auto supportingUniqueIndex = fieldsHaveSupportingUniqueIndex(expCtx, outputNs, *fieldPaths);
-        uassert(8186209,
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "Cannot find index to verify that join fields will be unique",
                 supportingUniqueIndex != SupportingUniqueIndex::None);
         return {*fieldPaths, boost::none, supportingUniqueIndex};
