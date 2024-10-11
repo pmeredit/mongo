@@ -4,14 +4,8 @@ import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 function test(audit, db, asBSON) {
     jsTest.log("START audit-log-application-message.js " + tojson(asBSON));
 
-    // Test null byte separately.
-    // We expect this to fail during command parsing when the message
-    // is treated like a namespace (due to BasicCommand handling).
-    assert.commandFailedWithCode(db.runCommand({logApplicationMessage: "Hello\u0000World"}),
-                                 [ErrorCodes.InvalidNamespace]);
-
     // Write and check for an audit message containing any character except null byte.
-    for (let i = 1; i < 256; ++i) {
+    for (let i = 0; i < 256; ++i) {
         try {
             const msg = "Hello" + String.fromCharCode(i) + "World";
             assert.commandWorked(db.runCommand({logApplicationMessage: msg}));

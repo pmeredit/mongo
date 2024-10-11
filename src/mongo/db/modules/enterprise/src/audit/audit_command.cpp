@@ -2,93 +2,58 @@
  * Copyright (C) 2012-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-
-#include <algorithm>
-#include <string>
-#include <vector>
-
-#include "mongo/base/init.h"
-#include "mongo/base/status.h"
-#include "mongo/base/string_data.h"
-#include "mongo/bson/util/bson_extract.h"
-#include "mongo/client/sasl_client_authenticate.h"
+#include "audit/audit_commands_gen.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client.h"
 #include "mongo/db/commands.h"
-#include "mongo/db/commands/authentication_commands.h"
-#include "mongo/util/base64.h"
-#include "mongo/util/sequence_util.h"
-#include "mongo/util/str.h"
+#include "mongo/db/namespace_string.h"
+#include "mongo/db/operation_context.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+namespace mongo::audit {
+namespace {
 
-
-namespace mongo {
-
-class CmdLogApplicationMessage final : public BasicCommand {
+class CmdLogApplicationMessage final : public TypedCommand<CmdLogApplicationMessage> {
 public:
-    CmdLogApplicationMessage();
-    ~CmdLogApplicationMessage() override;
+    using Request = LogApplicationMessageCommand;
+    using Reply = LogApplicationMessageCommand::Reply;
 
-    Status checkAuthForOperation(OperationContext* opCtx,
-                                 const DatabaseName& dbName,
-                                 const BSONObj& cmdObj) const override {
-        auto* authzSession = AuthorizationSession::get(opCtx->getClient());
+    class Invocation final : public InvocationBase {
+    public:
+        using InvocationBase::InvocationBase;
 
-        if (!authzSession->isAuthorizedForActionsOnResource(
-                ResourcePattern::forClusterResource(dbName.tenantId()),
-                ActionType::applicationMessage)) {
-            return Status(ErrorCodes::Unauthorized,
-                          str::stream() << "Not authorized to send custom message to auditlog");
+        bool supportsWriteConcern() const final {
+            return false;
         }
-        return Status::OK();
-    }
 
-    bool run(OperationContext* opCtx,
-             const DatabaseName& dbName,
-             const BSONObj& cmdObj,
-             BSONObjBuilder& result) override;
+        NamespaceString ns() const final {
+            return NamespaceString(request().getDbName());
+        }
 
-    std::string help() const override {
-        return "Insert a custom message into the audit log";
-    }
+        void doCheckAuthorization(OperationContext* opCtx) const final {
+            auto* as = AuthorizationSession::get(opCtx->getClient());
+            uassert(ErrorCodes::Unauthorized,
+                    "Not authorized to send custom message to auditlog",
+                    as->isAuthorizedForActionsOnResource(
+                        ResourcePattern::forClusterResource(request().getDbName().tenantId()),
+                        ActionType::applicationMessage));
+        }
 
-    virtual bool isWriteCommandForConfigServer() const {
-        return false;
-    }
-    bool supportsWriteConcern(const BSONObj& cmd) const override {
-        return false;
-    }
-    AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
+        Reply typedRun(OperationContext* opCtx) {
+            audit::logApplicationMessage(opCtx->getClient(), request().getCommandParameter());
+            return Reply{};
+        }
+    };
+
+    AllowedOnSecondary secondaryAllowed(ServiceContext*) const final {
         return AllowedOnSecondary::kAlways;
     }
-    bool allowedWithSecurityToken() const override {
+
+    bool allowedWithSecurityToken() const final {
         return true;
     }
 };
-
 MONGO_REGISTER_COMMAND(CmdLogApplicationMessage).forShard().forRouter();
 
-CmdLogApplicationMessage::CmdLogApplicationMessage() : BasicCommand("logApplicationMessage") {}
-CmdLogApplicationMessage::~CmdLogApplicationMessage() {}
-
-bool CmdLogApplicationMessage::run(OperationContext* opCtx,
-                                   const DatabaseName& dbName,
-                                   const BSONObj& cmdObj,
-                                   BSONObjBuilder& result) {
-    Client* client = Client::getCurrent();
-
-    uassert(ErrorCodes::InvalidOptions,
-            "logApplicationMessage missing eponymous field",
-            cmdObj.hasField("logApplicationMessage"));
-
-    uassert(ErrorCodes::InvalidBSONType,
-            "logApplicationMessage takes a string as its only argument",
-            cmdObj["logApplicationMessage"].type() == String);
-
-    audit::logApplicationMessage(client, cmdObj.getStringField("logApplicationMessage"));
-
-    return true;
-}
-}  // namespace mongo
+}  // namespace
+}  // namespace mongo::audit

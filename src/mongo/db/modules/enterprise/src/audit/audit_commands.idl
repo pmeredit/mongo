@@ -71,3 +71,13 @@ commands:
         fields:
             filter: object
             auditAuthorizationSuccess: bool
+
+    logApplicationMessage:
+        description: "Emit a custom message to the audit log"
+        api_version: ""
+        command_name: logApplicationMessage
+        namespace: type
+        type: string
+        cpp_name: LogApplicationMessageCommand
+        reply_type: OkReply
+        strict: false

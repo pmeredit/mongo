@@ -63,23 +63,6 @@ mongo_cc_library(
 )
 
 mongo_cc_library(
-    name = "audit_command",
-    srcs = [
-        "audit_command.cpp",
-    ],
-    hdrs = [
-        "//src/mongo/client:sasl_client_authenticate.h",
-    ],
-    deps = [
-        "//src/mongo/db:audit",
-        "//src/mongo/db:commands",
-        "//src/mongo/db:service_context",
-        "//src/mongo/db/auth",
-        "//src/mongo/db/auth:authprivilege",
-    ],
-)
-
-mongo_cc_library(
     name = "audit_enc_comp_manager",
     srcs = [
         "audit_enc_comp_manager.cpp",
@@ -110,6 +93,7 @@ mongo_cc_library(
 mongo_cc_library(
     name = "audit_enterprise",
     srcs = [
+        "audit_command.cpp",
         "audit_commands_gen",
         "audit_event_type_gen",
         "audit_log.cpp",
