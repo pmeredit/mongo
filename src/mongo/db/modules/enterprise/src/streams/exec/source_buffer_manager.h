@@ -33,8 +33,12 @@ public:
         // Ideally, this number should be <= 20% of bufferTotalSize so that one very busy source
         // buffer does not hog all the buffer space.
         int64_t maxSourceBufferSize{160L * 1024 * 1024};
-        // Byte size of a page. Memory is allocated to source buffers in units of pages.
-        int32_t pageSize{4 * 1024 * 1024};
+        // Memory is allocated to source buffers in units of pages.
+        // Following 2 options specify the min/max byte size of a page. SourceBufferManager starts
+        // with max page size and reduces the page size as the number of source buffers increases
+        // to ensure that at least one page can be preallocated for each source buffer.
+        int32_t minPageSize{100 * 1024};
+        int32_t maxPageSize{4 * 1024 * 1024};
         // MetricManager instance with which all the metrics are registered.
         MetricManager* metricManager{nullptr};
         // Labels to use for the metrics.
@@ -80,7 +84,8 @@ public:
     virtual bool allocPages(SourceBuffer* sourceBuffer, int64_t curSize, int32_t numPages);
 
     int32_t getPageSize() const {
-        return _options.pageSize;
+        auto readLock = _mutex.readLock();
+        return _pageSize;
     }
 
 protected:
@@ -117,6 +122,8 @@ private:
     mongo::AtomicWord<int32_t> _availablePages{0};
     // Guards access to the following 2 variables.
     mutable mongo::WriteRarelyRWMutex _mutex;
+    // Current page size.
+    int32_t _pageSize{4 * 1024 * 1024};
     // Number of pages preallocated to each source buffer.
     int32_t _sourceBufferPreallocatedPages{0};
     mongo::stdx::unordered_map<SourceBuffer*, std::shared_ptr<SourceBufferInfo>> _buffers;

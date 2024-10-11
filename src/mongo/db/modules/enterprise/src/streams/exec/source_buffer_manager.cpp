@@ -26,9 +26,6 @@ SourceBufferManager::SourceBufferManager(Options options) : _options(std::move(o
             "Options.bufferPreallocationFraction must be in the range [0, 1]",
             _options.bufferPreallocationFraction >= 0 && _options.bufferPreallocationFraction <= 1);
     uassert(mongo::ErrorCodes::InternalError,
-            "Options.maxSourceBufferSize must be >= pageSize",
-            _options.maxSourceBufferSize >= _options.pageSize);
-    uassert(mongo::ErrorCodes::InternalError,
             "Options.metricManager must not be nullptr",
             _options.metricManager);
 
@@ -149,7 +146,7 @@ bool SourceBufferManager::allocPages(SourceBufferManager::SourceBuffer* sourceBu
 
     if (totalPages + 1 <= _sourceBufferPreallocatedPages) {
         // This source buffer can use one more of its preallocated pages.
-        bufferInfo->size += _options.pageSize;
+        bufferInfo->size += _pageSize;
         return true;
     }
 
@@ -162,7 +159,7 @@ bool SourceBufferManager::allocPages(SourceBufferManager::SourceBuffer* sourceBu
     }
 
     // Buffer space allocation succeeded.
-    bufferInfo->size += _options.pageSize;
+    bufferInfo->size += _pageSize;
     return true;
 }
 
@@ -172,14 +169,29 @@ void SourceBufferManager::recomputePreallocatedPages(const mongo::WriteRarelyRWM
         static_cast<int32_t>(_options.bufferPreallocationFraction * 100) / (numBuffers * 100);
     newSourceBufferPreallocatedBytes =
         std::min(newSourceBufferPreallocatedBytes, _options.maxSourceBufferSize);
+
+    // Compute new page size.
+    int32_t newPageSize{_options.maxPageSize};
+    if (newSourceBufferPreallocatedBytes < _options.maxPageSize) {
+        if (newSourceBufferPreallocatedBytes >= _options.minPageSize) {
+            // Choose the largest multiple of _options.minPageSize less than
+            // newSourceBufferPreallocatedBytes as the new page size.
+            newPageSize = newSourceBufferPreallocatedBytes -
+                newSourceBufferPreallocatedBytes % _options.minPageSize;
+        } else {
+            newPageSize = _options.minPageSize;
+        }
+    }
+    _pageSize = newPageSize;
+
     // We ensure that each source buffer is preallocated at least one page.
+    uassert(mongo::ErrorCodes::InternalError,
+            "Cannot preallocate even a single page to all the available source buffers",
+            newSourceBufferPreallocatedBytes >= _pageSize);
     int32_t newSourceBufferPreallocatedPages = toPages(newSourceBufferPreallocatedBytes);
     uassert(mongo::ErrorCodes::InternalError,
             "newSourceBufferPreallocatedPages is not >= 1",
             newSourceBufferPreallocatedPages >= 1);
-    uassert(mongo::ErrorCodes::InternalError,
-            "Cannot preallocate even a single page to all the available source buffers",
-            toPages(_options.bufferTotalSize) >= numBuffers * newSourceBufferPreallocatedPages);
 
     _sourceBufferPreallocatedPages = newSourceBufferPreallocatedPages;
     _availablePages.store(std::max<int32_t>(
@@ -201,7 +213,7 @@ void SourceBufferManager::recomputePreallocatedPages(const mongo::WriteRarelyRWM
 }
 
 int32_t SourceBufferManager::toPages(int64_t bytes) const {
-    return (bytes + _options.pageSize - 1) / _options.pageSize;
+    return (bytes + _pageSize - 1) / _pageSize;
 }
 
 }  // namespace streams

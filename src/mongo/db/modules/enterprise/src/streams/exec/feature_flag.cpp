@@ -116,10 +116,17 @@ const FeatureFlagDefinition FeatureFlags::kSourceBufferMaxSize{
     mongo::Value::createIntOrLong(160L * 1024 * 1024),
     {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(32L * 1024 * 1024)}}};
 
-const FeatureFlagDefinition FeatureFlags::kSourceBufferPageSize{
-    "sourceBufferPageSize",
-    "Specifies value for SourceBufferManager::Options::pageSize.",
-    // 4 MB default
+const FeatureFlagDefinition FeatureFlags::kSourceBufferMinPageSize{
+    "sourceBufferMinPageSize",
+    "Specifies value for SourceBufferManager::Options::minPageSize.",
+    // 100KB default
+    mongo::Value::createIntOrLong(100L * 1024),
+    {}};
+
+const FeatureFlagDefinition FeatureFlags::kSourceBufferMaxPageSize{
+    "sourceBufferMaxPageSize",
+    "Specifies value for SourceBufferManager::Options::maxPageSize.",
+    // 4MB default
     mongo::Value::createIntOrLong(4L * 1024 * 1024),
     {}};
 
@@ -170,7 +177,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
      FeatureFlags::kSourceBufferPreallocationFraction},
     {FeatureFlags::kSourceBufferMaxSize.name, FeatureFlags::kSourceBufferMaxSize},
     {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
-    {FeatureFlags::kSourceBufferPageSize.name, FeatureFlags::kSourceBufferPageSize},
+    {FeatureFlags::kSourceBufferMinPageSize.name, FeatureFlags::kSourceBufferMinPageSize},
+    {FeatureFlags::kSourceBufferMaxPageSize.name, FeatureFlags::kSourceBufferMaxPageSize},
     {FeatureFlags::kEnableExternalAPIOperator.name, FeatureFlags::kEnableExternalAPIOperator},
     {FeatureFlags::kExternalAPIRateLimitPerSecond.name,
      FeatureFlags::kExternalAPIRateLimitPerSecond},

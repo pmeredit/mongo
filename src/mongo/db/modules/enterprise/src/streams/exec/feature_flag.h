@@ -47,7 +47,8 @@ public:
     static const FeatureFlagDefinition kSourceBufferTotalSize;
     static const FeatureFlagDefinition kSourceBufferPreallocationFraction;
     static const FeatureFlagDefinition kSourceBufferMaxSize;
-    static const FeatureFlagDefinition kSourceBufferPageSize;
+    static const FeatureFlagDefinition kSourceBufferMinPageSize;
+    static const FeatureFlagDefinition kSourceBufferMaxPageSize;
     static const FeatureFlagDefinition kTestOnlyStringType;
     static const FeatureFlagDefinition kEnableExternalAPIOperator;
     static const FeatureFlagDefinition kExternalAPIRateLimitPerSecond;

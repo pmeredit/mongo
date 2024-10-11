@@ -767,8 +767,10 @@ void StreamManager::createSourceBufferManager(const StreamProcessorFeatureFlags&
              .getDouble();
     srcBufferOptions.maxSourceBufferSize =
         *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMaxSize).getInt();
-    srcBufferOptions.pageSize =
-        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferPageSize).getInt();
+    srcBufferOptions.minPageSize =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMinPageSize).getInt();
+    srcBufferOptions.maxPageSize =
+        *featureFlags.getFeatureFlagValue(FeatureFlags::kSourceBufferMaxPageSize).getInt();
     srcBufferOptions.metricManager = _metricManager.get();
     srcBufferOptions.metricLabels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
     _sourceBufferManager = std::make_shared<SourceBufferManager>(std::move(srcBufferOptions));

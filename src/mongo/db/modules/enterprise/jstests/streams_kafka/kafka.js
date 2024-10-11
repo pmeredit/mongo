@@ -2099,7 +2099,8 @@ function honorSourceBufferSizeLimit() {
     let featureFlags = {
         sourceBufferTotalSize: NumberLong(500 * 1024 * 1024),
         sourceBufferMaxSize: NumberLong(5 * 1024),
-        sourceBufferPageSize: NumberLong(1024)
+        sourceBufferMinPageSize: NumberLong(1024),
+        sourceBufferMaxPageSize: NumberLong(1024)
     };
 
     // Start all the stream processors.

@@ -44,7 +44,8 @@ const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
             let featureFlags = {
                 sourceBufferTotalSize: NumberLong(totalNumPages * 1500),
                 sourceBufferMaxSize: NumberLong(maxPages * 1500),
-                sourceBufferPageSize: NumberLong(1500)
+                sourceBufferMinPageSize: NumberLong(1500),
+                sourceBufferMaxPageSize: NumberLong(1500)
             };
 
             // Start all the stream processors.
