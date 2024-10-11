@@ -62,7 +62,8 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
         NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")));
     context->expCtx->allowDiskUse = false;
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
-    auto executor = std::make_unique<Executor>(context.get(), Executor::Options{});
+    auto executor = std::make_unique<Executor>(
+        context.get(), Executor::Options{.metricManager = std::make_unique<MetricManager>()});
     context->dlq->registerMetrics(executor->getMetricManager());
     context->streamMetaFieldName = "_stream_meta";
     context->featureFlags = StreamProcessorFeatureFlags{{}, Date_t::now()};

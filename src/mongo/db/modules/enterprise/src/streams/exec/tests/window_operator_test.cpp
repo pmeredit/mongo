@@ -78,7 +78,6 @@ public:
     WindowOperatorTest() {
         _metricManager = std::make_unique<MetricManager>();
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
-        _executor = std::make_unique<Executor>(_context.get(), Executor::Options{});
         _context->dlq->registerMetrics(_executor->getMetricManager());
         _context->connections = testInMemoryConnectionRegistry();
     }

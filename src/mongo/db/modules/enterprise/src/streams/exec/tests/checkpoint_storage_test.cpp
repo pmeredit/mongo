@@ -236,8 +236,8 @@ TEST_F(CheckpointStorageTest, BasicIdAndCommitLogic) {
     std::string tenantId = UUID::gen().toString();
     std::string streamProcessorId = UUID::gen().toString();
     auto context = makeContext(tenantId, streamProcessorId);
-    std::unique_ptr<Executor> executor =
-        std::make_unique<Executor>(context.get(), Executor::Options{});
+    std::unique_ptr<Executor> executor = std::make_unique<Executor>(
+        context.get(), Executor::Options{.metricManager = std::make_unique<MetricManager>()});
     auto storage = makeStorage(context.get(), *executor);
     testBasicIdAndCommitLogic(storage.get(), executor.get(), streamProcessorId, context.get());
 }
@@ -247,8 +247,8 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
     std::string streamProcessorId = UUID::gen().toString();
     auto innerTest = [&](uint32_t numOperators, uint32_t chunksPerOperator) {
         auto context = makeContext(tenantId, streamProcessorId);
-        std::unique_ptr<Executor> executor =
-            std::make_unique<Executor>(context.get(), Executor::Options{});
+        std::unique_ptr<Executor> executor = std::make_unique<Executor>(
+            context.get(), Executor::Options{.metricManager = std::make_unique<MetricManager>()});
         auto storage = makeStorage(context.get(), *executor);
         auto id = storage->startCheckpoint();
         stdx::unordered_map<OperatorId, std::vector<BSONObj>> expectedState;
@@ -300,8 +300,9 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
         threads.emplace_back([this, i, tenantId]() {
             std::string streamProcessorId(i, 'a');
             auto context = makeContext(tenantId, streamProcessorId);
-            std::unique_ptr<Executor> executor =
-                std::make_unique<Executor>(context.get(), Executor::Options{});
+            std::unique_ptr<Executor> executor = std::make_unique<Executor>(
+                context.get(),
+                Executor::Options{.metricManager = std::make_unique<MetricManager>()});
             auto storage = makeStorage(context.get(), *executor);
             testBasicIdAndCommitLogic(
                 storage.get(), executor.get(), streamProcessorId, context.get());

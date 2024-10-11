@@ -40,6 +40,7 @@ TEST_F(ExecutorTest, StopTimesOut) {
     Executor::Options options;
     options.operatorDag = operatorDag.get();
     options.stopTimeout = mongo::Seconds(10);
+    options.metricManager = std::make_unique<MetricManager>();
     auto executor = std::make_unique<Executor>(_context.get(), std::move(options));
 
     // Start the Executor and wait until it is successfully connected.

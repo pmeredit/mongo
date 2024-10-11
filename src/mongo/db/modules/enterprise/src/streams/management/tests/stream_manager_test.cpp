@@ -74,8 +74,9 @@ public:
         auto tenantInfo =
             streamManager->getOrCreateTenantInfo(lk, request.getTenantId().toString());
         auto info = streamManager->createStreamProcessorInfo(lk, request);
-        auto executorOptions = info->executor->_options;
+        auto& executorOptions = info->executor->_options;
         executorOptions.testOnlyDocsQueueMaxSizeBytes = testOnlyDocsQueueMaxSizeBytes;
+        executorOptions.metricManager = std::make_unique<MetricManager>();
         info->executor =
             std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
         auto [it, _] = tenantInfo->processors.emplace(

@@ -845,6 +845,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
+    auto executorMetricManager = std::make_unique<MetricManager>();
+
     bool checkpointEnabled =
         request.getOptions().getCheckpointOptions() && !processorInfo->context->isEphemeral;
     bool isModifyRequest = false;
@@ -872,7 +874,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                                 .hostName = getHostNameCached(),
                                                 .userPipeline = request.getPipeline()},
             processorInfo->context.get());
-        processorInfo->context->checkpointStorage->registerMetrics(_metricManager.get());
+        processorInfo->context->checkpointStorage->registerMetrics(executorMetricManager.get());
 
         // restoreCheckpointId will only be set if a restoreDir path is set.
         processorInfo->context->restoreCheckpointId =
@@ -1040,6 +1042,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
     executorOptions.connectTimeout = Seconds{60};
     executorOptions.enableDataFlow = request.getOptions().getEnableDataFlow();
+    executorOptions.metricManager = std::move(executorMetricManager);
     if (dynamic_cast<SampleDataSourceOperator*>(processorInfo->operatorDag->source())) {
         // If the customer is using a sample data source, sleep for 1 second between
         // every run.

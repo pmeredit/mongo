@@ -69,28 +69,27 @@ Executor::Executor(Context* context, Options options)
       _options(std::move(options)),
       _testOnlyDocsQueue(decltype(_testOnlyDocsQueue)::Options{
           .maxQueueDepth = static_cast<size_t>(_options.testOnlyDocsQueueMaxSizeBytes)}) {
-    _metricManager = std::make_unique<MetricManager>();
     auto labels = getDefaultMetricLabels(_context);
 
-    _numInputDocumentsCounter = _metricManager->registerCounter(
+    _numInputDocumentsCounter = _options.metricManager->registerCounter(
         "num_input_documents", "Number of input documents received from a source", labels);
-    _numInputBytesCounter = _metricManager->registerCounter(
+    _numInputBytesCounter = _options.metricManager->registerCounter(
         "num_input_bytes", "Number of input bytes received from a source", labels);
-    _numOutputDocumentsCounter = _metricManager->registerCounter(
+    _numOutputDocumentsCounter = _options.metricManager->registerCounter(
         "num_output_documents", "Number of documents emitted from the stream processor", labels);
-    _numOutputBytesCounter = _metricManager->registerCounter(
+    _numOutputBytesCounter = _options.metricManager->registerCounter(
         "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
-    _runOnceCounter = _metricManager->registerCounter(
+    _runOnceCounter = _options.metricManager->registerCounter(
         "runonce_count", "Number of runOnce iterations in the stream processor", labels);
-    _memoryUsageGauge = _metricManager->registerIntGauge(
+    _memoryUsageGauge = _options.metricManager->registerIntGauge(
         "memory_usage_bytes",
         "Current memory usage based on the internal memory usage tracking",
         labels);
-    _startDurationGauge = _metricManager->registerIntGauge(
+    _startDurationGauge = _options.metricManager->registerIntGauge(
         "start_duration_ms", "Time taken to start the stream processor in milliseconds", labels);
-    _stopDurationGauge = _metricManager->registerIntGauge(
+    _stopDurationGauge = _options.metricManager->registerIntGauge(
         "stop_duration_ms", "Time taken to stop the stream processor in milliseconds", labels);
-    _maxRunOnceDurationGauge = _metricManager->registerIntGauge(
+    _maxRunOnceDurationGauge = _options.metricManager->registerIntGauge(
         "max_runonce_duration_ms", "Maximum time taken by runOnce() in milliseconds", labels);
 }
 
@@ -113,13 +112,13 @@ Future<void> Executor::start() {
         bool promiseFulfilled{false};
         Date_t deadline = Date_t::now() + _options.connectTimeout;
         try {
-            _context->dlq->registerMetrics(_metricManager.get());
+            _context->dlq->registerMetrics(_options.metricManager.get());
             // Start the DLQ.
             _context->dlq->start();
 
             const auto& operators = _options.operatorDag->operators();
             for (const auto& oper : operators) {
-                oper->registerMetrics(_metricManager.get());
+                oper->registerMetrics(_options.metricManager.get());
             }
 
             // Start the OperatorDag.
@@ -307,7 +306,7 @@ void Executor::updateStats() {
     }
     _streamStats = std::move(newStats);
 
-    _metricManager->takeSnapshot();
+    _options.metricManager->takeSnapshot();
 
     if (const auto* source = dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
         _kafkaConsumerPartitionStates = source->getPartitionStates();

@@ -267,7 +267,8 @@ public:
         _props.executor = std::make_unique<Executor>(
             _props.context.get(),
             Executor::Options{.operatorDag = _props.dag.get(),
-                              .checkpointCoordinator = _props.checkpointCoordinator.get()});
+                              .checkpointCoordinator = _props.checkpointCoordinator.get(),
+                              .metricManager = std::make_unique<MetricManager>()});
 
         for (auto& oper : _props.dag->operators()) {
             oper->registerMetrics(_props.executor->getMetricManager());

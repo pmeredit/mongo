@@ -38,9 +38,8 @@ class DocumentTransformationOperatorTest : public AggregationContextFixture {
 protected:
     DocumentTransformationOperatorTest() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
-        Executor::Options options;
-        std::unique_ptr<Executor> _executor = std::make_unique<Executor>(_context.get(), options);
+        std::unique_ptr<Executor> _executor;
+        std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
         _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 

@@ -84,8 +84,6 @@ KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
     _metricManager = std::make_unique<MetricManager>();
     std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
     _deserializer = std::make_unique<JsonEventDeserializer>();
-    Executor::Options options;
-    _executor = std::make_unique<Executor>(_context.get(), options);
     _context->dlq->registerMetrics(_executor->getMetricManager());
 }
 

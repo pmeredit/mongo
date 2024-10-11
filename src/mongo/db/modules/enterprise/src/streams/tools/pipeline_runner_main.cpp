@@ -88,6 +88,7 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     // Create an Executor and start it.
     Executor::Options executorOptions;
     executorOptions.operatorDag = dag.get();
+    executorOptions.metricManager = std::make_unique<MetricManager>();
     auto executor = std::make_unique<Executor>(context.get(), std::move(executorOptions));
     std::ignore = executor->start();
 

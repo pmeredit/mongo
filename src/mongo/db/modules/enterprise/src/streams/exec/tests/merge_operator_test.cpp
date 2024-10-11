@@ -168,8 +168,6 @@ public:
     void setUp() override {
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
         _context->expCtx->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
-        Executor::Options options;
-        _executor = std::make_unique<Executor>(_context.get(), options);
         _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 

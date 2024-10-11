@@ -45,6 +45,8 @@ public:
     struct Options {
         OperatorDag* operatorDag{nullptr};
         CheckpointCoordinator* checkpointCoordinator{nullptr};
+        // The MetricManager instance to use for this Executor's metrics.
+        std::unique_ptr<MetricManager> metricManager;
         // Sleep duration when source is idle.
         int32_t sourceIdleSleepDurationMs{100};
         // Sleep duration when source is not idle.
@@ -99,7 +101,7 @@ public:
 
     // this is made available for tests
     MetricManager* getMetricManager() {
-        return _metricManager.get();
+        return _options.metricManager.get();
     }
 
     // Returns a description of the restore checkpoint, if there is one.
@@ -236,7 +238,6 @@ private:
     std::shared_ptr<IntGauge> _startDurationGauge;
     std::shared_ptr<IntGauge> _stopDurationGauge;
     std::shared_ptr<IntGauge> _maxRunOnceDurationGauge;
-    std::unique_ptr<MetricManager> _metricManager;
 
     // Have some new outputdocs been emitted by _any_ operator since we last checked.
     // This is used in determining if taking a newer checkpoint can be safely skipped
