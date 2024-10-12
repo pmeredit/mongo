@@ -13,5 +13,6 @@ namespace streams {
 constexpr auto kTestKafkaConnectionName = "__testKafka"_sd;
 constexpr auto kTestLogConnectionName = "__testLog"_sd;
 constexpr auto kTestMemoryConnectionName = "__testMemory"_sd;
+constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 
 };  // namespace streams

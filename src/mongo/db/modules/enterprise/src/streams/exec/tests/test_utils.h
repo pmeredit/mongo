@@ -45,6 +45,8 @@ mongo::BSONObj getTestLogSinkSpec();
 
 mongo::BSONObj getTestMemorySinkSpec();
 
+mongo::BSONObj getNoOpSinkSpec();
+
 mongo::BSONObj getTestSourceSpec();
 
 std::vector<mongo::BSONObj> parseBsonVector(std::string json);

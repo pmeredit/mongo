@@ -80,6 +80,10 @@ BSONObj getTestMemorySinkSpec() {
     return BSON(kEmitStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }
 
+BSONObj getNoOpSinkSpec() {
+    return BSON(kEmitStageName << BSON("connectionName" << kNoOpSinkOperatorConnectionName));
+}
+
 BSONObj getTestSourceSpec() {
     return BSON(kSourceStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }

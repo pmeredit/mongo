@@ -118,7 +118,6 @@ constexpr auto kConnectionNameField = "connectionName"_sd;
 constexpr auto kKafkaConnectionType = "kafka"_sd;
 constexpr auto kAtlasConnectionType = "atlas"_sd;
 constexpr auto kDocumentsField = "documents"_sd;
-constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 constexpr auto kCollectSinkOperatorConnectionName = "__collectSink"_sd;
 constexpr auto kTimeseriesField = "timeseries"_sd;
 
