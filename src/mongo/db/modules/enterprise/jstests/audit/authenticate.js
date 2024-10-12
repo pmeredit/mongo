@@ -26,7 +26,7 @@ let invalidDbErrorCode = ErrorCodes.MechanismUnavailable;
 const CLIENT_CERT = "jstests/libs/client.pem";
 const CLIENT_USER = "CN=client,OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US";
 
-// TODO SERVER-72648: remove
+// TODO SERVER-78809: remove
 function getFeatureFlagValues() {
     const conn = MongoRunner.runMongod();
 
