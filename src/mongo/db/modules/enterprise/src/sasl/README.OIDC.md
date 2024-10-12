@@ -19,7 +19,7 @@ using the name `MONGODB-OIDC`.
       - [IDP Selection](#idp-selection)
     - [OIDCMechanismServerStep1](#oidcmechanismserverstep1)
     - [OIDCMechanismClientStep2](#oidcmechanismclientstep2)
-  - [AuthzManagerExternalStateOIDC](#authzmanagerexternalstateoidc)
+  - [UserRequestOIDC](#userrequestoidc)
 
 ## Glossary
 
@@ -194,20 +194,19 @@ client applications authenticating as themselves rather than on behalf
 of humans.
 
 Once the SASL exchange has completed, the signed `Access Token`
-is stowed in a synthesized `UserRequest` object as `mechanismData`
-so that the user authorization grants may be (re)acquired via
-[`AuthzManagerExternalStateOIDC`](#authzmanagerexternalstateoidc).
+is stowed in a synthesized `UserRequestOIDC` object as a `_jwtString`.
+The token is then available for re-acquire through the Authorization
+Manager when necessary.
 
-## AuthzManagerExternalStateOIDC
+## UserRequestOIDC
 
-The [`AuthzManagerExtenalState` implementation for OIDC](authz_manager_external_state_oidc.cpp)
-examines previously stowed `UserRequest::mechanismData` to revalidate
-a previously presented token and extract its `authorizationClaim` for
+The UserRequestOIDC class exists to store any OIDC specific state for
+a specific user's authorization information. As mentioned above, the object
+stores the `_jwtString`. It also contains the logic to perform the re-acquisition
+of the roles for the user. It does this by analyzing the `_jwtString`
+to revalidate a previously presented token and extract its `authorizationClaim` for
 synthesizing a set of `RoleName` grants according to the rules explained
 in [`AuthName`](#authname) above.
 
-This `AuthzManagerExternalState` is shimmed into the external state
-setup process during startup so that it acts prior to any previously
-enregistered provider
-(e.g. `AuthzManagerExternalStateLDAP` on `mongod`
-or `AuthzManagerExternalStateMongos` on `mongos`).
+The `UserRequestOIDC` object is created from the SASL OIDC exchange, meaning
+that OIDC authorization can only be performed after OIDC authentication (by design).
