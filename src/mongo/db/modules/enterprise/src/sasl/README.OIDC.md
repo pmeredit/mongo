@@ -5,14 +5,21 @@ based authentication and authorization for MongoDB.
 This authentication scheme is exposed via the SASL mechanism registry
 using the name `MONGODB-OIDC`.
 
-- [Glossary](#glossary)
-- [Configuration](#configuration)
-- [`IDPManager`](#idpmanager)
-- [`IdentityProvider`](#identityprovider)
-- [`AuthName`](#authname)
-- [Authzn Claims](#authzn-claims)
-- [SASL exchange](#sasl-exchange)
-- [`AuthzManagerExternalStateOIDC`](#authzmanagerexternalstateoidc)
+- [MONGODB-OIDC](#mongodb-oidc)
+  - [Glossary](#glossary)
+  - [Configuration](#configuration)
+  - [IDPManager](#idpmanager)
+  - [IdentityProvider](#identityprovider)
+  - [AuthName](#authname)
+  - [Authzn Claims](#authzn-claims)
+    - [principalClaim](#principalclaim)
+    - [authorizationClaim](#authorizationclaim)
+  - [SASL exchange](#sasl-exchange)
+    - [OIDCMechanismClientStep1](#oidcmechanismclientstep1)
+      - [IDP Selection](#idp-selection)
+    - [OIDCMechanismServerStep1](#oidcmechanismserverstep1)
+    - [OIDCMechanismClientStep2](#oidcmechanismclientstep2)
+  - [AuthzManagerExternalStateOIDC](#authzmanagerexternalstateoidc)
 
 ## Glossary
 

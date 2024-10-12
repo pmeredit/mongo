@@ -21,24 +21,10 @@ if env.TargetOSIs("windows"):
 if not have_sasl_lib:
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
 
-env.Library(
-    target="oidc_external_state_vars",
-    source=[
-        "oidc_external_state_vars.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/auth/auth_impl_internal",
-    ],
-)
-
-sasl_oidc_server_var = []
-
 if ssl_provider == "openssl":
     env.Library(
         target="sasl_oidc_server",
         source=[
-            "authz_manager_external_state_oidc.cpp",
             "identity_provider.cpp",
             "idp_jwks_refresher.cpp",
             "idp_manager.cpp",
@@ -61,7 +47,6 @@ if ssl_provider == "openssl":
             "$BUILD_DIR/mongo/db/server_feature_flags",
             "$BUILD_DIR/mongo/util/background_job",
             "$BUILD_DIR/mongo/util/pcre_wrapper",
-            "oidc_external_state_vars",
         ],
     )
 
@@ -81,9 +66,9 @@ if ssl_provider == "openssl":
     )
 
 env.Library(
-    target="authz_manager_factory_external",
+    target="authz_manager_factory_enterprise",
     source=[
-        "authorization_manager_factory_external_impl.cpp",
+        "authorization_manager_factory_enterprise_impl.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/auth/authserver",
@@ -91,7 +76,6 @@ env.Library(
         "$BUILD_DIR/mongo/util/background_job",
         "../ldap/ldap_manager",
         "../ldap/mongo_ldap",
-        "oidc_external_state_vars",
         "sasl_oidc_server" if ssl_provider == "openssl" else [],
     ],
 )

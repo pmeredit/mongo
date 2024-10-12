@@ -16,7 +16,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/mutable/document.h"
-#include "mongo/db/auth/authz_manager_external_state_d.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/db/auth/user_name.h"

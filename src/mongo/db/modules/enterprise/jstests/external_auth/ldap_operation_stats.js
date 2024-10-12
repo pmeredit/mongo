@@ -55,7 +55,6 @@ const expectedUserTwoUsersInfoCommandLog = {
 };
 let expectedUserOneUsersInfoStats = {
     LDAPOperations: {
-        LDAPNumberOfSuccessfulReferrals: 1,
         LDAPNumberOfFailedReferrals: 0,
         LDAPNumberOfReferrals: 1,
         bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},

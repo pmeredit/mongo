@@ -8,7 +8,6 @@ env.Library(
     target="mongo_ldap",
     source=[
         "authorization_backend_ldap.cpp",
-        "authz_manager_external_state_ldap.cpp",
         "ldap_user_cache_poller_gen.cpp",
         "ldap_user_cache_poller.cpp",
     ],
@@ -16,7 +15,6 @@ env.Library(
         "$BUILD_DIR/mongo/bson/mutable/mutable_bson",
         "$BUILD_DIR/mongo/db/auth/auth",
         "$BUILD_DIR/mongo/db/auth/auth_impl_internal",
-        "$BUILD_DIR/mongo/db/auth/auth_impl_internal_local",
         "$BUILD_DIR/mongo/db/auth/authserver",
         "$BUILD_DIR/mongo/db/server_base",
         "$BUILD_DIR/mongo/util/background_job",

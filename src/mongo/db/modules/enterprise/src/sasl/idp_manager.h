@@ -133,7 +133,7 @@ private:
     /**
      * Set to 0 if the refresher has not been started, 1 if it has been started
      */
-    AtomicWord<bool> _hasInitializedKeyRefresher;
+    AtomicWord<bool> _hasInitializedKeyRefresher{false};
 
     JWKSetRefreshJob _keyRefresher;
 };
