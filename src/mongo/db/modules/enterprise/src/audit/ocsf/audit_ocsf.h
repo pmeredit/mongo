@@ -258,9 +258,7 @@ public:
                       const std::vector<Status>& errors,
                       const std::string& suffix) const override;
 
-    void logConfigEvent(Client* client,
-                        const AuditConfigDocument& config,
-                        AuditConfigFormat formatIfPrevConfigNotSet) const override;
+    void logConfigEvent(Client* client, const AuditConfigDocument& config) const override;
 
     // Logs the event when data containing privileges is changed via direct access.
     void logDirectAuthOperation(Client* client,

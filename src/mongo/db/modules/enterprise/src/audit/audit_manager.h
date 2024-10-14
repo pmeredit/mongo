@@ -32,33 +32,6 @@ namespace audit {
 
 /**
  * Contains server-wide auditing configuration.
- *
- * =====================================================================
- * ====== A Note on FCV Getting / Setting Auditing Configuration =======
- * =====================================================================
- * In 7.0, the runtime audit config contains an optional OID generation
- * field, but in 7.1, this was changed to an optional timestamp.
- * The (get|set|reset)AuditConfig commands always provide an audit config
- * document with either the generation or timestamp field populated so
- * that the caller doesn't have to handle the null case.
-
- * Generally after a setConfiguration, we will have either a generation
- * or a timestamp set, and can just return the config as-is.
- *
- * However, default configuration is created before FCV is set, and so
- * it has an empty generation and timestamp. We can obtain an FCV
- * snapshot to determine which type to default to, but this cannot be
- * encapsulated in individual function calls because the FCV version may
- * change between snapshot calls and cause a data race - see
- * https://jira.mongodb.org/browse/SERVER-91220 for additional context.
- *
- * Thus, [g|s|res]etAuditConfig, as well as the audit logging
- * function for setConfiguration, take either an fcvSnapshot, or a
- * default AuditConfigFormat telling us what to do this empty case. THE
- * CALLER IS RESPONSIBLE FOR CORRECTLY SYNCHRONIZING, EITHER BY TAKING
- * ONE FCVSNAPSHOT AND PASSING IT DOWN THE CALLSTACK AS NEEDED,
- * OR LOCKING.
- *
  */
 class AuditManager {
 public:
@@ -134,19 +107,8 @@ public:
      * uninitialized configuration.
      */
     bool isConfigurationSet() {
-        return visit(OverloadedVisitor{[](std::monostate) { return false; },
-                                       [](const OID& oid) { return oid.isSet(); },
-                                       [](const LogicalTime& time) {
-                                           return time != LogicalTime::kUninitialized;
-                                       }},
-                     getConfig()->generationOrTimestamp);
+        return getConfig()->timestamp != LogicalTime::kUninitialized;
     }
-
-    /**
-     * Get the current configuration generation. This should never be called from code paths where
-     * we expect a timestamp -- i.e. when featureFlagAuditConfigClusterParameter is enabled.
-     */
-    OID getConfigGeneration() const;
 
     /**
      * Check if 'file' is set as the audit destination.
@@ -157,16 +119,9 @@ public:
     }
 
     /**
-     * Read the entire in-memory configuration guarded by lock. Uses an FCV snapshot to
-     * determine the default format to return when there is no generation or timestamp.
+     * Read the entire in-memory configuration guarded by lock.
      */
-    AuditConfigDocument getAuditConfig(const ServerGlobalParams::FCVSnapshot& fcvSnapshot) const;
-
-    /**
-     * Read the entire in-memory configuration guarded by lock. Uses format as the default
-     * format to return when there is no generation or timestamp.
-     */
-    AuditConfigDocument getAuditConfigUsingFormatIfNotSet(AuditConfigFormat format) const;
+    AuditConfigDocument getAuditConfig() const;
 
     /**
      * Read the entire in-memory configuration guarded by lock.
@@ -179,33 +134,14 @@ public:
     static std::unique_ptr<MatchExpression> parseFilter(BSONObj filter);
 
     /**
-     * Update the in-memory configuration. Uses an FCV snapshot to determine the default format for
-     * logging purposes.
+     * Update the in-memory configuration.
      */
-    void setConfiguration(Client* client,
-                          const AuditConfigDocument& config,
-                          const ServerGlobalParams::FCVSnapshot& fcvSnapshot);
-
+    void setConfiguration(Client* client, const AuditConfigDocument& config);
     /**
-     * Update the in-memory configuration. Uses format as the default format for logging
-     * purposes.
+     * Reset the in-memory configuration to the default.
      */
-    void setConfigurationUsingFormatIfNotSet(Client* client,
-                                             const AuditConfigDocument& config,
-                                             AuditConfigFormat format);
-    /**
-     * Reset the in-memory configuration to the default. Uses an FCV snapshot to determine
-     * the default format for logging purposes.
-     */
-    void resetConfiguration(Client* client, const ServerGlobalParams::FCVSnapshot& fcvSnapshot);
+    void resetConfiguration(Client* client);
 
-    /**
-     * Reset the in-memory configuration to the default. Uses format as the default
-     * format for logging purposes.
-     */
-    void resetConfigurationUsingFormatIfNotSet(Client* client, AuditConfigFormat format);
-
-    using OIDorLogicalTime = std::variant<std::monostate, OID, LogicalTime>;
     // Current in-memory state for runtime audit configuration.
     // Relies on thread safety of shared_ptr's copy constructor.
     // Writes happen in setConfiguration() by creating a new
@@ -217,14 +153,12 @@ public:
         AtomicWord<bool> auditAuthorizationSuccess{false};
         BSONObj filterBSON;
         std::unique_ptr<MatchExpression> filter;
-        OIDorLogicalTime generationOrTimestamp;
+        LogicalTime timestamp;
     };
 
     std::shared_ptr<RuntimeConfiguration> getConfig() const {
         return std::atomic_load(&_config);  // NOLINT
     }
-
-    static OIDorLogicalTime parseGenerationOrTimestamp(const AuditConfigDocument& config);
 
 protected:
     friend class AuditOpObserver;

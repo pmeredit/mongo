@@ -217,33 +217,11 @@ mongo_cc_library(
     deps = [
         "audit_config",
         "audit_enterprise",
-        "audit_synchronize_job",
         "//src/mongo/db:commands",
         "//src/mongo/db:dbdirectclient",
         "//src/mongo/db/auth",
         "//src/mongo/db/auth:authprivilege",
         "//src/mongo/idl:cluster_server_parameter_refresher",
         "//src/mongo/s:grid",
-    ],
-)
-
-mongo_cc_library(
-    # This can't be included in audit_enterprise directly
-    # since we need mongo/s/grid which
-    # depends on audit which depends on audit_enterprise.
-    # Avoid the dependency cycle by pulling this out separately.
-    name = "audit_synchronize_job",
-    srcs = [
-        "audit_synchronize_job.cpp",
-    ],
-    deps = [
-        "audit_config",
-        "audit_enterprise",
-        "//src/mongo/db:audit",
-        "//src/mongo/db:server_base",
-        "//src/mongo/db/commands:mongod_fcv",
-        "//src/mongo/db/transaction:transaction_api",
-        "//src/mongo/executor:inline_executor",
-        "//src/mongo/s:sharding_router_api",
     ],
 )

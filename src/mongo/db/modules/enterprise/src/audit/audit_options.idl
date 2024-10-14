@@ -26,8 +26,6 @@ server_parameters:
             name: AuditConfigParameter
             override_set: true
             override_validate: true
-        condition:
-            feature_flag: feature_flags::gFeatureFlagAuditConfigClusterParameter
         redact: false
         omit_in_ftdc: false
 
