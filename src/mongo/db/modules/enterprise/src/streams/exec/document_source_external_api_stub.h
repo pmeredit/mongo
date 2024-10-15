@@ -1,3 +1,7 @@
+/**
+ *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
+ */
+
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
@@ -9,6 +13,11 @@ class ExpressionContext;
 
 namespace streams {
 
+/**
+ * DocumentSources are used within Streams code primarily for parsing pipeline operators from bson.
+ * The operators handles execution and passing data through the pipeline (hence why this and other
+ * document sources in this directory are "stubs").
+ */
 class DocumentSourceExternalApiStub : public mongo::DocumentSource {
 public:
     constexpr static char kStageName[] = "$externalAPI";
@@ -22,6 +31,10 @@ public:
 
     mongo::DocumentSourceType getType() const override {
         return mongo::DocumentSourceType::kExternalApi;
+    }
+
+    const mongo::BSONObj& bsonOptions() {
+        return _bsonOptions;
     }
 
 protected:

@@ -720,6 +720,22 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
+    target="external_api_operator_test",
+    source=[
+        "external_api_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/util/net/mock_http_client",
+        "streams_test_utils",
+    ],
+)
+
+env.CppUnitTest(
     target="dead_letter_queue_test",
     source=[
         "dead_letter_queue_test.cpp",

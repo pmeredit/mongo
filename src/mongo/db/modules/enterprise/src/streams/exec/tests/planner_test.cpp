@@ -67,8 +67,29 @@ public:
         _context = get<0>(getTestContext(nullptr));
     }
 
+    void setupConnections() {
+        Connection atlasConn{};
+        atlasConn.setName("atlas");
+        AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
+        atlasConn.setOptions(atlasConnOptions.toBSON());
+        atlasConn.setType(ConnectionTypeEnum::Atlas);
+
+        Connection webApiConn{};
+        webApiConn.setName("webapi1");
+        WebAPIConnectionOptions webApiConnOptions{"https://mongodb.com"};
+        webApiConn.setOptions(webApiConnOptions.toBSON());
+        webApiConn.setType(ConnectionTypeEnum::WebAPI);
+        _context->connections = {
+            {atlasConn.getName().toString(), atlasConn},
+            {webApiConn.getName().toString(), webApiConn},
+        };
+
+        auto inMemoryConnection = testInMemoryConnectionRegistry();
+        _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    }
+
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(std::vector<BSONObj> rawPipeline) {
-        _context->connections = testInMemoryConnectionRegistry();
+        setupConnections();
         Planner planner(_context.get(), /*options*/ {});
         if (rawPipeline.size() == 0 ||
             rawPipeline.front().firstElementFieldName() != std::string{"$source"}) {
@@ -1613,13 +1634,22 @@ TEST_F(PlannerTest, ExecutionPlan) {
     auto innerTest = [&](std::string userPipeline, std::vector<std::string> expectedOperators) {
         // Setup the context.
         auto context = get<0>(getTestContext(nullptr));
+        mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+        featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
+        StreamProcessorFeatureFlags spFeatureFlags{
+            featureFlagsMap,
+            std::chrono::time_point<std::chrono::system_clock>{
+                std::chrono::system_clock::now().time_since_epoch()}};
+        context->featureFlags->updateFeatureFlags(spFeatureFlags);
         context->isEphemeral = false;
         KafkaConnectionOptions options1{"localhost:9092"};
         options1.setIsTestKafka(true);
         AtlasConnectionOptions options2{"mongodb://localhost:270"};
+        WebAPIConnectionOptions options3{"https://localhost:12345"};
         context->connections = stdx::unordered_map<std::string, Connection>{
             {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-            {"atlas1", Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()}}};
+            {"atlas1", Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()}},
+            {"webapi1", Connection{"webapi1", ConnectionTypeEnum::WebAPI, options3.toBSON()}}};
 
         Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
@@ -2269,6 +2299,34 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
     ])",
               {"ChangeStreamConsumerOperator", "ValidateOperator", "MergeOperator"});
+
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+
+        {
+            $externalAPI: {
+              connectionName: "webapi1",
+              as: "foo"
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "ExternalApiOperator", "MergeOperator"});
 }
 
 // Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying
@@ -2449,15 +2507,10 @@ TEST_F(PlannerTest, ExternalAPIWithFalseFeatureFlag) {
 }
 
 /**
-Parse a pipeline containing $externalAPI in it. Verify that it does not fail when not supplied
-the correct feature flag.
+Parse a pipeline containing $externalAPI in it, the expected feature flag, but missing required
+arguments.
 */
-TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
-    std::string pipeline = R"(
-[
-    { $externalAPI: {} }
-]
-    )";
+TEST_F(PlannerTest, ExternalAPIWithMissingRequiredArgs) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
     featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
@@ -2467,19 +2520,106 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             std::chrono::system_clock::now().time_since_epoch()}};
     _context->featureFlags->updateFeatureFlags(spFeatureFlags);
 
+    auto prevConnections = _context->connections;
     ScopeGuard guard([&] {
         // Unset feature flags to avoid corrupting other tests.
         _context->featureFlags->updateFeatureFlags(
             StreamProcessorFeatureFlags{prevFeatureFlags,
                                         std::chrono::time_point<std::chrono::system_clock>{
                                             std::chrono::system_clock::now().time_since_epoch()}});
+        _context->connections = prevConnections;
+    });
+    setupConnections();
+
+    {
+        // This pipeline is missing 'connectionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                as: "response"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'externalAPI.connectionName' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+
+    {
+        // This pipeline passes in an unexpected connectionName.
+        ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "unseenbeforelegendaryconnectionname",
+                as: "response"
+            }
+        }
+    ])")),
+                                    DBException,
+                                    mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                                    "StreamProcessorInvalidOptions: Unknown connectionName "
+                                    "'unseenbeforelegendaryconnectionname' in $externalAPI");
+    }
+
+    {
+        // This pipeline is missing 'as'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'externalAPI.as' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+}
+
+/**
+Parse a pipeline containing $externalAPI in it. Verify that it does not fail when not supplied
+the expected feature flag.
+*/
+TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    auto prevConnections = _context->connections;
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+        _context->connections = prevConnections;
     });
 
-    auto dag = addSourceSinkAndParse(pipeline);
+    auto dag = addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                as: "response"
+            }
+        }
+    ])"));
     auto& ops = dag->operators();
-    // TODO(SERVER-95029): There are temporarily 0 middle stages because the planner doesn't
-    // know how to plan the $externalAPI stage.
-    ASSERT_EQ(ops.size(), 0 /* pipeline stages */ + 2 /* Source and Sink */);
+    ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
 }
 }  // namespace
 }  // namespace streams

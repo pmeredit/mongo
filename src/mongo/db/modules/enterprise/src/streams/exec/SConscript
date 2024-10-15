@@ -104,6 +104,7 @@ env.Library(
         "group_operator.cpp",
         "limit_operator.cpp",
         "window_aware_operator.cpp",
+        "external_api_operator.cpp",
         "sort_operator.cpp",
         "timeseries_emit_operator.cpp",
         "feature_flag.cpp",

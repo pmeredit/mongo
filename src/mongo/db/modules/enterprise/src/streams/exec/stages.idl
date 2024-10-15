@@ -31,6 +31,7 @@ enums:
             Atlas: "atlas"
             SampleSolar: "sample_solar"
             InMemory: "in_memory"
+            WebAPI: "web_api"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"
@@ -125,6 +126,15 @@ enums:
             snappy: "snappy"
             lz4: "lz4"
             zstd: "zstd"
+    HttpMethod:
+        type: string
+        description: "The supported HTTP Verbs. The enums have the 'Method' prefix because 'delete' conflicts with a builtin C++ keyword."
+        values:
+            MethodGet: "GET"
+            MethodPost: "POST"
+            MethodPatch: "PATCH"
+            MethodPut: "PUT"
+            MethodDelete: "DELETE"
 
     KafkaAcks:
         type: string
@@ -211,6 +221,22 @@ structs:
                 description: "Pre-shared 32-byte (AES-256) key for GWProxy authentication for VPC peering sessions."
                 type: string
                 optional: true
+
+    WebAPIConnectionOptions:
+        description: "Web API connection options."
+        strict: true
+        fields:
+            url:
+                description: "The URL of the web api."
+                type: string
+            connectionTimeoutSec:
+                description: "The timeout (in seconds) for establishing an HTTP connection."
+                type: int
+                default: 30
+            requestTimeoutSec:
+                description: "The timeout (in seconds) for making an $externalApi request."
+                type: int
+                default: 60
 
     AtlasConnectionOptions:
         description: "Atlas connection options."
@@ -463,6 +489,22 @@ structs:
                 description: "Pipeline to process the change stream documents."
                 type: array<object>
                 optional: true
+
+    ExternalAPIOptions:
+        description: "$externalApi stage options."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the web api source."
+                type: string
+            urlPath:
+                description: "The path to append onto the web api connection's url."
+                type:
+                    variant: [string, object]
+                optional: true
+            as:
+                description: "Defines the field name for REST API responses."
+                type: string
 
     ChangeStreamSourceOptions:
         description: "$source stage options for a change stream"

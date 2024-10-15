@@ -32,6 +32,7 @@
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_redact.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
+#include "mongo/db/query/stage_types.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/idl_parser.h"
@@ -53,6 +54,7 @@
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
+#include "streams/exec/external_api_operator.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -1373,6 +1375,36 @@ void Planner::planLimit(mongo::DocumentSource* source) {
     appendOperator(std::move(oper));
 }
 
+void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
+    auto parsedOperatorOptions =
+        ExternalAPIOptions::parse(IDLParserContext("externalAPI"), docSource->bsonOptions());
+
+    ExternalApiOperator::Options options{
+        .as = parsedOperatorOptions.getAs().toString(),
+    };
+
+    auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
+
+    // TODO(SERVER-95624): ensure that _stream_meta will be passed into the external api target url.
+
+    // TODO(SERVER-95481): Fill in the implementation for parsing the rest of the user-provided
+    // configurations and setting the appropriate values in the operator's options struct.
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
+                          << kExternalApiStageName,
+            _context->connections.contains(connectionNameField));
+    const auto& connection = _context->connections.at(connectionNameField);
+    auto connOptions = WebAPIConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                      connection.getOptions());
+    options.uri = connOptions.getUrl().toString();
+    options.connectionTimeoutSecs = mongo::Seconds{connOptions.getConnectionTimeoutSec()};
+    options.requestTimeoutSecs = mongo::Seconds{connOptions.getRequestTimeoutSec()};
+
+    auto oper = std::make_unique<ExternalApiOperator>(_context, std::move(options));
+    oper->setOperatorId(_nextOperatorId++);
+    appendOperator(std::move(oper));
+}
+
 std::pair<std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>,
           std::unique_ptr<PipelineRewriter>>
 Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
@@ -1637,7 +1669,12 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 uassert(ErrorCodes::StreamProcessorInvalidOptions,
                         "Unsupported stage: $externalAPI",
                         enabled && *enabled);
-                // TODO(SERVER-95029): Implement initial implementation of $external API operator.
+                optimizedPipeline.push_back(serialize(stage));
+                auto externalApiSource = dynamic_cast<DocumentSourceExternalApiStub*>(stage.get());
+                tassert(9502902,
+                        "Expected stage to be an external api document source.",
+                        externalApiSource);
+                planExternalApi(externalApiSource);
                 break;
             }
             default:
