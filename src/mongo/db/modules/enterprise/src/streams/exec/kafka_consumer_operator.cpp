@@ -452,8 +452,6 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     // during the lifetime of a stream processor. The consumer group ID is optional in the
     // checkpoint data for backwards compatibility reasons and when the SP is ephemeral.
     if (auto consumerGroupId = _restoredCheckpointState->getConsumerGroupId(); consumerGroupId) {
-        // TODO(SERVER-95025): set context.kafkaConsumerGroup using the value found in the
-        // checkpoint data.
         _options.consumerGroupId = std::string(*consumerGroupId);
     }
 
