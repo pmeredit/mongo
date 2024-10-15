@@ -36,7 +36,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
               insertHigherTermOplogEntry);
     const sourceCluster = new ReplSetTest({nodes: 1});
     sourceCluster.startSet();
-    sourceCluster.initiateWithHighElectionTimeout();
+    sourceCluster.initiate();
 
     const sourcePrimary = sourceCluster.getPrimary();
     const dbName = "db";

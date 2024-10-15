@@ -49,7 +49,7 @@ function assertBackupCursorExtends(rst, backupId, extendTo, backupLogFileCheckSu
 function assertUpdatedLogsAfterMultipleExtendCalls() {
     const rst = new ReplSetTest({name: "test", nodes: 3});
     rst.startSet();
-    rst.initiateWithHighElectionTimeout();
+    rst.initiate();
     const primaryDB = rst.getPrimary().getDB(dbName);
 
     const cursor = openBackupCursor(rst.getPrimary().getDB("admin"));

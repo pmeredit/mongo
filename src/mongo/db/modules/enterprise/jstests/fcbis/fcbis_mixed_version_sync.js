@@ -18,7 +18,7 @@ function runDowngradeTest(downgradeFCV) {
         nodes: 2,
     });
     rst.startSet();
-    rst.initiateWithHighElectionTimeout();
+    rst.initiate();
 
     const primary = rst.getPrimary();
     const secondary = rst.getSecondary();

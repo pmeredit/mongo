@@ -243,7 +243,7 @@ function testOIDC(insertHigherTermOplogEntry) {
     // Do initial auth tests.
     const rst = new ReplSetTest({nodes: {n0: config}});
     rst.startSet();
-    rst.initiateWithHighElectionTimeout();
+    rst.initiate();
 
     let primary = rst.getPrimary();
     let admin = primary.getDB("admin");

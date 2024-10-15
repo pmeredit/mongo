@@ -31,7 +31,7 @@ function testImport(collectionProperties, mongodOptions) {
     jsTestLog("Starting a replica set for import with extra options: " + tojson(mongodOptions));
     const rst = new ReplSetTest({nodes: 1});
     const nodes = rst.startSet(mongodOptions);
-    rst.initiateWithHighElectionTimeout();
+    rst.initiate();
     const primary = rst.getPrimary();
     const primaryDB = primary.getDB(dbName);
 

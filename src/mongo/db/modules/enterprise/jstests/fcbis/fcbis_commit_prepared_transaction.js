@@ -19,7 +19,7 @@ const replTest = new ReplSetTest({
 replTest.startSet();
 
 const config = replTest.getReplSetConfig();
-replTest.initiateWithHighElectionTimeout(config);
+replTest.initiate(config);
 
 const primary = replTest.getPrimary();
 let secondary = replTest.getSecondary();

@@ -33,8 +33,11 @@ const rst = new ReplSetTest({
 });
 
 rst.startSet();
-rst.initiateWithAnyNodeAsPrimary(
-    Object.extend(rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+rst.initiate(Object.extend(rst.getReplSetConfig(), {
+    writeConcernMajorityJournalDefault: true,
+}),
+             null,
+             {allNodesAuthorizedToRunRSGetStatus: false});
 
 const conn = rst.getPrimary();
 const admin = conn.getDB('admin');

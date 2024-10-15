@@ -15,7 +15,7 @@ const colName = "testcoll";
 const replset = new ReplSetTest({name: jsTestName(), nodes: [{}, {rsConfig: {priority: 0}}]});
 
 replset.startSet();
-replset.initiateWithHighElectionTimeout();
+replset.initiate();
 
 const primary = replset.getPrimary();
 const secondary = replset.getSecondaries()[0];
