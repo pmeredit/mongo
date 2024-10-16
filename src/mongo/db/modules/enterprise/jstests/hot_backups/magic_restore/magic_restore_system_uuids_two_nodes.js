@@ -25,7 +25,7 @@ jsTestLog("Running non-PIT magic restore on a two-node replica set, testing that
 // assertConfigIsCorrect will mismatch.
 let rst = new ReplSetTest({nodes: [{}, {rsConfig: {priority: 0}}]});
 let nodes = rst.startSet();
-rst.initiate(null, null, {initiateWithDefaultElectionTimeout: true});
+rst.initiate();
 
 let primary = rst.getPrimary();
 const dbName = "db";

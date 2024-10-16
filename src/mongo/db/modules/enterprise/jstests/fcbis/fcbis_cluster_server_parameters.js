@@ -18,7 +18,7 @@ const rst = new ReplSetTest({
     }]
 });
 rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 
 jsTestLog("Setting a cluster parameter on the replica set");

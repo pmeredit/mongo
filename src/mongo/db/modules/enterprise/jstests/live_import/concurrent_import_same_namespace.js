@@ -27,7 +27,7 @@ jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 jsTestLog("Starting a replica set");
 const rst = new ReplSetTest({nodes: 2});
 const nodes = rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 
 // Copy the exported files into the path of each replica set node.

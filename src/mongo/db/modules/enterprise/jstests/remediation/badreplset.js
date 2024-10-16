@@ -45,7 +45,7 @@ let rst = new ReplSetTest({
     nodeOptions: {setParameter: {oplogApplicationEnforcesSteadyStateConstraints: false}}
 });
 rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 let dbName = TestData.testName;
 let collName = "test";
 const primary = rst.getPrimary();

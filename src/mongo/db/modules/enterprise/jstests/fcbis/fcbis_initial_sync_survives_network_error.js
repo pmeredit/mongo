@@ -23,7 +23,7 @@ const rst = new ReplSetTest({
     useBridge: 1
 });
 rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 
 const nRetries = 3;
 const primary = rst.getPrimary();

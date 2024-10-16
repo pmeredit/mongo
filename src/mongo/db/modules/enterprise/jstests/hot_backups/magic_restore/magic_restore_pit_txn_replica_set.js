@@ -26,7 +26,7 @@ function runTest(insertHigherTermOplogEntry) {
               insertHigherTermOplogEntry);
     let rst = new ReplSetTest({nodes: 1});
     rst.startSet();
-    rst.initiate();
+    rst.initiateWithHighElectionTimeout();
 
     let primary = rst.getPrimary();
     const dbName = "db";

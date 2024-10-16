@@ -56,11 +56,11 @@ function testLDAP(insertHigherTermOplogEntry) {
 
     const rst = new ReplSetTest(config);
     rst.startSet();
-    rst.initiate(Object.extend(rst.getReplSetConfig(), {
-        writeConcernMajorityJournalDefault: true,
-    }),
-                 null,
-                 {allNodesAuthorizedToRunRSGetStatus: false});
+
+    // ReplSetTest.initiate() requires all nodes to be to be authorized to run replSetGetStatus.
+    // TODO SERVER-14017: Remove this in favor of using initiate() everywhere.
+    rst.initiateWithAnyNodeAsPrimary(
+        Object.extend(rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
 
     let primary = rst.getPrimary();
     setupTest(primary);

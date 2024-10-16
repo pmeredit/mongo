@@ -187,7 +187,7 @@ export function LDAPTestConfigGenerator() {
             name: "ldapAuthzReplset",
             nodes: {n0: mongodConfig, n1: mongodConfig, n2: mongodConfig},
             useHostName: true,
-            waitForKeys: false,
+            waitForKeys: false
         };
     };
 
@@ -208,9 +208,7 @@ export function LDAPTestConfigGenerator() {
         delete other.mongosOptions.ldapAuthzQueryTemplate;
         delete other.mongosOptions.setParameter.ldapShouldRefreshUserCacheEntries;
         config.other = other;
-        // Test-only option for use in 'ShardingTest' that informs `ReplSetTest.initiate`  that not
-        // all nodes in the replica set are authorized to run `replSetGetStatus`.
-        config.allNodesAuthorizedToRunRSGetStatus = false;
+
         return config;
     };
 
@@ -368,11 +366,11 @@ export function runTests(testCallback, configGenerator, callbackOptions) {
     jsTest.log('Running LDAP test on replica set');
     var rst = new ReplSetTest(configGenerator.generateReplicaSetConfig());
     rst.startSet();
-    rst.initiate(Object.extend(rst.getReplSetConfig(), {
-        writeConcernMajorityJournalDefault: wcMajorityJournalDefault,
-    }),
-                 null,
-                 {allNodesAuthorizedToRunRSGetStatus: false});
+
+    // ReplSetTest.initiate() requires all nodes to be to be authorized to run replSetGetStatus.
+    // TODO(SERVER-14017): Remove this in favor of using initiate() everywhere.
+    rst.initiateWithAnyNodeAsPrimary(Object.extend(
+        rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: wcMajorityJournalDefault}));
 
     rst.awaitSecondaryNodes();
 

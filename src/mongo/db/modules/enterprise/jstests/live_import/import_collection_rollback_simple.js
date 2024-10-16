@@ -33,7 +33,7 @@ config.members[2].priority = 0;
 config.settings = {
     chainingAllowed: false
 };
-rst.initiate(config);
+rst.initiateWithHighElectionTimeout(config);
 
 // Copy the exported files into the path of each replica set node.
 nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));

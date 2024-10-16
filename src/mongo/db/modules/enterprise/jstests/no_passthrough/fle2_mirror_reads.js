@@ -99,7 +99,7 @@ jsTestLog("ReplicaSet: Testing QE mirrored reads");
 {
     const rst = new ReplSetTest({nodes: 2});
     rst.startSet();
-    rst.initiate();
+    rst.initiateWithHighElectionTimeout();
     rst.awaitReplication();
     runTest(rst.getPrimary(), rst);
     rst.stopSet();

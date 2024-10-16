@@ -30,7 +30,7 @@ const collectionProperties =
 jsTestLog("Starting a replica set for import");
 const rst = new ReplSetTest({nodes: 3});
 const nodes = rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB(dbName);
 

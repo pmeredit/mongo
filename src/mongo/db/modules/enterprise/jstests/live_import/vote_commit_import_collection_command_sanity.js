@@ -83,7 +83,7 @@ const rst = new ReplSetTest({
     keyFile: kKeyFile,
 });
 rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
 const primaryAdmin = primary.getDB('admin');

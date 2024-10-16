@@ -27,7 +27,7 @@ function runTest(updateAutoCreds) {
 
     const sourceCluster = new ReplSetTest({nodes: 1});
     sourceCluster.startSet();
-    sourceCluster.initiate();
+    sourceCluster.initiateWithHighElectionTimeout();
 
     const sourcePrimary = sourceCluster.getPrimary();
     const dbName = "db";

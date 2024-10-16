@@ -34,7 +34,7 @@ const rst = new ReplSetTest({
     settings: {chainingAllowed: false}
 });
 rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
 const primaryDB = primary.getDB(dbName);
