@@ -11,9 +11,6 @@
 #include "ldap_connection_options.h"
 #include "ldap_query.h"
 
-#ifdef __APPLE__
-#error This test should not build on macOS
-#endif
 namespace mongo {
 
 namespace {

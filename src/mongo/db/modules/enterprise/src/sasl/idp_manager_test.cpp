@@ -11,9 +11,6 @@
 
 #include "sasl/idp_manager.h"
 
-#ifdef __APPLE__
-#error This test should not build on macOS
-#endif
 namespace mongo::auth {
 namespace {
 using namespace fmt::literals;

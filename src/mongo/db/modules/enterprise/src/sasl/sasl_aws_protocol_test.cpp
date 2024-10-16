@@ -11,9 +11,6 @@
 
 #include "sasl/sasl_aws_server_protocol.h"
 
-#ifdef __APPLE__
-#error This test should not build on macOS
-#endif
 namespace mongo {
 namespace awsIam {
 namespace {

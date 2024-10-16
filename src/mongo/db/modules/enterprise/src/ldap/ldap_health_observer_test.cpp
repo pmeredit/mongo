@@ -17,10 +17,6 @@
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/tick_source_mock.h"
 
-#ifdef __APPLE__
-#error This test should not build on macOS
-#endif
-
 namespace mongo {
 namespace process_health {
 namespace {

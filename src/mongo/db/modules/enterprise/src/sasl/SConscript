@@ -84,19 +84,18 @@ kmsEnv = env.Clone()
 
 kmsEnv.InjectThirdParty(libraries=["libmongocrypt"])
 
-if not env.TargetOSIs("darwin"):
-    kmsEnv.CppUnitTest(
-        target="sasl_aws_protocol_test",
-        source=[
-            "sasl_aws_protocol_test.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/client/sasl_aws_client",
-            "$BUILD_DIR/mongo/client/sasl_aws_common",
-            "$BUILD_DIR/third_party/libmongocrypt/mongocrypt",
-            "sasl_aws_server",
-        ],
-    )
+kmsEnv.CppUnitTest(
+    target="sasl_aws_protocol_test",
+    source=[
+        "sasl_aws_protocol_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/client/sasl_aws_client",
+        "$BUILD_DIR/mongo/client/sasl_aws_common",
+        "$BUILD_DIR/third_party/libmongocrypt/mongocrypt",
+        "sasl_aws_server",
+    ],
+)
 
 if env.TargetOSIs("windows"):
     # Ensure we're building with /MD or /MDd
@@ -109,7 +108,7 @@ if env.TargetOSIs("windows"):
         env.FatalError(
             "You must enable dynamic CRT --dynamic-windows to build the " "enterprise version"
         )
-elif not env.TargetOSIs("darwin"):
+else:
     env.CppUnitTest(
         target="sasl_authentication_session_gssapi_test",
         source=[
