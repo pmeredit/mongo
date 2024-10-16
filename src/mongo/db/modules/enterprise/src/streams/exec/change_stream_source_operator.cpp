@@ -246,6 +246,10 @@ void ChangeStreamSourceOperator::registerMetrics(MetricManager* metricManager) {
         "source_operator_queue_bytesize",
         /* description */ "Total bytes currently buffered in the queue",
         /*labels*/ getDefaultMetricLabels(_context));
+    _numReadSingleChangeEvent = metricManager->registerCounter(
+        "read_single_change_event_count",
+        /* description */ "Number of times readSingleChangeEvent is called",
+        /*labels*/ getDefaultMetricLabels(_context));
 }
 
 ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() {
@@ -393,6 +397,7 @@ void ChangeStreamSourceOperator::fetchLoop() {
 
             // Get some change events from our change stream cursor.
             readSingleChangeEvent();
+            _numReadSingleChangeEvent->increment(1);
         }
     };
     auto status = runMongocxxNoThrow(
@@ -593,7 +598,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
 }
 
 bool ChangeStreamSourceOperator::readSingleChangeEvent() {
-    // TODO SERVER-77657: Handle invalidate events.
     invariant(_changeStreamCursor);
 
     boost::optional<mongo::BSONObj> changeEvent;

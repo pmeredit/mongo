@@ -663,6 +663,12 @@ function verifyUpdateFullDocument() {
                 assert(!output[i].hasOwnProperty("fullDocumentBeforeChange"));
             }
         }
+
+        const metrics = db.runCommand({"streams_getMetrics": ""});
+        assert.commandWorked(metrics);
+        assert.gt(metrics['counters'].find(c => c.name == 'read_single_change_event_count').value,
+                  0);
+
         sp[processorName].stop();
         id += 1;
     };

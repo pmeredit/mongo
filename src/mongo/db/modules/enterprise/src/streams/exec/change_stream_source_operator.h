@@ -7,6 +7,7 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "streams/exec/util.h"
+#include "streams/util/metrics.h"
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -244,5 +245,7 @@ private:
     // Metrics that track the number of docs and bytes prefetched.
     std::shared_ptr<IntGauge> _queueSizeGauge;
     std::shared_ptr<IntGauge> _queueByteSizeGauge;
+    // Metric that track the number of readSingleChangeEvent calls.
+    std::shared_ptr<Counter> _numReadSingleChangeEvent;
 };
 }  // namespace streams
