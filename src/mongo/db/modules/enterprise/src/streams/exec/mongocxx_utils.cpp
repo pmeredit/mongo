@@ -2,7 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/mongocxx_utils.h"
 
 #include <boost/algorithm/string/replace.hpp>
 #include <bsoncxx/json.hpp>
@@ -12,6 +11,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -106,7 +106,7 @@ SPStatus mongocxxExceptionToStatus(const mongocxx::exception& ex,
         {ErrorCodes::NotWritablePrimary, ErrorCodes::StreamProcessorAtlasConnectionError},
         // We see this error when the user gives us insufficient auth to query the config
         // collection.
-        {ErrorCodes::Error{8000}, ErrorCodes::StreamProcessorAtlasUnauthorizedError},
+        {ErrorCodes::Error{kAtlasErrorCode}, ErrorCodes::StreamProcessorAtlasUnauthorizedError},
     };
 
     ErrorCodes::Error code{ex.code().value()};
@@ -122,6 +122,13 @@ SPStatus mongocxxExceptionToStatus(const mongocxx::exception& ex,
         // We see this error when the target cluster is paused.
         code = ErrorCodes::StreamProcessorAtlasConnectionError;
     }
+
+    // transient auth error that should be retried
+    if (code == ErrorCodes::StreamProcessorAtlasUnauthorizedError &&
+        str::contains(StringData{ex.what()}, "requires authentication: generic server error")) {
+        code = ErrorCodes::InternalError;
+    }
+
     auto errorMsg = fmt::format("{}: {}", errorPrefix, sanitizeMongocxxErrorMsg(ex.what(), uri));
     return SPStatus{Status{code, std::move(errorMsg)}, ex.what()};
 }
