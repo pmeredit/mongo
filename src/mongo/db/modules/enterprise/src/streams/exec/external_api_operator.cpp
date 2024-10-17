@@ -9,6 +9,8 @@
 #include <bsoncxx/stdx/string_view.hpp>
 #include <memory>
 
+#include "mongo/base/error_codes.h"
+#include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
@@ -32,6 +34,7 @@ void ExternalApiOperator::initializeHTTPClient() {
     auto client = mongo::HttpClient::create();
     client->setConnectTimeout(_options.connectionTimeoutSecs);
     client->setTimeout(_options.requestTimeoutSecs);
+    client->allowInsecureHTTP(getTestCommandsEnabled());
     _options.httpClient = std::move(client);
 }
 
@@ -122,21 +125,52 @@ void ExternalApiOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
 
 boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
     const StreamDocument& streamDoc) {
-    auto rawDoc = tojson(streamDoc.doc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
 
-    ConstDataRange httpPayload(rawDoc, rawDoc.size());
+    std::string rawDoc;
+    ConstDataRange httpPayload = {nullptr, 0};
+    switch (_options.requestType) {
+        case HttpClient::HttpMethod::kPOST:
+        case HttpClient::HttpMethod::kPUT:
+        case HttpClient::HttpMethod::kPATCH: {
+            rawDoc = tojson(streamDoc.doc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
+            httpPayload = ConstDataRange(rawDoc, rawDoc.size());
+            break;
+        }
+        default:
+            // Payload is not used by other HTTP Methods
+            break;
+    }
 
     tassert(9502900,
             "Expected http client to exist before trying to make requests.",
             _options.httpClient);
     _options.httpClient->setHeaders(evaluateHeaders(streamDoc.doc));
-    auto response = _options.httpClient->request(_options.requestType, _options.uri, httpPayload);
+
+
+    auto response = _options.httpClient->request(_options.requestType,
+                                                 (_options.path) ? evaluateFullUrl(streamDoc.doc)
+                                                                 : _options.url,
+                                                 httpPayload);
 
     uassert(ErrorCodes::OperationFailed,
             str::stream() << "Unexpected http status code from server: " << response.code,
             response.code >= 200 && response.code < 300);
 
     return response;
+}
+
+std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
+    uassert(
+        ErrorCodes::InternalError,
+        str::stream() << "evaluateFullURL should only be called if _options.path is an not nullptr",
+        _options.path);
+    Value pathField = _options.path->evaluate(doc, &_context->expCtx->variables);
+    if (!pathField.missing() && pathField.getType() == String) {
+        return _options.url + pathField.getStringData();
+    }
+    // TODO(SERVER-95031): handle if path is missing or evaluates to non string and DLQ if the
+    // expression evaluate throws an exception
+    return "";
 }
 
 std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Document& doc) {

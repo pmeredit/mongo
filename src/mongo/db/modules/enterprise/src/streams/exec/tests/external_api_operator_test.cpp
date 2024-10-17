@@ -50,8 +50,8 @@ public:
         //
         // TODO(SERVER-95031): Add query params support.
         inputDocs.reserve(1);
-        inputDocs.emplace_back(
-            Document{fromjson(fmt::format("{{_ts: {}, id: {}, val: {}}}", 1, 1, 1))});
+        inputDocs.emplace_back(Document{
+            fromjson(fmt::format("{{_ts: {}, id: {}, val: {}, path: '/foobar'}}", 1, 1, 1))});
 
         inputDataMsg.docs = std::move(inputDocs);
 
@@ -80,7 +80,7 @@ TEST_F(ExternalApiOperatorTest, BasicGet) {
                                                      << "ok"))});
 
     ExternalApiOperator::Options options{
-        .uri = uri.toString(),
+        .url = uri.toString(),
         .requestType = HttpClient::HttpMethod::kGET,
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
         .as = "response",
@@ -117,7 +117,7 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithDottedAsField) {
 
     // Create $externalAPI operator.
     ExternalApiOperator::Options options{
-        .uri = uri.toString(),
+        .url = uri.toString(),
         .requestType = HttpClient::HttpMethod::kGET,
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
         .as = "apiResponse.inner",
@@ -141,6 +141,92 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithDottedAsField) {
         auto year = inner["year"];
         ASSERT_TRUE(year.ok());
         ASSERT_EQ(year.Int(), 2024);
+    });
+}
+
+TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsStringExpression) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString() + "/foobar",
+        },
+        MockHttpClient::Response{.code = 200,
+                                 .body = tojson(BSON("ack"
+                                                     << "ok"))});
+
+    // handle string expression
+    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
+    auto strExpr = ExpressionFieldPath::parse(expCtx.get(), "$path", expCtx->variablesParseState);
+    ExternalApiOperator::Options options{
+        .url = uri.toString(),
+        .path = strExpr,
+        .requestType = HttpClient::HttpMethod::kGET,
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .as = "response",
+    };
+
+    doTest(std::move(options), [](std::deque<StreamMsgUnion> messages) {
+        ASSERT_EQ(messages.size(), 1);
+        auto msg = messages.at(0);
+
+        ASSERT(msg.dataMsg);
+        ASSERT(!msg.controlMsg);
+        ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+        auto doc = msg.dataMsg->docs[0].doc.toBson();
+        auto response = doc["response"].Obj();
+        ASSERT_TRUE(!response.isEmpty());
+
+        auto ack = response["ack"];
+        ASSERT_TRUE(ack.ok());
+        ASSERT_EQ(ack.String(), "ok");
+    });
+}
+
+TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsBsonExpression) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString() + "/foobar",
+        },
+        MockHttpClient::Response{.code = 200,
+                                 .body = tojson(BSON("ack"
+                                                     << "ok"))});
+
+    // handle bson expression
+    auto expCtx = boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
+    auto exprObj = fromjson("{$getField: 'path'}");
+    auto getFieldExpr =
+        Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
+    ExternalApiOperator::Options options{
+        .url = uri.toString(),
+        .path = getFieldExpr,
+        .requestType = HttpClient::HttpMethod::kGET,
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .as = "response",
+    };
+
+    doTest(std::move(options), [](std::deque<StreamMsgUnion> messages) {
+        ASSERT_EQ(messages.size(), 1);
+        auto msg = messages.at(0);
+
+        ASSERT(msg.dataMsg);
+        ASSERT(!msg.controlMsg);
+        ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+        auto doc = msg.dataMsg->docs[0].doc.toBson();
+        auto response = doc["response"].Obj();
+        ASSERT_TRUE(!response.isEmpty());
+
+        auto ack = response["ack"];
+        ASSERT_TRUE(ack.ok());
+        ASSERT_EQ(ack.String(), "ok");
     });
 }
 

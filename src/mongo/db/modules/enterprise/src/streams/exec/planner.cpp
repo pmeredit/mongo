@@ -10,6 +10,7 @@
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/change_stream.hpp>
+#include <variant>
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
@@ -1396,9 +1397,30 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
     const auto& connection = _context->connections.at(connectionNameField);
     auto connOptions = WebAPIConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                       connection.getOptions());
-    options.uri = connOptions.getUrl().toString();
+    options.url = connOptions.getUrl().toString();
     options.connectionTimeoutSecs = mongo::Seconds{connOptions.getConnectionTimeoutSec()};
     options.requestTimeoutSecs = mongo::Seconds{connOptions.getRequestTimeoutSec()};
+
+    auto urlPath = parsedOperatorOptions.getUrlPath();
+    if (urlPath) {
+        std::visit(OverloadedVisitor{[&](const BSONObj& bson) {
+                                         options.path = Expression::parseExpression(
+                                             _context->expCtx.get(),
+                                             std::move(bson),
+                                             _context->expCtx->variablesParseState);
+                                     },
+                                     [&](const std::string& str) {
+                                         if (str.find('$') != std::string::npos) {
+                                             options.path = ExpressionFieldPath::parse(
+                                                 _context->expCtx.get(),
+                                                 std::move(str),
+                                                 _context->expCtx->variablesParseState);
+                                         } else {
+                                             options.url = options.url + str;
+                                         }
+                                     }},
+                   *urlPath);
+    }
 
     auto oper = std::make_unique<ExternalApiOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
@@ -1449,13 +1471,13 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
             DepsTracker deps;
             auto depsState = stage->getDependencies(&deps);
             if (depsState == DepsTracker::State::NOT_SUPPORTED) {
-                // If the dependency checking is not supported, we assume there is stream metadata
-                // dependency to be safe.
+                // If the dependency checking is not supported, we assume there is stream
+                // metadata dependency to be safe.
                 hasStreamMetaDependency = true;
             } else {
                 if (deps.needWholeDocument) {
-                    // If the stage references $$ROOT then this flag will be set and we should see
-                    // it as depending on stream metadata.
+                    // If the stage references $$ROOT then this flag will be set and we should
+                    // see it as depending on stream metadata.
                     hasStreamMetaDependency = true;
                 }
                 for (const auto& field : deps.fields) {
@@ -1908,7 +1930,8 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
         } else if (isLookUpStage(stageName)) {
             auto spec = getSpecDoc(stageName, stage);
             // If the 'from' field does not exist in the $lookup stage, there is no connection
-            // information to retrieve. This scenario is valid when a 'pipeline' field is defined.
+            // information to retrieve. This scenario is valid when a 'pipeline' field is
+            // defined.
             if (!spec.getField(kFromFieldName).missing()) {
                 addConnectionName(
                     stageName,
@@ -1940,18 +1963,17 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             }
 
             for (const auto& windowStage : windowPipeline) {
-                uassert(
-                    mongo::ErrorCodes::StreamProcessorInvalidOptions,
-                    str::stream()
-                        << "A pipeline stage specification object must contain exactly one field: "
-                        << windowStage,
-                    windowStage.nFields() == 1);
+                uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                        str::stream() << "A pipeline stage specification object must contain "
+                                         "exactly one field: "
+                                      << windowStage,
+                        windowStage.nFields() == 1);
                 auto windowStageName = windowStage.firstElementFieldNameStringData();
                 if (isLookUpStage(windowStageName)) {
                     auto windowStageSpec = getSpecDoc(windowStageName, windowStage);
                     // If the 'from' field does not exist in the $lookup stage, there is no
-                    // connection information to retrieve. This scenario is valid when a 'pipeline'
-                    // field is defined.
+                    // connection information to retrieve. This scenario is valid when a
+                    // 'pipeline' field is defined.
                     if (!windowStageSpec.getField(kFromFieldName).missing()) {
                         addConnectionName(windowStageName,
                                           windowStageSpec,

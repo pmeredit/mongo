@@ -4,8 +4,11 @@
 
 #pragma once
 
+#include <boost/smart_ptr/intrusive_ptr.hpp>
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "streams/exec/operator.h"
@@ -23,8 +26,10 @@ namespace streams {
 class ExternalApiOperator : public Operator {
 public:
     struct Options {
-        // URI used to make an HTTP request with.
-        std::string uri;
+        // base url used to make an HTTP request with.
+        std::string url;
+        // an expression whose evaluation result should be appended to the url.
+        boost::intrusive_ptr<mongo::Expression> path{nullptr};
         // Query parameters used when making a HTTP request.
         mongo::BSONObj params;
         mongo::HttpClient::HttpMethod requestType{mongo::HttpClient::HttpMethod::kGET};
@@ -70,6 +75,10 @@ private:
     // makeDocumentWithAPIResponse sets the api response as a value in the input document using a
     // user-configured key.
     mongo::Document makeDocumentWithAPIResponse(mongo::Document inputDoc, mongo::Value apiResponse);
+
+    // evaluateFullUrl accepts an input document and applies a mongo expression using that document
+    // to create the urlPath to be appended to the connection uri.
+    std::string evaluateFullUrl(const mongo::Document& doc);
 
     // evaluateHeaders accepts an input document and applies a mongo expression using that document
     // to create a set of headers to be used in the http client.
