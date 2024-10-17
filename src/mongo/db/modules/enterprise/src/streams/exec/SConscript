@@ -94,6 +94,7 @@ env.Library(
         "stream_stats.cpp",
         "tenant_feature_flags.cpp",
         "unflushed_state_container.cpp",
+        "rate_limiter.cpp",
         "unwind_operator.cpp",
         "util.cpp",
         "validate_operator.cpp",

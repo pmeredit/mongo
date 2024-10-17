@@ -749,3 +749,14 @@ env.CppUnitTest(
         "streams_test_utils",
     ],
 )
+
+env.CppUnitTest(
+    target="rate_limiter_test",
+    source=[
+        "rate_limiter_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+)
