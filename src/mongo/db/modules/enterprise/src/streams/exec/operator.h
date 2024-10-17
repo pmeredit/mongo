@@ -21,8 +21,8 @@ struct Context;
 
 // Size limits on StreamDataMsgs sent through the Operator dag. We try to honor these limits in a
 // best-effort manner.
-static constexpr int32_t kDataMsgMaxDocSize = 50000;
-static constexpr int32_t kDataMsgMaxByteSize = 16 * 1024 * 1024;
+static constexpr int32_t kDataMsgMaxDocSize = 100;
+static constexpr int32_t kDataMsgMaxByteSize = 1 * 1024 * 1024;
 
 /**
  * The base class of all operators in an operator dag.
