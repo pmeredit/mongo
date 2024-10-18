@@ -98,14 +98,14 @@ void BackupCursorService::fsyncLock(OperationContext* opCtx) {
     uassert(50884,
             "The existing backup cursor must be closed before fsyncLock can succeed.",
             _state.load() != kBackupCursorOpened);
-    uassertStatusOK(opCtx->getServiceContext()->getStorageEngine()->beginBackup(opCtx));
+    uassertStatusOK(opCtx->getServiceContext()->getStorageEngine()->beginBackup());
     _state.store(kFsyncLocked);
 }
 
 void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
     stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassert(50888, "The node is not fsyncLocked.", _state.load() == kFsyncLocked);
-    opCtx->getServiceContext()->getStorageEngine()->endBackup(opCtx);
+    opCtx->getServiceContext()->getStorageEngine()->endBackup();
     _state.store(kInactive);
 }
 
@@ -140,9 +140,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
     if (options.disableIncrementalBackup) {
-        uassertStatusOK(storageEngine->disableIncrementalBackup(opCtx));
+        uassertStatusOK(storageEngine->disableIncrementalBackup());
     } else {
-        streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(opCtx, options));
+        streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(options));
     }
 
     _state.store(kBackupCursorOpened);
@@ -237,8 +237,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // The database instance backing the encryption at rest data simply returns filenames
             // that need to be copied whole. The assumption is these files are small so the cost is
             // negligible.
-            eseBackupBlocks.push_back(BackupBlock(opCtx,
-                                                  boost::none /* nss */,
+            eseBackupBlocks.push_back(BackupBlock(boost::none /* nss */,
                                                   boost::none /* uuid */,
                                                   filePath,
                                                   0 /* offset */,
@@ -342,8 +341,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // guarantee the persistency of the oplog with timestamp `extendTo`.
     JournalFlusher::get(opCtx)->waitForJournalFlush();
 
-    std::deque<std::string> filesToBackup =
-        uassertStatusOK(storageEngine->extendBackupCursor(opCtx));
+    std::deque<std::string> filesToBackup = uassertStatusOK(storageEngine->extendBackupCursor());
     LOGV2(24202,
           "Backup cursor has been extended",
           "backupId"_attr = backupId,
@@ -365,7 +363,7 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
             str::stream() << "Can only close the running backup cursor. To close: " << backupId
                           << " Running: " << *_activeBackupId,
             backupId == *_activeBackupId);
-    opCtx->getServiceContext()->getStorageEngine()->endNonBlockingBackup(opCtx);
+    opCtx->getServiceContext()->getStorageEngine()->endNonBlockingBackup();
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled()) {
         fassert(50934, encHooks->endNonBlockingBackup());

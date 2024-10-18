@@ -65,8 +65,7 @@ public:
     UUID createBackupCursorStage(const boost::intrusive_ptr<ExpressionContext>& expCtx) {
         auto devNullEngine = static_cast<DevNullKVEngine*>(
             _opCtx->getClient()->getServiceContext()->getStorageEngine()->getEngine());
-        devNullEngine->setBackupBlocks_forTest({BackupBlock(_opCtx.get(),
-                                                            /*nss=*/boost::none,
+        devNullEngine->setBackupBlocks_forTest({BackupBlock(/*nss=*/boost::none,
                                                             /*uuid=*/boost::none,
                                                             fileToBackup)});
 

@@ -58,8 +58,8 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
     }
 
     if (_backupBlocks.empty() && _backupCursorState.streamingCursor) {
-        _backupBlocks = uassertStatusOK(
-            _backupCursorState.streamingCursor->getNextBatch(pExpCtx->opCtx, _kBatchSize));
+        _backupBlocks =
+            uassertStatusOK(_backupCursorState.streamingCursor->getNextBatch(_kBatchSize));
     }
 
     if (!_backupBlocks.empty()) {

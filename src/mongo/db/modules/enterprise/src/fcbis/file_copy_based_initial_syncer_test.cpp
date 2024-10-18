@@ -787,8 +787,7 @@ protected:
     void populateBackupFiles(OperationContext* opCtx, const std::vector<std::string>& filenames) {
         std::deque<BackupBlock> backupBlocks;
         for (const auto& filename : filenames) {
-            BackupBlock file = BackupBlock(opCtx,
-                                           /*nss=*/boost::none,
+            BackupBlock file = BackupBlock(/*nss=*/boost::none,
                                            /*uuid=*/boost::none,
                                            storageGlobalParams.dbpath + '/' + filename);
             backupBlocks.push_back(file);
