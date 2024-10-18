@@ -9,7 +9,7 @@ env.Library(
         "magic_restore_structs_gen.cpp",
     ],
     LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/catalog/collection_crud",
+        "$BUILD_DIR/mongo/db/collection_crud/collection_crud",
         "$BUILD_DIR/mongo/db/commands/servers",
         "$BUILD_DIR/mongo/db/commands/umc_commands_idl",
         "$BUILD_DIR/mongo/db/concurrency/exception_util",
