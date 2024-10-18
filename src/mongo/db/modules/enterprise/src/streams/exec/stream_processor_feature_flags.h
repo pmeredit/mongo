@@ -46,5 +46,7 @@ int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featur
 int64_t getKafkaProduceTimeoutMs(boost::optional<StreamProcessorFeatureFlags> featureFlags);
 bool shouldUseWatchToInitClusterChangestream(
     boost::optional<StreamProcessorFeatureFlags> featureFlags);
+boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 
 }  // namespace streams

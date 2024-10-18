@@ -241,6 +241,7 @@ private:
     // This is the timestamp of the last event in the oplog in the server. This is updated
     // from the auxiliary event fetching thread each time we get a new event on the change stream.
     mongo::Atomic<mongo::Seconds> _changestreamOperationTime;
+    mongo::Date_t _changestreamLastEventReceivedAt{mongo::Date_t::min()};
 
     // Metrics that track the number of docs and bytes prefetched.
     std::shared_ptr<IntGauge> _queueSizeGauge;

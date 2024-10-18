@@ -7,7 +7,6 @@
 #include "mongo/util/str.h"
 #include "streams/exec/feature_flag.h"
 
-
 namespace streams {
 
 StreamProcessorFeatureFlags::StreamProcessorFeatureFlags(
@@ -68,6 +67,20 @@ bool shouldUseWatchToInitClusterChangestream(
     tassert(8748201, "Feature flags should be set", featureFlags);
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kUseWatchToInitClusterChangestream)
                 .getBool();
+}
+
+boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    tassert(9588811, "Feature flags should be set", featureFlags);
+
+    boost::optional<mongo::Seconds> ret;
+    auto val =
+        featureFlags->getFeatureFlagValue(FeatureFlags::kChangestreamSourceStalenessMonitorPeriod)
+            .getInt();
+    if (val && *val > 0) {
+        ret = mongo::Seconds{*val};
+    }
+    return ret;
 }
 
 }  // namespace streams

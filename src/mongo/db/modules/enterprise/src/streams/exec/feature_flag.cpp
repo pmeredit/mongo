@@ -160,6 +160,12 @@ const FeatureFlagDefinition FeatureFlags::kUseWatchToInitClusterChangestream{
     "whole-cluster change stream $source",
     mongo::Value(true)};
 
+const FeatureFlagDefinition FeatureFlags::kChangestreamSourceStalenessMonitorPeriod{
+    "changestreamSourceStalenessMonitorPeriod",
+    "If true, periodically gets the server opLogTime and compares with current change stream "
+    "$source opLogTime.",
+    mongo::Value::createIntOrLong(0)};
+
 const FeatureFlagDefinition FeatureFlags::kKafkaProduceTimeout{
     "kafkaProduceTimeout",
     "The produce timeout in milliseconds",

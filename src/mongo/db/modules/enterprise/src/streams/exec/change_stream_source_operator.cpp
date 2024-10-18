@@ -46,6 +46,8 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
+using namespace std::chrono_literals;
+
 namespace streams {
 
 using namespace mongo;
@@ -469,10 +471,10 @@ void ChangeStreamSourceOperator::doStart() {
         try {
             fetchLoop();
         } catch (const std::exception& e) {
-            // Note: fetchLoop has its own error handling so we don't expect to this this
+            // Note: fetchLoop has its own error handling internally so we don't expect to get this
             // exception.
             LOGV2_WARNING(8681501,
-                          "Unexpected std::exception in changestream $source",
+                          "Unexpected std::exception in changestream $source fetch loop",
                           "context"_attr = _context,
                           "exception"_attr = e.what());
             stdx::unique_lock lock(_mutex);
@@ -637,6 +639,37 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 
     // Store latest operationTime regardless of whether we get a new resumeToken/event or not
     _changestreamOperationTime.store(mongo::Seconds{_clientSession->operation_time().timestamp});
+
+    if (changeEvent) {
+        _changestreamLastEventReceivedAt = Date_t::now();
+    }
+
+    // Check for staleness
+    boost::optional<mongo::Seconds> monitorPeriod =
+        getChangestreamSourceStalenessMonitorPeriod(_context->featureFlags);
+    if (monitorPeriod) {
+        // If we have not received anything for the configured period, do an additional
+        // staleness check
+        if (Date_t::now() - _changestreamLastEventReceivedAt >
+            mongo::duration_cast<mongo::Milliseconds>(*monitorPeriod)) {
+            auto client = std::make_unique<mongocxx::client>(
+                *_uri, _options.clientOptions.toMongoCxxClientOptions());
+
+            std::unique_ptr<mongocxx::database> database;
+            const auto& db = _options.clientOptions.database;
+            if (db && !db->empty()) {
+                database = std::make_unique<mongocxx::database>(_client->database(*db));
+            }
+
+            auto currOplogTime = getLatestOplogTime(database.get(), client.get(), false);
+            if (mongo::Seconds{currOplogTime.getSecs()} >
+                _changestreamOperationTime.load() + mongo::Seconds{60}) {
+                LOGV2_WARNING(
+                    9588802, "change stream $source is possibly stale.", "context"_attr = _context);
+                uasserted(ErrorCodes::ChangeStreamFatalError, "ChangeStream is possibly stale");
+            }
+        }
+    }
 
     // Return early if we didn't read a change event or resume token.
     if (!changeEvent && !eventResumeToken) {

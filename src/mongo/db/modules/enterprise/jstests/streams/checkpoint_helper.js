@@ -176,7 +176,8 @@ export class TestHelper {
                 dbForTest = null,
                 targetSourceMergeDb = null,
                 useTimeField = true,
-                sinkType = "atlas") {
+                sinkType = "atlas",
+                changestreamStalenessMonitoring = false) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.sinkType = sinkType;
@@ -243,10 +244,16 @@ export class TestHelper {
         checkpointOptions.storage = null;
         checkpointOptions.localDisk = {writeDirectory: this.writeDir};
 
+        let featureFlags = {
+            useExecutionPlanFromCheckpoint: useRestoredExecutionPlan,
+        };
+        if (changestreamStalenessMonitoring) {
+            featureFlags.changestreamSourceStalenessMonitorPeriod = NumberInt(5);
+        }
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
             checkpointOptions: checkpointOptions,
-            featureFlags: {useExecutionPlanFromCheckpoint: useRestoredExecutionPlan},
+            featureFlags: featureFlags,
             checkpointOnStart: false
         };
         this.connectionRegistry = [
