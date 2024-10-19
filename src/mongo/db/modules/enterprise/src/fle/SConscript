@@ -26,7 +26,6 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/db/commands",
-        "$BUILD_DIR/mongo/db/commands/buildinfo_common",
         "$BUILD_DIR/mongo/db/commands/test_commands_enabled",
         "$BUILD_DIR/mongo/db/query/common_query_enums_and_helpers",
         "$BUILD_DIR/mongo/db/wire_version",
