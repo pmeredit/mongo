@@ -37,7 +37,7 @@
  *
  * MONGOC minor version component (e.g. 2 if %MONGOC_VERSION is 1.2.3)
  */
-#define MONGOC_MINOR_VERSION (23)
+#define MONGOC_MINOR_VERSION (24)
 
 
 /**
@@ -61,7 +61,7 @@
  *
  * MONGOC version.
  */
-#define MONGOC_VERSION (1.23.3)
+#define MONGOC_VERSION (1.24.3)
 
 
 /**
@@ -70,7 +70,7 @@
  * MONGOC version, encoded as a string, useful for printing and
  * concatenation.
  */
-#define MONGOC_VERSION_S "1.23.3"
+#define MONGOC_VERSION_S "1.24.3"
 
 
 /**
@@ -91,7 +91,7 @@
  * @micro: required micro version
  *
  * Compile-time version checking. Evaluates to %TRUE if the version
- * of MONGOC is greater than the required one.
+ * of MONGOC is greater than or equal to the required one.
  */
 #define MONGOC_CHECK_VERSION(major,minor,micro)   \
         (MONGOC_MAJOR_VERSION > (major) || \
