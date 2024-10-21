@@ -1120,7 +1120,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
                        reason,
                        "streamProcessorName"_attr = name,
                        "streamProcessorId"_attr = processorId);
-            return Status{mongo::ErrorCodes::Error(75934), std::string{reason}};
+            return Status{ErrorCodes::StreamProcessorDoesNotExist, std::string{reason}};
         }
 
         if (processorInfo->executorStatus) {
