@@ -2,6 +2,11 @@
  * This file tests that opening an incremental backup cursor while running with encryptdb also
  * returns the WT files to copy that are part of the keystore database AND that the proper ns and
  * uuid are reported in various server configurations.
+ *
+ * @tags: [
+ *   requires_persistence,
+ *   requires_wiredtiger,
+ * ]
  */
 
 import {openBackupCursor} from "jstests/libs/backup_utils.js";

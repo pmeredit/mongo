@@ -1,5 +1,10 @@
 /*
  * This is a full integration test of hot backups with the ESE enabled for both cipher modes.
+ *
+ * @tags: [
+ *   requires_persistence,
+ *   requires_wiredtiger,
+ * ]
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {

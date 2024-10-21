@@ -9,6 +9,11 @@
  * copied data files. The reason they are stored in the oplog is that these new operations are
  * ahead of the 'checkpointTimestamp' returned from $backupCursor. During oplog recovery, the
  * database will be assigned a new key in the KeyStore when its creation is replayed.
+ *
+ * @tags: [
+ *   requires_persistence,
+ *   requires_wiredtiger,
+ * ]
  */
 import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
