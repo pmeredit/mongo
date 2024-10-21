@@ -1,30 +1,35 @@
 // Helper library for exporting and importing collections.
+import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 /**
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
  * is provided that allows operations to be performed on the mongod prior to exporting it.
  */
 export const exportCollectionExtended = function(dbName, collName, username, password, ops) {
-    let standalone = MongoRunner.runMongod();
-    let db = standalone.getDB(dbName);
+    const rst = new ReplSetTest({nodes: 1, name: "export_collection_target"});
+    const nodes = rst.startSet();
+    rst.initiateWithHighElectionTimeout();
+    let primary = rst.getPrimary();
+    let db = primary.getDB(dbName);
 
     // in some tests collection already exists, so we ignore if this command fails
     db.createCollection(collName);
 
     jsTestLog(`Running operations on collection ${dbName}.${collName}`);
     if (ops) {
-        ops(standalone);
+        ops(primary);
     }
-    MongoRunner.stopMongod(standalone);
+    rst.stopSet(null, false, {noCleanData: true});
 
     // After creating the collection and running operations on it, export it.
     jsTestLog(`Exporting collection ${dbName}.${collName}`);
     let params = {
-        dbpath: standalone.dbpath,
+        dbpath: rst.getDbPath(nodes[0]),
         noCleanData: true,
         queryableBackupMode: "",
+        setParameter: {wiredTigerSkipTableLoggingChecksOnStartup: true},
     };
-    standalone = MongoRunner.runMongod(params);
+    let standalone = MongoRunner.runMongod(params);
 
     db = standalone.getDB(dbName);
     if (username) {
@@ -32,7 +37,9 @@ export const exportCollectionExtended = function(dbName, collName, username, pas
     }
 
     const collectionProperties = assert.commandWorked(db.runCommand({exportCollection: collName}));
-    MongoRunner.stopMongod(standalone);
+    // Table logging settings are incorrect for a standalone due to creating the collection in a
+    // replica set
+    MongoRunner.stopMongod(standalone, null, {skipValidation: true});
     return collectionProperties;
 };
 

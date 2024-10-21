@@ -311,6 +311,9 @@ void importCollection(OperationContext* opCtx,
             CollectionCatalog::get(opCtx)->onCreateCollection(opCtx, ownedCollection);
 
             if (isDryRun) {
+                // Force a checkpoint to ensure rollback with remove_files=false doesn't hang on
+                // EBUSY (SERVER-95921)
+                opCtx->getServiceContext()->getStorageEngine()->checkpoint();
                 // This aborts the WUOW and rolls back the import.
                 return;
             }
