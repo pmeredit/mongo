@@ -43,3 +43,62 @@ mongo_cc_library(
         "//src/mongo/db/repl:repl_coordinator_interface",  # TODO(SERVER-93876): Remove.
     ],
 )
+
+mongo_cc_library(
+    name = "export_collection",
+    srcs = [
+        "export_collection.cpp",
+    ],
+    hdrs = [
+        "export_collection.h",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:use_wiredtiger_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "collection_properties",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:shard_role",
+        "//src/mongo/db/catalog:index_catalog",
+        "//src/mongo/db/storage:durable_catalog",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+    ],
+)
+
+mongo_cc_library(
+    name = "import_collection",
+    srcs = [
+        "import_collection.cpp",
+    ],
+    hdrs = [
+        "import_collection.h",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:use_wiredtiger_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "collection_properties",
+        "import_collection_coordinator",
+        "//src/mongo:base",
+        "//src/mongo/db:audit",
+        "//src/mongo/db:multitenancy",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:shard_role",
+        "//src/mongo/db/catalog:collection_options",
+        "//src/mongo/db/concurrency:exception_util",
+        "//src/mongo/db/modules/enterprise/src/audit:audit_enterprise",
+        "//src/mongo/db/op_observer",
+        "//src/mongo/db/repl:oplog",
+        "//src/mongo/db/repl:repl_coordinator_interface",
+        "//src/mongo/db/stats:top",
+        "//src/mongo/db/storage:durable_catalog",
+        "//src/mongo/db/storage:storage_engine_impl",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+        "//src/mongo/idl:cluster_parameter_synchronization_helpers",
+    ],
+)

@@ -8,3 +8,42 @@ exports_files(
         "*.cpp",
     ]),
 )
+
+mongo_cc_library(
+    name = "file_copy_based_initial_syncer",
+    srcs = [
+        "backup_file_cloner.cpp",
+        "file_copy_based_initial_syncer.cpp",
+        "initial_sync_file_mover.cpp",
+    ],
+    hdrs = [
+        "backup_file_cloner.h",
+        "file_copy_based_initial_syncer.h",
+        "initial_sync_file_mover.h",
+    ],
+    tags = ["compile_requires_large_memory"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db:dbhelpers",
+        "//src/mongo/db:index_builds_coordinator_interface",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:startup_recovery",
+        "//src/mongo/db/catalog:catalog_control",
+        "//src/mongo/db/concurrency:exception_util",
+        "//src/mongo/db/modules/enterprise/src/hot_backups",
+        "//src/mongo/db/query/client_cursor:cursor_server_params",
+        "//src/mongo/db/repl:initial_syncer",
+        "//src/mongo/db/repl:repl_server_parameters",
+        "//src/mongo/db/repl:replication_auth",
+        "//src/mongo/db/serverless:serverless_lock",
+        "//src/mongo/db/storage:storage_engine_common",
+        "//src/mongo/db/storage:storage_file_util",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+        "//src/mongo/db/transaction",
+        "//src/mongo/executor:scoped_task_executor",
+        "//src/mongo/util:progress_meter",
+        "//src/mongo/watchdog",
+    ],
+)

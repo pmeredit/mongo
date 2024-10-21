@@ -8,3 +8,41 @@ exports_files(
         "*.cpp",
     ]),
 )
+
+# TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
+MONGOCXX_COPTS = [
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist",
+] + select({
+    "@platforms//cpu:x86_64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64",
+    ],
+    "@platforms//cpu:aarch64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64",
+    ],
+    "//conditions:default": [],
+})
+
+mongo_cc_library(
+    name = "streams_management",
+    srcs = [
+        "container_group_stats_provider.cpp",
+        "container_stats.cpp",
+        "stream_manager.cpp",
+    ],
+    hdrs = [
+        "container_group_stats_provider.h",
+        "container_stats.h",
+        "stream_manager.h",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:constants.h",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:noop_dead_letter_queue.h",
+        "//src/mongo/db/pipeline:document_source_mock_stages.h",
+        "//src/mongo/db/query:query_test_service_context.h",
+    ],
+    copts = MONGOCXX_COPTS,
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/commands:streams_ops_idl",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/modules/enterprise/src/streams/util:streams_util",
+    ],
+)

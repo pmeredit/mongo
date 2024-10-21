@@ -44,6 +44,7 @@ mongo_cc_library(
         "vote_commit_import_collection_command.cpp",
         ":vote_commit_import_collection_gen",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/db:commands",
         "//src/mongo/db:service_context",
@@ -51,5 +52,42 @@ mongo_cc_library(
         "//src/mongo/db/modules/enterprise/src/live_import:import_collection_coordinator",
         "//src/mongo/db/repl:repl_coordinator_interface",
         "//src/mongo/util:fail_point",
+    ],
+)
+
+mongo_cc_library(
+    name = "import_collection_command",
+    srcs = [
+        "import_collection_command.cpp",
+        "import_collection_gen",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/db:commands",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/auth",
+        "//src/mongo/db/modules/enterprise/src/live_import:collection_properties",
+        "//src/mongo/db/modules/enterprise/src/live_import:import_collection",
+        "//src/mongo/db/repl:repl_coordinator_interface",
+        "//src/mongo/db/storage:storage_options",
+    ],
+)
+
+mongo_cc_library(
+    name = "export_collection_command",
+    srcs = [
+        "export_collection_command.cpp",
+        "export_collection_gen",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/db:commands",
+        "//src/mongo/db:global_settings",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/auth",
+        "//src/mongo/db/modules/enterprise/src/live_import:export_collection",
+        "//src/mongo/db/storage:storage_options",
     ],
 )

@@ -149,6 +149,7 @@ mongo_cc_library(
     srcs = [
         "ldap_manager_init.cpp",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "ldap_manager_impl",
         "ldap_parameters",
@@ -210,6 +211,7 @@ mongo_cc_library(
     srcs = [
         "ldap_options_mongod_gen",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "ldap_manager_impl",
         "//src/mongo/util/options_parser",
@@ -224,11 +226,36 @@ mongo_cc_library(
     hdrs = [
         "ldap_health_observer.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "ldap_connection",
         "ldap_manager",
         "ldap_manager_impl",
         "ldap_query",
         "//src/mongo/db/process_health:fault_manager",
+    ],
+)
+
+mongo_cc_library(
+    name = "mongo_ldap",
+    srcs = [
+        "authorization_backend_ldap.cpp",
+        "ldap_user_cache_poller.cpp",
+        "ldap_user_cache_poller_gen",
+    ],
+    hdrs = [
+        "authorization_backend_ldap.h",
+        "ldap_user_cache_poller.h",
+    ],
+    deps = [
+        "ldap_manager_impl",
+        "ldap_name_map",
+        "ldap_query",
+        "//src/mongo/bson/mutable:mutable_bson",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/auth",
+        "//src/mongo/db/auth:auth_impl_internal",
+        "//src/mongo/db/auth:authserver",
+        "//src/mongo/util:background_job",
     ],
 )

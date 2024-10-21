@@ -20,6 +20,7 @@ mongo_cc_library(
         "exception.h",
         "metric_manager.h",
         "metrics.h",
+        "units.h",
         "//src/mongo/util:histogram.h",
     ],
     visibility = ["//visibility:public"],

@@ -24,3 +24,52 @@ idl_generator(
         "//src/mongo/db:basic_types_gen",
     ],
 )
+
+mongo_cc_library(
+    name = "hot_backups",
+    srcs = [
+        "backup_cursor_parameters_gen",
+        "backup_cursor_service.cpp",
+        "document_source_backup_cursor.cpp",
+        "document_source_backup_cursor_extend.cpp",
+        "document_source_backup_file.cpp",
+        "document_source_backup_file_gen",
+    ],
+    hdrs = [
+        "backup_cursor_service.h",
+        "document_source_backup_cursor.h",
+        "document_source_backup_cursor_extend.h",
+        "document_source_backup_file.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/db:dbhelpers",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/pipeline",
+        "//src/mongo/db/repl:oplog_entry",
+        "//src/mongo/db/repl:optime",
+        "//src/mongo/db/repl:repl_coordinator_interface",
+        "//src/mongo/db/storage:backup_block",
+        "//src/mongo/db/storage:backup_cursor_hooks",
+        "//src/mongo/db/storage:durable_catalog",
+        "//src/mongo/db/storage:encryption_hooks",
+        "//src/mongo/db/storage:journal_flusher",
+        "//src/mongo/db/storage:storage_options",
+    ],
+)
+
+mongo_cc_library(
+    name = "backup_docs_needed_bounds",
+    srcs = [
+        "document_source_visitor_docs_needed_bounds.cpp",
+    ],
+    hdrs = [
+        "//src/mongo/db/modules/enterprise/src/util:document_source_visitor_registry_enterprise.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "hot_backups",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/pipeline:docs_needed_bounds_visitor",
+    ],
+)

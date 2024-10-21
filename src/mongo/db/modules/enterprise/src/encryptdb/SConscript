@@ -18,54 +18,6 @@ wtEnv.InjectThirdParty(libraries=["wiredtiger"])
 if env.TargetOSIs("darwin", "macOS"):
     wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"])
 
-wtEnv.Library(
-    target="encryption_key_manager_aux",
-    source=[
-        "encryption_key_manager_init.cpp",
-        "encryption_server_status.cpp",
-    ],
-    LIBDEPS=[
-        "../../symmetric_crypto_enterprise",
-        "encryptdb",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/commands/server_status_core",
-        "$BUILD_DIR/mongo/db/shard_role_api",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-    ],
-)
-
-wtEnv.Library(
-    target="encryptdb",
-    source=[
-        "keystore_data_store.cpp",
-        "keystore.cpp",
-        "encrypted_data_protector.cpp",
-        "encryption_key_manager.cpp",
-        "wiredtiger_encryption_callbacks.cpp",
-        "encryption_key_manager_gen.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
-        "$BUILD_DIR/mongo/db/storage/encryption_hooks",
-        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
-        "$BUILD_DIR/third_party/wiredtiger/wiredtiger",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/catalog/catalog_impl",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/db/storage/storage_options",
-        "../../symmetric_crypto_enterprise",
-        "key_acquisition",
-        "keystore_metadata",
-    ],
-    EXPORT_SYMBOLS=[
-        "mongo_addWiredTigerEncryptors",
-    ],
-)
-
 wtEnv.CppUnitTest(
     target="enterprise_encryptdb_test",
     source=[

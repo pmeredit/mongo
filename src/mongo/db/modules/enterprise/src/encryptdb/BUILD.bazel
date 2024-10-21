@@ -46,6 +46,7 @@ mongo_cc_library(
     hdrs = [
         "log_redact_options.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/db:server_base",
         "//src/mongo/util/options_parser",
@@ -81,5 +82,58 @@ mongo_cc_library(
         "//src/mongo/db:service_context",
         "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
         "//src/mongo/db/storage:storage_engine_metadata",
+    ],
+)
+
+mongo_cc_library(
+    name = "encryption_key_manager_aux",
+    srcs = [
+        "encryption_key_manager_init.cpp",
+        "encryption_server_status.cpp",
+    ],
+    local_defines = select({
+        "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "encryptdb",
+        "//src/mongo/db:shard_role_api",
+        "//src/mongo/db/commands:server_status_core",
+        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+    ],
+)
+
+mongo_cc_library(
+    name = "encryptdb",
+    srcs = [
+        "encrypted_data_protector.cpp",
+        "encryption_key_manager.cpp",
+        "encryption_key_manager_gen",
+        "keystore.cpp",
+        "keystore_data_store.cpp",
+        "wiredtiger_encryption_callbacks.cpp",
+    ],
+    hdrs = [
+        "encrypted_data_protector.h",
+        "encryption_key_manager.h",
+        "keystore.h",
+        "keystore_data_store.h",
+    ],
+    local_defines = select({
+        "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "key_acquisition",
+        "keystore_metadata",
+        "//src/mongo/crypto:symmetric_crypto",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/catalog:catalog_impl",
+        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+        "//src/mongo/db/storage:encryption_hooks",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+        "//src/third_party/wiredtiger",
     ],
 )

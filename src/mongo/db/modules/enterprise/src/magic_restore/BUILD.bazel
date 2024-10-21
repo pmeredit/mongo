@@ -25,3 +25,34 @@ idl_generator(
         "//src/mongo/s:sharding_types_gen",
     ],
 )
+
+mongo_cc_library(
+    name = "magic_restore",
+    srcs = [
+        "magic_restore.cpp",
+        "magic_restore_options_gen",
+        "magic_restore_structs_gen",
+    ],
+    hdrs = [
+        "magic_restore.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/db:dbhelpers",
+        "//src/mongo/db:mongod_options",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:shard_role",
+        "//src/mongo/db/collection_crud",
+        "//src/mongo/db/commands:servers",
+        "//src/mongo/db/commands:umc_commands_idl",
+        "//src/mongo/db/concurrency:exception_util",
+        "//src/mongo/db/repl:oplog_entry",
+        "//src/mongo/db/repl:replica_set_messages",
+        "//src/mongo/db/repl:replication_process",
+        "//src/mongo/db/repl:storage_interface",
+        "//src/mongo/db/s:sharding_catalog_manager",
+        "//src/mongo/db/storage:record_store_base",
+        "//src/mongo/util/options_parser",
+    ],
+)

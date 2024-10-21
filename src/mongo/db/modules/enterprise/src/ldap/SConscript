@@ -4,48 +4,30 @@ Import(["env", "http_client"])
 
 env = env.Clone()
 
-env.Library(
-    target="mongo_ldap",
-    source=[
-        "authorization_backend_ldap.cpp",
-        "ldap_user_cache_poller_gen.cpp",
-        "ldap_user_cache_poller.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/bson/mutable/mutable_bson",
-        "$BUILD_DIR/mongo/db/auth/auth",
-        "$BUILD_DIR/mongo/db/auth/auth_impl_internal",
-        "$BUILD_DIR/mongo/db/auth/authserver",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/util/background_job",
-        "ldap_manager_impl",
-        "ldap_name_map",
-        "ldap_query",
-    ],
-)
-
-env.CppUnitTest(
-    target="enterprise_ldap_test",
-    source=[
-        "ldap_connection_options_test.cpp",
-        "ldap_health_observer_test.cpp",
-        "ldap_query_test.cpp",
-        "name_mapping/rewrite_rule_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/auth",
-        "$BUILD_DIR/mongo/db/process_health/fault_manager",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/executor/task_executor_test_fixture",
-        "$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture",
-        "$BUILD_DIR/mongo/util/clock_source_mock",
-        "../util/core_options_stub",
-        "ldap_health_observer",
-        "ldap_manager_impl",
-        "ldap_name_map",
-        "ldap_query",
-    ],
-)
+if not env.TargetOSIs("darwin"):
+    env.CppUnitTest(
+        target="enterprise_ldap_test",
+        source=[
+            "ldap_connection_options_test.cpp",
+            "ldap_health_observer_test.cpp",
+            "ldap_query_test.cpp",
+            "name_mapping/rewrite_rule_test.cpp",
+        ],
+        LIBDEPS=[
+            "$BUILD_DIR/mongo/db/auth/auth",
+            "$BUILD_DIR/mongo/db/process_health/fault_manager",
+            "$BUILD_DIR/mongo/db/service_context",
+            "$BUILD_DIR/mongo/executor/task_executor_test_fixture",
+            "$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture",
+            "$BUILD_DIR/mongo/util/clock_source_mock",
+            "../util/core_options_stub",
+            "ldap_health_observer",
+            "ldap_manager_impl",
+            "ldap_name_map",
+            "ldap_query",
+        ],
+        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
+    )
 
 env.Program(
     target="mongoldap",

@@ -194,6 +194,7 @@ mongo_cc_library(
     hdrs = [
         "audit_options.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "audit_config",
         "audit_enterprise",
@@ -223,5 +224,33 @@ mongo_cc_library(
         "//src/mongo/db/auth:authprivilege",
         "//src/mongo/idl:cluster_server_parameter_refresher",
         "//src/mongo/s:grid",
+    ],
+)
+
+mongo_cc_library(
+    name = "audit_mongod",
+    srcs = [
+        "audit_mongod.cpp",
+    ],
+    hdrs = [
+        "audit_config_command.h",
+        "audit_mongod.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "audit_enc_comp_manager",
+        "audit_enterprise",
+        "//src/mongo/db:commands",
+        "//src/mongo/db:dbdirectclient",
+        "//src/mongo/db:dbhelpers",
+        "//src/mongo/db:shard_role",
+        "//src/mongo/db/auth",
+        "//src/mongo/db/auth:authprivilege",
+        "//src/mongo/db/commands:cluster_server_parameter_commands_invocation",
+        "//src/mongo/db/op_observer",
+        "//src/mongo/db/repl:replica_set_aware_service",
+        "//src/mongo/db/s:forwardable_operation_metadata",
+        "//src/mongo/db/s:sharding_commands_d",
+        "//src/mongo/s/write_ops:batch_write_types",
     ],
 )

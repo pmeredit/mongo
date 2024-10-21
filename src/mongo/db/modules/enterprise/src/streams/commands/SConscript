@@ -3,29 +3,3 @@
 Import("env")
 
 env = env.Clone()
-
-env.Library(
-    target="streams_commands",
-    source=[
-        "get_metrics.cpp",
-        "get_more_stream_sample.cpp",
-        "get_stats.cpp",
-        "insert.cpp",
-        "list_stream_processors.cpp",
-        "send_event.cpp",
-        "start_stream_processor.cpp",
-        "start_stream_sample.cpp",
-        "stop_stream_processor.cpp",
-        "update_feature_flags.cpp",
-        "get_feature_flags.cpp",
-        "write_checkpoint.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/client/clientdriver_minimal",
-        "$BUILD_DIR/mongo/db/commands",
-        "$BUILD_DIR/mongo/idl/idl_parser",
-        "../management/streams_management",
-        "streams_ops_idl",
-    ],
-)

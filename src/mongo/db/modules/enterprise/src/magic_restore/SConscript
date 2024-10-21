@@ -1,36 +1,6 @@
 # -*- mode: python -*-
 
 Import("env")
-env.Library(
-    target="magic_restore",
-    source=[
-        "magic_restore.cpp",
-        "magic_restore_options_gen.cpp",
-        "magic_restore_structs_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/collection_crud/collection_crud",
-        "$BUILD_DIR/mongo/db/commands/servers",
-        "$BUILD_DIR/mongo/db/commands/umc_commands_idl",
-        "$BUILD_DIR/mongo/db/concurrency/exception_util",
-        "$BUILD_DIR/mongo/db/dbhelpers",
-        "$BUILD_DIR/mongo/db/mongod_options",
-        "$BUILD_DIR/mongo/db/repl/oplog_entry",
-        "$BUILD_DIR/mongo/db/repl/replica_set_messages",
-        "$BUILD_DIR/mongo/db/repl/replication_process",
-        "$BUILD_DIR/mongo/db/repl/storage_interface",
-        "$BUILD_DIR/mongo/db/s/sharding_catalog_manager",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/db/shard_role",
-        "$BUILD_DIR/mongo/db/storage/record_store_base",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-)
 
 env.CppUnitTest(
     target="magic_restore_test",

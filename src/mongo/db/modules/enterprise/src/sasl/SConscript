@@ -22,34 +22,6 @@ if not have_sasl_lib:
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
 
 if ssl_provider == "openssl":
-    env.Library(
-        target="sasl_oidc_server",
-        source=[
-            "identity_provider.cpp",
-            "idp_jwks_refresher.cpp",
-            "idp_manager.cpp",
-            "oidc_commands_gen.cpp",
-            "oidc_commands.cpp",
-            "oidc_parameters_gen.cpp",
-            "sasl_oidc_server_conversation.cpp",
-            "user_request_oidc.cpp",
-        ],
-        LIBDEPS_PRIVATE=[
-            "$BUILD_DIR/mongo/crypto/jwt",
-            "$BUILD_DIR/mongo/db/auth/auth_impl_internal",
-            "$BUILD_DIR/mongo/db/auth/sasl_mechanism_protocol",
-            "$BUILD_DIR/mongo/db/auth/sasl_options",
-            "$BUILD_DIR/mongo/db/auth/sasl_options_init",
-            "$BUILD_DIR/mongo/db/auth/saslauth",
-            "$BUILD_DIR/mongo/db/commands",
-            "$BUILD_DIR/mongo/db/commands/test_commands_enabled",
-            "$BUILD_DIR/mongo/db/server_base",
-            "$BUILD_DIR/mongo/db/server_feature_flags",
-            "$BUILD_DIR/mongo/util/background_job",
-            "$BUILD_DIR/mongo/util/pcre_wrapper",
-        ],
-    )
-
     env.CppUnitTest(
         target="sasl_oidc_server_test",
         source=[
@@ -64,21 +36,6 @@ if ssl_provider == "openssl":
             "sasl_oidc_server",
         ],
     )
-
-env.Library(
-    target="authz_manager_factory_enterprise",
-    source=[
-        "authorization_manager_factory_enterprise_impl.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/auth/authserver",
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/util/background_job",
-        "../ldap/ldap_manager",
-        "../ldap/mongo_ldap",
-        "sasl_oidc_server" if ssl_provider == "openssl" else [],
-    ],
-)
 
 kmsEnv = env.Clone()
 

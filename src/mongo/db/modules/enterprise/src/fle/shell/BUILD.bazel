@@ -32,6 +32,7 @@ mongo_cc_library(
         "//bazel/config:js_engine_mozjs": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/client:clientdriver_minimal",
         "//src/mongo/crypto:aead_encryption",

@@ -18,6 +18,7 @@ mongo_cc_library(
     ],
     hdrs = [
         "blockstore_http.h",
+        "context.h",
         "list_dir.h",
         "reader_writer.h",
     ],

@@ -7,35 +7,6 @@ if not wiredtiger:
 env = env.Clone()
 env.InjectThirdParty(libraries=["wiredtiger"])
 
-env.Library(
-    target="queryable_wt",
-    source=[
-        "blockstore_fs.cpp",
-        "queryable_wt_init.cpp",
-        "queryable_global_options.cpp",
-        "queryable_global_options_gen.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/service_context",
-        "$BUILD_DIR/mongo/db/storage/storage_engine_common",
-        "$BUILD_DIR/mongo/db/storage/storage_engine_impl",
-        "$BUILD_DIR/mongo/db/storage/storage_engine_metadata",
-        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger",
-        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
-        "../blockstore/blockstore",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-    EXPORT_SYMBOLS=[
-        "queryableWtFsCreate",
-    ],
-)
-
 env.CppIntegrationTest(
     target="enterprise_queryable_wt_test",
     source=[

@@ -47,6 +47,7 @@ mongo_cc_library(
         "//src/mongo/db/auth:sasl_options.h",
         "//src/mongo/util/version:releases_header",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/db:server_base",
         "//src/mongo/db/auth:sasl_options",
@@ -139,10 +140,83 @@ mongo_cc_library(
             "-lsasl2",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         ":mongosaslserversession",
         "//src/mongo/db/modules/enterprise/src/ldap:ldap_manager",
         "//src/mongo/db/modules/enterprise/src/ldap:ldap_name_map",
         "//src/mongo/db/query/query_stats",
+    ],
+)
+
+mongo_cc_library(
+    name = "authz_manager_factory_enterprise",
+    srcs = [
+        "authorization_manager_factory_enterprise_impl.cpp",
+    ],
+    hdrs = [
+        "authorization_manager_factory_enterprise_impl.h",
+        "identity_provider.h",
+        "idp_jwks_refresher.h",
+        "idp_manager.h",
+        "oidc_parameters_gen",
+        "sasl_oidc_server_conversation.h",
+        "user_request_oidc.h",
+        "//src/mongo/crypto:jwk_manager.h",
+        "//src/mongo/crypto:jwks_fetcher.h",
+        "//src/mongo/crypto:jwks_fetcher_factory.h",
+        "//src/mongo/crypto:jws_validated_token.h",
+        "//src/mongo/crypto:jws_validator.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/auth:authserver",
+        "//src/mongo/db/modules/enterprise/src/ldap:ldap_manager",
+        "//src/mongo/db/modules/enterprise/src/ldap:mongo_ldap",
+        "//src/mongo/util:background_job",
+    ] + select({
+        "//bazel/config:ssl_provider_openssl": [":sasl_oidc_server"],
+        "//conditions:default": [],
+    }),
+)
+
+mongo_cc_library(
+    name = "sasl_oidc_server",
+    srcs = [
+        "identity_provider.cpp",
+        "idp_jwks_refresher.cpp",
+        "idp_manager.cpp",
+        "oidc_commands.cpp",
+        "oidc_commands_gen",
+        "oidc_parameters_gen",
+        "sasl_oidc_server_conversation.cpp",
+        "user_request_oidc.cpp",
+    ],
+    hdrs = [
+        "identity_provider.h",
+        "idp_jwks_refresher.h",
+        "idp_manager.h",
+        "sasl_oidc_server_conversation.h",
+        "user_request_oidc.h",
+        "//src/mongo/crypto:jwks_fetcher_factory.h",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:ssl_provider_openssl": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//src/mongo/crypto:jwt",
+        "//src/mongo/db:commands",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:server_feature_flags",
+        "//src/mongo/db/auth:auth_impl_internal",
+        "//src/mongo/db/auth:sasl_mechanism_protocol",
+        "//src/mongo/db/auth:sasl_options",
+        "//src/mongo/db/auth:sasl_options_init",
+        "//src/mongo/db/auth:saslauth",
+        "//src/mongo/db/commands:test_commands_enabled",
+        "//src/mongo/util:background_job",
+        "//src/mongo/util:pcre_wrapper",
     ],
 )

@@ -12,6 +12,7 @@ mongo_cc_library(
         "//bazel/config:enterprise_feature_encryptdb_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//src/mongo/util/options_parser",
     ],

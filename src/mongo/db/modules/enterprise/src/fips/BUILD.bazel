@@ -45,6 +45,7 @@ mongo_cc_library(
         "//bazel/config:js_engine_none": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         ":fips_mode_general",
         "//src/mongo/util/net:ssl_options_client",
@@ -57,6 +58,7 @@ mongo_cc_library(
     srcs = [
         "fips_flag_server_gen",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "fips_mode_general",
         "//src/mongo/db:server_base",

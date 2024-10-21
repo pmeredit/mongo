@@ -36,3 +36,34 @@ mongo_cc_library(
         "//src/mongo/idl:idl_parser",
     ],
 )
+
+mongo_cc_library(
+    name = "streams_commands",
+    srcs = [
+        "get_feature_flags.cpp",
+        "get_metrics.cpp",
+        "get_more_stream_sample.cpp",
+        "get_stats.cpp",
+        "insert.cpp",
+        "list_stream_processors.cpp",
+        "send_event.cpp",
+        "start_stream_processor.cpp",
+        "start_stream_sample.cpp",
+        "stop_stream_processor.cpp",
+        "update_feature_flags.cpp",
+        "write_checkpoint.cpp",
+    ],
+    hdrs = [
+        "//src/mongo/db/modules/enterprise/src/streams/exec:constants.h",
+        "//src/mongo/db/pipeline:document_source_mock_stages.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "streams_ops_idl",
+        "//src/mongo:base",
+        "//src/mongo/client:clientdriver_minimal",
+        "//src/mongo/db:commands",
+        "//src/mongo/db/modules/enterprise/src/streams/management:streams_management",
+        "//src/mongo/idl:idl_parser",
+    ],
+)

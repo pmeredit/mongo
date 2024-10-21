@@ -1,47 +1,6 @@
 # -*- mode: python -*-
 
 Import("env")
-env.Library(
-    target="hot_backups",
-    source=[
-        "backup_cursor_parameters_gen.cpp",
-        "backup_cursor_service.cpp",
-        "document_source_backup_cursor.cpp",
-        "document_source_backup_cursor_extend.cpp",
-        "document_source_backup_file.cpp",
-        "document_source_backup_file_gen.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/dbhelpers",
-        "$BUILD_DIR/mongo/db/pipeline/pipeline",
-        "$BUILD_DIR/mongo/db/repl/oplog_entry",
-        "$BUILD_DIR/mongo/db/repl/optime",
-        "$BUILD_DIR/mongo/db/repl/repl_coordinator_interface",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/db/storage/backup_block",
-        "$BUILD_DIR/mongo/db/storage/backup_cursor_hooks",
-        "$BUILD_DIR/mongo/db/storage/durable_catalog",
-        "$BUILD_DIR/mongo/db/storage/encryption_hooks",
-        "$BUILD_DIR/mongo/db/storage/journal_flusher",
-        "$BUILD_DIR/mongo/db/storage/storage_options",
-    ],
-    LIBDEPS_TAGS=[
-        "lint-allow-nonprivate-on-deps-dependents",
-        "lint-allow-bidirectional-edges",
-    ],
-)
-
-env.Library(
-    target="backup_docs_needed_bounds",
-    source=[
-        "document_source_visitor_docs_needed_bounds.cpp",
-    ],
-    LIBDEPS_PRIVATE=[
-        "$BUILD_DIR/mongo/db/pipeline/docs_needed_bounds_visitor",
-        "$BUILD_DIR/mongo/db/service_context",
-        "hot_backups",
-    ],
-)
 
 env.CppUnitTest(
     target="enterprise_hot_backups_test",

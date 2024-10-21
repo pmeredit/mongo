@@ -13,3 +13,34 @@ idl_generator(
     name = "inmemory_global_options_gen",
     src = "inmemory_global_options.idl",
 )
+
+mongo_cc_library(
+    name = "storage_inmemory",
+    srcs = [
+        "inmemory_global_options.cpp",
+        "inmemory_global_options_gen",
+        "inmemory_init.cpp",
+        "inmemory_options_init.cpp",
+    ],
+    hdrs = [
+        "inmemory_global_options.h",
+        "inmemory_options_init.h",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:use_wiredtiger_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/storage:durable_catalog",
+        "//src/mongo/db/storage:storage_engine_common",
+        "//src/mongo/db/storage:storage_engine_impl",
+        "//src/mongo/db/storage:storage_engine_lock_file",
+        "//src/mongo/db/storage:storage_engine_metadata",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+        "//src/mongo/util/options_parser",
+    ],
+)
