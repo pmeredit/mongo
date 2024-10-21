@@ -232,6 +232,10 @@ private:
     void processSessionWindowCloseMsg(StreamControlMsg controlMsg);
     void processSessionWindowMergeMsg(StreamControlMsg controlMsg);
 
+    // Called when a window might have been opened or closed, to update the
+    // minOpenWindowStartTime/maxOpenWindowStartTime stats.
+    void updateMinMaxOpenWindowStats();
+
     std::map<int64_t, std::unique_ptr<Window>> _windows;
 
     // The largest watermark this operator has sent.

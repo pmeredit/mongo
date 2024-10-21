@@ -50,6 +50,11 @@ struct OperatorStats {
     // lastTimeSpentUpdated timer to be able to decay previous value.
     mongo::Timer lastTimeSpentUpdated;
 
+    // The minimum open window's start time. Only set in window assigning operator.
+    boost::optional<mongo::Date_t> minOpenWindowStartTime;
+    // The maximum open window's start time. Only set in window assigning operator.
+    boost::optional<mongo::Date_t> maxOpenWindowStartTime;
+
     void setMemoryUsageBytes(int64_t bytes) {
         memoryUsageBytes = bytes;
         maxMemoryUsageBytes = std::max(maxMemoryUsageBytes, memoryUsageBytes);
@@ -163,6 +168,9 @@ struct KafkaConsumerPartitionState {
 
     // watermark timestamp for the partition
     int64_t watermark{-1};
+
+    // True if the partition is idle.
+    bool isIdle{false};
 };  // struct KafkaConsumerPartitionState
 
 }  // namespace streams

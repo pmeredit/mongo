@@ -431,6 +431,141 @@ function runAll() {
     }());
 }
 
+function testWindowMinMaxStats() {
+    db.dropDatabase();
+    const uri = 'mongodb://' + db.getMongo().host;
+    let connectionRegistry = [
+        {
+            name: "kafka1",
+            type: 'kafka',
+            options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+        },
+        {name: "db1", type: 'atlas', options: {uri: uri}}
+    ];
+    const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
+    sp.createStreamProcessor("window1", [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "test1",
+                timeField: {$dateFromString: {"dateString": "$timestamp"}},
+                testOnlyPartitionCount: NumberInt(1)
+            }
+        },
+        {
+            $hoppingWindow: {
+                interval: {size: NumberInt(5), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                hopSize: {size: NumberInt(1), unit: "second"},
+                pipeline: [
+                    {
+                        $group: {
+                            _id: "$id",
+                            sum: {$sum: "$value"},
+                        }
+                    },
+                    {$sort: {sum: -1}},
+                    {$limit: 1},
+                ]
+            }
+        },
+        {$merge: {into: {connectionName: "db1", db: "test", coll: "window1"}}}
+    ]);
+
+    // Start the streamProcessor.
+    let result = sp.window1.start(
+        {dlq: {connectionName: "db1", db: "test", coll: "dlq1"}, featureFlags: {}});
+    assert.commandWorked(result);
+
+    function insert(docs) {
+        // Insert 'docs' into the stream.
+        let insertCmd = {
+            streams_testOnlyInsert: '',
+            tenantId: TEST_TENANT_ID,
+            name: "window1",
+            documents: docs
+        };
+        let result = db.runCommand(insertCmd);
+        assert.commandWorked(result);
+    }
+
+    insert([
+        // belongs to 26-31 window through 30-35 window
+        {timestamp: "2023-03-03T20:42:30.000Z", id: 0, value: 1},
+    ]);
+    assert.soon(() => {
+        const stats = sp.window1.stats();
+        const windowStats = stats.operatorStats[1];
+        const expectedWatermark = ISODate('2023-03-03T20:42:29.999Z');
+        const expectedMin = ISODate('2023-03-03T20:42:26Z');
+        const expectedMax = ISODate('2023-03-03T20:42:30Z');
+        const actualMin = windowStats["minOpenWindowStartTime"];
+        const actualMax = windowStats["maxOpenWindowStartTime"];
+        const actualWatermark = stats["watermark"];
+        try {
+            assert.eq(expectedMin, actualMin);
+            assert.eq(expectedMax, actualMax);
+            assert.eq(expectedWatermark, actualWatermark);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    });
+
+    insert([
+        // belongs to 28-33 window through 32-37 window
+        // will send watermark at 31.999, closing 26-31, leaving open 27-32
+        {timestamp: "2023-03-03T20:42:32.000Z", id: 2, value: 6},
+    ]);
+    assert.soon(() => {
+        const stats = sp.window1.stats();
+        const windowStats = stats.operatorStats[1];
+        const expectedWatermark = ISODate('2023-03-03T20:42:31.999Z');
+        const expectedMin = ISODate('2023-03-03T20:42:27Z');
+        const expectedMax = ISODate('2023-03-03T20:42:32Z');
+        const actualMin = windowStats["minOpenWindowStartTime"];
+        const actualMax = windowStats["maxOpenWindowStartTime"];
+        const actualWatermark = stats["watermark"];
+        try {
+            assert.eq(expectedMin, actualMin);
+            assert.eq(expectedMax, actualMax);
+            assert.eq(expectedWatermark, actualWatermark);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    });
+
+    insert([
+        // belongs to 40-45 window through 44-49 window
+        // sends 21:43.999 watermark, closing all open windows before this insert
+        {timestamp: "2023-03-03T21:42:44.000Z", id: 11, value: 30},
+    ]);
+    assert.soon(() => {
+        const stats = sp.window1.stats();
+        const windowStats = stats.operatorStats[1];
+        const expectedWatermark = ISODate('2023-03-03T21:42:43.999Z');
+        const expectedMin = ISODate('2023-03-03T21:42:40Z');
+        const expectedMax = ISODate('2023-03-03T21:42:44Z');
+        const actualMin = windowStats["minOpenWindowStartTime"];
+        const actualMax = windowStats["maxOpenWindowStartTime"];
+        const actualWatermark = stats["watermark"];
+        try {
+            assert.eq(expectedMin, actualMin);
+            assert.eq(expectedMax, actualMax);
+            assert.eq(expectedWatermark, actualWatermark);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    });
+
+    // Stop the streamProcessor.
+    result = sp.window1.stop();
+    assert.commandWorked(result);
+}
+
 runAll();
+testWindowMinMaxStats();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

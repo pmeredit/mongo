@@ -35,6 +35,7 @@ void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
     }
     if (getOptions().windowAssigner) {
         assignWindowsAndProcessDataMsg(std::move(dataMsg));
+        updateMinMaxOpenWindowStats();
     } else {
         auto start = dataMsg.docs.front().streamMeta.getWindow()->getStart();
         auto end = dataMsg.docs.front().streamMeta.getWindow()->getEnd();
@@ -73,6 +74,7 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
         // pipeline), then use source watermark to find out what windows should be closed.
         // Close all the windows that should be closed by this watermark.
         processWatermarkMsg(std::move(controlMsg));
+        updateMinMaxOpenWindowStats();
     } else if (controlMsg.watermarkMsg && !options.windowAssigner) {
         // Send the watermark msg along.
         sendControlMsg(0, std::move(controlMsg));
@@ -89,6 +91,16 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
         if (options.sendWindowSignals) {
             sendControlMsg(0, std::move(controlMsg));
         }
+    }
+}
+
+void WindowAwareOperator::updateMinMaxOpenWindowStats() {
+    if (_windows.empty()) {
+        _stats.minOpenWindowStartTime = boost::none;
+        _stats.maxOpenWindowStartTime = boost::none;
+    } else {
+        _stats.minOpenWindowStartTime = Date_t::fromMillisSinceEpoch(_windows.begin()->first);
+        _stats.maxOpenWindowStartTime = Date_t::fromMillisSinceEpoch(_windows.rbegin()->first);
     }
 }
 

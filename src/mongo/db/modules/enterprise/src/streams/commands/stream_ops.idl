@@ -110,6 +110,14 @@ structs:
                 description: Total timeSpent in the operator (in milliseconds)
                 type: milliseconds
                 optional: true
+            minOpenWindowStartTime:
+                description: The start time of the min open window. Only set for window assigning operators.
+                type: date
+                optional: true
+            maxOpenWindowStartTime:
+                description: The start time of the max open window. Only set for window assigning operators.
+                type: date
+                optional: true
 
     StartStreamProcessorReply:
         description: "Response message for streams_startStreamProcessor command"
@@ -161,6 +169,10 @@ structs:
                 description: Watermark timestamp for the partition.
                 type: date
                 optional: true
+            isIdle:
+                description: Set to true if the partition is idle.
+                type: bool
+                default: false
 
     GetStatsReply:
         description: "Response message for streams_getStats command"

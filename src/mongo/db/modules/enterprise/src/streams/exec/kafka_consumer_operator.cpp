@@ -1363,19 +1363,22 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
             offsetLag = *brokerHighOffset - currentOffset;
         }
 
+        bool isIdle{false};
         int64_t watermark{-1};
         if (consumerInfo.watermarkGenerator) {
-            watermark = consumerInfo.watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+            const auto& watermarkMsg = consumerInfo.watermarkGenerator->getWatermarkMsg();
+            watermark = watermarkMsg.eventTimeWatermarkMs;
+            isIdle = watermarkMsg.watermarkStatus == WatermarkStatus::kIdle;
         }
 
-        states.push_back(KafkaConsumerPartitionState{
-            .topic = consumerInfo.topic,
-            .partition = consumerInfo.partition,
-            .currentOffset = currentOffset,
-            .checkpointOffset = consumerInfo.checkpointOffset,
-            .partitionOffsetLag = offsetLag,
-            .watermark = watermark,
-        });
+        states.push_back(
+            KafkaConsumerPartitionState{.topic = consumerInfo.topic,
+                                        .partition = consumerInfo.partition,
+                                        .currentOffset = currentOffset,
+                                        .checkpointOffset = consumerInfo.checkpointOffset,
+                                        .partitionOffsetLag = offsetLag,
+                                        .watermark = watermark,
+                                        .isIdle = isIdle});
     }
 
     return states;

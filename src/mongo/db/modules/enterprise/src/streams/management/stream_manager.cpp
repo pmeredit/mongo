@@ -1489,17 +1489,20 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
         out.reserve(fullOperatorStats.size());
         for (size_t i = 0; i < fullOperatorStats.size(); ++i) {
             auto& s = fullOperatorStats[i];
-            out.push_back({s.operatorName,
-                           s.numInputDocs,
-                           (double)s.numInputBytes / scale,
-                           s.numOutputDocs,
-                           (double)s.numOutputBytes / scale,
-                           s.numDlqDocs,
-                           (double)s.numDlqBytes / scale,
-                           (double)s.memoryUsageBytes / scale,
-                           (double)s.maxMemoryUsageBytes / scale,
-                           mongo::duration_cast<Seconds>(s.executionTime)});
-            out[i].setTimeSpentMillis(mongo::duration_cast<Milliseconds>(s.timeSpent));
+            VerboseOperatorStats stats{s.operatorName,
+                                       s.numInputDocs,
+                                       (double)s.numInputBytes / scale,
+                                       s.numOutputDocs,
+                                       (double)s.numOutputBytes / scale,
+                                       s.numDlqDocs,
+                                       (double)s.numDlqBytes / scale,
+                                       (double)s.memoryUsageBytes / scale,
+                                       (double)s.maxMemoryUsageBytes / scale,
+                                       mongo::duration_cast<Seconds>(s.executionTime)};
+            stats.setTimeSpentMillis(mongo::duration_cast<Milliseconds>(s.timeSpent));
+            stats.setMinOpenWindowStartTime(s.minOpenWindowStartTime);
+            stats.setMaxOpenWindowStartTime(s.maxOpenWindowStartTime);
+            out.push_back(std::move(stats));
         }
         reply.setOperatorStats(std::move(out));
     }
