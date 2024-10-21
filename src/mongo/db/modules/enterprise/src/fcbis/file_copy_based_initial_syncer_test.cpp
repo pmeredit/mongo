@@ -64,7 +64,11 @@ struct CollectionCloneInfo {
 
 class FileCopyBasedInitialSyncerTest : public ServiceContextMongoDTest, public SyncSourceSelector {
 public:
-    FileCopyBasedInitialSyncerTest() : ServiceContextMongoDTest(Options{}.engine("devnull")) {}
+    FileCopyBasedInitialSyncerTest()
+        : ServiceContextMongoDTest(std::make_unique<MongoDScopedGlobalServiceContextForTest>(
+              ServiceContext::make(std::make_unique<ClockSourceMock>(),
+                                   std::make_unique<ClockSourceMock>()),
+              Options{}.engine("devnull"))) {}
 
     executor::ThreadPoolMock::Options makeThreadPoolMockOptions() const;
 
@@ -142,11 +146,7 @@ protected:
     void setUp() override {
         ServiceContextMongoDTest::setUp();
 
-        // Setting clock sources after startup() below can cause a data race, see BF-25946.
         auto* service = getGlobalServiceContext();
-        service->setFastClockSource(std::make_unique<ClockSourceMock>());
-        service->setPreciseClockSource(std::make_unique<ClockSourceMock>());
-
         WatchdogMonitorInterface::set(service, std::make_unique<WatchdogMonitorMock>());
 
         auto network = std::make_unique<executor::NetworkInterfaceMock>();

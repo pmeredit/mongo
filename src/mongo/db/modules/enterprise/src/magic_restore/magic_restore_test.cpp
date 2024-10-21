@@ -461,10 +461,6 @@ protected:
         _opCtx = cc().makeOperationContext();
         _storage = std::make_unique<repl::StorageInterfaceImpl>();
 
-        // Set up a ServiceEntryPoint so that commands can run as necessary.
-        serviceContext->getService()->setServiceEntryPoint(
-            std::make_unique<ServiceEntryPointShardRole>());
-
         // Set up ReplicationCoordinator and ensure that we are primary.
         auto replCoord = std::make_unique<repl::ReplicationCoordinatorMock>(serviceContext);
         ASSERT_OK(replCoord->setFollowerMode(repl::MemberState::RS_PRIMARY));
