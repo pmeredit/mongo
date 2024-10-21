@@ -662,8 +662,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
                                         << "bar"
                                         << "baz"
                                         << "boo"));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
@@ -688,8 +687,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
 TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
     BSONObj entry = BSON("$set" << BSON("foo.bar" << 3 << "baz"
                                                   << "boo"));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
@@ -719,8 +717,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
 
 TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) {
     BSONObj entry = BSON("$set" << BSON("foo" << BSON("bar" << 5)));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
@@ -745,8 +742,7 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
 TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedTargetOnlyFails) {
     BSONObj entry = BSON("$rename" << BSON("boo"
                                            << "foo"));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
@@ -762,8 +758,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedTargetOnlyFails) {
 TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedSourceOnlyFails) {
     BSONObj entry = BSON("$rename" << BSON("foo"
                                            << "boo"));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
@@ -779,8 +774,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedSourceOnlyFails) {
 TEST(EncryptionUpdateVisitorTest, RenameWithNestedTargetEncryptFails) {
     BSONObj entry = BSON("$rename" << BSON("boo"
                                            << "foo.bar"));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
@@ -799,8 +793,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedTargetEncryptFails) {
 TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
     BSONObj entry = BSON("$rename" << BSON("foo.bar"
                                            << "boo"));
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
+    auto expCtx = ExpressionContextBuilder{}.ns(kTestEmptyNss).build();
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);

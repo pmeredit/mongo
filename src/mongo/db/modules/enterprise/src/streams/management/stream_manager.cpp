@@ -827,10 +827,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
-    context->expCtx = make_intrusive<ExpressionContext>(context->opCtx.get(),
-                                                        std::unique_ptr<CollatorInterface>(nullptr),
-                                                        NamespaceString(DatabaseName::kLocal));
-    context->expCtx->allowDiskUse = false;
+    context->expCtx = ExpressionContextBuilder{}
+                          .opCtx(context->opCtx.get())
+                          .allowDiskUse(false)
+                          .ns(NamespaceString(DatabaseName::kLocal))
+                          .build();
     context->memoryAggregator =
         _memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
     context->sourceBufferManager = _sourceBufferManager;

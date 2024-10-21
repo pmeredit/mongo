@@ -8,11 +8,10 @@ namespace mongo {
 
 boost::intrusive_ptr<ExpressionContext> createMockBackupExpressionContext(
     const ServiceContext::UniqueOperationContext& opCtx) {
-    auto expCtx = make_intrusive<ExpressionContext>(
-        opCtx.get(),
-        nullptr,
-        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin));
-    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterfaceForBackupTests>();
-    return expCtx;
+    return ExpressionContextBuilder{}
+        .opCtx(opCtx.get())
+        .ns(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin))
+        .mongoProcessInterface(std::make_unique<MockMongoInterfaceForBackupTests>())
+        .build();
 }
 }  // namespace mongo

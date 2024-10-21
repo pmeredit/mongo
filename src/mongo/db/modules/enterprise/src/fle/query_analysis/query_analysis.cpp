@@ -489,7 +489,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
         const LiteParsedPipeline liteParsedPipeline(request);
         const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
 
-        StringMap<ExpressionContext::ResolvedNamespace> resolvedNamespaces;
+        StringMap<ResolvedNamespace> resolvedNamespaces;
         for (auto&& involvedNs : pipelineInvolvedNamespaces) {
             resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
         }
@@ -692,8 +692,8 @@ std::pair<PlaceHolderResult, PlaceHolderResult> addPlaceHoldersForUpdateHelper(
             !(multi && schemaTree->parsedFrom == FleVersion::kFle2));
 
     auto collator = parseCollator(opCtx, collation);
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(opCtx, std::move(collator), ns));
+    auto expCtx =
+        ExpressionContextBuilder{}.opCtx(opCtx).collator(std::move(collator)).ns(ns).build();
 
     uassert(31150,
             "Pipelines in update are not allowed with an encrypted '_id' and 'upsert: true'",
@@ -783,11 +783,12 @@ PlaceHolderResult addPlaceHoldersForBulkWrite(
                         deleteOp.getDeleteCommand() == 0 && bulk.getNsInfo().size() == 1);
 
                 auto collator = parseCollator(opCtx, deleteOp.getCollation());
-                boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
-                    opCtx,
-                    std::move(collator),
-                    NamespaceString(bulk.getNsInfo()[deleteOp.getDeleteCommand()].getNs())));
-
+                auto expCtx =
+                    ExpressionContextBuilder{}
+                        .opCtx(opCtx)
+                        .collator(std::move(collator))
+                        .ns(NamespaceString(bulk.getNsInfo()[deleteOp.getDeleteCommand()].getNs()))
+                        .build();
                 auto newFilter =
                     replaceEncryptedFieldsInFilter(expCtx, *schemaTree, deleteOp.getFilter());
                 deleteOp.setFilter(newFilter.result);
@@ -880,9 +881,11 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         markedDeletes.push_back(op);
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
-        boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
-            opCtx, std::move(collator), NamespaceString(request.parseDbName())));
-
+        auto expCtx = ExpressionContextBuilder{}
+                          .opCtx(opCtx)
+                          .collator(std::move(collator))
+                          .ns(NamespaceString(request.parseDbName()))
+                          .build();
         auto resultForOp = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, opToMark.getQ());
         placeHolderResult.hasEncryptionPlaceholders =
             placeHolderResult.hasEncryptionPlaceholders || resultForOp.hasEncryptionPlaceholders;
@@ -944,9 +947,11 @@ void processQueryCommand(OperationContext* opCtx,
     auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
     auto collator = extractCollator(opCtx, cmdObj);
-    boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(opCtx, std::move(collator), NamespaceString(dbName)));
-
+    auto expCtx = ExpressionContextBuilder{}
+                      .opCtx(opCtx)
+                      .collator(std::move(collator))
+                      .ns(NamespaceString(dbName))
+                      .build();
     const auto vts = auth::ValidatedTenancyScope::get(opCtx);
     // assume that the tenantId on dbName wasn't from a prefix
     expCtx->serializationCtxt = vts != boost::none

@@ -813,10 +813,10 @@ void Planner::planMergeSink(const BSONObj& spec) {
             _context->expCtx->mongoProcessInterface.get()));
     }
 
-    auto mergeExpressionCtx =
-        make_intrusive<ExpressionContext>(_context->opCtx.get(),
-                                          std::unique_ptr<CollatorInterface>(nullptr),
-                                          NamespaceString(DatabaseName::kLocal));
+    auto mergeExpressionCtx = ExpressionContextBuilder{}
+                                  .opCtx(_context->opCtx.get())
+                                  .ns(NamespaceString(DatabaseName::kLocal))
+                                  .build();
 
     MongoCxxClientOptions clientOptions(atlasOptions);
     clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
@@ -1437,7 +1437,7 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
     // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
     LiteParsedPipeline liteParsedPipeline(_context->expCtx->ns, stages);
     auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
-    StringMap<ExpressionContext::ResolvedNamespace> resolvedNamespaces;
+    StringMap<ResolvedNamespace> resolvedNamespaces;
     for (auto& involvedNs : pipelineInvolvedNamespaces) {
         resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
     }

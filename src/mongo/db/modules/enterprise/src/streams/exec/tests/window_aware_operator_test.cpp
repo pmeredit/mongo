@@ -626,8 +626,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
 
 TEST_F(WindowAwareOperatorTest, SortExecutorTest) {
     boost::optional<mongo::SortExecutor<mongo::Document>> processor;
-    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
-        nullptr /* opCtx */, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString::kEmpty));
+    auto expCtx = ExpressionContextBuilder{}.ns(NamespaceString::kEmpty).build();
     auto sortPattern = SortPattern(fromjson("{val: 1}"), expCtx);
     processor.emplace(SortExecutor<Document>(
         sortPattern, 100, std::numeric_limits<uint64_t>::max(), "", false, true));

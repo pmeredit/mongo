@@ -97,8 +97,7 @@ std::unique_ptr<MatchExpression> AuditManager::parseFilter(BSONObj filter) {
     // We pass in a null OperationContext pointer here, since we do not have access to an
     // OperationContext. MatchExpressionParser::parse() only requires an OperationContext for
     // parsing $expr, which we explicitly disallow here.
-    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
-        nullptr /* opCtx */, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString::kEmpty));
+    auto expCtx = ExpressionContextBuilder{}.ns(NamespaceString::kEmpty).build();
     StatusWithMatchExpression parseResult =
         MatchExpressionParser::parse(filter,
                                      std::move(expCtx),
@@ -143,7 +142,6 @@ void AuditManager::_setDestinationFromConfig(const moe::Environment& params) {
         } else {
             uasserted(ErrorCodes::BadValue, "Invalid value for auditLog.format");
         }
-
         _path = boost::filesystem::absolute(path, serverGlobalParams.cwd).string();
     } else {
         uassert(ErrorCodes::BadValue,

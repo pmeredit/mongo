@@ -56,11 +56,12 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->streamProcessorId = streamProcessorId;
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
-    context->expCtx = make_intrusive<ExpressionContext>(
-        context->opCtx.get(),
-        std::unique_ptr<CollatorInterface>(nullptr),
-        NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")));
-    context->expCtx->allowDiskUse = false;
+    context->expCtx =
+        ExpressionContextBuilder{}
+            .opCtx(context->opCtx.get())
+            .ns(NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")))
+            .allowDiskUse(false)
+            .build();
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     auto executor = std::make_unique<Executor>(
         context.get(), Executor::Options{.metricManager = std::make_unique<MetricManager>()});
