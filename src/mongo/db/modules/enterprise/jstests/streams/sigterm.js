@@ -32,10 +32,8 @@ const rst2 = new ReplSetTest({
 // Setup the replsets.
 rst.startSet();
 rst2.startSet();
-rst.initiateWithAnyNodeAsPrimary(
-    Object.extend(rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
-rst2.initiateWithAnyNodeAsPrimary(
-    Object.extend(rst2.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+rst.initiate(Object.extend(rst.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+rst2.initiate(Object.extend(rst2.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
 const conn = rst.getPrimary();
 const dbName = 'test';
 const db = conn.getDB(dbName);

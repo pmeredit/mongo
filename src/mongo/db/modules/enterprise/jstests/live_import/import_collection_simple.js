@@ -26,7 +26,7 @@ const collectionProperties = exportCollection(dbName, collName);
 jsTestLog("Starting a replica set");
 const rst = new ReplSetTest({nodes: 2});
 const nodes = rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
 const primaryDB = primary.getDB(dbName);

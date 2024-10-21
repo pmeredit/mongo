@@ -212,7 +212,7 @@ function checkTestDataResults(db, strategy, dryrun = false) {
 
 let rst = new ReplSetTest({name: TestData.testName, nodes: 1});
 rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 let dbName = TestData.testName;
 const primary = rst.getPrimary();
 const primaryDb = primary.getDB(dbName);

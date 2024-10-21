@@ -8,7 +8,7 @@ import {ReplSetTest} from "jstests/libs/replsettest.js";
 export const exportCollectionExtended = function(dbName, collName, username, password, ops) {
     const rst = new ReplSetTest({nodes: 1, name: "export_collection_target"});
     const nodes = rst.startSet();
-    rst.initiateWithHighElectionTimeout();
+    rst.initiate();
     let primary = rst.getPrimary();
     let db = primary.getDB(dbName);
 

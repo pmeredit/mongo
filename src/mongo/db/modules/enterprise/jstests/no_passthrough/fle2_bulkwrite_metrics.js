@@ -219,7 +219,7 @@ function runTest(isMongos, cluster, bulkWrite, retryCount) {
     });
 
     replTest.startSet();
-    replTest.initiateWithHighElectionTimeout();
+    replTest.initiate();
 
     const retryCount = 3;
     for (const bulkWrite of [false, true]) {

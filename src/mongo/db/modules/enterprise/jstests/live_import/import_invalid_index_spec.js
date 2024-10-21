@@ -28,7 +28,7 @@ const collectionProperties =
 // Setup a replica set that we'll import the exported collection to.
 const rst = new ReplSetTest({nodes: 1});
 const nodes = rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB(dbName);
 

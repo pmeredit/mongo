@@ -395,7 +395,7 @@ function changeSourceFailsAfterSuccesfulStart() {
         waitForKeys: false,
     });
     rstSource.startSet();
-    rstSource.initiateWithAnyNodeAsPrimary(
+    rstSource.initiate(
         Object.extend(rstSource.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
     const conn = rstSource.getPrimary();
     const dbName = "test";
@@ -481,7 +481,7 @@ function mergeFailsWithFullQueue() {
         waitForKeys: false,
     });
     mergeTarget.startSet();
-    mergeTarget.initiateWithAnyNodeAsPrimary(
+    mergeTarget.initiate(
         Object.extend(mergeTarget.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
     const conn = mergeTarget.getPrimary();
     const dbName = "test";
@@ -577,7 +577,7 @@ function startFailedStreamProcessor() {
         waitForKeys: false,
     });
     rstSource.startSet();
-    rstSource.initiateWithAnyNodeAsPrimary(
+    rstSource.initiate(
         Object.extend(rstSource.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
     const conn = rstSource.getPrimary();
     const dbName = "test";
@@ -652,7 +652,7 @@ function startFailedStreamProcessor() {
 
     // Restart the $source replset.
     rstSource.startSet();
-    rstSource.initiateWithAnyNodeAsPrimary(
+    rstSource.initiate(
         Object.extend(rstSource.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
 
     // Issue the start command again for the same SP.

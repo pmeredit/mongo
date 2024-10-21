@@ -21,7 +21,7 @@ const rst = new ReplSetTest({
 });
 const expiredChangeStreamPreImageRemovalJobSleepSecs = 1;
 rst.startSet({setParameter: {expiredChangeStreamPreImageRemovalJobSleepSecs}});
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB("testDB");

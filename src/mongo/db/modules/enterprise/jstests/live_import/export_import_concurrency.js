@@ -81,7 +81,7 @@ const collectionsToImport = exportCollections(numImportThreads, numImportsPerThr
 jsTestLog("Starting a replica set for import");
 const rst = new ReplSetTest({nodes: 3});
 const nodes = rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 const primary = rst.getPrimary();
 
 // Insert the 'collectionsToImport' metadata to the database to avoid getting "Argument list too

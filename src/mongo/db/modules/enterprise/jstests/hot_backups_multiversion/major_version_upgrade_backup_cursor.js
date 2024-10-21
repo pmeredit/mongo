@@ -66,7 +66,7 @@ const rst = new ReplSetTest({
 
 // Start up and initiate the replica set.
 rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate(null, null, {initiateWithDefaultElectionTimeout: true});
 
 // Iterate from earliest to latest versions specified in the versions list, and follow the steps
 // outlined at the top of this test file.

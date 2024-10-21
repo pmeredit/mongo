@@ -57,7 +57,7 @@ function runTest(cipherMode, keyID) {
     let config = replSet.getReplSetConfig();
     config.members[2].priority = 0;
     config.settings = {chainingAllowed: false};
-    replSet.initiateWithHighElectionTimeout(config);
+    replSet.initiate(config);
     jsTestLog("Starting RollbackTest");
     const rollbackTest = new RollbackTest("decryptToolRollbackTest", replSet);
     jsTestLog("Created RollbackTest");

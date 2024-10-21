@@ -30,7 +30,7 @@ const rst = new ReplSetTest({
     }]
 });
 rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 
 const primary = rst.getPrimary();
 const backupCursorDB = getBackupCursorDB(primary);

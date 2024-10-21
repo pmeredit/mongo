@@ -12,7 +12,7 @@ const rst = new ReplSetTest({
     nodes: [{}, {rsConfig: {priority: 0}}],
 });
 rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB("testDB");

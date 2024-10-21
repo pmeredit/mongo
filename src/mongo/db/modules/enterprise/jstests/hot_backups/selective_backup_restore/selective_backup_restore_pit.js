@@ -167,7 +167,7 @@ function validateSelectiveBackupRestore(db, dbName, backupDbPath) {
 //
 let rst = new ReplSetTest({nodes: 1});
 rst.startSet();
-rst.initiateWithHighElectionTimeout();
+rst.initiate();
 
 let primary = rst.getPrimary();
 const dbName = "test";
