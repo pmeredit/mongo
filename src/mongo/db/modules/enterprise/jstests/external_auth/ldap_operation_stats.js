@@ -64,10 +64,10 @@ let expectedUserOneUsersInfoStats = {
 let expectedUserTwoUsersInfoStats = {
     LDAPOperations: {
         LDAPNumberOfSuccessfulReferrals: 0,
-        LDAPNumberOfFailedReferrals: 4,
-        LDAPNumberOfReferrals: 4,
-        bindStats: {numOp: 4, opDurationMicros: waitTimeRegex},
-        searchStats: {numOp: 4, opDurationMicros: waitTimeRegex}
+        LDAPNumberOfFailedReferrals: 1,
+        LDAPNumberOfReferrals: 1,
+        bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},
+        searchStats: {numOp: 1, opDurationMicros: waitTimeRegex}
     },
 };
 
@@ -104,6 +104,13 @@ function runTest(conn) {
 
     // Set logging level to 1 so that we log all operations that aren't slow
     assert.commandWorked(adminDB.runCommand({setParameter: 1, logLevel: 1}));
+    // In this test, we force rebind failures by registering a custom rebind handler with libldap
+    // (when using Open LDAP). When we fail rebind in this way, libldap will occasionally return a
+    // success code with an empty result set (rather than the error code we would expect). This
+    // always results in a failure in our code, but not necessarily a retriable failure. We turn
+    // retries off so that our stat counts are the same independent of the failure mode we
+    // experience.
+    assert.commandWorked(adminDB.runCommand({setParameter: 1, ldapRetryCount: 0}));
 
     // using $external for LDAP, authorize users
     const externalDB = conn.getDB("$external");
@@ -134,12 +141,14 @@ function runTest(conn) {
     ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
 
-    // We expect 1 successful referral, 4 failed referrals, 5 total referrals, 7 binds, and 5 search
-    // operations so far. The 4 failed referrals come from 1 failure + 3 retries, the 5 additional
-    // binds come from 1 successful bind against the configured LDAP server + 1 failure + 3 retry
-    // binds against the referred LDAP server, and the 4 additional searches come from 1 failure + 3
-    // retries.
-    checkCumulativeLDAPMetrics(ldapOperations, 1, 4, 5, 7, 5);
+    // We expect 1 successful referral, 1 failed referral, 2 total referrals, 4 binds, and 2 search
+    // operations so far:
+    // - Successful referrals: First operation: 1, second operation: 0
+    // - Failed referrals: First operation: 0, second operation: 1
+    // - Binds: First operation: 2 (successful bind + successful rebind), second operation: 2
+    // (successful bind + failed rebind)
+    // - Searches: First operation: 1 (successful), second operation: 1 (failed)
+    checkCumulativeLDAPMetrics(ldapOperations, 1, 1, 2, 4, 2);
     adminDB.logout();
 }
 
