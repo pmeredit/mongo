@@ -201,7 +201,7 @@ export function LDAPTestConfigGenerator() {
 
         var other = {};
         other.enableBalancer = true;
-        other.shardOptions = Object.extend({}, mongodConfig, true);
+        other.rsOptions = Object.extend({}, mongodConfig, true);
         other.configOptions = Object.extend({}, mongodConfig, true);
         other.useHostname = true;
         other.mongosOptions = Object.extend({}, mongodConfig, true);

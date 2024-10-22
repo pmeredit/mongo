@@ -723,7 +723,7 @@ ReplSetTest.runReplSetAuditLogger = function(opts = {}, format = "JSON", schema 
  *
  * To use this, specify the number (n) of mongos, config servers, and shards by using the format:
  * {mongos: n, config: n, shards: n} and specifying the options for each of these members using
- * the format: {other: {configOptions: ..., shardOptions: ..., mongosOptions: ..., ... }}. The
+ * the format: {other: {configOptions: ..., mongosOptions: ..., ... }}. The
  * defaults are defined at the top of the function.
  *
  * The baseOptions param is for things common for auditing such as  auditAuthorizationSuccess or

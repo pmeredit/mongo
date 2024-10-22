@@ -116,8 +116,7 @@ const kKeyFile = 'jstests/libs/key1';
         config: 1,
         shard: 2,
         keyFile: kKeyFile,
-        other:
-            {mongosOptions: {auth: null}, configOptions: {auth: null}, shardOptions: {auth: null}}
+        other: {mongosOptions: {auth: null}, configOptions: {auth: null}, rsOptions: {auth: null}}
     });
     setupTests(st.s0);
     runTests(st.s0, false, true);
