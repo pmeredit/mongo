@@ -18,13 +18,10 @@ let runTest = function(conn, audit, admin) {
     admin.auth("admin", "pwd");
 };
 
-// Do not emit audit entries for IPC events.
-const auditFilter = JSON.stringify({"users": {"$ne": {user: "__system", db: "local"}}});
-
 {
     print("START orphan-session.js for standalone");
 
-    const m = MongoRunner.runMongodAuditLogger({auth: '', auditFilter: auditFilter});
+    const m = MongoRunner.runMongodAuditLogger({auth: ''});
     const audit = m.auditSpooler();
     const admin = m.getDB("admin");
 
@@ -37,8 +34,7 @@ const auditFilter = JSON.stringify({"users": {"$ne": {user: "__system", db: "loc
 {
     print("START orphan-session.js for sharded cluster");
 
-    const st = MongoRunner.runShardedClusterAuditLogger({keyFile: "jstests/libs/key1"},
-                                                        {auditFilter: auditFilter});
+    const st = MongoRunner.runShardedClusterAuditLogger({auth: null, keyFile: "jstests/libs/key1"});
     const mongos = st.s0;
     const audit = mongos.auditSpooler();
     const admin = mongos.getDB("admin");
