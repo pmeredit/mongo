@@ -6,18 +6,22 @@
 
 #include <any>
 #include <boost/none.hpp>
+#include <boost/program_options/parsers.hpp>
 #include <memory>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/change_stream.hpp>
+#include <utility>
 #include <variant>
 
 #include "mongo/bson/bsonelement.h"
+#include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/change_stream_options_gen.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
@@ -43,6 +47,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/namespace_string_util.h"
+#include "mongo/util/net/http_client.h"
 #include "mongo/util/serialization_context.h"
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/change_stream_source_operator.h"
@@ -69,6 +74,7 @@
 #include "streams/exec/lookup_operator.h"
 #include "streams/exec/match_operator.h"
 #include "streams/exec/merge_operator.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/noop_sink_operator.h"
@@ -334,6 +340,79 @@ boost::intrusive_ptr<mongo::Expression> parseStringOrObjectExpression(
                           }},
         exprToParse);
     return expression;
+}
+
+mongo::HttpClient::HttpMethod parseRequestType(HttpMethodEnum requestType) {
+    switch (requestType) {
+        case HttpMethodEnum::MethodGet:
+            return mongo::HttpClient::HttpMethod::kGET;
+        case HttpMethodEnum::MethodPost:
+            return mongo::HttpClient::HttpMethod::kPOST;
+        case HttpMethodEnum::MethodPut:
+            return mongo::HttpClient::HttpMethod::kPUT;
+        case HttpMethodEnum::MethodPatch:
+            return mongo::HttpClient::HttpMethod::kPATCH;
+        case HttpMethodEnum::MethodDelete:
+            return mongo::HttpClient::HttpMethod::kDELETE;
+        default:
+            uasserted(ErrorCodes::StreamProcessorInvalidOptions, "Unknown requestType");
+    }
+}
+
+bool isStringAnExpression(std::string str) {
+    return str.length() > 0 && str[0] == '$';
+}
+
+std::vector<std::pair<std::string, StringOrExpression>> parseDynamicObject(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, boost::optional<BSONObj> obj) {
+    std::vector<std::pair<std::string, StringOrExpression>> out{};
+    if (!obj) {
+        return out;
+    }
+
+    out.reserve(obj->nFields());
+
+    for (const auto& elem : *obj) {
+        auto elemType = elem.type();
+        switch (elemType) {
+            case mongo::BSONType::Bool: {
+                out.push_back(std::make_pair(elem.fieldName(), elem.Bool() ? "true" : "false"));
+                break;
+            }
+            case mongo::BSONType::String: {
+                auto val = elem.String();
+                if (isStringAnExpression(val)) {
+                    out.push_back(std::make_pair(
+                        elem.fieldName(), parseStringOrObjectExpression(expCtx, std::move(val))));
+                } else {
+                    out.push_back(std::make_pair(elem.fieldName(), std::move(val)));
+                }
+                break;
+            }
+            case mongo::BSONType::Object: {
+                out.push_back(std::make_pair(elem.fieldName(),
+                                             parseStringOrObjectExpression(expCtx, elem.Obj())));
+                break;
+            }
+            case mongo::BSONType::NumberInt:
+            case mongo::BSONType::NumberLong:
+            case mongo::BSONType::NumberDouble:
+            case mongo::BSONType::NumberDecimal: {
+                out.push_back(
+                    std::make_pair(elem.fieldName(),
+                                   elem.toString(false /* includeFieldName */, true /* full */)));
+                break;
+            }
+            default:
+                // TODO(SERVER-95031): more gracefully handle arrays when parsing
+                // query parameters.
+                uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                          "Unexpected value type for dynamic object for field '" +
+                              std::string{elem.fieldName()} + "'.");
+                break;
+        }
+    }
+    return out;
 }
 
 mongo::JsonStringFormat parseJsonStringFormat(
@@ -1377,19 +1456,11 @@ void Planner::planLimit(mongo::DocumentSource* source) {
 }
 
 void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
-    auto parsedOperatorOptions =
-        ExternalAPIOptions::parse(IDLParserContext("externalAPI"), docSource->bsonOptions());
-
-    ExternalApiOperator::Options options{
-        .as = parsedOperatorOptions.getAs().toString(),
-    };
-
-    auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
-
     // TODO(SERVER-95624): ensure that _stream_meta will be passed into the external api target url.
 
-    // TODO(SERVER-95481): Fill in the implementation for parsing the rest of the user-provided
-    // configurations and setting the appropriate values in the operator's options struct.
+    auto parsedOperatorOptions =
+        ExternalAPIOptions::parse(IDLParserContext("externalAPI"), docSource->bsonOptions());
+    auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
                           << kExternalApiStageName,
@@ -1397,21 +1468,51 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
     const auto& connection = _context->connections.at(connectionNameField);
     auto connOptions = WebAPIConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                       connection.getOptions());
-    options.url = connOptions.getUrl().toString();
-    options.connectionTimeoutSecs = mongo::Seconds{connOptions.getConnectionTimeoutSec()};
-    options.requestTimeoutSecs = mongo::Seconds{connOptions.getRequestTimeoutSec()};
 
-    auto urlPath = parsedOperatorOptions.getUrlPath();
-    if (urlPath) {
+    ExternalApiOperator::Options options{
+        .requestType = parseRequestType(parsedOperatorOptions.getRequestType()),
+        .url = connOptions.getUrl().toString(),
+        .queryParams = parseDynamicObject(_context->expCtx, parsedOperatorOptions.getParameters()),
+        .as = parsedOperatorOptions.getAs().toString(),
+        .connectionTimeoutSecs = mongo::Seconds{connOptions.getConnectionTimeoutSec()},
+        .requestTimeoutSecs = mongo::Seconds{connOptions.getRequestTimeoutSec()},
+    };
+
+    if (const auto& headersOpt = connOptions.getHeaders(); headersOpt) {
+        std::vector<std::string> connHeaders;
+        connHeaders.reserve(headersOpt->nFields());
+
+        for (auto elem : *headersOpt) {
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "Expected header values defined in the web api connection to be a string.",
+                    elem.type() == mongo::BSONType::String);
+            connHeaders.push_back(std::string{elem.fieldName()} + ": " + elem.String());
+        }
+        options.connectionHeaders = std::move(connHeaders);
+    }
+
+    if (const auto& headersOpt = parsedOperatorOptions.getHeaders(); headersOpt) {
+        // Ensure that operator header values are only strings or field path expressions.
+        for (const auto& elem : *headersOpt) {
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "Headers defined in the pipeline operator can only define string values or "
+                    "field path expressions.",
+                    elem.type() == mongo::BSONType::String);
+        }
+        options.operatorHeaders =
+            parseDynamicObject(_context->expCtx, parsedOperatorOptions.getHeaders());
+    }
+
+    if (const auto& urlPathOpt = parsedOperatorOptions.getUrlPath(); urlPathOpt) {
         std::visit(OverloadedVisitor{[&](const BSONObj& bson) {
-                                         options.path = Expression::parseExpression(
+                                         options.urlPathExpr = Expression::parseExpression(
                                              _context->expCtx.get(),
                                              std::move(bson),
                                              _context->expCtx->variablesParseState);
                                      },
                                      [&](const std::string& str) {
-                                         if (str.find('$') != std::string::npos) {
-                                             options.path = ExpressionFieldPath::parse(
+                                         if (str[0] == '$') {
+                                             options.urlPathExpr = ExpressionFieldPath::parse(
                                                  _context->expCtx.get(),
                                                  std::move(str),
                                                  _context->expCtx->variablesParseState);
@@ -1419,7 +1520,7 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
                                              options.url = options.url + str;
                                          }
                                      }},
-                   *urlPath);
+                   *urlPathOpt);
     }
 
     auto oper = std::make_unique<ExternalApiOperator>(_context, std::move(options));
@@ -2035,5 +2136,4 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
                   "resumeFromCheckpoint must be false to remove a window from a stream processor");
     }
 }
-
 };  // namespace streams

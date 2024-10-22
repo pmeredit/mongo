@@ -229,6 +229,10 @@ structs:
             url:
                 description: "The URL of the web api."
                 type: string
+            headers:
+                description: "The headers to send to the web api."
+                type: object
+                optional: true
             connectionTimeoutSec:
                 description: "The timeout (in seconds) for establishing an HTTP connection."
                 type: int
@@ -500,7 +504,19 @@ structs:
             urlPath:
                 description: "The path to append onto the web api connection's url."
                 type:
-                    variant: [string, object]
+                    variant: [object, string]
+                optional: true
+            parameters:
+                description: "Query parameters used when making a request to the web api."
+                type: object
+                optional: true
+            requestType:
+                description: "The HTTP verb used when making a request to the web api."
+                type: HttpMethod
+                default: MethodGet
+            headers:
+                description: "The headers to send to the web api. Can be an expression and will be evaluated against each input document."
+                type: object
                 optional: true
             as:
                 description: "Defines the field name for REST API responses."

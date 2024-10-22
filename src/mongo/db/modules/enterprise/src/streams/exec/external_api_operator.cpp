@@ -45,6 +45,10 @@ void ExternalApiOperator::doStart() {
     }
 }
 
+const ExternalApiOperator::Options& ExternalApiOperator::getOptions() {
+    return _options;
+}
+
 void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
                                       StreamDataMsg dataMsg,
                                       boost::optional<StreamControlMsg> controlMsg) {
@@ -145,12 +149,10 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
             "Expected http client to exist before trying to make requests.",
             _options.httpClient);
     _options.httpClient->setHeaders(evaluateHeaders(streamDoc.doc));
-
-
-    auto response = _options.httpClient->request(_options.requestType,
-                                                 (_options.path) ? evaluateFullUrl(streamDoc.doc)
-                                                                 : _options.url,
-                                                 httpPayload);
+    auto response = _options.httpClient->request(
+        _options.requestType,
+        (_options.urlPathExpr) ? evaluateFullUrl(streamDoc.doc) : _options.url,
+        httpPayload);
 
     uassert(ErrorCodes::OperationFailed,
             str::stream() << "Unexpected http status code from server: " << response.code,
@@ -163,8 +165,8 @@ std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
     uassert(
         ErrorCodes::InternalError,
         str::stream() << "evaluateFullURL should only be called if _options.path is an not nullptr",
-        _options.path);
-    Value pathField = _options.path->evaluate(doc, &_context->expCtx->variables);
+        _options.urlPathExpr);
+    Value pathField = _options.urlPathExpr->evaluate(doc, &_context->expCtx->variables);
     if (!pathField.missing() && pathField.getType() == String) {
         return _options.url + pathField.getStringData();
     }

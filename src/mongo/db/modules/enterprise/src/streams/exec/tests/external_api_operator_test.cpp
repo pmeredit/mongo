@@ -80,9 +80,9 @@ TEST_F(ExternalApiOperatorTest, BasicGet) {
                                                      << "ok"))});
 
     ExternalApiOperator::Options options{
-        .url = uri.toString(),
-        .requestType = HttpClient::HttpMethod::kGET,
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
         .as = "response",
     };
 
@@ -117,9 +117,9 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithDottedAsField) {
 
     // Create $externalAPI operator.
     ExternalApiOperator::Options options{
-        .url = uri.toString(),
-        .requestType = HttpClient::HttpMethod::kGET,
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
         .as = "apiResponse.inner",
     };
 
@@ -161,10 +161,10 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsStringExpression) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto strExpr = ExpressionFieldPath::parse(expCtx.get(), "$path", expCtx->variablesParseState);
     ExternalApiOperator::Options options{
-        .url = uri.toString(),
-        .path = strExpr,
-        .requestType = HttpClient::HttpMethod::kGET,
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .urlPathExpr = strExpr,
         .as = "response",
     };
 
@@ -205,10 +205,10 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsBsonExpression) {
     auto getFieldExpr =
         Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
     ExternalApiOperator::Options options{
-        .url = uri.toString(),
-        .path = getFieldExpr,
-        .requestType = HttpClient::HttpMethod::kGET,
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .urlPathExpr = getFieldExpr,
         .as = "response",
     };
 
@@ -230,7 +230,7 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsBsonExpression) {
     });
 }
 
-// TODO(SERVER-95481): Add failure case test where we DLQ a a document once we can use the planner
+// TODO(SERVER-95032): Add failure case test where we DLQ a a document once we can use the planner
 // to create the pipeline
 
 };  // namespace streams

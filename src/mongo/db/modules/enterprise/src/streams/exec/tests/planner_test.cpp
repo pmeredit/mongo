@@ -10,6 +10,8 @@
 #include <iostream>
 #include <rdkafkacpp.h>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonmisc.h"
@@ -22,6 +24,7 @@
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/unittest/assert.h"
@@ -35,6 +38,7 @@
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
+#include "streams/exec/external_api_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
@@ -77,6 +81,8 @@ public:
         Connection webApiConn{};
         webApiConn.setName("webapi1");
         WebAPIConnectionOptions webApiConnOptions{"https://mongodb.com"};
+        webApiConnOptions.setHeaders(BSON("Content-Type"
+                                          << "application/json"));
         webApiConn.setOptions(webApiConnOptions.toBSON());
         webApiConn.setType(ConnectionTypeEnum::WebAPI);
         _context->connections = {
@@ -276,6 +282,7 @@ TEST_F(PlannerTest, SupportedStagesWork2) {
              << "$sizes"),
         BSON("$validate" << BSON("validator"
                                  << BSON("$jsonSchema" << BSON("required" << BSON_ARRAY("a"))))),
+
     };
 
     std::vector<std::vector<BSONObj>> validBsonPipelines;
@@ -2609,17 +2616,252 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
         _context->connections = prevConnections;
     });
 
-    auto dag = addSourceSinkAndParse(parsePipeline(R"(
+    auto planExternalApiTest = [&](const std::vector<BSONObj>& spec,
+                                   streams::ExternalApiOperator::Options expectedOpts,
+                                   Document inputDoc) {
+        auto dag = addSourceSinkAndParse(spec);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
+
+        auto actualOper = dynamic_cast<ExternalApiOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->getOptions().requestType, expectedOpts.requestType);
+        ASSERT_EQ(actualOper->getOptions().url, expectedOpts.url);
+        ASSERT_EQ(actualOper->getOptions().connectionHeaders, expectedOpts.connectionHeaders);
+        ASSERT_EQ(actualOper->getOptions().as, expectedOpts.as);
+        ASSERT_EQ(actualOper->getOptions().requestTimeoutSecs, expectedOpts.requestTimeoutSecs);
+        ASSERT_EQ(actualOper->getOptions().connectionTimeoutSecs,
+                  expectedOpts.connectionTimeoutSecs);
+
+        // The following assertions require evaluating the nested expressions with an input
+        // document.
+        auto evaluateStringOrExpression = [&](StringOrExpression strOrExpr) -> std::string {
+            return std::visit(
+                OverloadedVisitor{
+                    [&](boost::intrusive_ptr<mongo::Expression> expr) -> std::string {
+                        return expr->evaluate(inputDoc, &_context->expCtx->variables).toString();
+                    },
+                    [&](const std::string& str) -> std::string { return str; }},
+                strOrExpr);
+        };
+
+        ASSERT_EQ(evaluateStringOrExpression(actualOper->getOptions().urlPathExpr),
+                  evaluateStringOrExpression(expectedOpts.urlPathExpr));
+
+        ASSERT_EQ(actualOper->getOptions().operatorHeaders.size(),
+                  expectedOpts.operatorHeaders.size());
+        for (size_t i = 0; i < expectedOpts.operatorHeaders.size(); i++) {
+            ASSERT_EQ(actualOper->getOptions().operatorHeaders.at(i).first,
+                      expectedOpts.operatorHeaders.at(i).first);
+
+            auto actual =
+                evaluateStringOrExpression(actualOper->getOptions().operatorHeaders.at(i).second);
+            auto expected = evaluateStringOrExpression(expectedOpts.operatorHeaders.at(i).second);
+            ASSERT_EQ(actual, expected);
+        }
+
+        ASSERT_EQ(actualOper->getOptions().queryParams.size(), expectedOpts.queryParams.size());
+        for (size_t i = 0; i < expectedOpts.queryParams.size(); i++) {
+            ASSERT_EQ(actualOper->getOptions().queryParams.at(i).first,
+                      expectedOpts.queryParams.at(i).first);
+
+            auto actual =
+                evaluateStringOrExpression(actualOper->getOptions().queryParams.at(i).second);
+            auto expected = evaluateStringOrExpression(expectedOpts.queryParams.at(i).second);
+            ASSERT_EQ(actual, expected);
+        }
+    };
+
+    {
+        // invalid requestType
+        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
     [
         {
             $externalAPI: {
                 connectionName: "webapi1",
-                as: "response"
+                as: "response",
+                requestType: "FOO"
             }
         }
-    ])"));
-    auto& ops = dag->operators();
-    ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
+    ])"),
+                                                        {},
+                                                        {}),
+                                    DBException,
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "BadValue: Enumeration value 'FOO' for field "
+                                    "'externalAPI.requestType' is not a valid value.");
+    }
+
+    {
+        // invalid headers
+        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                as: "response",
+                headers: "$invalidType"
+            }
+        }
+    ])"),
+                                                        {},
+                                                        {}),
+                                    DBException,
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "TypeMismatch: BSON field 'externalAPI.headers' is the wrong "
+                                    "type 'string', expected type 'object'");
+    }
+
+    {
+        // invalid parameters
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                as: "response",
+                parameters: "$invalidType"
+            }
+        }
+    ])"),
+                                {},
+                                {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "TypeMismatch: BSON field 'externalAPI.parameters' is the wrong "
+            "type 'string', expected type 'object'");
+    }
+
+    {
+        // unknown field
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                as: "response",
+                randomField: "foo"
+            }
+        }
+    ])"),
+                                {},
+                                {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLUnknownField: BSON field 'externalAPI.randomField' is an unknown field.");
+    }
+
+    {
+        // invalid type in params dynamic object
+        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                as: "response",
+                parameters: {
+                    foo: undefined
+                }
+            }
+        }
+    ])"),
+                                                        {},
+                                                        {}),
+                                    DBException,
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "StreamProcessorInvalidOptions: Unexpected value type for "
+                                    "dynamic object for field 'foo'.");
+    }
+
+    {
+        // non string field in headers
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                as: "response",
+                headers: {
+                    foo: 10
+                }
+            }
+        }
+    ])"),
+                                {},
+                                {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: Headers defined in the pipeline operator can only "
+            "define string values or field path expressions.");
+    }
+
+    {
+        using StringOrExpression =
+            std::variant<std::string, boost::intrusive_ptr<mongo::Expression>>;
+
+        auto bson = BSON("$dateFromParts"
+                         << BSON("year" << 2029 << "month" << 11 << "day" << 21 << "hour" << 11));
+        auto objExpr = Expression::parseExpression(
+            _context->expCtx.get(), std::move(bson), _context->expCtx->variablesParseState);
+        auto barExpr = ExpressionFieldPath::parse(
+            _context->expCtx.get(), "$bar", _context->expCtx->variablesParseState);
+        std::vector<std::pair<std::string, StringOrExpression>> expectedHeaders{
+            std::make_pair("Accept", "text/html"), std::make_pair("foo", barExpr)};
+        std::vector<std::pair<std::string, StringOrExpression>> expectedParameters{
+            std::make_pair("verbose", "true"),
+            std::make_pair("lagSecs", "1.2"),
+            std::make_pair("filter", "all the things"),
+            std::make_pair("subExpr", barExpr),
+            std::make_pair("date", objExpr),
+            std::make_pair("skip", "10"),
+        };
+
+        planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi1",
+                urlPath: "$bar",
+                as: "response",
+                requestType: "POST",
+                headers: {
+                    Accept: "text/html",
+                    foo: "$bar"
+                },
+                parameters: {
+                    verbose: true,
+                    lagSecs: 1.2,
+                    filter: "all the things",
+                    subExpr: "$bar",
+                    date: {
+                      $dateFromParts: {
+                        year: 2029,
+                        month: 11,
+                        day: 21,
+                        hour: 11
+                      }
+                    },
+                    skip: 10
+                }
+            }
+        }
+    ])"),
+                            {
+                                .requestType = mongo::HttpClient::HttpMethod::kPOST,
+                                .url = "https://mongodb.com",
+                                .urlPathExpr = barExpr,
+                                .connectionHeaders =
+                                    std::vector<std::string>{"Content-Type: application/json"},
+                                .queryParams = expectedParameters,
+                                .operatorHeaders = expectedHeaders,
+                                .as = "response",
+                            },
+                            Document{BSON("bar"
+                                          << "baz")});
+    }
 }
 }  // namespace
 }  // namespace streams

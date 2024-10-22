@@ -16,39 +16,48 @@
 
 namespace streams {
 
+using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo::Expression>>;
+
 /**
- * ExternalApiOperator is an operator that allows users to make requests to a configured external
- * api in response to input data.
+ * ExternalApiOperator is an operator that allows users to make requests to a configured
+ * external api in response to input data.
  *
- * This operator requires a WebAPI connection and will make a request to that connection and set the
- * response to the user-configured 'as' field before sending the document  to the next operator.
+ * This operator requires a WebAPI connection and will make a request to that connection and set
+ * the response to the user-configured 'as' field before sending the document  to the next
+ * operator.
  */
 class ExternalApiOperator : public Operator {
 public:
     struct Options {
-        // base url used to make an HTTP request with.
-        std::string url;
-        // an expression whose evaluation result should be appended to the url.
-        boost::intrusive_ptr<mongo::Expression> path{nullptr};
-        // Query parameters used when making a HTTP request.
-        mongo::BSONObj params;
-        mongo::HttpClient::HttpMethod requestType{mongo::HttpClient::HttpMethod::kGET};
         std::unique_ptr<mongo::HttpClient> httpClient{};
 
+        // Http method used to make request.
+        mongo::HttpClient::HttpMethod requestType{mongo::HttpClient::HttpMethod::kGET};
+        // URL used to make an HTTP request with.
+        std::string url;
+        // Optional url path that is evaluated per document and appended to the url defined in the
+        // connection.
+        boost::intrusive_ptr<mongo::Expression> urlPathExpr{nullptr};
         // Defined in the connection. Evaluated once on startup.
         std::vector<std::string> connectionHeaders;
+        // Query parameters used when making a HTTP request. Evaluated at runtime on each document.
+        // TODO(SERVER-95938): make query parameters accept array, object, and numeric literal
+        // values.
+        std::vector<std::pair<std::string, StringOrExpression>> queryParams;
         // Defined in the operator within the pipeline. Evaluated at runtime on each document.
-        boost::intrusive_ptr<mongo::Expression> operatorHeadersExpr;
-        // as represents the key that this operator will associate with the response value.
+        std::vector<std::pair<std::string, StringOrExpression>> operatorHeaders;
+        // Represents the key that this operator will associate with the response value.
         std::string as;
-        // connectionTimeoutSecs represents the timeout for establishing a connection to the
+        // Represents the timeout for establishing a connection to the
         // external api.
         mongo::Seconds connectionTimeoutSecs{30};
-        // requestTimeoutSecs represents the timeout for making a request and receiving a response.
+        // Represents the timeout for making a request and receiving a response.
         mongo::Seconds requestTimeoutSecs{60};
     };
 
     ExternalApiOperator(Context* context, Options options);
+
+    const Options& getOptions();
 
 protected:
     std::string doGetName() const override {
