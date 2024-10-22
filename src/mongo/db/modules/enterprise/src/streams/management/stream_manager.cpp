@@ -1462,6 +1462,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                 stateReply.setCurrentOffset(state.currentOffset);
                 stateReply.setCheckpointOffset(state.checkpointOffset);
                 stateReply.setPartitionOffsetLag(state.partitionOffsetLag);
+                stateReply.setIsIdle(state.isIdle);
                 if (state.watermark >= 0) {
                     stateReply.setWatermark(Date_t::fromMillisSinceEpoch(state.watermark));
                 }

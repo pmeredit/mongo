@@ -698,6 +698,10 @@ structs:
                 description: "Kafka sink configuration."
                 type: KafkaSinkConfigOptions
                 optional: true
+            testOnlyPartition:
+                description: "Specifies a single partition to write all output to."
+                type: int
+                optional: true
     
     TimeseriesSinkOptions:
         description: Specifies the options for sink operator $emit to Time Series collection.

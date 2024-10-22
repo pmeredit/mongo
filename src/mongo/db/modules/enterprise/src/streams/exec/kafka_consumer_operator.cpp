@@ -507,6 +507,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
 
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
                 *inputIdx, _watermarkCombiner.get(), watermark);
+            consumerInfo.partitionIdleTimeoutMs = _options.partitionIdleTimeoutMs;
         }
 
         if (_options.enableAutoCommit) {

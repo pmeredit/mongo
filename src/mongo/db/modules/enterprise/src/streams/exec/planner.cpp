@@ -1025,6 +1025,10 @@ void Planner::planEmitSink(const BSONObj& spec) {
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
                 : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+            if (options.getTestOnlyPartition()) {
+                kafkaEmitOptions.testOnlyPartition = *options.getTestOnlyPartition();
+            }
+
             sinkOperator =
                 std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
             sinkOperator->setOperatorId(_nextOperatorId++);

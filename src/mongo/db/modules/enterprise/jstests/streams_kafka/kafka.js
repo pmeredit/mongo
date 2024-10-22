@@ -1824,6 +1824,81 @@ function runKafkaTest(kafka, testFn, partitionCount = 1) {
     }
 }
 
+// Write data to only a single partition, validate partitionIdleTimeout works.
+function testPartitionIdleTimeout() {
+    dropCollections();
+
+    const partitionCount = 32;
+    let kafka = new LocalKafkaCluster();
+    kafka.start(partitionCount);
+
+    // Start a mongo->kafka processor and insert some data.
+    const startCmd = makeMongoToKafkaStartCmd(
+        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaPlaintextName});
+    startCmd.pipeline[startCmd.pipeline.length - 1]["$emit"].testOnlyPartition = NumberInt(0);
+    assert.commandWorked(db.runCommand(startCmd));
+    let inputCount = 10;
+    for (let i = 0; i < inputCount; i++) {
+        sourceColl1.insert({a: i - 1});
+    }
+    // Wait for output message stats.
+    assert.soon(() => {
+        let stats = getStats(startCmd.name);
+        assert.commandWorked(stats);
+        return stats["outputMessageCount"] == inputCount;
+    });
+    // Stop to flush the Kafka $emit output.
+    stopStreamProcessor(mongoToKafkaName);
+    // Start the mongo->Kafka SP again.
+    assert.commandWorked(db.runCommand(startCmd));
+
+    // Start Kafka->mongo SP.
+    const kafkaToMongoName = "kafkaToMongo";
+    assert.commandWorked(db.runCommand({
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: kafkaToMongoName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
+                    partitionIdleTimeout: {unit: "second", size: NumberInt(10)}
+                }
+            },
+            {
+                $tumblingWindow: {
+                    interval: {unit: "second", size: NumberInt(1)},
+                    pipeline: [{$group: {_id: null, count: {$count: {}}}}]
+                }
+            },
+            {$project: {_id: 0}},
+            {$merge: {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}}
+        ],
+        connections: connectionRegistry,
+        options: startOptions,
+        processorId: kafkaToMongoName,
+    }));
+
+    assert.soon(() => {
+        // Insert some data that the mongo->Kafka SP will pickup.
+        sourceColl1.insert({a: 1});
+        let stats = getStats(kafkaToMongoName);
+        if (stats["outputMessageCount"] == 0) {
+            return false;
+        }
+        // Validate partitions other than 0 are marked as idle in stats.
+        for (let partition = 1; partition < partitionCount; partition += 1) {
+            assert(stats["kafkaPartitions"][partition].isIdle);
+        }
+        return true;
+    });
+
+    // Now stop both stream processors.
+    stopStreamProcessor(kafkaToMongoName);
+    stopStreamProcessor(startCmd.name);
+}
+
 // Verify that a streamProcessor goes into an error status when the Kafka broker goes down.
 function testKafkaAsyncError() {
     dropCollections();
@@ -2576,3 +2651,5 @@ runKafkaTest(kafka, () => {
 });
 
 runKafkaTest(kafka, contentBasedRouting);
+
+testPartitionIdleTimeout();
