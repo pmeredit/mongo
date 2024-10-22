@@ -516,6 +516,13 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
             std::variant<mongo::BSONObj, mongo::Timestamp>((*batch.lastResumeToken));
     }
 
+    // Refresh flag value for staleness monitorPeriod
+    boost::optional<mongo::Seconds> monitorPeriod =
+        getChangestreamSourceStalenessMonitorPeriod(_context->featureFlags);
+    if (monitorPeriod) {
+        _stalenessMonitorPeriod.store(*monitorPeriod);
+    }
+
     // Return if no documents are available at the moment.
     if (changeEvents.empty()) {
         if (batch.lastResumeToken) {
@@ -645,13 +652,11 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     }
 
     // Check for staleness
-    boost::optional<mongo::Seconds> monitorPeriod =
-        getChangestreamSourceStalenessMonitorPeriod(_context->featureFlags);
-    if (monitorPeriod) {
+    if (_stalenessMonitorPeriod.load() != mongo::Seconds::zero()) {
         // If we have not received anything for the configured period, do an additional
         // staleness check
         if (Date_t::now() - _changestreamLastEventReceivedAt >
-            mongo::duration_cast<mongo::Milliseconds>(*monitorPeriod)) {
+            mongo::duration_cast<mongo::Milliseconds>(_stalenessMonitorPeriod.load())) {
             auto client = std::make_unique<mongocxx::client>(
                 *_uri, _options.clientOptions.toMongoCxxClientOptions());
 

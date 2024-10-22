@@ -243,6 +243,11 @@ private:
     mongo::Atomic<mongo::Seconds> _changestreamOperationTime;
     mongo::Date_t _changestreamLastEventReceivedAt{mongo::Date_t::min()};
 
+    // This value is set via a feature flag. If set, an additional periodic check is made
+    // to check for change stream source staleness. It is updated from the executor thread
+    // and used from the change stream background thread.
+    mongo::Atomic<mongo::Seconds> _stalenessMonitorPeriod{mongo::Seconds::zero()};
+
     // Metrics that track the number of docs and bytes prefetched.
     std::shared_ptr<IntGauge> _queueSizeGauge;
     std::shared_ptr<IntGauge> _queueByteSizeGauge;
