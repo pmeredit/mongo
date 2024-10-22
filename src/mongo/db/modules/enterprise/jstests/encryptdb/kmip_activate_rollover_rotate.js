@@ -76,7 +76,7 @@ jsTest.log(
         opts, {kmipKeyIdentifier: newGoodKey, kmipRotateMasterKey: "", restart: mongod});
     clearRawMongoProgramOutput();
     mongod = MongoRunner.runMongod(newOpts);
-    assert(rawMongoProgramOutput().search("Rotated master encryption key") !== -1);
+    assert(rawMongoProgramOutput(".*").search("Rotated master encryption key") !== -1);
 }
 
 jsTest.log("Test that ESE key rotate does not work with de-activated key.");
@@ -89,8 +89,8 @@ jsTest.log("Test that ESE key rotate does not work with de-activated key.");
     mongod = MongoRunner.runMongod(newOpts);
 
     assert(!mongod);
-    assert(rawMongoProgramOutput().search("State of KMIP Key for ESE is not active on startup") !==
-           -1);
+    assert(rawMongoProgramOutput(".*").search(
+               "State of KMIP Key for ESE is not active on startup") !== -1);
 }
 
 killPyKMIPServer(kmipServerPid);

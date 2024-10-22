@@ -56,7 +56,7 @@ function assertCorrectErrorMessage(failureMessage, expectedErrorMessage, environ
     const pid =
         _startMongoProgram({args: ["mongokerberos", "--debug"].concat(args), env: environment});
     waitProgram(pid);
-    const output = rawMongoProgramOutput();
+    const output = rawMongoProgramOutput(".*");
     assert.neq(-1, output.search(expectedErrorMessage), failureMessage);
 }
 
@@ -115,7 +115,7 @@ assertSuccess("mongokerberos failed in server mode as a result of a bad client k
 // verify config file is printed
 if (!_isWindows()) {
     jsTestLog("Checking config profile was resolved correctly");
-    const output = rawMongoProgramOutput();
+    const output = rawMongoProgramOutput(".*");
     const configStartIndicator = "KRB5 config profile resolved as: \n";
     const configEndIndicator = "\\[OK\\] KRB5 config profile resolved without errors.";
     const configStart = output.search(configStartIndicator) + configStartIndicator.length;
@@ -168,7 +168,7 @@ assertSuccess("mongokerberos did not produce expected error output when RDNS was
               kerbUser,
               "--gssapiServiceName",
               kerbService);
-assert.neq(rawMongoProgramOutput().search("could not find hostname in reverse lookup"),
+assert.neq(rawMongoProgramOutput(".*").search("could not find hostname in reverse lookup"),
            -1,
            "Running with misconfigured RDNS exited successfully, but an error was not printed.");
 

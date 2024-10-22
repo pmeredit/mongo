@@ -46,4 +46,4 @@ removeFile(backupDbpath + "/" + indexUri + ".wt");
 // Trying to restore collection "a" with the data files for index {x: 1} missing will crash.
 assert.throws(() => { startMongodOnExistingPath(backupDbpath, {restore: ""}); });
 
-assert.gte(rawMongoProgramOutput().search("Fatal assertion.*6261000"), 0);
+assert.gte(rawMongoProgramOutput("Fatal assertion").search("6261000"), 0);

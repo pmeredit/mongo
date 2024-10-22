@@ -45,7 +45,7 @@ const pid = startMongoProgramNoConnect(getPython3Binary(),
 assert(checkProgram(pid).alive);
 
 assert.soon(function() {
-    return rawMongoProgramOutput().search("Starting factory") !== -1;
+    return rawMongoProgramOutput(".*").search("Starting factory") !== -1;
 });
 
 sleep(2000);

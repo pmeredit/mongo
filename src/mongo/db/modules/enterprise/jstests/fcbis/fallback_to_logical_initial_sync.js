@@ -44,7 +44,7 @@ let initialSyncNodeDb = initialSyncNode.getDB("test");
 assert.commandWorked(initialSyncNodeDb.adminCommand(
     {configureFailPoint: "initialSyncHangBeforeCopyingDatabases", mode: "off"}));
 
-assert.soon(() => rawMongoProgramOutput().match('5780600.*Falling back to logical initial sync'),
+assert.soon(() => rawMongoProgramOutput("5780600").match('Falling back to logical initial sync'),
             'FCBIS should fall back to logical initial sync',
             ReplSetTest.kDefaultTimeoutMS);
 

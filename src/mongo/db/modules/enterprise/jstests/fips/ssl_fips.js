@@ -40,7 +40,7 @@ let expectSupportsFIPS = supportsFIPS() || isMacOS();
 
 // Checks that servers that fail to start only do so if FIPS is not enabled on the operating system.
 function validateFailure() {
-    const mongoOutput = rawMongoProgramOutput();
+    const mongoOutput = rawMongoProgramOutput(".*");
     jsTest.log('Server failed to start, checking for FIPS support');
     let regexTest =
         /this version of mongodb was not compiled with FIPS support|FIPS_mode_set:fips mode not supported/;

@@ -34,7 +34,7 @@ function testPermissionDeniedOnRotation() {
         clearRawMongoProgramOutput();
         const rc = runProgram("id", "-un");
         assert.eq(0, rc);
-        const output = rawMongoProgramOutput();
+        const output = rawMongoProgramOutput(".*");
         return output.trim().search("root") !== -1;
     }
 
@@ -72,7 +72,7 @@ function testPermissionDeniedOnAuditRotation() {
         clearRawMongoProgramOutput();
         const rc = runProgram("id", "-un");
         assert.eq(0, rc);
-        const output = rawMongoProgramOutput();
+        const output = rawMongoProgramOutput(".*");
         return output.trim().search("root") !== -1;
     }
 

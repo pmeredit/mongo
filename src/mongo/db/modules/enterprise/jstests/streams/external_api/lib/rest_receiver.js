@@ -37,7 +37,7 @@ export class TestRESTServer {
         assert(checkProgram(this.pid));
 
         assert.soon(() => {
-            return rawMongoProgramOutput().search("Running on localhost:" + this.port) !== -1;
+            return rawMongoProgramOutput(".*").search("Running on localhost:" + this.port) !== -1;
         });
 
         print("Test REST Server successfully started");

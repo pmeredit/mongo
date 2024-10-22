@@ -30,7 +30,7 @@ export function startPyKMIPServer(port, useLegacyProtocol = false) {
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for the PyKMIP server to be ready
-    assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
+    assert.soon(() => rawMongoProgramOutput(".*").search("Starting connection service") !== -1);
     return kmipServerPid;
 }
 
@@ -47,7 +47,7 @@ export function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
                                    "create_key");
     let uid;
     assert.soon(() => {
-        const output = rawMongoProgramOutput();
+        const output = rawMongoProgramOutput(".*");
         // Wait for the UID to be output
         let idx = output.search("UID=");
         if (idx === -1) {
@@ -80,7 +80,7 @@ export function isPyKMIPKeyActive(kmipServerPort, uid) {
                                    uid);
     let isActive;
     assert.soon(() => {
-        const output = rawMongoProgramOutput();
+        const output = rawMongoProgramOutput(".*");
 
         let isActiveOutput = output.match(/IS_ACTIVE=<(.*)>/);
         if (isActiveOutput !== null) {
@@ -109,8 +109,9 @@ export function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false
                                  "--uid",
                                  uid);
 
-    assert.soon(
-        () => { return rawMongoProgramOutput().search("Successfully activated KMIP Key") !== -1; });
+    assert.soon(() => {
+        return rawMongoProgramOutput(".*").search("Successfully activated KMIP Key") !== -1;
+    });
 
     waitProgram(pid);
 }
@@ -127,7 +128,7 @@ export function deactivatePyKMIPKey(kmipServerPort, uid) {
                                  uid);
 
     assert.soon(() => {
-        return rawMongoProgramOutput().search("Successfully Deactivated KMIP Key") !== -1;
+        return rawMongoProgramOutput(".*").search("Successfully Deactivated KMIP Key") !== -1;
     });
 
     waitProgram(pid);

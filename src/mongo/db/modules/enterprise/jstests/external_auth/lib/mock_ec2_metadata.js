@@ -49,7 +49,7 @@ export class MockEC2MetadataServer {
         assert(checkProgram(this.pid));
 
         assert.soon(function() {
-            return rawMongoProgramOutput().search(
+            return rawMongoProgramOutput(".*").search(
                        "Mock EC2 Instance Metadata Web Server Listening") !== -1;
         });
         sleep(1000);

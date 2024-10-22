@@ -52,7 +52,7 @@ export class MockECSMetadataServer {
         assert(checkProgram(this.pid));
 
         assert.soon(function() {
-            return rawMongoProgramOutput().search(
+            return rawMongoProgramOutput(".*").search(
                        "Mock ECS Instance Metadata Web Server Listening") !== -1;
         });
         sleep(1000);

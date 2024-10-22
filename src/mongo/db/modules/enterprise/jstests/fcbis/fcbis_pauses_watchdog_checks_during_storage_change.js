@@ -73,7 +73,7 @@ assert.soon(() => { return getWatchDogCheckGeneration(initialSyncNode) > 0; },
             "Watchdog should be running");
 
 assert.soon(function() {
-    return rawMongoProgramOutput().match(/\"id\":8350802.*Watchdog skipping running check/);
+    return rawMongoProgramOutput("\"id\":8350802").match(/Watchdog skipping running check/);
 }, "Watchdog should skip checks");
 
 jsTestLog("Turning fCBISHangAfterDeletingOldStorageFiles failpoint off");
@@ -82,7 +82,7 @@ assert.commandWorked(initialSyncNode.adminCommand(
 
 jsTestLog("Watchdog should resume running checks");
 assert.soon(function() {
-    return rawMongoProgramOutput().match(/\"id\":8350803.*Watchdog test/);
+    return rawMongoProgramOutput("\"id\":8350803").match(/Watchdog test/);
 }, "Watchdog should resume running checks after FCBIS is done but did not");
 
 // We use this assert instead of waitForSecondary because we want errors due to the node

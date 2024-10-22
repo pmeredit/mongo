@@ -29,7 +29,7 @@ const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", k
 assert(checkProgram(kmipServerPid));
 // wait for PyKMIP, a KMIP server framework, to start
 assert.soon(function() {
-    return rawMongoProgramOutput().search("Starting connection service") !== -1;
+    return rawMongoProgramOutput(".*").search("Starting connection service") !== -1;
 });
 
 const kmipParams = {

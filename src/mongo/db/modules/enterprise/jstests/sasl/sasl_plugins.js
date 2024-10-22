@@ -12,7 +12,7 @@ const kSaslPluginFailureMessageTemplate = 'Unexpectedly loading Cyrus SASL plugi
 function shouldNotLoadCyrusSaslPluginInClient() {
     let out = runNonMongoProgram("mongo", "--eval", ";");
 
-    rawMongoProgramOutput().split("\n").forEach(function(line) {
+    rawMongoProgramOutput(".*").split("\n").forEach(function(line) {
         assert(-1 === line.indexOf(kSaslPluginLogOutputString),
                kSaslPluginFailureMessageTemplate + 'client');
     });
@@ -23,7 +23,7 @@ function shouldNotLoadCyrusSaslPluginInServer() {
     const m = MongoRunner.runMongod();
 
     try {
-        rawMongoProgramOutput().split("\n").forEach(function(line) {
+        rawMongoProgramOutput(".*").split("\n").forEach(function(line) {
             assert(-1 === line.indexOf(kSaslPluginLogOutputString),
                    kSaslPluginFailureMessageTemplate + 'server');
         });

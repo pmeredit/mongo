@@ -69,7 +69,7 @@ export class LocalKafkaCluster {
 
         // Find the specific stdout line that we're looking for that has the
         // JSON dump of the consumer group state.
-        let output = rawMongoProgramOutput().split("\n").find(
+        let output = rawMongoProgramOutput(".*").split("\n").find(
             (line) => line.includes(`"group": "${groupId}"`));
         if (!output) {
             return null;
@@ -102,7 +102,7 @@ export class LocalKafkaCluster {
             return null;
         }
 
-        let output = rawMongoProgramOutput().split("\n").find(
+        let output = rawMongoProgramOutput(".*").split("\n").find(
             (line) => line.includes(`"group": "${groupId}"`));
         if (!output) {
             return null;
@@ -128,7 +128,7 @@ export class LocalKafkaCluster {
             jsTestLog(`Could not run get-compress-codec-details command: ${ret}`);
             return null;
         }
-        const output = rawMongoProgramOutput().split(/\W+/).filter(
+        const output = rawMongoProgramOutput(".*").split(/\W+/).filter(
             (word) => ["none", "gzip", "snappy", "lz4", "zstd"].includes(word));
         jsTestLog(`output: ${output}`);
         return output;

@@ -9,7 +9,7 @@ function assertStartupFails(opts, expect) {
     assert.throws(() => MongoRunner.runMongod(options),
                   [],
                   "Mongod started when it should not have with opts: " + tojson(opts));
-    const output = rawMongoProgramOutput();
+    const output = rawMongoProgramOutput(".*");
     assert(output.includes(expect),
            "Could not find expected reason for mongod failing to start: " + expect);
 }

@@ -77,7 +77,7 @@ function runTest(cipherMode, extra_opts = {}) {
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for PyKMIP, a KMIP server framework, to start
-    assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
+    assert.soon(() => rawMongoProgramOutput(".*").search("Starting connection service") !== -1);
 
     // start mongod with default keyID of "1"
     let md = runEncryptedMongod();
@@ -130,7 +130,7 @@ function runTest(cipherMode, extra_opts = {}) {
     kmipServerPid =
         _startMongoProgram(getPython3Binary(), testDir + "kmip_server.py", "--version", "1.0");
     assert(checkProgram(kmipServerPid));
-    assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
+    assert.soon(() => rawMongoProgramOutput(".*").search("Starting connection service") !== -1);
 
     // Start mongod without useLegacyProtocol, it should fail to do anything since the KMIP session
     // assigned to it will die immediately upon trying to start up

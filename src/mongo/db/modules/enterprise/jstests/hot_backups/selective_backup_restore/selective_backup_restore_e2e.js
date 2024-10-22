@@ -181,7 +181,7 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
     // Files known to the storage engine but not the durable catalog at the recovery timestamp will
     // be dropped and need to be removed from optionalFilesCopied.
-    rawMongoProgramOutput().split('\n').forEach((line) => {
+    rawMongoProgramOutput(".*").split('\n').forEach((line) => {
         if (!line.includes("Dropping unknown ident") && !line.includes("Dropping internal ident")) {
             return;
         }

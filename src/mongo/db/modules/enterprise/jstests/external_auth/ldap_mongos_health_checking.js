@@ -95,7 +95,7 @@ const runTestSuite = function(ldapTestServer) {
         const shellArgs = ['ps', '-e'];
         const rc = _runMongoProgram.apply(null, shellArgs);
         assert.eq(rc, 0);
-        const lines = rawMongoProgramOutput();
+        const lines = rawMongoProgramOutput(".*");
         let found;
         lines.split('\n').forEach((line) => {
             const match = line.match(/[' ']+([0-9]+).*mongos.*/i);
@@ -156,7 +156,7 @@ const runTestSuite = function(ldapTestServer) {
             jsTestLog(`/proc/${processId}/smaps not available`);
             return;
         }
-        const lines = rawMongoProgramOutput();
+        const lines = rawMongoProgramOutput(".*");
         let totalKb = 0;
         lines.split('\n').forEach((line) => {
             const match = line.match(/[' ']+Pss:[' ']+([0-9]+).*kB.*/i);
@@ -175,7 +175,7 @@ const runTestSuite = function(ldapTestServer) {
             jsTestLog(`/proc/${processId}/fd/ not available`);
             return;
         }
-        const lines = rawMongoProgramOutput();
+        const lines = rawMongoProgramOutput(".*");
         const totalFds = lines.split('\n').length;
         jsTestLog(`Total files open ${totalFds}`);
     };

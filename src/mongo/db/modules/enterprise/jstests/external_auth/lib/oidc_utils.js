@@ -40,7 +40,7 @@ export class OIDCKeyServer {
         assert(checkProgram(this.pid));
 
         assert.soon(function() {
-            return rawMongoProgramOutput().search("OIDC Key Server Listening") !== -1;
+            return rawMongoProgramOutput(".*").search("OIDC Key Server Listening") !== -1;
         });
         sleep(1000);
         print("OIDC Key Server successfully started");
@@ -87,7 +87,7 @@ export function runProgramAndCaptureOutput(args) {
 
     const prefix = 'sh' + NumberInt(pid) + '| ';
     let output = '';
-    rawMongoProgramOutput().split("\n").forEach(function(line) {
+    rawMongoProgramOutput(".*").split("\n").forEach(function(line) {
         if (line.startsWith(prefix)) {
             output = output + line.substr(prefix.length) + "\n";
         }

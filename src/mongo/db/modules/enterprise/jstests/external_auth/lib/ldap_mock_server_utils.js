@@ -83,8 +83,8 @@ export class MockLDAPServer {
         }
 
         assert(checkProgram(this.pid));
-        assert.soon(() => rawMongoProgramOutput().search("LDAPServerFactory starting on " +
-                                                         this.port) !== -1);
+        assert.soon(() => rawMongoProgramOutput(".*").search("LDAPServerFactory starting on " +
+                                                             this.port) !== -1);
 
         print("Mock LDAP server started on port " + this.port + " with delay " + this.delay);
     }
@@ -219,8 +219,8 @@ export class LDAPProxy {
                                               this.delay);
 
         assert(checkProgram(this.pid));
-        assert.soon(() => rawMongoProgramOutput().search("ServerFactory starting on " +
-                                                         this.proxyPort) !== -1);
+        assert.soon(() => rawMongoProgramOutput(".*").search("ServerFactory starting on " +
+                                                             this.proxyPort) !== -1);
 
         print("LDAP proxy started on port", this.proxyPort);
     }

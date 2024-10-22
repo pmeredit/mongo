@@ -54,7 +54,7 @@ export class MockSTSServer {
         assert(checkProgram(this.pid));
 
         assert.soon(function() {
-            return rawMongoProgramOutput().search("Mock STS Web Server Listening") !== -1;
+            return rawMongoProgramOutput(".*").search("Mock STS Web Server Listening") !== -1;
         });
         sleep(1000);
         print("Mock KMS Server successfully started");

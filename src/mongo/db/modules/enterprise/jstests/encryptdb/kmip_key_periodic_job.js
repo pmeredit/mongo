@@ -50,7 +50,7 @@ print("Testing that server shuts down when key is deactivated.");
     sleep(10000);
 
     assert.soon(() => {
-        return rawMongoProgramOutput().search(
+        return rawMongoProgramOutput(".*").search(
                    "KMIP Key used for ESE is not in active state. Shutting down server.") >= 0;
     });
 
