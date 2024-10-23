@@ -104,13 +104,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                 Object.assign(options, {wiredTigerDirectoryForIndexes: ''});
             }
         }
-        return options;
-    }
-
-    function _addEncryptOptions(options, encryptOptions) {
-        if (encryptOptions["enableEncryption"] != undefined) {
-            Object.assign(options, encryptOptions);
-        }
 
         return options;
     }
@@ -304,21 +297,18 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
 
     // lastDocID is the largest docID inserted in the restored oplog entries. This ensures that the
     // data reflects the point in time the user requested (if PIT restore is specified).
-    function _checkDataConsistency(restoredNodePorts,
-                                   lastDocID,
-                                   backupBinaryVersion,
-                                   isIncrementalBackup,
-                                   collectionOptions,
-                                   encryptOptions) {
+    function _checkDataConsistency(
+        restoredNodePorts, lastDocID, backupBinaryVersion, isIncrementalBackup, collectionOptions) {
         jsTestLog("Checking data consistency");
 
-        let options = {
-            noCleanData: true,
-            dbpath: restorePaths[configServerIdx],
-            port: restoredNodePorts[configServerIdx]
-        };
-        options = _addEncryptOptions(options, encryptOptions);
-        const configRS = new ReplSetTest({name: csrsName, nodes: [options]});
+        const configRS = new ReplSetTest({
+            name: csrsName,
+            nodes: [{
+                noCleanData: true,
+                dbpath: restorePaths[configServerIdx],
+                port: restoredNodePorts[configServerIdx]
+            }]
+        });
 
         // We need to manually update this field because ReplSetTest assumes the "ports" field is
         // always set by itself.
@@ -329,13 +319,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         jsTestLog("Starting restored Config Server with data from " +
                   restorePaths[configServerIdx] + " at port " + restoredNodePorts[configServerIdx]);
         configRS.startSet({configsvr: ""});
-
-        if (encryptOptions["enableEncryption"] != undefined) {
-            assert(configRS.getPrimary()
-                       .getDB('admin')
-                       .runCommand({serverStatus: 1})
-                       .encryptionAtRest.encryptionEnabled);
-        }
 
         checkFCV(configRS.getPrimary().getDB('admin'), expectedFCV);
 
@@ -352,7 +335,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                 {noCleanData: true, dbpath: restorePaths[i], port: restoredNodePorts[i]},
                 /*isCSRS=*/ false,
                 /*isSelectiveRestore=*/ false);
-            options = _addEncryptOptions(options, encryptOptions);
             restoredShards[i] = new ReplSetTest({
                 name: _replicaSetName(i),
                 nodes: [options],
@@ -360,13 +342,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             restoredShards[i].startSet({shardsvr: ""});
 
             checkFCV(restoredShards[i].getPrimary().getDB('admin'), expectedFCV);
-            if (encryptOptions["enableEncryption"] != undefined) {
-                assert(restoredShards[i]
-                           .getPrimary()
-                           .getDB('admin')
-                           .runCommand({serverStatus: 1})
-                           .encryptionAtRest.encryptionEnabled);
-            }
 
             const indexes = restoredShards[i]
                                 .getPrimary()
@@ -834,7 +809,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                 restorePointInTime,
                                 restoreOplogEntries,
                                 isSelectiveRestore,
-                                encryptOptions,
                                 filesCopied) {
         const isCSRS = (setName === csrsName);
 
@@ -867,7 +841,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         },
                                        isCSRS,
                                        isSelectiveRestore);
-        options = _addEncryptOptions(options, encryptOptions);
 
         let conn = MongoRunner.runMongod(options);
 
@@ -946,7 +919,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             },
                                        isCSRS,
                                        isSelectiveRestore);
-            options = _addEncryptOptions(options, encryptOptions);
+
             const tmpSet = new ReplSetTest({
                 name: setName,
                 nodes: [options],
@@ -988,7 +961,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             },
                                        isCSRS,
                                        isSelectiveRestore);
-            options = _addEncryptOptions(options, encryptOptions);
+
             conn = MongoRunner.runMongod(options);
 
             /**
@@ -1016,8 +989,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             },
                                        isCSRS,
                                        isSelectiveRestore);
-
-            options = _addEncryptOptions(options, encryptOptions);
             conn = MongoRunner.runMongod(options);
             assert.neq(conn, null);
             // Once the mongod is up and accepting connections, safely shut down the node.
@@ -1046,7 +1017,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                        isCSRS,
                                        isSelectiveRestore);
 
-            options = _addEncryptOptions(options, encryptOptions);
             conn = MongoRunner.runMongod(options);
             assert.neq(conn, null);
 
@@ -1061,7 +1031,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
          * remove any references to unrestored collections from its config collections.
          */
         if (isCSRS && isSelectiveRestore) {
-            options = {
+            conn = MongoRunner.runMongod({
                 dbpath: restorePath,
                 noCleanData: true,
                 restore: '',
@@ -1072,9 +1042,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                     wiredTigerSkipTableLoggingChecksOnStartup: true,
                     wiredTigerSkipTableLoggingChecksDuringValidation: true,
                 }
-            };
-            options = _addEncryptOptions(options, encryptOptions);
-            conn = MongoRunner.runMongod(options);
+            });
             assert.neq(conn, null);
 
             // Create "local.system.collections_to_restore" and populate it with collections
@@ -1125,7 +1093,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         },
                                    isCSRS,
                                    isSelectiveRestore);
-        options = _addEncryptOptions(options, encryptOptions);
+
         return MongoRunner.runMongod(options);
     }
 
@@ -1136,8 +1104,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                           restorePointInTime,
                           restoreOplogEntries,
                           isSelectiveRestore,
-                          filesCopied,
-                          encryptOptions) {
+                          filesCopied) {
         jsTestLog({
             msg: "Restoring CSRS.",
             restorePath: restorePath,
@@ -1157,7 +1124,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                         restorePointInTime,
                                         restoreOplogEntries,
                                         isSelectiveRestore,
-                                        encryptOptions,
                                         filesCopied);
         const configDb = conn.getDB("config");
 
@@ -1273,8 +1239,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                            clusterId,
                            shardNum,
                            configsvrConnectionString,
-                           isSelectiveRestore,
-                           encryptOptions) {
+                           isSelectiveRestore) {
         jsTestLog("Restoring shard at " + restorePath + " for port " + restoredNodePort);
 
         const conn = _restoreReplicaSet(restorePath,
@@ -1283,8 +1248,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                         backupPointInTime,
                                         restorePointInTime,
                                         restoreOplogEntries,
-                                        isSelectiveRestore,
-                                        encryptOptions);
+                                        isSelectiveRestore);
 
         _restoreShardInner(conn, clusterId, shardNum, configsvrConnectionString);
 
@@ -1345,8 +1309,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                 restorePointInTime,
                                 restoreOplogEntries,
                                 isSelectiveRestore,
-                                filesCopied,
-                                encryptOptions) {
+                                filesCopied) {
         jsTestLog({
             msg: "Restoring from backup.",
             "Backup PIT": backupPointInTime,
@@ -1378,8 +1341,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                        restorePointInTime,
                                        csrsRestoreOplogEntries,
                                        isSelectiveRestore,
-                                       filesCopied,
-                                       encryptOptions);
+                                       filesCopied);
 
         const configsvrConnectionString =
             csrsName + "/localhost:" + restoredNodePorts[configServerIdx];
@@ -1400,8 +1362,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                           clusterId,
                           i,
                           configsvrConnectionString,
-                          isSelectiveRestore,
-                          encryptOptions);
+                          isSelectiveRestore);
         }
     }
 
@@ -1416,10 +1377,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         isSelectiveRestore = false,
         isIncrementalBackup = false,
         collectionOptions = {},
-        backupBinaryVersion = "latest",
-        enableEncryption = undefined,
-        encryptionKeyFile = "",
-        encryptionCipherMode = "",
+        backupBinaryVersion = "latest"
     } = {}) {
         const oplogSize = 1024;
 
@@ -1430,19 +1388,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             {syncdelay: 1, oplogSize: oplogSize, setParameter: {writePeriodicNoops: true}},
             /*isCSRS=*/ false,
             /*isSelectiveRestore=*/ false);
-        let configOptions = {
-            binVersion: backupBinaryVersion,
-            setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1},
-            syncdelay: 1,
-            oplogSize: oplogSize,
-        };
-
-        // Check if encryption is enabled, if not pass an empty set to the options.
-        let encryptOptions =
-            _addEncryptOptions({}, {enableEncryption, encryptionKeyFile, encryptionCipherMode});
-
-        configOptions = _addEncryptOptions(configOptions, encryptOptions);
-        rsOptions = _addEncryptOptions(rsOptions, encryptOptions);
         const st = new ShardingTest({
             name: jsTestName(),
             shards: numShards,
@@ -1450,10 +1395,16 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             rs: rsOptions,
             other: {
                 mongosOptions: {binVersion: backupBinaryVersion},
-                configOptions: configOptions,
+                configOptions: {
+                    binVersion: backupBinaryVersion,
+                    setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1},
+                    syncdelay: 1,
+                    oplogSize: oplogSize,
+                },
                 rsOptions: {binVersion: backupBinaryVersion},
             },
         });
+
         let collNames = [collNameRestored];
         if (isSelectiveRestore) {
             collNames.push(collNameUnrestored);
@@ -1571,14 +1522,12 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
         const numNodes = configShard ? numShards : numShards + 1;
         const restoredNodePorts = allocatePorts(numNodes);
         tmpPort = Math.max(...restoredNodePorts) + 1;
-
         _restoreFromBackup(restoredNodePorts,
                            backupPointInTime,
                            restorePointInTime,
                            restoreOplogEntries,
                            isSelectiveRestore,
-                           filesCopied,
-                           encryptOptions);
+                           filesCopied);
 
         /**
          *  Check data consistency
@@ -1587,9 +1536,9 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                               lastDocID,
                               backupBinaryVersion,
                               isIncrementalBackup,
-                              collectionOptions,
-                              encryptOptions);
+                              collectionOptions);
 
+        jsTestLog("Test succeeded");
         return "Test succeeded.";
     };
 };

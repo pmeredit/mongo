@@ -1,11 +1,6 @@
 /**
  * This file tests that opening a backup cursor while running with encryptdb also returns the WT
  * files to copy that are part of the keystore database.
- *
- * @tags: [
- *   requires_persistence,
- *   requires_wiredtiger,
- * ]
  */
 
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
