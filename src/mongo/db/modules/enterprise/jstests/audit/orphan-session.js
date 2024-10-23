@@ -18,10 +18,16 @@ let runTest = function(conn, audit, admin) {
     admin.auth("admin", "pwd");
 };
 
+// Do not emit audit entries for IPC events.
+// TODO (SERVER-96103) Fix quoting in Win32 ProgramRunner.
+// For now, replace double quotes with single quotes before the escaping happens.
+const auditFilter =
+    JSON.stringify({"users": {"$ne": {user: "__system", db: "local"}}}).replaceAll('"', "'");
+
 {
     print("START orphan-session.js for standalone");
 
-    const m = MongoRunner.runMongodAuditLogger({auth: ''});
+    const m = MongoRunner.runMongodAuditLogger({auth: '', auditFilter: auditFilter});
     const audit = m.auditSpooler();
     const admin = m.getDB("admin");
 
@@ -34,7 +40,8 @@ let runTest = function(conn, audit, admin) {
 {
     print("START orphan-session.js for sharded cluster");
 
-    const st = MongoRunner.runShardedClusterAuditLogger({auth: null, keyFile: "jstests/libs/key1"});
+    const st = MongoRunner.runShardedClusterAuditLogger({keyFile: "jstests/libs/key1"},
+                                                        {auditFilter: auditFilter});
     const mongos = st.s0;
     const audit = mongos.auditSpooler();
     const admin = mongos.getDB("admin");
