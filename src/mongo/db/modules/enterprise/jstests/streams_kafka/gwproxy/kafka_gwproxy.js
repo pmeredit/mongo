@@ -363,8 +363,11 @@ function mongoToKafkaSASLSSLFailure() {
     // Note: This should fail during connect.  GWProxy will return a TLS ACCESS DENIED in this
     // case, but rdkafka doesn't propagate that error up, so it'll just look like an
     // "Unknown error -1" in the driver.
-    assert.commandFailed(db.runCommand(makeMongoToKafkaStartCmd(
-        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaSASLSSLNameBad})));
+    assert.commandFailed(db.runCommand(makeMongoToKafkaStartCmd({
+        collName: sourceColl1.getName() + "bad",
+        topicName: topicName1,
+        connName: kafkaSASLSSLNameBad
+    })));
 
     // Stop the streamProcessors.
     stopStreamProcessor(kafkaToMongoName);
