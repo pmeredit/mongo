@@ -72,7 +72,7 @@ const FeatureFlagDefinition FeatureFlags::kKafkaMaxPrefetchByteSize{
 const FeatureFlagDefinition FeatureFlags::kUseExecutionPlanFromCheckpoint{
     "useExecutionPlanFromCheckpoint",
     "Use the Execution plan stored in the checkpoint metadata.",
-    mongo::Value(true),
+    mongo::Value(false),
     {}};
 
 const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
