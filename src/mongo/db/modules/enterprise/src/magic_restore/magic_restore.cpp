@@ -631,7 +631,14 @@ void updateShardingMetadata(OperationContext* opCtx,
     mongo::ShardIdentity previousShardIdentity = getShardIdentity(opCtx, storageInterface);
 
     if (isConfig(restoreConfig)) {
+        // Drop config.placementHistory.
+        LOGV2(9322100, "Dropping config.placementHistory");
+        fassert(9322101,
+                storageInterface->dropCollection(
+                    opCtx, NamespaceString::kConfigsvrPlacementHistoryNamespace));
+
         // Clear the shard identity document in admin.system.version.
+        LOGV2(9322102, "Deleting shardIdentity document");
         fassert(8291307,
                 storageInterface->deleteById(opCtx,
                                              NamespaceString::kServerConfigurationNamespace,

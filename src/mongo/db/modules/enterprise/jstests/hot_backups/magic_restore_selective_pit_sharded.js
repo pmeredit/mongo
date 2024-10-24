@@ -285,9 +285,18 @@ function runTest(nodeOptionsArg) {
         // The contents have been checked before and after restore elsewhere.
         "collections",
         "shardedCollToSkip",
-        "unshardedColl"
+        "unshardedColl",
+        "placementHistory"
     ];
     shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
+
+    // config.placementHistory is dropped during the restore procedure.
+    assert.eq(configUtils.rst.getPrimary()
+                  .getDB("config")
+                  .getCollection("placementHistory")
+                  .find()
+                  .toArray(),
+              0);
 
     jsTestLog("Stopping restore nodes");
     shardingRestoreTest.getShardRestoreTests().forEach(

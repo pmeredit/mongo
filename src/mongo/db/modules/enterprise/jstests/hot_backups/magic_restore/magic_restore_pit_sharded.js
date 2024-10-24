@@ -154,6 +154,7 @@ function runTest(insertHigherTermOplogEntry) {
     shardingRestoreTest.findMaxCheckpointTsAndExtendBackupCursors();
     shardingRestoreTest.setPointInTimeTimestamp();
     shardingRestoreTest.setUpShardingRenamesAndIdentityDocs();
+
     jsTestLog("Stopping all nodes");
     st.stop({noCleanData: true});
 
@@ -260,9 +261,18 @@ function runTest(insertHigherTermOplogEntry) {
         "databases",  // Renaming shards affects the "primary" field of documents in that collection
         "chunks",     // Renaming shards affects the "shard" field of documents in that collection
         "cache.chunks.config.system.sessions",
-        `cache.chunks.${dbName}.${coll}`
+        `cache.chunks.${dbName}.${coll}`,
+        "placementHistory"
     ];
     shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
+
+    // config.placementHistory is dropped during the restore procedure.
+    assert.eq(configUtils.rst.getPrimary()
+                  .getDB("config")
+                  .getCollection("placementHistory")
+                  .find()
+                  .toArray(),
+              0);
 
     jsTestLog("Stopping restore nodes");
     shardingRestoreTest.getShardRestoreTests().forEach(

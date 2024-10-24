@@ -611,6 +611,8 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kConfigMongosNamespace, CollectionOptions{}));
     ASSERT_OK(storage->createCollection(opCtx, chunkTest, CollectionOptions{}));
+    ASSERT_OK(storage->createCollection(
+        opCtx, NamespaceString::kConfigsvrPlacementHistoryNamespace, CollectionOptions{}));
 
     BSONObj expectedShardIdentity =
         BSON("_id"
@@ -630,6 +632,10 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
                                                              << "currentVersion" << 5)},
                                         InsertStatement{previousShardIdentity}}));
 
+    ASSERT_OK(storage->insertDocuments(opCtx,
+                                       NamespaceString::kConfigsvrPlacementHistoryNamespace,
+                                       {InsertStatement{BSON("_id" << 0)}}));
+
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(NodeTypeEnum::kConfigShard);
 
@@ -644,6 +650,15 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
 
     ASSERT_EQUALS(ErrorCodes::NamespaceNotFound,
                   storage->getCollectionUUID(opCtx, NamespaceString::kConfigMongosNamespace));
+
+    auto res = storage->findDocuments(opCtx,
+                                      NamespaceString::kConfigsvrPlacementHistoryNamespace,
+                                      {} /* indexName */,
+                                      repl::StorageInterface::ScanDirection::kForward,
+                                      {} /* startKey */,
+                                      BoundInclusion::kIncludeStartKeyOnly,
+                                      -1 /* limit */);
+    ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, res.getStatus());
 }
 
 // Test of updateShardingMetadata for magic_restore::NodeTypeEnum::kShard.
