@@ -312,12 +312,6 @@ public:
         const mongo::NamespaceString& nss,
         const std::set<mongo::FieldPath>& fieldPaths) const override;
 
-    boost::optional<mongo::ShardVersion> refreshAndGetCollectionVersion(
-        const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        const mongo::NamespaceString& nss) const override {
-        return boost::none;
-    }
-
     boost::optional<mongo::DatabaseVersion> refreshAndGetDatabaseVersion(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         const mongo::DatabaseName& dbName) const override {
