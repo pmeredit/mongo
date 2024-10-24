@@ -164,7 +164,7 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
     }
 
     if (!_isInstanceSharded) {
-        auto helloResponse = fromBsoncxxDocument(db->run_command(make_document(kvp("hello", "1"))));
+        auto helloResponse = fromBsoncxxDocument(callHello(*db));
         auto msgElement = helloResponse["msg"];
         uassert(8429101,
                 "Unexpected hello response: {}"_format(helloResponse.toString()),

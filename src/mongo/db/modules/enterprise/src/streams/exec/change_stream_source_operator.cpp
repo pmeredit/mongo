@@ -95,16 +95,16 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
     // Run the hello command to test the connection and retrieve the current operationTime.
     // A failure will throw an exception.
     bsoncxx::document::value helloResponse{bsoncxx::document::view()};
-    auto helloRequest = make_document(kvp("hello", "1"));
     if (database) {
         // TODO(SERVER-95515): Remove this block once shouldUseWatchToInitClusterChangestream
         // feature flag is removed.
-        helloResponse = database->run_command(std::move(helloRequest));
+        helloResponse = callHello(*database);
     } else {
         // Use the config database because the driver requires us to call run_command under a
         // particular DB.
         const std::string defaultDb{"config"};
-        helloResponse = client->database(defaultDb).run_command(std::move(helloRequest));
+        auto configDatabase = client->database(defaultDb);
+        helloResponse = callHello(configDatabase);
     }
 
     auto operationTime = helloResponse.find("operationTime");

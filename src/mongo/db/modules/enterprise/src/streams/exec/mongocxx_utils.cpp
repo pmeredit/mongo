@@ -5,11 +5,16 @@
 
 #include <boost/algorithm/string/replace.hpp>
 #include <bsoncxx/json.hpp>
+#include <exception>
 #include <mongocxx/exception/exception.hpp>
+#include <mongocxx/exception/operation_exception.hpp>
 #include <mongocxx/uri.hpp>
+#include <unistd.h>
 
 #include "mongo/db/service_context.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/str.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/util/exception.h"
@@ -87,6 +92,22 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
 }
 
 bsoncxx::document::value callHello(mongocxx::database& db) {
+    int numRetries = 3;
+    for (int i = 0; i < numRetries - 1; i++) {
+        try {
+            auto response = db.run_command(make_document(kvp("hello", "1")));
+            return response;
+        } catch (const mongocxx::operation_exception&) {
+            // We have to wait at least 500ms (i.e. the value of
+            // MONGOC_TOPOLOGY_MIN_HEARTBEAT_FREQUENCY_MS) Otherwise, we will self inflict a "No
+            // servers yet eligible for rescan" error which is due to trying to re-scan too soon.
+            sleepFor(Milliseconds{500});
+        }
+    }
+
+    // If we got to this point, all the previous calls threw operation_exceptions.
+    // We will try the call one more time outside of the try/catch block, so if there is
+    // an exception, it can be handled in the calling code.
     return db.run_command(make_document(kvp("hello", "1")));
 }
 
