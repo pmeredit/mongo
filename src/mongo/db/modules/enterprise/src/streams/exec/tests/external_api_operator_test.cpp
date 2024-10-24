@@ -9,9 +9,14 @@
 #include <memory>
 
 #include "mongo/bson/json.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/assert.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/net/http_client_mock.h"
+#include "mongo/util/system_tick_source.h"
+#include "mongo/util/tick_source.h"
+#include "mongo/util/tick_source_mock.h"
 #include "streams/exec/external_api_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -30,16 +35,17 @@ public:
         _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
     }
 
-    void doTest(ExternalApiOperator::Options opts,
-                std::function<void(const std::deque<StreamMsgUnion>&)> testAssert) {
-        auto oper = std::make_unique<ExternalApiOperator>(_context.get(), std::move(opts));
-        auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
+    void setupDAG(ExternalApiOperator::Options opts) {
+        _oper = std::make_unique<ExternalApiOperator>(_context.get(), std::move(opts));
+        _sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
 
         // Build DAG.
-        oper->addOutput(sink.get(), 0);
-        oper->start();
-        sink->start();
+        _oper->addOutput(_sink.get(), 0);
+        _oper->start();
+        _sink->start();
+    }
 
+    void doTest(std::function<void(const std::deque<StreamMsgUnion>&)> testAssert) {
         // Flow data through the DAG.
         StreamDataMsg inputDataMsg;
         std::vector<StreamDocument> inputDocs;
@@ -56,18 +62,47 @@ public:
         inputDataMsg.docs = std::move(inputDocs);
 
         // Send data message to operator and let process + flow to sink.
-        oper->onDataMsg(0, inputDataMsg);
-        auto messages = sink->getMessages();
+        _oper->onDataMsg(0, inputDataMsg);
+        auto messages = _sink->getMessages();
 
         testAssert(messages);
     }
 
+    void doLoadTest(int iterations,
+                    Microseconds minTestDuration,
+                    std::function<void()> setup,
+                    std::function<void(const std::deque<StreamMsgUnion>&)> testAssert) {
+        Timer timer{};
+        auto start = timer.elapsed();
+
+        for (int i = 0; i < iterations; i++) {
+            setup();
+            doTest(testAssert);
+        }
+
+        ASSERT_GREATER_THAN_OR_EQUALS(timer.elapsed() - start, minTestDuration);
+    }
+
+    void updateRateLimitPerSecond(int64_t rate) {
+        auto featureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+        featureFlags[FeatureFlags::kExternalAPIRateLimitPerSecond.name] =
+            mongo::Value::createIntOrLong(rate);
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{featureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    }
+
 protected:
     std::unique_ptr<Context> _context;
+
+    std::unique_ptr<ExternalApiOperator> _oper;
+    std::unique_ptr<InMemorySinkOperator> _sink;
 };
 
 TEST_F(ExternalApiOperatorTest, BasicGet) {
     StringData uri{"http://localhost:10000"};
+
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
@@ -80,13 +115,15 @@ TEST_F(ExternalApiOperatorTest, BasicGet) {
                                                      << "ok"))});
 
     ExternalApiOperator::Options options{
-        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .httpClient = std::move(mockHttpClient),
         .requestType = HttpClient::HttpMethod::kGET,
         .url = uri.toString(),
         .as = "response",
     };
 
-    doTest(std::move(options), [](std::deque<StreamMsgUnion> messages) {
+    setupDAG(std::move(options));
+
+    doTest([](std::deque<StreamMsgUnion> messages) {
         ASSERT_EQ(messages.size(), 1);
         auto msg = messages.at(0);
 
@@ -117,13 +154,15 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithDottedAsField) {
 
     // Create $externalAPI operator.
     ExternalApiOperator::Options options{
-        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .httpClient = std::move(mockHttpClient),
         .requestType = HttpClient::HttpMethod::kGET,
         .url = uri.toString(),
         .as = "apiResponse.inner",
     };
 
-    doTest(std::move(options), [](std::deque<StreamMsgUnion> messages) {
+    setupDAG(std::move(options));
+
+    doTest([](std::deque<StreamMsgUnion> messages) {
         ASSERT_EQ(messages.size(), 1);
         auto msg = messages.at(0);
 
@@ -144,6 +183,188 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithDottedAsField) {
     });
 }
 
+TEST_F(ExternalApiOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    auto rawMockHttpClient = mockHttpClient.get();
+
+    updateRateLimitPerSecond(1);
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::move(mockHttpClient),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+    };
+
+    setupDAG(std::move(options));
+
+    doLoadTest(
+        5,
+        Seconds(4),
+        [rawMockHttpClient, uri]() {
+            rawMockHttpClient->expect(
+                MockHttpClient::Request{
+                    HttpClient::HttpMethod::kGET,
+                    uri.toString(),
+                },
+                MockHttpClient::Response{.code = 200,
+                                         .body = tojson(BSON("ack"
+                                                             << "ok"))});
+        },
+        [](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 1);
+            auto msg = messages.at(0);
+
+            ASSERT(msg.dataMsg);
+            ASSERT(!msg.controlMsg);
+            ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+            auto doc = msg.dataMsg->docs[0].doc.toBson();
+            auto response = doc["response"].Obj();
+            ASSERT_TRUE(!response.isEmpty());
+
+            auto ack = response["ack"];
+            ASSERT_TRUE(ack.ok());
+            ASSERT_EQ(ack.String(), "ok");
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    auto rawMockHttpClient = mockHttpClient.get();
+
+    TickSourceMock<Microseconds> tickSource{};
+    Timer timer{&tickSource};
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::move(mockHttpClient),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+
+        .throttleFn =
+            [&tickSource](Microseconds throttleDelay) { tickSource.advance(throttleDelay); },
+        .timer = timer,
+    };
+
+    auto addMockClientExpectation = [rawMockHttpClient, uri]() {
+        rawMockHttpClient->expect(
+            MockHttpClient::Request{
+                HttpClient::HttpMethod::kGET,
+                uri.toString(),
+            },
+            MockHttpClient::Response{.code = 200,
+                                     .body = tojson(BSON("ack"
+                                                         << "ok"))});
+    };
+
+    auto testAssert = [](std::deque<StreamMsgUnion> messages) {
+        ASSERT_EQ(messages.size(), 1);
+        auto msg = messages.at(0);
+
+        ASSERT(msg.dataMsg);
+        ASSERT(!msg.controlMsg);
+        ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+        auto doc = msg.dataMsg->docs[0].doc.toBson();
+        auto response = doc["response"].Obj();
+        ASSERT_TRUE(!response.isEmpty());
+
+        auto ack = response["ack"];
+        ASSERT_TRUE(ack.ok());
+        ASSERT_EQ(ack.String(), "ok");
+    };
+
+    setupDAG(std::move(options));
+
+    auto now = timer.elapsed();
+
+    updateRateLimitPerSecond(1);
+    addMockClientExpectation();
+    doTest(testAssert);
+    ASSERT_EQ(timer.elapsed() - now, Seconds(0));
+
+    addMockClientExpectation();
+    doTest(testAssert);
+    ASSERT_EQ(timer.elapsed() - now, Seconds(1));
+}
+
+TEST_F(ExternalApiOperatorTest, RateLimitingParametersUpdate) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    auto rawMockHttpClient = mockHttpClient.get();
+
+    TickSourceMock<Microseconds> tickSource{};
+    Timer timer{&tickSource};
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::move(mockHttpClient),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+
+        .throttleFn =
+            [&tickSource](Microseconds throttleDelay) { tickSource.advance(throttleDelay); },
+        .timer = timer,
+    };
+
+    auto addMockClientExpectation = [rawMockHttpClient, uri]() {
+        rawMockHttpClient->expect(
+            MockHttpClient::Request{
+                HttpClient::HttpMethod::kGET,
+                uri.toString(),
+            },
+            MockHttpClient::Response{.code = 200,
+                                     .body = tojson(BSON("ack"
+                                                         << "ok"))});
+    };
+
+    auto testAssert = [](std::deque<StreamMsgUnion> messages) {
+        ASSERT_EQ(messages.size(), 1);
+        auto msg = messages.at(0);
+
+        ASSERT(msg.dataMsg);
+        ASSERT(!msg.controlMsg);
+        ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+        auto doc = msg.dataMsg->docs[0].doc.toBson();
+        auto response = doc["response"].Obj();
+        ASSERT_TRUE(!response.isEmpty());
+
+        auto ack = response["ack"];
+        ASSERT_TRUE(ack.ok());
+        ASSERT_EQ(ack.String(), "ok");
+    };
+
+    setupDAG(std::move(options));
+
+    for (int rateLimitPerSec : {1, 2, 4}) {
+        auto now = timer.elapsed();
+
+        updateRateLimitPerSecond(rateLimitPerSec);
+
+        // Generate full burst
+        for (int i = 0; i < rateLimitPerSec; i++) {
+            addMockClientExpectation();
+            doTest(testAssert);
+        }
+
+        // Assert that no throttling occured during the burst
+        ASSERT_EQ(timer.elapsed() - now, Milliseconds(0));
+
+        addMockClientExpectation();
+        doTest(testAssert);
+
+        // Assert that throttling occured after initial burst
+        ASSERT_EQ(timer.elapsed() - now, Milliseconds(1000 / rateLimitPerSec));
+    }
+}
+
 TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsStringExpression) {
     StringData uri{"http://localhost:10000"};
     // Set up mock http client.
@@ -161,14 +382,16 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsStringExpression) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto strExpr = ExpressionFieldPath::parse(expCtx.get(), "$path", expCtx->variablesParseState);
     ExternalApiOperator::Options options{
-        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .httpClient = std::move(mockHttpClient),
         .requestType = HttpClient::HttpMethod::kGET,
         .url = uri.toString(),
         .urlPathExpr = strExpr,
         .as = "response",
     };
 
-    doTest(std::move(options), [](std::deque<StreamMsgUnion> messages) {
+    setupDAG(std::move(options));
+
+    doTest([](std::deque<StreamMsgUnion> messages) {
         ASSERT_EQ(messages.size(), 1);
         auto msg = messages.at(0);
 
@@ -205,14 +428,16 @@ TEST_F(ExternalApiOperatorTest, BasicGetWithPathAsBsonExpression) {
     auto getFieldExpr =
         Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
     ExternalApiOperator::Options options{
-        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .httpClient = std::move(mockHttpClient),
         .requestType = HttpClient::HttpMethod::kGET,
         .url = uri.toString(),
         .urlPathExpr = getFieldExpr,
         .as = "response",
     };
 
-    doTest(std::move(options), [](std::deque<StreamMsgUnion> messages) {
+    setupDAG(std::move(options));
+
+    doTest([](std::deque<StreamMsgUnion> messages) {
         ASSERT_EQ(messages.size(), 1);
         auto msg = messages.at(0);
 

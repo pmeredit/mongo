@@ -5,14 +5,20 @@
 #pragma once
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>
+#include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/rate_limiter.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 
 namespace streams {
 
@@ -38,6 +44,7 @@ public:
         // Optional url path that is evaluated per document and appended to the url defined in the
         // connection.
         boost::intrusive_ptr<mongo::Expression> urlPathExpr{nullptr};
+
         // Defined in the connection. Evaluated once on startup.
         std::vector<std::string> connectionHeaders;
         // Query parameters used when making a HTTP request. Evaluated at runtime on each document.
@@ -53,6 +60,12 @@ public:
         mongo::Seconds connectionTimeoutSecs{30};
         // Represents the timeout for making a request and receiving a response.
         mongo::Seconds requestTimeoutSecs{60};
+
+        // throttleFn is a callback for the behavior that occurs when throttled
+        std::function<void(Microseconds)> throttleFn{sleepFor<Microseconds>};
+
+        // timer is the timer to be used for rate limiting
+        Timer timer{};
     };
 
     ExternalApiOperator(Context* context, Options options);
@@ -94,6 +107,11 @@ private:
     std::vector<std::string> evaluateHeaders(const mongo::Document& doc);
 
     ExternalApiOperator::Options _options;
+
+    int64_t _rateLimitPerSec;
+    RateLimiter _rateLimiter;
 };
+
+int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);
 
 }  // namespace streams

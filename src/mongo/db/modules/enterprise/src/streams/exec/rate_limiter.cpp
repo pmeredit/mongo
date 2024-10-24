@@ -4,6 +4,7 @@
 
 #include "rate_limiter.h"
 
+#include "mongo/util/timer.h"
 #include <cmath>
 #include <cstdint>
 
@@ -25,6 +26,10 @@ RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, int64_t capacity, Timer* 
             tokensRefilledPerSec > 0);
     uassert(ErrorCodes::InternalError, "capacity is not greater than 0", capacity > 0);
     tassert(ErrorCodes::InternalError, "timer is null", timer != nullptr);
+}
+
+RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, Timer* timer) {
+    *this = RateLimiter{tokensRefilledPerSec, tokensRefilledPerSec, timer};
 }
 
 Microseconds RateLimiter::consume(int64_t tokens) {

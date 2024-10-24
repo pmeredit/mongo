@@ -23,6 +23,9 @@ public:
      */
     RateLimiter(int64_t tokensRefilledPerSec, int64_t capacity, Timer* timer);
 
+    // Constructs a RateLimiter whose full burst period is a second
+    RateLimiter(int64_t tokensRefilledPerSec, Timer* timer);
+
     // Attempts to consume tokens. Returns the necessary non-zero delay to wait if tokens aren't yet
     // available.
     Microseconds consume(int64_t tokens = 1);

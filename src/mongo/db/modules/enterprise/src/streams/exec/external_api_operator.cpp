@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/stdx/string_view.hpp>
+#include <cstdio>
 #include <memory>
 
 #include "mongo/base/error_codes.h"
@@ -14,11 +15,14 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "streams/exec/context.h"
+#include "streams/exec/feature_flag.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/rate_limiter.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -28,7 +32,10 @@ namespace streams {
 using namespace mongo;
 
 ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::Options options)
-    : Operator(context, 1, 1), _options(std::move(options)) {}
+    : Operator(context, 1, 1),
+      _options(std::move(options)),
+      _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
+      _rateLimiter{_rateLimitPerSec, &_options.timer} {}
 
 void ExternalApiOperator::initializeHTTPClient() {
     auto client = mongo::HttpClient::create();
@@ -60,6 +67,14 @@ void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
 
     int64_t numDlqDocs{0};
     int64_t numDlqBytes{0};
+
+    // If the rate limit per second feature flag is updated, update rate limiter accordingly
+    if (auto newRateLimitPerSec = getRateLimitPerSec(*_context->featureFlags);
+        newRateLimitPerSec != _rateLimitPerSec) {
+        _rateLimitPerSec = newRateLimitPerSec;
+        _rateLimiter.setTokensRefilledPerSec(newRateLimitPerSec);
+        _rateLimiter.setCapacity(newRateLimitPerSec);
+    }
 
     for (auto& streamDoc : dataMsg.docs) {
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
@@ -149,6 +164,15 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
             "Expected http client to exist before trying to make requests.",
             _options.httpClient);
     _options.httpClient->setHeaders(evaluateHeaders(streamDoc.doc));
+
+    // Wait for throttle delay before performing request
+    auto throttleDelay = _rateLimiter.consume();
+    if (throttleDelay > Microseconds(0)) {
+        _options.throttleFn(throttleDelay);
+        tassert(
+            9503700, "Expected a zero throttle delay", _rateLimiter.consume() == Microseconds(0));
+    }
+
     auto response = _options.httpClient->request(
         _options.requestType,
         (_options.urlPathExpr) ? evaluateFullUrl(streamDoc.doc) : _options.url,
@@ -186,6 +210,14 @@ mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(mongo::Document
     MutableDocument output(std::move(inputDoc));
     output.setNestedField(_options.as, std::move(apiResponse));
     return output.freeze();
+}
+
+int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(9503701, "Feature flags should be set", featureFlags);
+    auto val =
+        featureFlags->getFeatureFlagValue(FeatureFlags::kExternalAPIRateLimitPerSecond).getInt();
+
+    return *val;
 }
 
 }  // namespace streams
