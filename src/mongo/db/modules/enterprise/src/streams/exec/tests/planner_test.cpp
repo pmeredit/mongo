@@ -2430,7 +2430,7 @@ TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {
 
     const auto expectedWhat =
         "TypeMismatch: BSON field '$emit.config' is the wrong type "
-        "'string', expected types '[object']";
+        "'string', expected types '[object]'";
 
     ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
                                 AssertionException,
@@ -2464,7 +2464,7 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
 
     const auto expectedWhat =
         "TypeMismatch: BSON field '$emit.config.headers' is the wrong type "
-        "'array', expected types '[object, string']";
+        "'array', expected types '[object, string]'";
 
     ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
                                 AssertionException,
