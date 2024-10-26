@@ -154,7 +154,7 @@ runEncryptedTest(db, kDBName, kCollName, kSampleEncryptedFields, (edb, client) =
 
 function assertInvalidToken(res) {
     assert.commandFailedWithCode(res, ErrorCodes.BadValue);
-    assert(res.errmsg.startsWith('Invalid value for ESCTokensV2 leaf tag'), tojson(res));
+    assert(res.errmsg.includes('Invalid value for ESCTokensV2 leaf tag'), tojson(res));
     return res;
 }
 
