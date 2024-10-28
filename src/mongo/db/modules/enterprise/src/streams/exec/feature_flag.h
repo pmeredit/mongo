@@ -28,6 +28,7 @@ public:
     boost::optional<bool> getBool() const;
     boost::optional<double> getDouble() const;
     boost::optional<std::string> getString() const;
+    boost::optional<std::vector<std::string>> getVectorString() const;
 
 private:
     mongo::Value _value;
@@ -57,6 +58,7 @@ public:
     static const FeatureFlagDefinition kUseWatchToInitClusterChangestream;
     static const FeatureFlagDefinition kChangestreamSourceStalenessMonitorPeriod;
     static const FeatureFlagDefinition kMaxConcurrentCheckpoints;
+    static const FeatureFlagDefinition kCidrDenyList;
 };
 
 }  // namespace streams

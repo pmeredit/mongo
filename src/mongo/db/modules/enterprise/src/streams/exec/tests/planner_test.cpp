@@ -81,8 +81,8 @@ public:
         Connection webApiConn{};
         webApiConn.setName("webapi1");
         WebAPIConnectionOptions webApiConnOptions{"https://mongodb.com"};
-        webApiConnOptions.setHeaders(BSON("Content-Type"
-                                          << "application/json"));
+        webApiConnOptions.setHeaders(BSON("webApiHeader"
+                                          << "foobar"));
         webApiConn.setOptions(webApiConnOptions.toBSON());
         webApiConn.setType(ConnectionTypeEnum::WebAPI);
         _context->connections = {
@@ -2854,7 +2854,7 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
                                 .url = "https://mongodb.com",
                                 .urlPathExpr = barExpr,
                                 .connectionHeaders =
-                                    std::vector<std::string>{"Content-Type: application/json"},
+                                    std::vector<std::string>{"webApiHeader: foobar"},
                                 .queryParams = expectedParameters,
                                 .operatorHeaders = expectedHeaders,
                                 .as = "response",

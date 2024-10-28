@@ -35,10 +35,30 @@ ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::
     : Operator(context, 1, 1),
       _options(std::move(options)),
       _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
-      _rateLimiter{_rateLimitPerSec, &_options.timer} {}
+      _rateLimiter{_rateLimitPerSec, &_options.timer},
+      _cidrDenyList{parseCidrDenyList()} {}
+
+std::vector<CIDR> ExternalApiOperator::parseCidrDenyList() {
+    auto denyList =
+        _context->featureFlags->getFeatureFlagValue(FeatureFlags::kCidrDenyList).getVectorString();
+    if (!denyList) {
+        return {};
+    }
+    std::vector<CIDR> cidrDenyList{};
+    cidrDenyList.reserve(denyList->size());
+    for (const auto& v : *denyList) {
+        auto cidrWithStatus = CIDR::parse(v);
+        tassert(9503500,
+                str::stream() << "Deny list value is not a CIDR: '" << v << "'",
+                cidrWithStatus.isOK());
+        auto cidr = cidrWithStatus.getValue();
+        cidrDenyList.emplace_back(cidr);
+    }
+    return cidrDenyList;
+}
 
 void ExternalApiOperator::initializeHTTPClient() {
-    auto client = mongo::HttpClient::create();
+    auto client = mongo::HttpClient::createWithFirewall(_cidrDenyList);
     client->setConnectTimeout(_options.connectionTimeoutSecs);
     client->setTimeout(_options.requestTimeoutSecs);
     client->allowInsecureHTTP(getTestCommandsEnabled());
@@ -74,6 +94,14 @@ void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
         _rateLimitPerSec = newRateLimitPerSec;
         _rateLimiter.setTokensRefilledPerSec(newRateLimitPerSec);
         _rateLimiter.setCapacity(newRateLimitPerSec);
+    }
+
+    if (_context->featureFlags->isOverridden(FeatureFlags::kCidrDenyList)) {
+        auto updatedDenyList = parseCidrDenyList();
+        if (updatedDenyList != _cidrDenyList) {
+            _cidrDenyList = updatedDenyList;
+            initializeHTTPClient();
+        }
     }
 
     for (auto& streamDoc : dataMsg.docs) {
@@ -145,6 +173,8 @@ void ExternalApiOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
 boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
     const StreamDocument& streamDoc) {
 
+    auto headers = evaluateHeaders(streamDoc.doc);
+
     std::string rawDoc;
     ConstDataRange httpPayload = {nullptr, 0};
     switch (_options.requestType) {
@@ -153,6 +183,7 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
         case HttpClient::HttpMethod::kPATCH: {
             rawDoc = tojson(streamDoc.doc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
             httpPayload = ConstDataRange(rawDoc, rawDoc.size());
+            headers.emplace_back("Content-Type: application/json");
             break;
         }
         default:
@@ -163,7 +194,7 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
     tassert(9502900,
             "Expected http client to exist before trying to make requests.",
             _options.httpClient);
-    _options.httpClient->setHeaders(evaluateHeaders(streamDoc.doc));
+    _options.httpClient->setHeaders(headers);
 
     // Wait for throttle delay before performing request
     auto throttleDelay = _rateLimiter.consume();

@@ -8,11 +8,13 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/net/cidr.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/operator.h"
@@ -41,13 +43,14 @@ public:
         mongo::HttpClient::HttpMethod requestType{mongo::HttpClient::HttpMethod::kGET};
         // URL used to make an HTTP request with.
         std::string url;
-        // Optional url path that is evaluated per document and appended to the url defined in the
-        // connection.
+        // Optional url path that is evaluated per document and appended to the url defined in
+        // the connection.
         boost::intrusive_ptr<mongo::Expression> urlPathExpr{nullptr};
 
         // Defined in the connection. Evaluated once on startup.
         std::vector<std::string> connectionHeaders;
-        // Query parameters used when making a HTTP request. Evaluated at runtime on each document.
+        // Query parameters used when making a HTTP request. Evaluated at runtime on each
+        // document.
         // TODO(SERVER-95938): make query parameters accept array, object, and numeric literal
         // values.
         std::vector<std::pair<std::string, StringOrExpression>> queryParams;
@@ -86,30 +89,36 @@ protected:
 
 
 private:
-    // initializeHTTPClient creates an http client, sets http-request-related settings as configured
-    // by the user
+    // parseCidrDenyList will retrieve the feature flag value from context and return a new
+    // cidrDenyList
+    std::vector<mongo::CIDR> parseCidrDenyList();
+
+    // initializeHTTPClient creates an http client, sets http-request-related settings as
+    // configured by the user
     void initializeHTTPClient();
 
-    // doRequest creates a request struct, performs the request to the configured URL and returns
-    // the response.
+    // doRequest creates a request struct, performs the request to the configured URL and
+    // returns the response.
     boost::optional<mongo::HttpClient::HttpReply> doRequest(const StreamDocument& doc);
 
-    // makeDocumentWithAPIResponse sets the api response as a value in the input document using a
-    // user-configured key.
+    // makeDocumentWithAPIResponse sets the api response as a value in the input document using
+    // a user-configured key.
     mongo::Document makeDocumentWithAPIResponse(mongo::Document inputDoc, mongo::Value apiResponse);
 
-    // evaluateFullUrl accepts an input document and applies a mongo expression using that document
-    // to create the urlPath to be appended to the connection uri.
+    // evaluateFullUrl accepts an input document and applies a mongo expression using that
+    // document to create the urlPath to be appended to the connection uri.
     std::string evaluateFullUrl(const mongo::Document& doc);
 
-    // evaluateHeaders accepts an input document and applies a mongo expression using that document
-    // to create a set of headers to be used in the http client.
+    // evaluateHeaders accepts an input document and applies a mongo expression using that
+    // document to create a set of headers to be used in the http client.
     std::vector<std::string> evaluateHeaders(const mongo::Document& doc);
 
     ExternalApiOperator::Options _options;
 
     int64_t _rateLimitPerSec;
     RateLimiter _rateLimiter;
+
+    std::vector<mongo::CIDR> _cidrDenyList;
 };
 
 int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);

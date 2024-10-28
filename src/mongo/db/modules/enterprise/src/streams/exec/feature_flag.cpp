@@ -1,10 +1,11 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
-
+#include <boost/none.hpp>
 #include <string>
 
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/feature_flag.h"
 #include "streams/exec/config_gen.h"
@@ -57,6 +58,21 @@ boost::optional<double> FeatureFlagValue::getDouble() const {
         return returnValue;
     }
     returnValue.emplace(_value.getDouble());
+    return returnValue;
+}
+
+boost::optional<std::vector<std::string>> FeatureFlagValue::getVectorString() const {
+    if (_value.getType() != mongo::BSONType::Array) {
+        return boost::none;
+    }
+    std::vector<std::string> returnValue;
+    returnValue.reserve(_value.getArrayLength());
+    for (const auto& v : _value.getArray()) {
+        if (v.getType() != mongo::BSONType::String) {
+            return boost::none;
+        }
+        returnValue.emplace_back(v.getString());
+    }
     return returnValue;
 }
 
@@ -177,6 +193,33 @@ const FeatureFlagDefinition FeatureFlags::kKafkaProduceTimeout{
     "The produce timeout in milliseconds",
     mongo::Value::createIntOrLong(10L * 60 * 1000)};
 
+
+mongo::Value defaultCidrDenyListValue() {
+    if (mongo::getTestCommandsEnabled()) {
+        return mongo::Value{std::vector<mongo::Value>{}};
+    }
+    return mongo::Value(std::vector<mongo::Value>{
+        mongo::Value{std::string{"0.0.0.0/8"}},
+        mongo::Value{std::string{"10.0.0.0/8"}},      // RFC1918, private class A
+        mongo::Value{std::string{"100.64.0.0/10"}},   // RFC6598
+        mongo::Value{std::string{"127.0.0.0/8"}},     // Loopback
+        mongo::Value{std::string{"169.254.0.0/16"}},  // Link-local
+        mongo::Value{std::string{"172.16.0.0/12"}},   // RFC1918, private class B
+        mongo::Value{std::string{"192.0.0.0/24"}},    // RFC6890
+        mongo::Value{std::string{"192.88.99.0/24"}},  // IPv6 to IPv4 relay
+        mongo::Value{std::string{"192.168.0.0/16"}},  // RFC1918, private class C
+        mongo::Value{std::string{"224.0.0.0/4"}},     // Multicast
+        mongo::Value{std::string{"240.0.0.0/4"}},     // R
+    });
+}
+
+// If overriding this feature flag in a non-test environment make sure to include the CIDRs defined
+// in defaultCidrDenyListValue.
+const FeatureFlagDefinition FeatureFlags::kCidrDenyList{
+    "cidrDenyList",
+    "A list of CIDR strings that should not be addressable by the $externalAPI operator.",
+    defaultCidrDenyListValue()};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -196,7 +239,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kExternalAPIRateLimitPerSecond.name,
      FeatureFlags::kExternalAPIRateLimitPerSecond},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
-    {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints}};
+    {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},
+    {FeatureFlags::kCidrDenyList.name, FeatureFlags::kCidrDenyList}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);

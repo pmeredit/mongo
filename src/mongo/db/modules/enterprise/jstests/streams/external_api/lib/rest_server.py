@@ -32,6 +32,8 @@ class RESTServer(HTTPServer):
 # Simple webserver to receive and store rest requests
 class RequestHandler(BaseHTTPRequestHandler):
     def _write_request_to_disk(self, parsed_path, request_json) -> None:
+        self._log_with_server_details(request_json)
+
         # Write out request to temporary files
         try:
             job_name = parsed_path.path.split("/")[2]
@@ -53,9 +55,11 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         self.server.counter[job_name] += 1
 
-    def _extract_received_request(self, parsed_path, include_extra_details=False):
+    def _extract_received_request(self, parsed_path):
         content_length = int(self.headers.get("content-length", 0))
         body = self.rfile.read(content_length).decode("utf-8")
+        if self.headers.get("content-type", "") == "application/json" and content_length > 0:
+            body = json.loads(body)
 
         received_request = {
             "method": self.command,
@@ -65,23 +69,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             "body": body,
         }
 
-        if include_extra_details:
-            received_request["received_at"] = datetime.datetime.utcnow().isoformat()
-            received_request["client"] = {
-                "host": self.client_address[0],
-                "port": self.client_address[1],
-            }
-            received_request["server"] = {
-                "host": self.server.server_address[0],
-                "port": self.server.server_address[1],
-            }
-
         return received_request
+
+    def _log_with_server_details(self, received_request):
+        fullLogRequest = dict(received_request)
+        fullLogRequest["received_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        fullLogRequest["client"] = {
+            "host": self.client_address[0],
+            "port": self.client_address[1],
+        }
+        fullLogRequest["server"] = {
+            "host": self.server.server_address[0],
+            "port": self.server.server_address[1],
+        }
+        logger.info(f"{json.dumps(fullLogRequest)}")
 
     def _simple_handle(self, parsed_path, response_code):
         received_request = self._extract_received_request(parsed_path)
-
-        logger.info(f"{json.dumps(received_request)}")
 
         self._write_request_to_disk(parsed_path, received_request)
 
@@ -92,8 +96,6 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _plain_text_handle(self, parsed_path, response_code):
         received_request = self._extract_received_request(parsed_path)
 
-        logger.info(f"{json.dumps(received_request)}")
-
         self._write_request_to_disk(parsed_path, received_request)
 
         self.send_response(response_code)
@@ -103,9 +105,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(response.getvalue())
 
     def _echo_handle(self, parsed_path):
-        received_request = self._extract_received_request(parsed_path, True)
-
-        logger.info(f"{json.dumps(received_request)}")
+        received_request = self._extract_received_request(parsed_path)
 
         self._write_request_to_disk(parsed_path, received_request)
 
