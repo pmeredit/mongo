@@ -530,6 +530,25 @@ aggregate_expression_intender::Intention analyzeForInclusionNode(
     root.reportComputedPaths(&computedPaths, &renamedPaths);
     for (const auto& path : computedPaths) {
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
+            if (auto* fieldPathExpr = dynamic_cast<ExpressionFieldPath*>(expr.get());
+                fieldPathExpr && fieldPathExpr->getFieldPath().getFieldName(0) == "CURRENT" &&
+                // getPathLength includes the leading variable, so length 2 means
+                // expressions such as "$x" aka "$$ROOT.x".
+                fieldPathExpr->getFieldPath().getPathLength() == 2) {
+                // When the right-hand side is a non-dotted field-path expression such as "$x",
+                // then we know that the projection treats it opaquely. This is true even when the
+                // left-hand side is dotted as in {$project: {'a.b': "$x"}}: this may write "$x" to
+                // many places in the document, but that works regardless of whether "$x" is
+                // encrypted.
+                //
+                // One purpose of mark() is to detect non-opaque uses of encrypted data--uses that
+                // do inspect the value such as {$strLen: "$x"} or {$match {$expr: "$x"}}.
+                //
+                // Since we know we're in a case that treats 'expr' opaquely, and we know 'expr'
+                // has no constants that need encryption, we skip mark() and allow the query.
+                continue;
+            }
+
             if (aggregate_expression_intender::mark(
                     flePipe->getPipeline().getContext().get(), schema, expr, false) ==
                 aggregate_expression_intender::Intention::Marked) {
