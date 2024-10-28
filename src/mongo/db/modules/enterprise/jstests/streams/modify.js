@@ -48,7 +48,7 @@ function testRunner({
         null,           /* interval */
         "changestream", /* sourceType */
         true,           /* useNewCheckpointing */
-        true,           /* useRestoredExecutionPlan */
+        {},             /* featureFlags */
         null,           /* writeDir */
         null,           /* restoreDir */
         null,           /* dbForTest */

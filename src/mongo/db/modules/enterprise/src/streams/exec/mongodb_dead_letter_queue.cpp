@@ -35,7 +35,7 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     : DeadLetterQueue(context),
       _options(options),
       _queue(decltype(_queue)::Options{
-          .maxQueueDepth = static_cast<size_t>(getMaxQueueSizeBytes(_context->featureFlags))}) {
+          .maxQueueDepth = static_cast<size_t>(getMaxSinkQueueSizeBytes(_context->featureFlags))}) {
 
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = makeMongocxxUri(_options.uri);

@@ -42,7 +42,10 @@ private:
         std::chrono::time_point<std::chrono::system_clock>::min()};
 };
 
-int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags);
+// Returns the maximum sink queue size in bytes.
+int64_t getMaxSinkQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags);
+// Returns the maximum sink queue size in document count.
+int64_t getMaxSinkQueueSize(boost::optional<StreamProcessorFeatureFlags> featureFlags);
 int64_t getKafkaProduceTimeoutMs(boost::optional<StreamProcessorFeatureFlags> featureFlags);
 bool shouldUseWatchToInitClusterChangestream(
     boost::optional<StreamProcessorFeatureFlags> featureFlags);

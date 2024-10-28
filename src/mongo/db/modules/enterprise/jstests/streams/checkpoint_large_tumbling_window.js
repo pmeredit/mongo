@@ -7,7 +7,7 @@
 import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
-function largeGroupTest(useRestoredExecutionPlan) {
+function largeGroupTest(featureFlags = {}) {
     var numCustomers = 50;
     let baseTs = ISODate("2023-01-01T00:00:00.000Z");
     const pipeline = [
@@ -55,7 +55,7 @@ function largeGroupTest(useRestoredExecutionPlan) {
                               999999999 /* interval */,
                               "changestream" /* sourceType */,
                               true /*useNewCheckpointing*/,
-                              useRestoredExecutionPlan);
+                              featureFlags);
 
     test.run();
 
@@ -96,8 +96,8 @@ function largeGroupTest(useRestoredExecutionPlan) {
     test.stop();
 }
 
-largeGroupTest(true);
+largeGroupTest();
 // TODO(SERVER-92447): Remove this.
-largeGroupTest(false);
+largeGroupTest({useExecutionPlanFromCheckpoint: false});
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

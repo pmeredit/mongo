@@ -3,17 +3,16 @@
  */
 #include "streams/exec/queued_sink_operator.h"
 
-#include "mongo/base/error_codes.h"
-#include "mongo/logv2/log.h"
-#include "streams/exec/connection_status.h"
-#include "streams/exec/stream_processor_feature_flags.h"
-#include "streams/util/exception.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
 
+#include "mongo/base/error_codes.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
+#include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -22,15 +21,17 @@ namespace streams {
 
 using namespace mongo;
 
+MONGO_FAIL_POINT_DEFINE(queuedSinkStopProcessingData);
+
 QueuedSinkOperator::QueuedSinkOperator(Context* context, int32_t numInputs)
     : SinkOperator(context, numInputs),
-      _queue(decltype(_queue)::Options{
-          .maxQueueDepth = static_cast<size_t>(getMaxQueueSizeBytes(_context->featureFlags)),
-          .costFunc =
-              QueueCostFunc{.maxSizeBytes = getMaxQueueSizeBytes(_context->featureFlags)}}) {}
+      _queue(decltype(_queue)::Options{.costFunc = queueCostFunc,
+                                       .maxQueueSize = getMaxSinkQueueSize(_context->featureFlags),
+                                       .maxQueueSizeBytes =
+                                           getMaxSinkQueueSizeBytes(_context->featureFlags)}) {}
 
 void QueuedSinkOperator::doStart() {
-    stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() {
@@ -66,13 +67,12 @@ void QueuedSinkOperator::doStart() {
         // If validateConnection succeeded, enter a kConnected state.
         // Otherwise enter an error state and return.
         {
-            stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
             if (status.isOK()) {
                 _consumerStatus = ConnectionStatus{ConnectionStatus::kConnected};
             } else {
                 _consumerStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
                 _consumerThreadRunning = false;
-                _flushedCv.notify_all();
                 // Return early in error.
                 return;
             }
@@ -85,27 +85,30 @@ void QueuedSinkOperator::doStart() {
 }
 
 void QueuedSinkOperator::doStop() {
-    // This will close the queue which will make the consumer thread exit as well
-    // because this will trigger a `ProducerConsumerQueueConsumed` exception in the
-    // consumer thread.
-    _queue.closeConsumerEnd();
+    // This will close the queue which will make the consumer thread to exit as well.
+    _queue.shutDown();
     if (_consumerThread.joinable()) {
         _consumerThread.join();
     }
 }
 
 void QueuedSinkOperator::doFlush() {
-    stdx::unique_lock<stdx::mutex> lock(_consumerMutex);
+    // Push an empty StreamDataMsg as a flush signal to the queue.
+    auto status = _queue.push(StreamDataMsg{});
+    tassert(status.code(),
+            str::stream() << "Push to queue failed with error - " << status.reason(),
+            status.isOK());
+    status = _queue.waitForEmpty();
+    tassert(status.code(),
+            str::stream() << "Flush failed with error - " << status.reason(),
+            status.isOK());
 
-    dassert(!_pendingFlush);
-    _pendingFlush = true;
-    _queue.push(Message{.flushSignal = true});
-    _flushedCv.wait(lock, [this]() -> bool { return !_consumerThreadRunning || !_pendingFlush; });
-
-    // Make sure that an error wasn't encountered in the background consumer thread while
-    // waiting for the flushed condvar to be notified.
-    _consumerStatus.throwIfNotConnected();
-    uassert(75386, str::stream() << "Unable to flush queued sink operator", !_pendingFlush);
+    {
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
+        // Make sure that an error wasn't encountered in the background consumer thread while
+        // waiting for the flush to finish.
+        _consumerStatus.throwIfNotConnected();
+    }
 }
 
 void QueuedSinkOperator::registerMetrics(MetricManager* metricManager) {
@@ -129,7 +132,7 @@ void QueuedSinkOperator::registerMetrics(MetricManager* metricManager) {
 OperatorStats QueuedSinkOperator::doGetStats() {
     OperatorStats stats;
     {
-        stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
         std::swap(_consumerStats, stats);
     }
 
@@ -142,11 +145,14 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
                                          boost::optional<StreamControlMsg> controlMsg) {
     _queueSizeGauge->incBy(int64_t(dataMsg.docs.size()));
     _queueByteSizeGauge->incBy(dataMsg.getByteSize());
-    _queue.push(Message{.data = std::move(dataMsg)});
+    auto status = _queue.push(std::move(dataMsg));
+    tassert(status.code(),
+            str::stream() << "Push to queue failed with error - " << status.reason(),
+            status.isOK());
 }
 
 ConnectionStatus QueuedSinkOperator::doGetConnectionStatus() {
-    stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
     return _consumerStatus;
 }
 
@@ -156,22 +162,30 @@ void QueuedSinkOperator::consumeLoop() {
 
     while (!done) {
         try {
-            auto msg = _queue.pop();
-            if (msg.flushSignal) {
-                stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
-                _pendingFlush = false;
-                _flushedCv.notify_all();
-            } else {
-                _queueSizeGauge->incBy(-1 * int64_t(msg.data->docs.size()));
-                _queueByteSizeGauge->incBy(-1 * msg.data->getByteSize());
-                auto stats = processDataMsg(std::move(*msg.data));
-
-                stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
-                _consumerStats += stats;
+            // If queuedSinkStopProcessingData fail point is ON, the consumer thread will not
+            // process the Message queue. Can be used to accumulate data in the Message queue.
+            if (MONGO_unlikely(queuedSinkStopProcessingData.shouldFail())) {
+                sleep(2);
+                continue;
             }
-        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
-            // Closed naturally from `stop()`.
-            done = true;
+
+            auto msg = _queue.pop();
+            if (!msg) {
+                // No message found in the queue, queue shut down.
+                break;
+            }
+
+            // Check if it's an empty message used as a flush signal.
+            if ((*msg).docs.empty()) {
+                continue;
+            }
+
+            _queueSizeGauge->incBy(-1 * int64_t((*msg).docs.size()));
+            _queueByteSizeGauge->incBy(-1 * (*msg).getByteSize());
+            auto stats = processDataMsg(std::move(*msg));
+
+            stdx::lock_guard<stdx::mutex> lock(_mutex);
+            _consumerStats += stats;
         } catch (const SPException& e) {
             status = e.toStatus();
             done = true;
@@ -189,19 +203,19 @@ void QueuedSinkOperator::consumeLoop() {
             done = true;
         }
     }
+    // This will cause any thread calling push to the message queue to throw an exception.
+    _queue.shutDown();
 
-    // This will cause any thread calling _queue.push to throw an exception.
-    _queue.closeConsumerEnd();
-
-    // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
-    // loop because of an exception, then the flush in the executor thread will fail after
-    // it receives the flushed condvar signal.
-    stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
-    if (!status.isOK()) {
-        _consumerStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
+    {
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
+        // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
+        // loop because of an exception, then the flush in the executor thread will fail after
+        // it receives the flushed condvar signal.
+        if (!status.isOK()) {
+            _consumerStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
+        }
+        _consumerThreadRunning = false;
     }
-    _consumerThreadRunning = false;
-    _flushedCv.notify_all();
 }
 
 };  // namespace streams

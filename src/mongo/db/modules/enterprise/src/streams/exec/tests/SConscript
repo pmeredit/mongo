@@ -720,6 +720,19 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
+    target="streams_producer_consumer_queue_test",
+    source=[
+        "streams_producer_consumer_queue_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "../streams_exec_util",
+        "streams_test_utils",
+    ],
+)
+
+env.CppUnitTest(
     target="external_api_operator_test",
     source=[
         "external_api_operator_test.cpp",

@@ -41,7 +41,8 @@ public:
     // TODO: Remove this feature flag after the next prod deploy.
     static const FeatureFlagDefinition kKafkaMaxPrefetchByteSize;
     static const FeatureFlagDefinition kUseExecutionPlanFromCheckpoint;
-    static const FeatureFlagDefinition kMaxQueueSizeBytes;
+    static const FeatureFlagDefinition kMaxSinkQueueSizeBytes;
+    static const FeatureFlagDefinition kMaxSinkQueueSize;
     static const FeatureFlagDefinition kKafkaEmitUseDeliveryCallback;
     static const FeatureFlagDefinition kEnableSessionWindow;
     static const FeatureFlagDefinition kSourceBufferTotalSize;
