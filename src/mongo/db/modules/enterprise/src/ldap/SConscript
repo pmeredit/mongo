@@ -16,6 +16,7 @@ if not env.TargetOSIs("darwin"):
         LIBDEPS=[
             "$BUILD_DIR/mongo/db/auth/auth",
             "$BUILD_DIR/mongo/db/process_health/fault_manager",
+            "$BUILD_DIR/mongo/db/process_health/fault_manager_test_suite",
             "$BUILD_DIR/mongo/db/service_context",
             "$BUILD_DIR/mongo/executor/task_executor_test_fixture",
             "$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture",
