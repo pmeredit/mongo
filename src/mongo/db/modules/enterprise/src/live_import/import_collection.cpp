@@ -261,8 +261,27 @@ void importCollection(OperationContext* opCtx,
             // Create Collection object
             auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
             auto durableCatalog = storageEngine->getCatalog();
-            auto importResult = uassertStatusOK(durableCatalog->importCollection(
-                opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
+            auto opts = ImportOptions(uuidOption);
+            // Panic on dry run so it fails early, if it fails on the real thing we want to retry
+            // with repair
+            opts.panicOnCorruptWtMetadata = isDryRun;
+
+            auto status =
+                durableCatalog->importCollection(opCtx, nss, catalogEntry, storageMetadata, opts);
+            if (!status.isOK()) {
+                LOGV2_ERROR(9616600,
+                            "importCollection failed",
+                            "error"_attr = status.getStatus().toString());
+
+                if (!isDryRun) {
+                    opts.panicOnCorruptWtMetadata = true;
+                    opts.repair = true;
+                    status = durableCatalog->importCollection(
+                        opCtx, nss, catalogEntry, storageMetadata, opts);
+                }
+                uassertStatusOK(status.getStatus());
+            }
+            auto importResult = std::move(status.getValue());
 
             const auto catalogEntry =
                 durableCatalog->getParsedCatalogEntry(opCtx, importResult.catalogId);
