@@ -48,14 +48,9 @@ FeatureFlagValue StreamProcessorFeatureFlags::getFeatureFlagValue(
     return featureFlag.getDefaultValue();
 }
 
-int64_t getMaxSinkQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+int64_t getMaxQueueSizeBytes(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
     tassert(8748200, "Feature flags should be set", featureFlags);
-    return *featureFlags->getFeatureFlagValue(FeatureFlags::kMaxSinkQueueSizeBytes).getInt();
-}
-
-int64_t getMaxSinkQueueSize(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
-    tassert(8748202, "Feature flags should be set", featureFlags);
-    return *featureFlags->getFeatureFlagValue(FeatureFlags::kMaxSinkQueueSize).getInt();
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kMaxQueueSizeBytes).getInt();
 }
 
 int64_t getKafkaProduceTimeoutMs(boost::optional<StreamProcessorFeatureFlags> featureFlags) {

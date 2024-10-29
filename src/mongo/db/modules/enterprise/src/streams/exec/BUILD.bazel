@@ -278,7 +278,6 @@ mongo_cc_library(
         "output_sampler.h",
         "pipeline_rewriter.h",
         "planner.h",
-        "producer_consumer_queue.h",
         "project_operator.h",
         "queued_sink_operator.h",
         "rate_limiter.h",

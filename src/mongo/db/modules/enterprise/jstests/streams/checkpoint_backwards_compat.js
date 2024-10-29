@@ -38,8 +38,8 @@ function _setupAndRunTest(pipeline, srcDir, expectedResultsLen, expectedStartOff
 
     let inputDocs = _readDumpFile(srcDir + "/inputDocs.bson");
 
-    var test2 = new CheckPointTestHelper(
-        inputDocs, pipeline, 10000000, "kafka", true, {}, destDir, destDir);
+    var test2 =
+        new CheckPointTestHelper(inputDocs, pipeline, 10000000, "kafka", true, destDir, destDir);
 
     // mkdir and copyDir are builtins available in mongodb js driver code.
     // But for some reason, eslint complains about copyDir being an undefined

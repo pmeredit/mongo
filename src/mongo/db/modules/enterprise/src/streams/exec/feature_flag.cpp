@@ -91,18 +91,12 @@ const FeatureFlagDefinition FeatureFlags::kUseExecutionPlanFromCheckpoint{
     mongo::Value(true),
     {}};
 
-const FeatureFlagDefinition FeatureFlags::kMaxSinkQueueSizeBytes{
-    "maxSinkQueueSizeBytes",
+const FeatureFlagDefinition FeatureFlags::kMaxQueueSizeBytes{
+    "maxQueueSizeBytes",
     "Maximum buffer size (in bytes) for a sink queue.",
     // 128 MB default
     mongo::Value::createIntOrLong(128L * 1024 * 1024),
     {}};
-
-const FeatureFlagDefinition FeatureFlags::kMaxSinkQueueSize{
-    "maxSinkQueueSize",
-    "Maximum buffer size (in document count) for a sink queue.",
-    // 10k default
-    mongo::Value::createIntOrLong(10000)};
 
 const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
     "kafkaEmitUserDeliveryCallback",
@@ -225,8 +219,7 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
     {FeatureFlags::kUseExecutionPlanFromCheckpoint.name,
      FeatureFlags::kUseExecutionPlanFromCheckpoint},
-    {FeatureFlags::kMaxSinkQueueSizeBytes.name, FeatureFlags::kMaxSinkQueueSizeBytes},
-    {FeatureFlags::kMaxSinkQueueSize.name, FeatureFlags::kMaxSinkQueueSize},
+    {FeatureFlags::kMaxQueueSizeBytes.name, FeatureFlags::kMaxQueueSizeBytes},
     {FeatureFlags::kKafkaEmitUseDeliveryCallback.name, FeatureFlags::kKafkaEmitUseDeliveryCallback},
     {FeatureFlags::kSourceBufferTotalSize.name, FeatureFlags::kSourceBufferTotalSize},
     {FeatureFlags::kSourceBufferPreallocationFraction.name,

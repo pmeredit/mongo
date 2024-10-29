@@ -170,7 +170,7 @@ export class TestHelper {
                 interval = 0,
                 sourceType = "kafka",
                 useNewCheckpointing = true,
-                featureFlags = {},
+                useRestoredExecutionPlan = true,
                 writeDir = null,
                 restoreDir = null,
                 dbForTest = null,
@@ -244,6 +244,9 @@ export class TestHelper {
         checkpointOptions.storage = null;
         checkpointOptions.localDisk = {writeDirectory: this.writeDir};
 
+        let featureFlags = {
+            useExecutionPlanFromCheckpoint: useRestoredExecutionPlan,
+        };
         if (changestreamStalenessMonitoring) {
             featureFlags.changestreamSourceStalenessMonitorPeriod = NumberInt(5);
         }
@@ -437,10 +440,6 @@ export class TestHelper {
         return this.sp[this.spName].stats();
     }
 
-    metrics() {
-        return this.sp[this.spName].metrics();
-    }
-
     list() {
         return this.sp.listStreamProcessors().streamProcessors.filter((sp) =>
                                                                           sp.name == this.spName);
@@ -563,7 +562,6 @@ export class CheckPointTestHelper extends TestHelper {
                 interval,
                 sourceType = "kafka",
                 useNewCheckpointing = false,
-                featureFlags,
                 writeDir = null,
                 restoreDir = null) {
         super(inputDocs,
@@ -571,7 +569,7 @@ export class CheckPointTestHelper extends TestHelper {
               interval,
               sourceType,
               useNewCheckpointing,
-              featureFlags,
+              true,
               writeDir,
               restoreDir);
     }
@@ -603,7 +601,7 @@ export class CheckPointTestHelper extends TestHelper {
  */
 function runTestsWithoutCheckpoint(inputDocs, middlePipeline) {
     // get the original results for the inputDocs
-    var test = new TestHelper(inputDocs, middlePipeline, 10000000, "kafka", true);
+    var test = new TestHelper(inputDocs, middlePipeline, 10000000, "kafka", true, true);
     test.run();
     waitForCount(test.outputColl, 1, 60);
     waitWhenThereIsMoreData(test.outputColl);

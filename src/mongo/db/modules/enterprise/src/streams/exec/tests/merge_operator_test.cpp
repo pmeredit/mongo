@@ -551,6 +551,7 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     dataMsg.creationTimer = mongo::Timer{};
     mergeOperator->onDataMsg(0, dataMsg);
     mergeOperator->flush();
+
     auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());

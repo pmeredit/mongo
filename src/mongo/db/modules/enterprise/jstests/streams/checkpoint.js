@@ -33,7 +33,7 @@ function generateInput(size, msPerDocument = 1) {
     return input;
 }
 
-function testBoth(useNewCheckpointing, featureFlags = {}) {
+function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
     function smokeTestCorrectness() {
         const input = generateInput(2000);
         let test = new TestHelper(input,
@@ -41,7 +41,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   /* checkpointInterval */ 0,
                                   "kafka",
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
 
         // Run the streamProcessor for the first time.
         test.run();
@@ -199,7 +199,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                     0 /* interval */,
                                     "kafka" /* sourceType */,
                                     useNewCheckpointing,
-                                    featureFlags);
+                                    useRestoredExecutionPlan);
 
         let getSortedResults =
             () => { return test.outputColl.find({}).sort({"_id.min": 1}).toArray(); };
@@ -318,7 +318,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   0 /* interval */,
                                   "changestream" /* sourceType */,
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
         test.run();
         // Wait for all the messages to be read.
         assert.soon(() => { return test.stats()["inputMessageCount"] == input.length; });
@@ -373,7 +373,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
             interval,
             "changestream" /* sourceType */,
             useNewCheckpointing,
-            featureFlags,
+            useRestoredExecutionPlan,
             null /* writeDir */,
             null /* restoreDir */,
             db /* dbForTest */,
@@ -817,7 +817,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   1000000000 /* interval */,
                                   "kafka" /* sourceType */,
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
         // Run the streamProcessor the streamProcessor.
         test.run();
         // Wait until some output appears in the output collection.
@@ -839,7 +839,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   1000000000 /* interval */,
                                   "kafka" /* sourceType */,
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
         // Run the streamProcessor the streamProcessor.
         test.run();
         // Wait until some output appears in the output collection.
@@ -862,7 +862,9 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
 
     function smokeTestCorrectnessChangestream() {
         const input = generateInput(503);
-        let test = new TestHelper(input, [], 0, 'changestream', useNewCheckpointing, featureFlags);
+        let test = new TestHelper(
+            input, [], 0, 'changestream', useNewCheckpointing, useRestoredExecutionPlan);
+
         test.run();
         // Wait until the last doc in the input appears in the output collection.
         waitForCount(test.outputColl, input.length, /* maxWaitSeconds */ 60);
@@ -971,7 +973,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                       99999999 /* long interval */,
                                       'changestream',
                                       useNewCheckpointing,
-                                      featureFlags);
+                                      useRestoredExecutionPlan);
             test.sp.createStreamProcessor(test.spName, test.pipeline);
             assert.commandWorked(test.sp[test.spName].start(test.startOptions));
             // The streamProcessor will crash after the first document is output.
@@ -1027,7 +1029,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   null /* default interval */,
                                   'changestream',
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
         test.run();
         // Wait until the last doc in the input appears in the output collection.
         waitForCount(test.outputColl, input.length, /* maxWaitSeconds */ 60);
@@ -1064,7 +1066,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   null /* default interval */,
                                   'changestream',
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
         test.run();
         test.stop();
         test.run(false);
@@ -1079,7 +1081,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   0,
                                   'changestream',
                                   useNewCheckpointing,
-                                  featureFlags);
+                                  useRestoredExecutionPlan);
         test.run();
         // Slowly insert events into another collection on the same database so there will
         // be new resume tokens to advance to.
@@ -1121,7 +1123,7 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
                                   0,
                                   'changestream',
                                   useNewCheckpointing,
-                                  {useExecutionPlanFromCheckpoint: false});
+                                  false);
         let source = test.pipeline[0];
         let sink = test.pipeline[2];
         test.run();
@@ -1186,8 +1188,8 @@ function testBoth(useNewCheckpointing, featureFlags = {}) {
     }
 }
 
-testBoth(true /* useNewCheckpointing */);
+testBoth(true /* useNewCheckpointing */, true /* useRestoredExecutionPlan */);
 // TODO(SERVER-92447): Remove this.
-testBoth(true /* useNewCheckpointing */, {useExecutionPlanFromCheckpoint: false});
+testBoth(true /* useNewCheckpointing */, false /* useRestoredExecutionPlan */);
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

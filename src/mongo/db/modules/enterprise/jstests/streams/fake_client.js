@@ -202,18 +202,6 @@ export class StreamProcessor {
         return res;
     }
 
-    metrics() {
-        const res = this._db.runCommand({
-            streams_getMetrics: '',
-            tenantId: this._tenantId,
-            name: this._name,
-            verbose: true,
-        });
-        assert.commandWorked(res);
-        assert.eq(res["ok"], 1);
-        return res;
-    }
-
     checkpoint(force) {
         assert(!this._isUsingAtlas, "Not supported against real Atlas");
 
