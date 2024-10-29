@@ -1,0 +1,1 @@
+This is the code for the Atlas Stream Processing engine. See [Intro to the Stream Processing Engine](https://docs.google.com/document/d/1HqpIU-y0E5Gal5iY4YjLT6CdHQdPzSzv2I5__otZZgY/edit?tab=t.0#heading=h.xvls3h4os2bq) for more details.
