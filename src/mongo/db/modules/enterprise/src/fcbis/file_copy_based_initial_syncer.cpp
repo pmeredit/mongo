@@ -29,6 +29,7 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
+#include "mongo/db/wire_version.h"
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"

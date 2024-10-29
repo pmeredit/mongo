@@ -8,6 +8,7 @@
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 
+#include "mongo/db/json.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"

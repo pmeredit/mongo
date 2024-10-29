@@ -26,6 +26,7 @@
 #include "mongo/db/storage/backup_cursor_hooks.h"
 #include "mongo/db/storage/devnull/devnull_kv_engine.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/db/wire_version.h"
 #include "mongo/dbtests/mock/mock_dbclient_connection.h"
 #include "mongo/dbtests/mock/mock_remote_db_server.h"
 #include "mongo/executor/mock_network_fixture.h"

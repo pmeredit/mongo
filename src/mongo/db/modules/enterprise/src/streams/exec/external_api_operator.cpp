@@ -13,6 +13,7 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/json.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
