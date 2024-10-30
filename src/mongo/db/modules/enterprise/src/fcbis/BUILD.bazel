@@ -21,7 +21,7 @@ mongo_cc_library(
         "file_copy_based_initial_syncer.h",
         "initial_sync_file_mover.h",
     ],
-    tags = ["compile_requires_large_memory"],
+    tags = ["compile_requires_large_memory_gcc"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/mongo:base",
