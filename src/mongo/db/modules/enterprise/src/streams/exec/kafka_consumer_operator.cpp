@@ -1332,7 +1332,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
 
     KafkaSourceCheckpointState state;
     state.setPartitions(std::move(partitions));
-    state.setConsumerGroupId(StringData(_options.consumerGroupId));
+    state.setConsumerGroupId(_options.consumerGroupId);
     _unflushedStateContainer.add(controlMsg.checkpointMsg->id, state.toBSON());
     LOGV2_INFO(77177,
                "KafkaConsumerOperator adding state to checkpoint",

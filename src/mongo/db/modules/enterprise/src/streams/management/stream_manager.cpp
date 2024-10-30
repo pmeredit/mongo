@@ -734,7 +734,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
             // starting the stream processor.
             StartStreamSampleCommand sampleRequest;
             sampleRequest.setCorrelationId(request.getCorrelationId());
-            sampleRequest.setName(StringData(name));
+            sampleRequest.setName(name);
             sampleCursorId = startSample(lk, sampleRequest, processorInfo.get());
         }
 
@@ -1328,7 +1328,7 @@ mongo::VerboseStatus StreamManager::getVerboseStatus(
     StreamManager::StreamProcessorInfo* processorInfo) {
     VerboseStatus status;
     GetStatsCommand statsRequest;
-    statsRequest.setName(StringData(name));
+    statsRequest.setName(name);
     statsRequest.setVerbose(true);
     status.setStats(getStats(lock, statsRequest, processorInfo));
     status.setIsCheckpointingEnabled(bool(processorInfo->checkpointCoordinator));
@@ -1739,7 +1739,7 @@ void StreamManager::stopAllStreamProcessors() {
                 StopStreamProcessorCommand stopCommand;
                 stopCommand.setTenantId(sp->context->tenantId);
                 stopCommand.setName(sp->context->streamName);
-                stopCommand.setProcessorId(StringData(sp->context->streamProcessorId));
+                stopCommand.setProcessorId(sp->context->streamProcessorId);
                 stopCommands.push_back(std::move(stopCommand));
             }
         }

@@ -218,7 +218,7 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     metadata.setCheckpointEndTime(Date_t::now());
     metadata.setCheckpointSizeBytes(_activeCheckpointSave->checkpointSizeBytes);
     if (!_opts.hostName.empty()) {
-        metadata.setHostName(StringData{_opts.hostName});
+        metadata.setHostName(_opts.hostName);
     }
 
     metadata.setExecutionPlan(_context->executionPlan);

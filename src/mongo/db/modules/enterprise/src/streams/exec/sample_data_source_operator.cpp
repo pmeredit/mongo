@@ -31,7 +31,7 @@ Document SampleDataSourceOperator::generateSolarDataDoc(Date_t timestamp) {
     SampleDataSourceSolarSpec sampleDataSpec{
         deviceId, groupId, timestamp.toString(), maxWatts, error ? 1 : 0};
     if (error) {
-        sampleDataSpec.setEvent_details(StringData{"Network error"});
+        sampleDataSpec.setEvent_details("Network error"_sd);
     } else {
         sampleDataSpec.setObs(SampleDataSourceSolarSpecObs{watts, temp});
     }
