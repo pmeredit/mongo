@@ -210,6 +210,120 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                 }
             },
         },
+        {
+            "should make a valid GET request with valid query parameters",
+            [&] {
+                std::string uri = "http://localhost:10000";
+                auto expCtx =
+                    boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
+                auto stringExpr = Expression::parseExpression(
+                    expCtx.get(), fromjson("{$getField: 'str'}"), expCtx->variablesParseState);
+                auto intExpr = Expression::parseExpression(
+                    expCtx.get(), fromjson("{$getField: 'int'}"), expCtx->variablesParseState);
+                auto decimalExpr = Expression::parseExpression(
+                    expCtx.get(), fromjson("{$getField: 'decimal'}"), expCtx->variablesParseState);
+                auto boolExpr = Expression::parseExpression(
+                    expCtx.get(), fromjson("{$getField: 'bool'}"), expCtx->variablesParseState);
+
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri +
+                            "?stringParam=bar&strExprParam=DynamicValue&intExprParam=10&"
+                            "decimalExprParam=1.1&boolExprParam=true",
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return ExternalApiOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .requestType = HttpClient::HttpMethod::kGET,
+                    .url = uri,
+                    .queryParams =
+                        std::vector<std::pair<std::string, StringOrExpression>>{
+                            {"stringParam", "bar"},
+                            {"strExprParam", stringExpr},
+                            {"intExprParam", intExpr},
+                            {"decimalExprParam", decimalExpr},
+                            {"boolExprParam", boolExpr},
+                        },
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson(
+                    "{\"str\": \"DynamicValue\", \"int\": 10, \"decimal\": 1.1, \"bool\": true}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+                }
+            },
+        },
+        {
+            "should make a POST request with valid headers",
+            [&] {
+                std::string uri = "http://localhost:10000";
+                auto expCtx =
+                    boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
+                auto getFieldExpr = Expression::parseExpression(
+                    expCtx.get(), fromjson("{$getField: 'foo'}"), expCtx->variablesParseState);
+
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kPOST,
+                        uri,
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return ExternalApiOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .requestType = HttpClient::HttpMethod::kPOST,
+                    .url = uri,
+                    .operatorHeaders =
+                        std::vector<std::pair<std::string, StringOrExpression>>{
+                            {"stringParam", "bar"},
+                            {"exprParam", getFieldExpr},
+                        },
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson("{'foo': 'DynamicValue'}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+                }
+            },
+        },
     };
 
     for (const auto& tc : tests) {
@@ -406,6 +520,153 @@ TEST_F(ExternalApiOperatorTest, RateLimitingParametersUpdate) {
     }
 }
 
-// TODO(SERVER-95032): Add failure case test where we DLQ a a document once we can use the
-// planner to create the pipeline
+TEST_F(ExternalApiOperatorTest, GetWithBadQueryParams) {
+    StringData uri{"http://localhost:10000"};
+    auto expCtx = boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
+
+    std::vector<boost::intrusive_ptr<mongo::Expression>> badExpressionParams{
+        // Object
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$arrayToObject: [[{k: \"age\", v: 91}]] }"),
+                                           _context->expCtx->variablesParseState),
+        // Array
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$objectToArray: { item: \"foo\", qty: 25}}"),
+                                           _context->expCtx->variablesParseState),
+        // BinData / UUID
+        mongo::Expression::parseExpression(
+            expCtx.get(),
+            fromjson("{$toUUID: \"0e3b9063-8abd-4eb3-9f9f-f4c59fd30a60\"}"),
+            _context->expCtx->variablesParseState),
+        // ObjectId
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$toObjectId: \"5ab9cbfa31c2ab715d42129e\"}"),
+                                           _context->expCtx->variablesParseState),
+        // Date
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$toDate: 1730145590000}"),
+                                           _context->expCtx->variablesParseState),
+        // Null
+        mongo::Expression::parseExpression(
+            expCtx.get(),
+            // Note: $convert returns null if input is null.
+            fromjson("{$convert: {input: null, to: {type: \"double\"}}}"),
+            _context->expCtx->variablesParseState),
+    };
+
+    for (const auto& badParam : badExpressionParams) {
+        // param evaluating to empty value.
+        std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+        ExternalApiOperator::Options options{
+            .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+            .requestType = HttpClient::HttpMethod::kGET,
+            .url = uri.toString(),
+            .queryParams = std::vector<std::pair<std::string, StringOrExpression>>{{
+                "badInput",
+                badParam,
+            }},
+            .as = "response",
+        };
+
+        setupDag(std::move(options));
+        testAgainstDocs(
+            std::vector<StreamDocument>{
+                Document{fromjson("{'foo': 'DynamicValue'}")},
+            },
+            [&](std::deque<StreamMsgUnion> messages) {
+                // The invalid expression should've caused the doc to go into the DLQ.
+                ASSERT_EQ(messages.size(), 0);
+
+                auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+                auto dlqMsgs = dlq->getMessages();
+                ASSERT_EQ(1, dlqMsgs.size());
+                ASSERT_EQ(
+                    "Failed to process input document in ExternalApiOperator with error: Expected"
+                    " query parameter expression to evaluate as a number, string, or boolean.",
+                    dlqMsgs.front()["errInfo"]["reason"].String());
+                ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
+            });
+    }
+}
+
+TEST_F(ExternalApiOperatorTest, GetWithBadHeaders) {
+    StringData uri{"http://localhost:10000"};
+    auto expCtx = boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
+
+
+    std::vector<boost::intrusive_ptr<mongo::Expression>> badExpressionHeaders{
+        // Undefined
+        mongo::ExpressionFieldPath::parse(
+            expCtx.get(), "$randomFieldThatDoesntExist", _context->expCtx->variablesParseState),
+        // Boolean
+        mongo::Expression::parseExpression(
+            expCtx.get(), fromjson("{$eq: [24, 24] }"), _context->expCtx->variablesParseState),
+        // Int
+        mongo::Expression::parseExpression(
+            expCtx.get(), fromjson("{$sum: [1,2,3]}"), _context->expCtx->variablesParseState),
+        // Decimal
+        mongo::Expression::parseExpression(
+            expCtx.get(), fromjson("{$sum: [1,2,3]}"), _context->expCtx->variablesParseState),
+        // Object
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$arrayToObject: [[{k: \"age\", v: 91}]] }"),
+                                           _context->expCtx->variablesParseState),
+        // Array
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$objectToArray: { item: \"foo\", qty: 25}}"),
+                                           _context->expCtx->variablesParseState),
+        // BinData / UUID
+        mongo::Expression::parseExpression(
+            expCtx.get(),
+            fromjson("{$toUUID: \"0e3b9063-8abd-4eb3-9f9f-f4c59fd30a60\"}"),
+            _context->expCtx->variablesParseState),
+        // ObjectId
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$toObjectId: \"5ab9cbfa31c2ab715d42129e\"}"),
+                                           _context->expCtx->variablesParseState),
+        // Date
+        mongo::Expression::parseExpression(expCtx.get(),
+                                           fromjson("{$toDate: 1730145590000}"),
+                                           _context->expCtx->variablesParseState),
+        // Null
+        mongo::Expression::parseExpression(
+            expCtx.get(),
+            // Note: $convert returns null if input is null.
+            fromjson("{$convert: {input: null, to: {type: \"double\"}}}"),
+            _context->expCtx->variablesParseState),
+    };
+
+    for (const auto& badHeader : badExpressionHeaders) {
+        // header evaluating to empty value.
+        std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+
+        ExternalApiOperator::Options options{
+            .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+            .requestType = HttpClient::HttpMethod::kGET,
+            .url = uri.toString(),
+            .operatorHeaders =
+                std::vector<std::pair<std::string, StringOrExpression>>{{"badHeader", badHeader}},
+            .as = "response",
+        };
+
+        setupDag(std::move(options));
+        testAgainstDocs(
+            std::vector<StreamDocument>{
+                Document{fromjson("{'foo': 'DynamicValue'}")},
+            },
+            [&](std::deque<StreamMsgUnion> messages) {
+                // The invalid expression should've caused the doc to go into the DLQ.
+                ASSERT_EQ(messages.size(), 0);
+
+                auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+                auto dlqMsgs = dlq->getMessages();
+                ASSERT_EQ(1, dlqMsgs.size());
+                ASSERT_EQ(
+                    "Failed to process input document in ExternalApiOperator with error: Expected "
+                    "header value to evaluate as a string.",
+                    dlqMsgs.front()["errInfo"]["reason"].String());
+                ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
+            });
+    }
+}
 };  // namespace streams

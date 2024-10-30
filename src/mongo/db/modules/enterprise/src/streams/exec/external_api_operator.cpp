@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "mongo/base/error_codes.h"
+#include "mongo/bson/bsontypes.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/json.h"
@@ -18,6 +19,8 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
+#include "mongo/util/overloaded_visitor.h"
+#include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/message.h"
@@ -29,6 +32,16 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
+
+namespace {
+std::string getHeaderStr(const std::string& name, const std::string& val) {
+    return fmt::format("{}: {}", name, val);
+}
+
+std::string getQueryParamsStr(const std::string& key, const std::string& value) {
+    return fmt::format("{}={}", key, value);
+}
+}  // namespace
 
 using namespace mongo;
 
@@ -67,7 +80,6 @@ void ExternalApiOperator::initializeHTTPClient() {
 }
 
 void ExternalApiOperator::doStart() {
-    // TODO(SERVER-95031): evaluate and set connection headers
     if (!_options.httpClient) {
         initializeHTTPClient();
     }
@@ -195,7 +207,7 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
     tassert(9502900,
             "Expected http client to exist before trying to make requests.",
             _options.httpClient);
-    _options.httpClient->setHeaders(headers);
+    _options.httpClient->setHeaders(std::move(headers));
 
     // Wait for throttle delay before performing request
     auto throttleDelay = _rateLimiter.consume();
@@ -207,7 +219,8 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
 
     auto response = _options.httpClient->request(
         _options.requestType,
-        (_options.urlPathExpr) ? evaluateFullUrl(streamDoc.doc) : _options.url,
+        (_options.urlPathExpr || _options.queryParams.size() > 0) ? evaluateFullUrl(streamDoc.doc)
+                                                                  : _options.url,
         httpPayload);
 
     uassert(ErrorCodes::OperationFailed,
@@ -218,23 +231,83 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
 }
 
 std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
-    uassert(
-        ErrorCodes::InternalError,
-        str::stream() << "evaluateFullURL should only be called if _options.path is an not nullptr",
-        _options.urlPathExpr);
-    Value pathField = _options.urlPathExpr->evaluate(doc, &_context->expCtx->variables);
-    if (!pathField.missing() && pathField.getType() == String) {
-        return _options.url + pathField.getStringData();
+    std::string out = _options.url;
+    if (_options.urlPathExpr) {
+        Value pathValue = _options.urlPathExpr->evaluate(doc, &_context->expCtx->variables);
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "Expected url path expression to evaluate to a string.",
+                pathValue.getType() == mongo::BSONType::String);
+        out += pathValue.getStringData();
     }
-    // TODO(SERVER-95031): handle if path is missing or evaluates to non string and DLQ if the
-    // expression evaluate throws an exception
-    return "";
+
+    if (!_options.queryParams.empty()) {
+        out += evaluateQueryParams(doc);
+    }
+
+    return out;
 }
 
 std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Document& doc) {
-    // TODO(SERVER-95031): evaluate the operator headers with the current stream document and
-    // combine with the connection headers.
-    return _options.connectionHeaders;
+    std::vector<std::string> headers{};
+    headers.reserve(_options.operatorHeaders.size() + _options.connectionHeaders.size());
+    for (const auto& header : _options.connectionHeaders) {
+        headers.emplace_back(header);
+    }
+    for (const auto& kv : _options.operatorHeaders) {
+        // Note: the planner parses out expressions that are represented using strings so if
+        // operatorHeaders contains a string value, it is guaranteed to be a static string.
+        std::visit(
+            OverloadedVisitor{
+                [&](const std::string& str) { headers.emplace_back(getHeaderStr(kv.first, str)); },
+                [&](const boost::intrusive_ptr<mongo::Expression>& expr) {
+                    auto headerVal = expr->evaluate(doc, &_context->expCtx->variables);
+                    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                            "Expected header value to evaluate as a string.",
+                            headerVal.getType() == mongo::BSONType::String);
+                    headers.emplace_back(getHeaderStr(kv.first, headerVal.getString()));
+                }},
+            kv.second);
+    }
+    return headers;
+}
+
+std::string ExternalApiOperator::evaluateQueryParams(const mongo::Document& doc) {
+    if (_options.queryParams.empty()) {
+        return "";
+    }
+
+    std::vector<std::string> keyValues{};
+    keyValues.reserve(_options.queryParams.size());
+    for (const auto& kv : _options.queryParams) {
+        // Note: the planner parses out expressions that are represented using strings so if
+        // operatorHeaders has a string value, it is guaranteed to be a static string.
+        std::visit(
+            mongo::OverloadedVisitor{
+                [&](const std::string& str) {
+                    keyValues.push_back(getQueryParamsStr(kv.first, str));
+                },
+                [&](const boost::intrusive_ptr<mongo::Expression>& expr) {
+                    auto paramVal = expr->evaluate(doc, &_context->expCtx->variables);
+                    uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                            "Expected query parameter expression to evaluate as a number, "
+                            "string, or boolean.",
+                            paramVal.getType() == mongo::BSONType::String ||
+                                paramVal.getType() == mongo::BSONType::Bool || paramVal.numeric());
+
+                    if (paramVal.getType() == mongo::BSONType::String) {
+                        // Parse strings separately to avoid unnecessary quotations
+                        // surrounding the string output of `.toString()`.
+                        keyValues.push_back(getQueryParamsStr(kv.first, paramVal.getString()));
+                    } else {
+                        keyValues.push_back(getQueryParamsStr(kv.first, paramVal.toString()));
+                    }
+                }},
+            kv.second);
+    }
+
+    std::string out;
+    str::joinStringDelim(keyValues, &out, '&');
+    return "?" + std::move(out);
 }
 
 mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(mongo::Document inputDoc,

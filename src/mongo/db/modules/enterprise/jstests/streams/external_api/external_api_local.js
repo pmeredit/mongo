@@ -219,35 +219,154 @@ const testCases = [
         }],
         allowAllTraffic: true,
     },
-    // TODO(SERVER-95031): uncomment test cases
-    // {
-    //     spName: "tc3",
-    //     externalAPIOptions:
-    //         {connectionName: webAPIName, urlPath: "/echo/tc3", requestType: "PUT", as:
-    //         'response', headers: {"option-header": "test"}},
-    //     inputDocs: [{a: 1}],
-    //     outputQuery: [{$project: {fullDocument: 1, response: 1}}],
-    //     expectedOutput: [{
-    //         fullDocument: {a: 1},
-    //         response: {inner: {method: "PUT", path: "/echo/tc3", headers: {...basicHeaders,
-    //         "Content-Length" : "626", "option-header": "test"}, query: {},
-    //         body: {fullDocument: {a: 1}}}}
-    //     }],
-    // },
-    // {
-    //     spName: "tc4",
-    //     externalAPIOptions:
-    //         {connectionName: webAPIName, urlPath: "/echo/tc4", requestType: "PATCH", as:
-    //         'response', parameters: {"option-param": true}},
-    //     inputDocs: [{a: 1}],
-    //     outputQuery: [{$project: {fullDocument: 1, response: 1}}],
-    //     expectedOutput: [{
-    //         fullDocument: {a: 1},
-    //         response: {inner: {method: "PATCH", path: "/echo/tc4", headers: {...basicHeaders,
-    //         "Content-Length" : "626"}, query: {"option-param": true},
-    //         body: {fullDocument: {a: 1}}}}
-    //     }],
-    // },
+    {
+        description: "put request with added headers should work",
+        spName: "tc3",
+        externalAPIOptions: {
+            connectionName: webAPIName,
+            urlPath: "/echo/tc3",
+            requestType: "PUT",
+            as: 'response',
+            headers: {
+                "FieldPathHeader": "$fullDocument.foo",
+                "StrHeader": "foo"
+            },
+        },
+        inputDocs: [{a: 1, foo: "DynamicValue"}],
+        outputQuery: [{$project: {
+            fullDocument: 1,
+            "response.method": 1,
+            "response.path": 1,
+            "response.headers": 1,
+        }}],
+        expectedOutput: [{
+            fullDocument: {a: 1, foo: "DynamicValue"},
+            response: {
+                method: "PUT",
+                path: "/echo/tc3",
+                headers: {
+                        ...basicHeaders,
+                        "Content-Type": "application/json",
+                        "Content-Length" : "647",
+                        "FieldPathHeader": "DynamicValue",
+                        "StrHeader": "foo"
+                }
+            }
+        }],
+        fieldsToSkip: ["Expect"],
+        allowAllTraffic: true
+    },
+    {
+        description: "put request with added query parameter should work",
+        spName: "tc4",
+        externalAPIOptions: {
+            connectionName: webAPIName,
+            urlPath: "/echo/tc4",
+            requestType: "PATCH",
+            as: 'response',
+            parameters: {
+                "StrParam": "StaticParameterValue",
+                "DoubleParam": 1.100000000002,
+                "FieldPathExprParam": "$fullDocument.foo",
+                "ObjectExprParam": {
+                    "$sum": [1.2, 2, 3]
+                },
+                "BoolParam": true,
+                // TODO(SERVER-96175) unescape the value to ensure that the url encoding works as we'd expect.
+                "SearchParam": "%22foobar%20baz%22" // => "foobar baz"
+            }
+        },
+        inputDocs: [{a: 1, foo: "DynamicValue"}],
+        outputQuery: [{
+            $project: {
+                fullDocument: 1,
+                "response.method": 1,
+                "response.path": 1,
+                "response.query": 1,
+                "response.headers": 1,
+            }
+        }],
+        expectedOutput: [{
+            fullDocument: {a: 1, foo: "DynamicValue"},
+            response: {
+                method: "PATCH",
+                path: "/echo/tc4",
+                headers: {
+                    ...basicHeaders,
+                    "Content-Length" : "647",
+                    "Content-Type" : "application/json"
+                },
+                query: {
+                    "StrParam": ["StaticParameterValue"],
+                    "DoubleParam": ["1.100000000002"],
+                    "FieldPathExprParam": ["DynamicValue"],
+                    "ObjectExprParam": ["6.2"],
+                    "BoolParam": ["true"],
+                    "SearchParam": ["\"foobar baz\""]
+                },
+            }
+        }],
+        fieldsToSkip: ["Expect"],
+        allowAllTraffic: true,
+    },
+    {
+        description: "get request with valid params and headers",
+        spName: "paramsAndHeadersAreValid",
+        externalAPIOptions: {            
+            connectionName: webAPIName,
+            as: 'response',
+            urlPath: "/echo/",
+            requestType: "GET",
+            headers: {
+                "FieldPathHeader": "$fullDocument.foo",
+                "StrHeader": "foo"
+            },
+            parameters: {
+                "StrParam": "StaticParameterValue",
+                "DoubleParam": 1.100000000002,
+                "FieldPathExprParam": "$fullDocument.foo",
+                "ObjectExprParam": {
+                    "$sum": [1.2, 2, 3]
+                },
+                "BoolParam": true,
+                // TODO(SERVER-96175) unescape the value to ensure that the url encoding works as we'd expect.
+                "SearchParam": "%22foobar%20baz%22" // => "foobar baz"
+            }
+        },
+        outputQuery: [{
+            $project: {
+                fullDocument: 1,
+                "response.method": 1,
+                "response.path": 1,
+                "response.query": 1,
+                "response.headers": 1,
+                "response.body.fullDocument": 1,
+            }
+       }],
+       expectedRequests: [],
+       inputDocs: [{foo: "DynamicValue"}],
+       expectedOutput: [{
+            fullDocument: {foo: "DynamicValue"},
+            response: {
+                method: "GET",
+                path: "/echo/",
+                query: {
+                    "StrParam": ["StaticParameterValue"],
+                    "DoubleParam": ["1.100000000002"],
+                    "FieldPathExprParam": ["DynamicValue"],
+                    "ObjectExprParam": ["6.2"],
+                    "BoolParam": ["true"],
+                    "SearchParam": ["\"foobar baz\""]
+                },
+                headers: {
+                    ...basicHeaders,
+                    "FieldPathHeader": "DynamicValue",
+                    "StrHeader" : "foo",
+                }
+            }
+       }],
+       allowAllTraffic: true,
+    },
     {
         description: "http client should block request and send it to the dlq based on override feature flag",
         spName: "tcFirewallBlockedRequestFF",

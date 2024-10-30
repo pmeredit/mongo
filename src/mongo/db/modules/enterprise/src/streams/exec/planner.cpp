@@ -404,8 +404,6 @@ std::vector<std::pair<std::string, StringOrExpression>> parseDynamicObject(
                 break;
             }
             default:
-                // TODO(SERVER-95031): more gracefully handle arrays when parsing
-                // query parameters.
                 uasserted(ErrorCodes::StreamProcessorInvalidOptions,
                           "Unexpected value type for dynamic object for field '" +
                               std::string{elem.fieldName()} + "'.");

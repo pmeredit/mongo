@@ -51,8 +51,6 @@ public:
         std::vector<std::string> connectionHeaders;
         // Query parameters used when making a HTTP request. Evaluated at runtime on each
         // document.
-        // TODO(SERVER-95938): make query parameters accept array, object, and numeric literal
-        // values.
         std::vector<std::pair<std::string, StringOrExpression>> queryParams;
         // Defined in the operator within the pipeline. Evaluated at runtime on each document.
         std::vector<std::pair<std::string, StringOrExpression>> operatorHeaders;
@@ -105,13 +103,18 @@ private:
     // a user-configured key.
     mongo::Document makeDocumentWithAPIResponse(mongo::Document inputDoc, mongo::Value apiResponse);
 
-    // evaluateFullUrl accepts an input document and applies a mongo expression using that
-    // document to create the urlPath to be appended to the connection uri.
+    // evaluateFullUrl accepts an input document and applies a mongo expression using that document
+    // to create the urlPath to be appended to the connection uri. It will also call
+    // evaluateQueryParams and tack on the query parameters to the end of the URL.
     std::string evaluateFullUrl(const mongo::Document& doc);
 
     // evaluateHeaders accepts an input document and applies a mongo expression using that
     // document to create a set of headers to be used in the http client.
     std::vector<std::string> evaluateHeaders(const mongo::Document& doc);
+
+    // evaluateQueryParams accepts an input document and applies a mongo expression using that
+    // document to create a query string.
+    std::string evaluateQueryParams(const mongo::Document& doc);
 
     ExternalApiOperator::Options _options;
 
