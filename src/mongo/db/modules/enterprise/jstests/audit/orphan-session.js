@@ -19,8 +19,10 @@ let runTest = function(conn, audit, admin) {
 };
 
 // Do not emit audit entries for IPC events.
+// TODO (SERVER-96103) Fix quoting in Win32 ProgramRunner.
 // For now, replace double quotes with single quotes before the escaping happens.
-const auditFilter = JSON.stringify({"users": {"$ne": {user: "__system", db: "local"}}});
+const auditFilter =
+    JSON.stringify({"users": {"$ne": {user: "__system", db: "local"}}}).replaceAll('"', "'");
 
 {
     print("START orphan-session.js for standalone");
