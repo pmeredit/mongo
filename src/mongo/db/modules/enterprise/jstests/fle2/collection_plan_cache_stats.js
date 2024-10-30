@@ -7,8 +7,6 @@
  * assumes_read_concern_unchanged,
  * # Reading from capped collections with readConcern snapshot is not supported.
  * requires_capped,
- * # Plan cache state is node-local and will not get migrated alongside tenant data.
- * tenant_migration_incompatible,
  * # Plan cache state is node-local and will not get migrated alongside user data
  * assumes_balancer_off,
  * assumes_unsharded_collection,
