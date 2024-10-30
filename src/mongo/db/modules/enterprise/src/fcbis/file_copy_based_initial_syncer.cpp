@@ -23,7 +23,6 @@
 #include "mongo/db/repl/tenant_migration_access_blocker_util.h"
 #include "mongo/db/repl/transaction_oplog_application.h"
 #include "mongo/db/server_recovery.h"
-#include "mongo/db/serverless/serverless_operation_lock_registry.h"
 #include "mongo/db/shard_role.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
@@ -2002,8 +2001,6 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
         // Construct in-memory state of migrations and prepared transactions.
         tenant_migration_access_blocker::recoverTenantMigrationAccessBlockers(opCtx);
     }
-    // Construct in-memory locks for serverless operations.
-    ServerlessOperationLockRegistry::recoverLocks(opCtx);
     // Setting inReplicationRecovery prevents double-counting of reconstructed prepared
     // transactions.
     inReplicationRecovery(opCtx->getServiceContext()).store(true);
