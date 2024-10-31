@@ -187,6 +187,13 @@ const FeatureFlagDefinition FeatureFlags::kKafkaProduceTimeout{
     "The produce timeout in milliseconds",
     mongo::Value::createIntOrLong(10L * 60 * 1000)};
 
+const FeatureFlagDefinition FeatureFlags::kKafkaQueuedMaxMessagesKBytes{
+    "kafkaQueuedMaxMessagesKBytes",
+    "Specifies value for queued.max.messages.kbytes in Kafka partition consumers",
+    mongo::Value{},
+    // Use a small value of 1MB on SP10.
+    {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(1000)}}};
+
 
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {

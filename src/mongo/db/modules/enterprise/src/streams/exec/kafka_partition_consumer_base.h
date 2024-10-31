@@ -50,6 +50,8 @@ public:
         boost::optional<std::string> gwproxyEndpoint;
         // GWProxy symmetric encryption key.
         boost::optional<std::string> gwproxyKey;
+        // librdkafka's queued.max.messages.kbytes setting.
+        boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes;
     };
 
     KafkaPartitionConsumerBase(Context* context, Options options);

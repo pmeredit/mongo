@@ -306,6 +306,10 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
     setConf("consume.callback.max.messages", "500");
+    if (_options.rdkafkaQueuedMaxMessagesKBytes) {
+        setConf("queued.max.messages.kbytes",
+                std::to_string(*_options.rdkafkaQueuedMaxMessagesKBytes));
+    }
 
     // Set the resolve callback.
     if (_options.gwproxyEndpoint) {
@@ -387,6 +391,7 @@ void KafkaPartitionConsumer::connectToSource() {
     LOGV2_INFO(9219600,
                "KafkaPartitionConsumer started",
                "context"_attr = _context,
+               "rdkafkaQueuedMaxMessagesKBytes"_attr = _options.rdkafkaQueuedMaxMessagesKBytes,
                "partition"_attr = partition());
 
     // Set the state to connected.

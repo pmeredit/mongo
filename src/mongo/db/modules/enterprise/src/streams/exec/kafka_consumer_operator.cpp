@@ -24,6 +24,7 @@
 #include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
@@ -1281,6 +1282,7 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.queueByteSizeGauge = _queueByteSizeGauge;
     options.gwproxyEndpoint = _options.gwproxyEndpoint;
     options.gwproxyKey = _options.gwproxyKey;
+    options.rdkafkaQueuedMaxMessagesKBytes = getKafkaQueuedMaxMessageKBytes(_context->featureFlags);
 
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(_context, std::move(options));

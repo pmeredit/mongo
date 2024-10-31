@@ -29,6 +29,9 @@ public:
     boost::optional<double> getDouble() const;
     boost::optional<std::string> getString() const;
     boost::optional<std::vector<std::string>> getVectorString() const;
+    const mongo::Value& getValue() const {
+        return _value;
+    }
 
 private:
     mongo::Value _value;
@@ -58,6 +61,7 @@ public:
     static const FeatureFlagDefinition kChangestreamSourceStalenessMonitorPeriod;
     static const FeatureFlagDefinition kMaxConcurrentCheckpoints;
     static const FeatureFlagDefinition kCidrDenyList;
+    static const FeatureFlagDefinition kKafkaQueuedMaxMessagesKBytes;
 };
 
 }  // namespace streams

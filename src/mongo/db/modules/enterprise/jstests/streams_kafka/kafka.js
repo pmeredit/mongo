@@ -2364,6 +2364,76 @@ function contentBasedRouting() {
     sourceColl1.drop();
 }
 
+// A test to help repro some Kafka $source OOM issues we saw in prod.
+// The test writes and reads a lot of data to a 32 partition Kafka broker.
+// Use the below to run a local mongod in a cgroup with limited memory:
+//  systemd-run --user --scope -p MemoryMax=1G ./mongod --port 27017 --dbpath tmpdata \
+//  --logpath log1 --bind_ip localhost --setParameter featureFlagStreams=true --replSet "rs0" --fork
+function bigKafka() {
+    Random.setRandomSeed(42);
+
+    // Write a bunch to a 32 partition Kafka topic.
+    const numDocsInBatch = 5001;
+    let arr = [];
+    const str = makeRandomString(128);
+    for (let i = 0; i < numDocsInBatch; i += 1) {
+        arr.push({i: i});
+    }
+    let inputData = [];
+    const numInput = 10000;
+    for (let i = 0; i < numInput; i += 1) {
+        inputData.push({a: i, arr: arr, str: str});
+    }
+    let spName = "writer";
+    const totalInput = arr.length * inputData.length;
+    sp.createStreamProcessor(spName, [
+        {$source: {'connectionName': '__testMemory'}},
+        {$unwind: "$arr"},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+            }
+        }
+    ]);
+    sp[spName].start();
+    for (const doc of inputData) {
+        sp[spName].testInsert(doc);
+    }
+    assert.soon(() => { return sp[spName].stats().outputMessageCount == totalInput; },
+                "took too long to write",
+                60 * 1000 * 10);
+    sp[spName].stop();
+
+    // Now read from that topic into a $merge.
+    spName = "reader";
+    sp.createStreamProcessor(spName, [
+        {
+            $source: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1,
+                config: {auto_offset_reset: "earliest"}
+            }
+        },
+        {$project: {_id: {a: "$a", b: "$arr.i"}}},
+        {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topicName1 + "out",
+            }
+        }
+    ]);
+    // Without this feature flag, the test will fail targetting a mongod
+    // with only 1GB of memory.
+    const options = {featureFlags: {"kafkaQueuedMaxMessagesKBytes": 1000}};
+    sp[spName].start(options);
+    assert.soon(() => { return sp[spName].stats().outputMessageCount == totalInput; },
+                "took too long to read",
+                60 * 1000 * 10);
+    jsTestLog(sp[spName].stats());
+    sp[spName].stop();
+}
+
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
@@ -2653,3 +2723,8 @@ runKafkaTest(kafka, () => {
 runKafkaTest(kafka, contentBasedRouting);
 
 testPartitionIdleTimeout();
+
+let runBigKafka = _getEnv("RUN_BIG_KAFKA");
+if (runBigKafka === "true") {
+    runKafkaTest(kafka, bigKafka, 32 /* partitionCount */);
+}
