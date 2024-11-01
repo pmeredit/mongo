@@ -21,12 +21,14 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
+#include "streams/exec/kafka_utils.h"
 #include "streams/exec/message.h"
 #include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
+#include "streams/util/units.h"
 
 namespace streams {
 
@@ -947,6 +949,34 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     ASSERT_EQUALS(partitionStates.at(0).watermark, 59);
     ASSERT_EQUALS(partitionStates.at(1).watermark, 60);
     ASSERT_EQUALS(partitionStates.at(2).watermark, 58);
+}
+
+TEST_F(KafkaConsumerOperatorTest, GetRdKafkaQueuedMaxMessagesKBytes) {
+    StreamProcessorFeatureFlags emptyFlags{{}, Date_t::now().toSystemTimePoint()};
+    ASSERT_EQ(boost::none, getRdKafkaQueuedMaxMessagesKBytes(emptyFlags, 1));
+    ASSERT_EQ(boost::none, getRdKafkaQueuedMaxMessagesKBytes(emptyFlags, 2));
+    ASSERT_EQ(boost::none, getRdKafkaQueuedMaxMessagesKBytes(emptyFlags, 4));
+
+    auto makeFlags = [](Value val) {
+        return StreamProcessorFeatureFlags{
+            stdx::unordered_map<std::string, Value>{
+                {FeatureFlags::kKafkaTotalQueuedBytes.name, std::move(val)}},
+            Date_t::now().toSystemTimePoint()};
+    };
+
+    ASSERT_EQ(boost::none, getRdKafkaQueuedMaxMessagesKBytes(makeFlags(Value{}), 1));
+    ASSERT_EQ(boost::none, getRdKafkaQueuedMaxMessagesKBytes(makeFlags(Value{}), 2));
+
+    std::string sp10{"SP10"};
+    auto sp10Default = Value::createIntOrLong(
+        FeatureFlags::kKafkaTotalQueuedBytes.tierDefaultValues.find(sp10)->second.coerceToLong());
+    ASSERT_EQ(128_MiB, sp10Default.coerceToLong());
+    ASSERT_EQ(64_MiB / 1024, *getRdKafkaQueuedMaxMessagesKBytes(makeFlags(sp10Default), 1));
+    ASSERT_EQ(64_MiB / 1024, *getRdKafkaQueuedMaxMessagesKBytes(makeFlags(sp10Default), 2));
+    ASSERT_EQ(32_MiB / 1024, *getRdKafkaQueuedMaxMessagesKBytes(makeFlags(sp10Default), 4));
+    ASSERT_EQ(16_MiB / 1024, *getRdKafkaQueuedMaxMessagesKBytes(makeFlags(sp10Default), 8));
+    ASSERT_EQ(8_MiB / 1024, *getRdKafkaQueuedMaxMessagesKBytes(makeFlags(sp10Default), 16));
+    ASSERT_EQ(1_MiB / 1024, *getRdKafkaQueuedMaxMessagesKBytes(makeFlags(sp10Default), 128));
 }
 
 }  // namespace

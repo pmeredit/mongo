@@ -485,8 +485,11 @@ void KafkaConsumerOperator::initFromCheckpoint() {
                 topicPartitionExists(_topicPartitions, chkptTopic, chkptPartitionId));
 
         // Create the consumer with the offset in the checkpoint.
-        ConsumerInfo consumerInfo =
-            createPartitionConsumer(chkptTopic, chkptPartitionId, partitionState.getOffset());
+        ConsumerInfo consumerInfo = createPartitionConsumer(
+            chkptTopic,
+            chkptPartitionId,
+            partitionState.getOffset(),
+            getRdKafkaQueuedMaxMessagesKBytes(_context->featureFlags, partitions.size()));
 
         CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                    _operatorId,
@@ -547,7 +550,11 @@ void KafkaConsumerOperator::initFromOptions() {
             startOffset = itr->second;
         }
 
-        ConsumerInfo consumerInfo = createPartitionConsumer(topic, partitionId, startOffset);
+        ConsumerInfo consumerInfo = createPartitionConsumer(
+            topic,
+            partitionId,
+            startOffset,
+            getRdKafkaQueuedMaxMessagesKBytes(_context->featureFlags, _topicPartitions.size()));
         if (_options.useWatermarks) {
             invariant(_watermarkCombiner);
             boost::optional<int32_t> inputIdx = getPartitionIdx(topic, partitionId);
@@ -1267,7 +1274,10 @@ void KafkaConsumerOperator::registerMetrics(MetricManager* metricManager) {
 }
 
 std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPartitionConsumer(
-    std::string topicName, int32_t partition, int64_t startOffset) {
+    std::string topicName,
+    int32_t partition,
+    int64_t startOffset,
+    boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes) {
     KafkaPartitionConsumerBase::Options options;
     options.bootstrapServers = _options.bootstrapServers;
     options.topicName = topicName;
@@ -1282,7 +1292,7 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.queueByteSizeGauge = _queueByteSizeGauge;
     options.gwproxyEndpoint = _options.gwproxyEndpoint;
     options.gwproxyKey = _options.gwproxyKey;
-    options.rdkafkaQueuedMaxMessagesKBytes = getKafkaQueuedMaxMessageKBytes(_context->featureFlags);
+    options.rdkafkaQueuedMaxMessagesKBytes = rdkafkaQueuedMaxMessagesKBytes;
 
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(_context, std::move(options));
@@ -1292,11 +1302,15 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
 }
 
 KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsumer(
-    std::string topicName, int32_t partition, int64_t startOffset) {
+    std::string topicName,
+    int32_t partition,
+    int64_t startOffset,
+    boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes) {
     ConsumerInfo consumerInfo;
     consumerInfo.partition = partition;
     consumerInfo.topic = topicName;
-    consumerInfo.consumer = createKafkaPartitionConsumer(topicName, partition, startOffset);
+    consumerInfo.consumer = createKafkaPartitionConsumer(
+        topicName, partition, startOffset, rdkafkaQueuedMaxMessagesKBytes);
     return consumerInfo;
 }
 

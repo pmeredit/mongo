@@ -1,3 +1,4 @@
+import {findMatchingLogLine} from "jstests/libs/log.js";
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
     flushUntilStopped,
@@ -2367,10 +2368,13 @@ function contentBasedRouting() {
 // A test to help repro some Kafka $source OOM issues we saw in prod.
 // The test writes and reads a lot of data to a 32 partition Kafka broker.
 // Use the below to run a local mongod in a cgroup with limited memory:
-//  systemd-run --user --scope -p MemoryMax=1G ./mongod --port 27017 --dbpath tmpdata \
+//  systemd-run --user --scope -p MemoryMax=2G ./mongod --port 27017 --dbpath tmpdata \
 //  --logpath log1 --bind_ip localhost --setParameter featureFlagStreams=true --replSet "rs0" --fork
 function bigKafka() {
     Random.setRandomSeed(42);
+
+    // Use the SP10's default setting of 128MB total in its rdkafka source queues.
+    const options = {featureFlags: {"kafkaTotalQueuedBytes": 128 * 1024 * 1024}};
 
     // Write a bunch to a 32 partition Kafka topic.
     const numDocsInBatch = 5001;
@@ -2380,7 +2384,13 @@ function bigKafka() {
         arr.push({i: i});
     }
     let inputData = [];
-    const numInput = 10000;
+
+    let numInput = 2;
+    let runBigKafka = _getEnv("RUN_BIG_KAFKA");
+    if (runBigKafka === "true") {
+        jsTestLog("Running big kafka!");
+        numInput = 5000;
+    }
     for (let i = 0; i < numInput; i += 1) {
         inputData.push({a: i, arr: arr, str: str});
     }
@@ -2396,7 +2406,7 @@ function bigKafka() {
             }
         }
     ]);
-    sp[spName].start();
+    sp[spName].start(options);
     for (const doc of inputData) {
         sp[spName].testInsert(doc);
     }
@@ -2425,13 +2435,20 @@ function bigKafka() {
     ]);
     // Without this feature flag, the test will fail targetting a mongod
     // with only 1GB of memory.
-    const options = {featureFlags: {"kafkaQueuedMaxMessagesKBytes": 1000}};
     sp[spName].start(options);
     assert.soon(() => { return sp[spName].stats().outputMessageCount == totalInput; },
                 "took too long to read",
                 60 * 1000 * 10);
     jsTestLog(sp[spName].stats());
     sp[spName].stop();
+
+    // Use the logs to verify we set rdkafka's queue size.
+    const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+    const line = findMatchingLogLine(log, {id: 9649600});
+    const entry = JSON.parse(line);
+    assert.eq("Setting rdkafka queue size", entry.msg);
+    assert.eq(4096, entry.attr.queuedMaxMessagesKBytes);
+    assert.eq(4128768, entry.attr.fetchMaxBytes);
 }
 
 let kafka = new LocalKafkaCluster();
@@ -2724,7 +2741,4 @@ runKafkaTest(kafka, contentBasedRouting);
 
 testPartitionIdleTimeout();
 
-let runBigKafka = _getEnv("RUN_BIG_KAFKA");
-if (runBigKafka === "true") {
-    runKafkaTest(kafka, bigKafka, 32 /* partitionCount */);
-}
+runKafkaTest(kafka, bigKafka, 32 /* partitionCount */);

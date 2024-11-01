@@ -27,6 +27,7 @@
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 #include "streams/util/exception.h"
+#include "streams/util/units.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -309,6 +310,15 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     if (_options.rdkafkaQueuedMaxMessagesKBytes) {
         setConf("queued.max.messages.kbytes",
                 std::to_string(*_options.rdkafkaQueuedMaxMessagesKBytes));
+        // Use a fetch.max.bytes that is smaller than the queued.max.messages.kbytes.
+        int64_t fetchMaxBytes = (*_options.rdkafkaQueuedMaxMessagesKBytes * 1024) - 64_KiB;
+        setConf("fetch.max.bytes", std::to_string(fetchMaxBytes));
+        LOGV2_INFO(9649600,
+                   "Setting rdkafka queue size",
+                   "queuedMaxMessagesKBytes"_attr = *_options.rdkafkaQueuedMaxMessagesKBytes,
+                   "fetchMaxBytes"_attr = fetchMaxBytes,
+                   "context"_attr = _context,
+                   "partition"_attr = _options.partition);
     }
 
     // Set the resolve callback.

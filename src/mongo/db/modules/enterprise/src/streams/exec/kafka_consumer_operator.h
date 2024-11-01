@@ -280,12 +280,15 @@ private:
     mongo::BSONObjBuilder toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc);
 
     // Helper methods to create a partition consumer.
-    std::unique_ptr<KafkaPartitionConsumerBase> createKafkaPartitionConsumer(std::string topicName,
-                                                                             int32_t partition,
-                                                                             int64_t startOffset);
+    std::unique_ptr<KafkaPartitionConsumerBase> createKafkaPartitionConsumer(
+        std::string topicName,
+        int32_t partition,
+        int64_t startOffset,
+        boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes);
     ConsumerInfo createPartitionConsumer(std::string topicName,
                                          int32_t partitionId,
-                                         int64_t startOffset);
+                                         int64_t startOffset,
+                                         boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes);
 
     // Creates a `KafkaConsumer` which is used as a proxy to commit offsets and fetch committed
     // offsets for the specified consumer group ID.

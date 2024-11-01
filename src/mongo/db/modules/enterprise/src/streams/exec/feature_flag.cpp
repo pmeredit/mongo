@@ -187,12 +187,14 @@ const FeatureFlagDefinition FeatureFlags::kKafkaProduceTimeout{
     "The produce timeout in milliseconds",
     mongo::Value::createIntOrLong(10L * 60 * 1000)};
 
-const FeatureFlagDefinition FeatureFlags::kKafkaQueuedMaxMessagesKBytes{
-    "kafkaQueuedMaxMessagesKBytes",
-    "Specifies value for queued.max.messages.kbytes in Kafka partition consumers",
+const FeatureFlagDefinition FeatureFlags::kKafkaTotalQueuedBytes{
+    "kafkaTotalQueuedBytes",
+    "When set, specifies the total queued.max.messages.kbytes across all librdkafka partition "
+    "consumers.",
+    // On SP30 and larger tiers, we don't explicitly set queued.max.message.kbytes.
     mongo::Value{},
-    // Use a small value of 1MB on SP10.
-    {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(1000)}}};
+    // No more than 128MB on an SP10.
+    {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(128L * 1024 * 1024)}}};
 
 
 mongo::Value defaultCidrDenyListValue() {

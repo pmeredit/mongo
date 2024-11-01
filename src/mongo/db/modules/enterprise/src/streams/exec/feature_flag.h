@@ -61,7 +61,7 @@ public:
     static const FeatureFlagDefinition kChangestreamSourceStalenessMonitorPeriod;
     static const FeatureFlagDefinition kMaxConcurrentCheckpoints;
     static const FeatureFlagDefinition kCidrDenyList;
-    static const FeatureFlagDefinition kKafkaQueuedMaxMessagesKBytes;
+    static const FeatureFlagDefinition kKafkaTotalQueuedBytes;
 };
 
 }  // namespace streams

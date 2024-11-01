@@ -48,7 +48,7 @@ bool shouldUseWatchToInitClusterChangestream(
     boost::optional<StreamProcessorFeatureFlags> featureFlags);
 boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
-boost::optional<int64_t> getKafkaQueuedMaxMessageKBytes(
+boost::optional<int64_t> getKafkaTotalQueuedBytes(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 
 }  // namespace streams

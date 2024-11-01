@@ -83,11 +83,10 @@ boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
     return ret;
 }
 
-boost::optional<int64_t> getKafkaQueuedMaxMessageKBytes(
+boost::optional<int64_t> getKafkaTotalQueuedBytes(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
     tassert(9588812, "Feature flags should be set", featureFlags);
-    auto val =
-        featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaQueuedMaxMessagesKBytes).getValue();
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaTotalQueuedBytes).getValue();
     if (val.missing()) {
         return boost::none;
     }
