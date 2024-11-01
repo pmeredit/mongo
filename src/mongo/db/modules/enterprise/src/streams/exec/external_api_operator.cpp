@@ -11,6 +11,8 @@
 #include <memory>
 
 #include "mongo/base/error_codes.h"
+#include "mongo/base/string_data.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/document.h"
@@ -98,6 +100,8 @@ void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
     outputMsg.docs.reserve(outputMsgDocsSize);
     int32_t curDataMsgByteSize{0};
 
+    int64_t numInputBytes{0};
+    int64_t numOutputBytes{0};
     int64_t numDlqDocs{0};
     int64_t numDlqBytes{0};
 
@@ -126,55 +130,21 @@ void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
             outputMsg.docs.reserve(outputMsgDocsSize);
         }
 
-        auto& inputDoc = streamDoc.doc;
-        boost::optional<mongo::HttpClient::HttpReply> httpResponse;
-
-        try {
-            httpResponse = doRequest(inputDoc);
-        } catch (const DBException& e) {
-            std::string error = str::stream() << "Failed to process input document in " << getName()
-                                              << " with error: " << e.what();
-            // TODO(SERVER-95033): add more onError handlers in response to network errors, and
-            // certain http status codes
-            numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                _context->streamMetaFieldName, streamDoc, doGetName(), std::move(error)));
-            numDlqDocs++;
-            continue;
-        }
-
-        tassert(9502901, "Expected HTTP response to be set", httpResponse);
-        try {
-            // readAndAdvance can fail to parse response body and throw an exception.
-            auto rawResponse = httpResponse->body.getCursor().readAndAdvance<StringData>();
-            auto bufferLength = rawResponse.size();
-            auto responseView =
-                bsoncxx::stdx::string_view{std::move(rawResponse.data()), bufferLength};
-            auto apiResponse = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-
-            // TODO(SERVER-95033): handle plaintext response.
-
-            auto joinedDoc = makeDocumentWithAPIResponse(inputDoc, Value(std::move(apiResponse)));
-            curDataMsgByteSize += joinedDoc.getApproximateSize();
-
-            streamDoc.doc = std::move(joinedDoc);
+        auto result = processStreamDoc(&streamDoc);
+        if (result.addDocToOutputMsg) {
+            curDataMsgByteSize += result.dataMsgBytes;
             outputMsg.docs.emplace_back(std::move(streamDoc));
-        } catch (const DBException& e) {
-            // TODO(SERVER-95033): add more error handling methods in response to unexpected
-            // response types, deserialization errors, etc.
-            std::string error = str::stream()
-                << "Failed to parse response body in " << getName() << " with error: " << e.what();
-            numDlqBytes +=
-                _context->dlq->addMessage(toDeadLetterQueueMsg(_context->streamMetaFieldName,
-                                                               std::move(streamDoc),
-                                                               doGetName(),
-                                                               std::move(error)));
-            numDlqDocs++;
-            continue;
         }
+        numInputBytes += result.numInputBytes;
+        numOutputBytes += result.numOutputBytes;
+        numDlqDocs += result.numDlqDocs;
+        numDlqBytes += result.numDlqBytes;
     }
 
-    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
-    // TODO(SERVER-95602): expose ingress/egress metrics
+    incOperatorStats({.numInputBytes = numInputBytes,
+                      .numOutputBytes = numOutputBytes,
+                      .numDlqDocs = numDlqDocs,
+                      .numDlqBytes = numDlqBytes});
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 
@@ -183,19 +153,33 @@ void ExternalApiOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
     sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
 }
 
-boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
-    const StreamDocument& streamDoc) {
+ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
+    StreamDocument* streamDoc) {
+    auto& inputDoc = streamDoc->doc;
+    boost::optional<mongo::HttpClient::HttpReply> httpResponse;
 
-    auto headers = evaluateHeaders(streamDoc.doc);
+    ProcessResult processResult{};
+
+    std::vector<std::string> headers;
+    try {
+        headers = evaluateHeaders(inputDoc);
+    } catch (const DBException& e) {
+        std::string error = str::stream()
+            << "Failed to process input document in " << getName() << " with error: " << e.what();
+        // TODO(SERVER-95033): add more onError handlers in response to network errors, and
+        // certain http status codes
+        processResult.numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
+            _context->streamMetaFieldName, std::move(*streamDoc), getName(), std::move(error)));
+        processResult.numDlqDocs++;
+        return processResult;
+    }
 
     std::string rawDoc;
-    ConstDataRange httpPayload = {nullptr, 0};
     switch (_options.requestType) {
         case HttpClient::HttpMethod::kPOST:
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
-            rawDoc = tojson(streamDoc.doc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
-            httpPayload = ConstDataRange(rawDoc, rawDoc.size());
+            rawDoc = tojson(inputDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
             headers.emplace_back("Content-Type: application/json");
             break;
         }
@@ -209,6 +193,63 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
             _options.httpClient);
     _options.httpClient->setHeaders(std::move(headers));
 
+    ConstDataRange data{nullptr, 0};
+    if (!rawDoc.empty()) {
+        data = ConstDataRange{rawDoc, static_cast<long>(rawDoc.size())};
+        processResult.numOutputBytes += rawDoc.size();
+    }
+    try {
+        httpResponse = doRequest((_options.urlPathExpr || _options.queryParams.size() > 0)
+                                     ? evaluateFullUrl(inputDoc)
+                                     : _options.url,
+                                 data);
+
+        uassert(ErrorCodes::OperationFailed,
+                str::stream() << "Unexpected http status code from server: " << httpResponse->code,
+                httpResponse->code >= 200 && httpResponse->code < 300);
+    } catch (const DBException& e) {
+        std::string error = str::stream()
+            << "Failed to process input document in " << getName() << " with error: " << e.what();
+        // TODO(SERVER-95033): add more onError handlers in response to network errors, and
+        // certain http status codes
+        processResult.numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
+            _context->streamMetaFieldName, std::move(*streamDoc), getName(), std::move(error)));
+        processResult.numDlqDocs++;
+        return processResult;
+    }
+
+    tassert(9502901, "Expected HTTP response to be set", httpResponse);
+    mongo::BSONObj apiResponse;
+    try {
+        // readAndAdvance can fail to parse response body and throw an exception.
+        auto rawResponse = httpResponse->body.getCursor().readAndAdvance<StringData>();
+        processResult.numInputBytes += rawResponse.size();
+        auto responseView =
+            bsoncxx::stdx::string_view{std::move(rawResponse.data()), rawResponse.size()};
+        apiResponse = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+    } catch (const DBException& e) {
+        // TODO(SERVER-95033): add more error handling methods in response to unexpected
+        // response types, deserialization errors, etc.
+        std::string error = str::stream()
+            << "Failed to parse response body in " << getName() << " with error: " << e.what();
+        processResult.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
+            _context->streamMetaFieldName, std::move(*streamDoc), getName(), std::move(error)));
+        processResult.numDlqDocs++;
+        return processResult;
+    }
+
+    // TODO(SERVER-95033): handle plaintext response.
+    auto joinedDoc = makeDocumentWithAPIResponse(inputDoc, Value(std::move(apiResponse)));
+    processResult.dataMsgBytes = joinedDoc.getApproximateSize();
+    processResult.addDocToOutputMsg = true;
+    streamDoc->doc = std::move(joinedDoc);
+
+    return processResult;
+}
+
+boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
+    StringData url, ConstDataRange httpPayload) {
+
     // Wait for throttle delay before performing request
     auto throttleDelay = _rateLimiter.consume();
     if (throttleDelay > Microseconds(0)) {
@@ -217,17 +258,7 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
             9503700, "Expected a zero throttle delay", _rateLimiter.consume() == Microseconds(0));
     }
 
-    auto response = _options.httpClient->request(
-        _options.requestType,
-        (_options.urlPathExpr || _options.queryParams.size() > 0) ? evaluateFullUrl(streamDoc.doc)
-                                                                  : _options.url,
-        httpPayload);
-
-    uassert(ErrorCodes::OperationFailed,
-            str::stream() << "Unexpected http status code from server: " << response.code,
-            response.code >= 200 && response.code < 300);
-
-    return response;
+    return _options.httpClient->request(_options.requestType, url, httpPayload);
 }
 
 std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
@@ -310,7 +341,7 @@ std::string ExternalApiOperator::evaluateQueryParams(const mongo::Document& doc)
     return "?" + std::move(out);
 }
 
-mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(mongo::Document inputDoc,
+mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
                                                                  mongo::Value apiResponse) {
     MutableDocument output(std::move(inputDoc));
     output.setNestedField(_options.as, std::move(apiResponse));

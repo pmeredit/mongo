@@ -58,6 +58,16 @@ public:
         testAssert(messages);
     }
 
+    void testAgainstDocs(std::vector<StreamDocument> inputDocs,
+                         std::function<void(const std::deque<StreamMsgUnion>&)> msgsAssert,
+                         std::function<void(OperatorStats)> statsAssert) {
+        // Send data message to operator and let process + flow to sink.
+        _oper->onDataMsg(0, StreamDataMsg{.docs = inputDocs});
+        auto messages = _sink->getMessages();
+        msgsAssert(messages);
+        statsAssert(_oper->getStats());
+    }
+
     void stopDag() {
         _oper->stop();
         _sink->stop();
@@ -100,7 +110,8 @@ struct ExternalApiOpereratorTestCase {
     const std::string description;
     const std::function<ExternalApiOperator::Options()> optionsFn;
     const std::vector<StreamDocument> inputDocs;
-    const std::function<void(const std::deque<StreamMsgUnion>&)> assertFn;
+    const std::function<void(const std::deque<StreamMsgUnion>&)> msgsAssertFn;
+    const std::function<void(OperatorStats)> statsAssertFn;
 };
 
 TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
@@ -152,6 +163,10 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     ASSERT_TRUE(ack.ok());
                     ASSERT_EQ(ack.String(), "ok");
                 }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 26);
+                ASSERT_EQ(stats.numOutputBytes, 0);
             },
         },
         {
@@ -208,6 +223,10 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     ASSERT_TRUE(ack.ok());
                     ASSERT_EQ(ack.String(), "ok");
                 }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 26);
+                ASSERT_EQ(stats.numOutputBytes, 26);
             },
         },
         {
@@ -272,6 +291,10 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     ASSERT_EQ(ack.String(), "ok");
                 }
             },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
         },
         {
             "should make a POST request with valid headers",
@@ -323,13 +346,17 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     ASSERT_EQ(ack.String(), "ok");
                 }
             },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 22);
+            },
         },
     };
 
     for (const auto& tc : tests) {
         LOGV2_DEBUG(9503599, 1, "Running test case", "description"_attr = tc.description);
         setupDag(tc.optionsFn());
-        testAgainstDocs(tc.inputDocs, tc.assertFn);
+        testAgainstDocs(tc.inputDocs, tc.msgsAssertFn, tc.statsAssertFn);
         stopDag();
     }
 }
@@ -585,6 +612,12 @@ TEST_F(ExternalApiOperatorTest, GetWithBadQueryParams) {
                     " query parameter expression to evaluate as a number, string, or boolean.",
                     dlqMsgs.front()["errInfo"]["reason"].String());
                 ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 0);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_EQ(stats.numDlqBytes, 310);
+                ASSERT_EQ(stats.numDlqDocs, 1);
             });
     }
 }
@@ -666,6 +699,12 @@ TEST_F(ExternalApiOperatorTest, GetWithBadHeaders) {
                     "header value to evaluate as a string.",
                     dlqMsgs.front()["errInfo"]["reason"].String());
                 ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 0);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_EQ(stats.numDlqBytes, 276);
+                ASSERT_EQ(stats.numDlqDocs, 1);
             });
     }
 }

@@ -36,6 +36,8 @@ using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo:
  */
 class ExternalApiOperator : public Operator {
 public:
+    static constexpr StringData kName = "ExternalApiOperator";
+
     struct Options {
         std::unique_ptr<mongo::HttpClient> httpClient{};
 
@@ -75,7 +77,7 @@ public:
 
 protected:
     std::string doGetName() const override {
-        return "ExternalApiOperator";
+        return kName.toString();
     }
 
     void doStart() override;
@@ -87,23 +89,19 @@ protected:
 
 
 private:
-    // parseCidrDenyList will retrieve the feature flag value from context and return a new
-    // cidrDenyList
-    std::vector<mongo::CIDR> parseCidrDenyList();
+    struct ProcessResult {
+        bool addDocToOutputMsg{false};
+        int64_t dataMsgBytes{0};
+        int64_t numDlqDocs{0};
+        int64_t numDlqBytes{0};
+        int64_t numInputBytes{0};
+        int64_t numOutputBytes{0};
+    };
 
-    // initializeHTTPClient creates an http client, sets http-request-related settings as
-    // configured by the user
-    void initializeHTTPClient();
+    ProcessResult processStreamDoc(StreamDocument* streamDoc);
 
-    // doRequest creates a request struct, performs the request to the configured URL and
-    // returns the response.
-    boost::optional<mongo::HttpClient::HttpReply> doRequest(const StreamDocument& doc);
-
-    // makeDocumentWithAPIResponse sets the api response as a value in the input document using
-    // a user-configured key.
-    mongo::Document makeDocumentWithAPIResponse(mongo::Document inputDoc, mongo::Value apiResponse);
-
-    // evaluateFullUrl accepts an input document and applies a mongo expression using that document
+    // evaluateFullUrl accepts an input document and applies a mongo expression using that
+    // document
     // to create the urlPath to be appended to the connection uri. It will also call
     // evaluateQueryParams and tack on the query parameters to the end of the URL.
     std::string evaluateFullUrl(const mongo::Document& doc);
@@ -115,6 +113,25 @@ private:
     // evaluateQueryParams accepts an input document and applies a mongo expression using that
     // document to create a query string.
     std::string evaluateQueryParams(const mongo::Document& doc);
+
+    // doRequest creates a request struct, performs the request to the configured URL and
+    // returns the response.
+    boost::optional<mongo::HttpClient::HttpReply> doRequest(StringData url,
+                                                            ConstDataRange httpPayload);
+
+    // makeDocumentWithAPIResponse sets the api response as a value in the input document using
+    // a user-configured key.
+    mongo::Document makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
+                                                mongo::Value apiResponse);
+
+
+    // parseCidrDenyList will retrieve the feature flag value from context and return a new
+    // cidrDenyList
+    std::vector<mongo::CIDR> parseCidrDenyList();
+
+    // initializeHTTPClient creates an http client, sets http-request-related settings as
+    // configured by the user
+    void initializeHTTPClient();
 
     ExternalApiOperator::Options _options;
 

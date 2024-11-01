@@ -5,6 +5,7 @@
 #include "streams/exec/stream_stats.h"
 
 #include "mongo/util/assert_util.h"
+#include "streams/exec/external_api_operator.h"
 
 using namespace mongo;
 
@@ -40,6 +41,11 @@ StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& o
         out.memoryUsageBytes += s.memoryUsageBytes;
         out.numDlqDocs += s.numDlqDocs;
         out.numDlqBytes += s.numDlqBytes;
+        // We want to include bytes performed by the $externalApi even when not a source/sink
+        if (s.operatorName == ExternalApiOperator::kName) {
+            out.numInputBytes += s.numInputBytes;
+            out.numOutputBytes += s.numOutputBytes;
+        }
     }
 
     return out;
