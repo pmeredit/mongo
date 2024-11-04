@@ -766,6 +766,13 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                                    stopCounter));
         }
 
+        /**
+         *  4.1. Ensure the initial backup completes before extending. This avoids a race where both
+         *       the initial and extended set of files for the same backup are copied concurrently.
+         */
+        copyWorkers.forEach((thread) => { thread.join(); });
+        copyWorkers = [];
+
         concurrentWorkWhileBackup.setup();
         concurrentWorkWhileBackup.runBeforeExtend(st.s);
 
@@ -778,7 +785,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
             let thread = copyBackupCursorExtendFiles(
                 cursor, /*namespacesToSkip=*/[], dbpaths[i], restorePaths[i], true);
             copyWorkers.push(thread);
-            cursor.close();
+            backupCursors.push(cursor);
         }
 
         concurrentWorkWhileBackup.runAfterExtend(st.s);
@@ -805,8 +812,11 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
          *     convenience and there is no correctness reason to postpone closing a backup cursor.
          *     The best practice in real application is to close the backup cursor on a node
          *     immediately after that node's files have been copied.)
+         *
+         *     Note that cursors are closed in FILO-order so that extended cursors are closed before
+         *     the backup cursor they depend on.
          */
-        backupCursors.forEach((cursor) => { cursor.close(); });
+        backupCursors.reverse().forEach((cursor) => { cursor.close(); });
 
         jsTestLog({
             msg: "Sharded cluster has been successfully backed up.",
