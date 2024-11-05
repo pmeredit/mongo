@@ -26,69 +26,6 @@ using namespace mongo;
 namespace streams {
 namespace {
 
-// A visitor class that can be used with MetricManager::visitAllMetrics().
-class TestMetricsVisitor {
-public:
-    const auto& gauges() {
-        return _gauges;
-    }
-
-    const auto& intGauges() {
-        return _intGauges;
-    }
-
-    const auto& callbackGauges() {
-        return _callbackGauges;
-    }
-
-    void visit(Counter* counter,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {}
-
-    void visit(Gauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _gauges[getProcessorIdLabel(labels)][name] = gauge;
-    }
-
-    void visit(IntGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _intGauges[getProcessorIdLabel(labels)][name] = gauge;
-    }
-
-    void visit(CallbackGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _callbackGauges[getProcessorIdLabel(labels)][name] = gauge;
-    }
-
-    void visit(Histogram* histogram,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {}
-
-private:
-    std::string getProcessorIdLabel(const MetricManager::LabelsVec& labels) {
-        auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {
-            return l.first == kProcessorIdLabelKey;
-        });
-        invariant(result != labels.end());
-        return result->second;
-    }
-
-    using ProcessorId = std::string;
-    using MetricName = std::string;
-    stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, Gauge*>> _gauges;
-    stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, IntGauge*>> _intGauges;
-    stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, CallbackGauge*>>
-        _callbackGauges;
-};
-
 void assertStatsEqual(std::vector<OperatorStats> expected,
                       std::vector<mongo::CheckpointOperatorInfo> actual) {
     ASSERT_EQ(actual.size(), expected.size());

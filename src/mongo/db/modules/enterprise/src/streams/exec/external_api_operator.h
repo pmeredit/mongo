@@ -75,6 +75,8 @@ public:
 
     const Options& getOptions();
 
+    void registerMetrics(MetricManager* metricManager) override;
+
 protected:
     std::string doGetName() const override {
         return kName.toString();
@@ -139,6 +141,8 @@ private:
     RateLimiter _rateLimiter;
 
     std::vector<mongo::CIDR> _cidrDenyList;
+
+    std::shared_ptr<Counter> _throttleDurationCounter;
 };
 
 int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);

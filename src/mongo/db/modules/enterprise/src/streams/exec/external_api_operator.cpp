@@ -25,6 +25,7 @@
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/feature_flag.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/operator.h"
@@ -46,6 +47,13 @@ std::string getQueryParamsStr(const std::string& key, const std::string& value) 
 }  // namespace
 
 using namespace mongo;
+
+void ExternalApiOperator::registerMetrics(MetricManager* metricManager) {
+    _throttleDurationCounter = metricManager->registerCounter(
+        "rest_operator_throttle_duration_micros",
+        "Time slept by the rest operator to not exceed the rate limiter in microseconds",
+        getDefaultMetricLabels(_context));
+}
 
 ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::Options options)
     : Operator(context, 1, 1),
@@ -254,6 +262,7 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
     auto throttleDelay = _rateLimiter.consume();
     if (throttleDelay > Microseconds(0)) {
         _options.throttleFn(throttleDelay);
+        _throttleDurationCounter->increment(durationCount<Microseconds>(throttleDelay));
         tassert(
             9503700, "Expected a zero throttle delay", _rateLimiter.consume() == Microseconds(0));
     }

@@ -16,6 +16,7 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "mongo/util/system_tick_source.h"
@@ -37,11 +38,12 @@ using namespace mongo;
 class ExternalApiOperatorTest : public AggregationContextFixture {
 public:
     ExternalApiOperatorTest() : AggregationContextFixture() {
-        _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
+        std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
     }
 
     void setupDag(ExternalApiOperator::Options opts) {
         _oper = std::make_unique<ExternalApiOperator>(_context.get(), std::move(opts));
+        _oper->registerMetrics(_executor->getMetricManager());
         _sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
 
         // Build DAG.
@@ -73,22 +75,6 @@ public:
         _sink->stop();
     }
 
-    void doLoadTest(int iterations,
-                    Microseconds minTestDuration,
-                    std::function<void()> setup,
-                    std::function<void(const std::deque<StreamMsgUnion>&)> testAssert) {
-        Timer timer{};
-        auto start = timer.elapsed();
-
-        for (int i = 0; i < iterations; i++) {
-            setup();
-            testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
-                            testAssert);
-        }
-
-        ASSERT_GREATER_THAN_OR_EQUALS(timer.elapsed() - start, minTestDuration);
-    }
-
     void updateRateLimitPerSecond(int64_t rate) {
         auto featureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
         featureFlags[FeatureFlags::kExternalAPIRateLimitPerSecond.name] =
@@ -101,6 +87,7 @@ public:
 
 protected:
     std::unique_ptr<Context> _context;
+    std::unique_ptr<Executor> _executor;
 
     std::unique_ptr<ExternalApiOperator> _oper;
     std::unique_ptr<InMemorySinkOperator> _sink;
@@ -367,46 +354,66 @@ TEST_F(ExternalApiOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     auto rawMockHttpClient = mockHttpClient.get();
 
+    const auto docsToInsert = 5;
+    const auto minTestDuration = Seconds(4);
+    std::vector<StreamDocument> docs;
+    docs.reserve(docsToInsert);
+
+    for (int i = 0; i < docsToInsert; i++) {
+        auto path = fmt::format("/{}", i);
+        rawMockHttpClient->expect(
+            MockHttpClient::Request{
+                HttpClient::HttpMethod::kGET,
+                uri.toString() + path,
+            },
+            MockHttpClient::Response{.code = 200,
+                                     .body = tojson(BSON("ack"
+                                                         << "ok"))});
+        docs.emplace_back(
+            StreamDocument{Document{fromjson("{" + fmt::format("'path': '{}'", path) + "}")}});
+    }
+
     updateRateLimitPerSecond(1);
 
     ExternalApiOperator::Options options{
         .httpClient = std::move(mockHttpClient),
         .requestType = HttpClient::HttpMethod::kGET,
         .url = uri.toString(),
+        .urlPathExpr = ExpressionFieldPath::parse(
+            _context->expCtx.get(), "$path", _context->expCtx->variablesParseState),
         .as = "response",
     };
 
     setupDag(std::move(options));
 
-    doLoadTest(
-        5,
-        Seconds(4),
-        [rawMockHttpClient, uri]() {
-            rawMockHttpClient->expect(
-                MockHttpClient::Request{
-                    HttpClient::HttpMethod::kGET,
-                    uri.toString(),
-                },
-                MockHttpClient::Response{.code = 200,
-                                         .body = tojson(BSON("ack"
-                                                             << "ok"))});
-        },
-        [](std::deque<StreamMsgUnion> messages) {
-            ASSERT_EQ(messages.size(), 1);
-            auto msg = messages.at(0);
 
-            ASSERT(msg.dataMsg);
-            ASSERT(!msg.controlMsg);
-            ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+    Timer timer{};
+    auto start = timer.elapsed();
 
-            auto doc = msg.dataMsg->docs[0].doc.toBson();
-            auto response = doc["response"].Obj();
-            ASSERT_TRUE(!response.isEmpty());
+    testAgainstDocs(docs, [&](std::deque<StreamMsgUnion> messages) {
+        ASSERT_EQ(messages.size(), 1);
+        auto msg = messages.at(0);
 
-            auto ack = response["ack"];
-            ASSERT_TRUE(ack.ok());
-            ASSERT_EQ(ack.String(), "ok");
-        });
+        ASSERT(msg.dataMsg);
+        ASSERT(!msg.controlMsg);
+        ASSERT_EQ(msg.dataMsg->docs.size(), docsToInsert);
+    });
+
+    auto elapsedTime = timer.elapsed() - start;
+    ASSERT_GREATER_THAN_OR_EQUALS(elapsedTime, minTestDuration);
+    TestMetricsVisitor metrics;
+    _executor->getMetricManager()->visitAllMetrics(&metrics);
+    const auto& operatorCounters = metrics.counters().find(_context->streamProcessorId);
+    long metricThrottleDuration = -1;
+    if (operatorCounters != metrics.counters().end()) {
+        auto it =
+            operatorCounters->second.find(std::string{"rest_operator_throttle_duration_micros"});
+        if (it != operatorCounters->second.end()) {
+            metricThrottleDuration = it->second->value();
+        }
+    }
+    ASSERT_GREATER_THAN_OR_EQUALS(Microseconds(metricThrottleDuration),
+                                  minTestDuration - Milliseconds(1));
 }
 
 TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
