@@ -75,7 +75,10 @@ struct in_addr KafkaResolveCallback::getRandomProxy(AddrInfoPtr& addresses) {
         proxyEndpoints.push_back(address);
     }
 
-    uassert(ErrorCodes::InternalError, "No GWProxy IPs available", !proxyEndpoints.empty());
+    if (proxyEndpoints.empty()) {
+        addUserFacingError("No proxy IPs available - connection currently unavailable");
+        uasserted(ErrorCodes::InternalError, "No GWProxy IPs available");
+    }
 
     // Choose a GWProxy endpoint at random. This is pretty low performance,
     // but is out of the fast path, and does not get called very often.
@@ -98,10 +101,12 @@ sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
     addrinfo* tempAddrInfoPtr = nullptr;
     err = getaddrinfo(hostname.c_str(), port.c_str(), &hints, &tempAddrInfoPtr);
     auto addrs = AddrInfoPtr{tempAddrInfoPtr, freeaddrinfo};
-    uassert(ErrorCodes::InternalError,
-            str::stream() << "Unable to resolve proxy name provided.  Hostname: " << hostname
-                          << "Port: " << port,
-            err == 0);
+    if (err != 0) {
+        addUserFacingError("Unable to resolve proxy name - connection currently unavailable");
+        uasserted(ErrorCodes::InvalidOptions,
+                  str::stream() << "Unable to resolve proxy name provided.  Hostname: " << hostname
+                                << "Port: " << port);
+    }
 
     // Construct a new sockaddr_in with our custom port.
     sockaddr_in addr{};

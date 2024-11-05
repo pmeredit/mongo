@@ -390,12 +390,29 @@ int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
     return startOffset;
 }
 
+boost::optional<std::string> KafkaPartitionConsumer::getVerboseCallbackErrorsIfExists() {
+    // Any error that _resolveCbImpl returns will be fatal, so it's not
+    // necessary to accumulate errors from _connectCbImpl if we error
+    // in the resolver, we can return them immediately.
+    if (_resolveCbImpl && _resolveCbImpl->hasErrors()) {
+        return _resolveCbImpl->getAllErrorsAsString();
+    }
+    if (_connectCbImpl && _connectCbImpl->hasErrors()) {
+        return _connectCbImpl->getAllErrorsAsString();
+    }
+
+    return boost::none;
+}
+
 void KafkaPartitionConsumer::connectToSource() {
     auto startOffset = queryWatermarkOffsets();
 
     RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, startOffset);
+
+    const boost::optional<std::string> formattedErrors = getVerboseCallbackErrorsIfExists();
     uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
-            kafkaErrToString("Failed to start consumer with error", resp),
+            formattedErrors ? formattedErrors.get()
+                            : kafkaErrToString("Failed to start consumer with error", resp),
             resp == RdKafka::ERR_NO_ERROR);
 
     LOGV2_INFO(9219600,

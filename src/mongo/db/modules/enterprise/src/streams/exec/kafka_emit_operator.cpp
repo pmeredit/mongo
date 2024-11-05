@@ -86,6 +86,7 @@ void KafkaEmitOperator::Connector::testConnection() {
     // Validate that the connection can be established by querying metadata.
     RdKafka::Metadata* metadata{nullptr};
     RdKafka::ErrorCode kafkaErrorCode{RdKafka::ERR_NO_ERROR};
+
     if (_options.topicName) {
         std::string errstr;
         std::unique_ptr<RdKafka::Topic> topic{RdKafka::Topic::create(_options.producer,
@@ -105,10 +106,34 @@ void KafkaEmitOperator::Connector::testConnection() {
     }
 
     std::unique_ptr<RdKafka::Metadata> deleter(metadata);
+
+    // Check for errors emitted by registered callbacks.
+    boost::optional<std::string> errors = getVerboseCallbackErrorsIfExists();
+
+    if (errors) {
+        // We have stored errors from the callback, use these instead of any stored Kafka error
+        // codes (as they are probably misleading).
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, *errors);
+    }
+
     uassert(
         ErrorCodes::StreamProcessorKafkaConnectionError,
         kafkaErrToString("$emit to Kafka topic encountered error while connecting", kafkaErrorCode),
         kafkaErrorCode == RdKafka::ERR_NO_ERROR);
+}
+
+boost::optional<std::string> KafkaEmitOperator::Connector::getVerboseCallbackErrorsIfExists() {
+    // Any error that _resolveCbImpl returns will be fatal, so it's not
+    // necessary to accumulate errors from _connectCbImpl if we error
+    // in the resolver, we can return them immediately.
+    if (_options.kafkaResolveCallback && _options.kafkaResolveCallback->hasErrors()) {
+        return _options.kafkaResolveCallback->getAllErrorsAsString();
+    }
+    if (_options.kafkaConnectAuthCallback && _options.kafkaConnectAuthCallback->hasErrors()) {
+        return _options.kafkaConnectAuthCallback->getAllErrorsAsString();
+    }
+
+    return boost::none;
 }
 
 
@@ -560,6 +585,8 @@ void KafkaEmitOperator::doStart() {
     options.producer = _producer.get();
     options.metadataQueryTimeout = _options.metadataQueryTimeout;
     options.kafkaEventCallback = _eventCbImpl.get();
+    options.kafkaConnectAuthCallback = _connectCbImpl;
+    options.kafkaResolveCallback = _resolveCbImpl;
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
 }

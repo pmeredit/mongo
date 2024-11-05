@@ -144,13 +144,13 @@ KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
     // Setup the resolve callback if so configured.
     if (_options.gwproxyEndpoint) {
         _resolveCbImpl =
-            std::make_unique<KafkaResolveCallback>(_context,
+            std::make_shared<KafkaResolveCallback>(_context,
                                                    "KafkaConsumerOperator::Connector",
                                                    *_options.gwproxyEndpoint) /* target proxy */;
 
         // Setup the connect callback if authentication is required.
         if (_options.gwproxyKey) {
-            _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
+            _connectCbImpl = std::make_shared<KafkaConnectAuthCallback>(
                 _context,
                 "KafkaConsumerOperator::Connector",
                 *_options.gwproxyKey /* symmetricKey */,
@@ -245,6 +245,20 @@ KafkaConsumerOperator::Connector::getTopicPartitions() {
     return _topicPartitions;
 }
 
+boost::optional<std::string> KafkaConsumerOperator::Connector::getVerboseCallbackErrorsIfExists() {
+    // Any error that _resolveCbImpl returns will be fatal, so it's not
+    // necessary to accumulate errors from _connectCbImpl if we error
+    // in the resolver, we can return them immediately.
+    if (_resolveCbImpl && _resolveCbImpl->hasErrors()) {
+        return _resolveCbImpl->getAllErrorsAsString();
+    }
+    if (_connectCbImpl && _connectCbImpl->hasErrors()) {
+        return _connectCbImpl->getAllErrorsAsString();
+    }
+
+    return boost::none;
+}
+
 void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
     invariant(getTopicPartitions().empty());
     std::vector<TopicPartition> topicPartitions;
@@ -269,6 +283,8 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
         RdKafka::ErrorCode resp = _consumer->metadata(
             false, rdTopic.get(), &metadata, _options.kafkaRequestTimeoutMs.count());
         std::unique_ptr<RdKafka::Metadata> metadataHolder{metadata};
+        const boost::optional<std::string> verboseCallbackErrors =
+            getVerboseCallbackErrorsIfExists();
         if (resp != RdKafka::ERR_NO_ERROR || !metadata || metadata->topics()->size() != 1 ||
             metadata->topics()->at(0)->topic() != topicName) {
             LOGV2_INFO(9358012,
@@ -277,8 +293,12 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
                        "topic"_attr = topicName,
                        "errorCode"_attr = resp,
                        "errorMsg"_attr = RdKafka::err2str(resp));
-            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                      kafkaErrToString("Could not connect to the Kafka topic", resp));
+
+            uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+                    verboseCallbackErrors
+                        ? verboseCallbackErrors.get()
+                        : kafkaErrToString("Could not connect to the Kafka topic", resp),
+                    resp == RdKafka::ERR_NO_ERROR);
         }
 
         auto* partitions = metadataHolder->topics()->at(0)->partitions();
@@ -1114,12 +1134,12 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
 std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsumer() {
     // Setup the resolve callback if so configured.
     if (_options.gwproxyEndpoint) {
-        _resolveCbImpl = std::make_unique<KafkaResolveCallback>(
+        _resolveCbImpl = std::make_shared<KafkaResolveCallback>(
             _context, getName() /* operator name */, *_options.gwproxyEndpoint) /* target proxy */;
 
         // Setup the connect callback if authentication is required.
         if (_options.gwproxyKey) {
-            _connectCbImpl = std::make_unique<KafkaConnectAuthCallback>(
+            _connectCbImpl = std::make_shared<KafkaConnectAuthCallback>(
                 _context,
                 getName() /* operator name */,
                 *_options.gwproxyKey /* symmetricKey */,

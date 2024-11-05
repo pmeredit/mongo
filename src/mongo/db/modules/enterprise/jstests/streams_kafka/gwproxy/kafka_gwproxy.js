@@ -22,6 +22,8 @@ const kafkaPlaintextName = "kafka1";
 const kafkaSASLSSLName = "kafkaSSL1";
 const kafkaSASLSSLNameHexKey = "kafkaSSL1HexKey";
 const kafkaSASLSSLNameBad = "kafkaSSLBad";
+const kafkaSASLSSLNameResolves = "kafkaSASLSSLNameResolves";
+const kafkaSASLSSLNameInvalid = "kafkaSASLSSLNameInvalid";
 const dbConnName = "db1";
 const uri = 'mongodb://' + db.getMongo().host;
 const kafkaUri = 'localhost:9092';
@@ -118,11 +120,57 @@ const connectionRegistry = [
                     "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
             }
         }
-    }
+    },
+    {
+        name: kafkaSASLSSLNameResolves,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSASLSSL,
+            gwproxyEndpoint: "localhost",  // This interface is added by the gwproxy setup script
+            gwproxyKey:
+                "14c818b4360a86df715e0c9a3b5b62f9ba932a691d883882c9dbb59468ee22f9",  // Incorrect
+                                                                                     // proxy key
+            auth: {
+                saslMechanism: "PLAIN",
+                saslUsername: "kafka",
+                saslPassword: "kafka",
+                securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSASLSSLNameInvalid,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSASLSSL,
+            gwproxyEndpoint: "a-name-that-will-not-resolve.home",  // This interface is added by the
+                                                                   // gwproxy setup script
+            gwproxyKey:
+                "14c818b4360a86df715e0c9a3b5b62f9ba932a691d883882c9dbb59468ee22f9",  // Incorrect
+                                                                                     // proxy key
+            auth: {
+                saslMechanism: "PLAIN",
+                saslUsername: "kafka",
+                saslPassword: "kafka",
+                securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: "sample_solar_1",
+        type: 'sample_solar',
+        options: {},
+    },
 ];
 
 const mongoToKafkaName = "mongoToKafka";
 const kafkaToMongoNamePrefix = "kafkaToMongo";
+const kafkaToMongoFailingNamePrefix = "kafkaToMongoFailing";
+const solarToKafkaFailingNamePrefix = "solarToKafkaFailing";
 
 function getRestoreDirectory(processorId) {
     // Return the directory of the latest committed checkpoint ID.
@@ -257,6 +305,95 @@ function makeKafkaToMongoStartCmd({
                 }
             },
             {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
+        ],
+        connections: connectionRegistry,
+        options: options,
+        processorId: processorId,
+    };
+}
+
+// Makes kafkaToMongoStartCmd for a specific topic name & collection name pair.
+function makeFailingKafkaToMongoStartCmd({
+    topicName,
+    collName,
+    connName,
+    pipeline = [],
+    sourceKeyFormat = 'binData',
+    sourceKeyFormatError = 'dlq',
+    parseOnly = false
+}) {
+    const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
+    let options = {
+        checkpointOptions: {
+            localDisk: {
+                writeDirectory: checkpointBaseDir,
+                restoreDirectory: getRestoreDirectory(processorId)
+            },
+            // Checkpoint every five seconds.
+            debugOnlyIntervalMs: 5000,
+        },
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
+        featureFlags: {},
+    };
+    if (parseOnly) {
+        options.parseOnly = true;
+    }
+    return {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: `${kafkaToMongoFailingNamePrefix}-${topicName}`,
+        pipeline: pipeline.length ? pipeline : [
+            {
+                $source: {
+                    connectionName: connName,
+                    topic: topicName,
+                    config: {
+                        keyFormat: sourceKeyFormat,
+                        keyFormatError: sourceKeyFormatError,
+                    }
+                }
+            },
+            {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
+        ],
+        connections: connectionRegistry,
+        options: options,
+        processorId: processorId,
+    };
+}
+
+// Makes solarToKafkaStartCmd.
+function makeFailingSolarToKafkaStartCmd({
+    topicName,
+    collName,
+    connName,
+    pipeline = [],
+    sourceKeyFormat = 'binData',
+    sourceKeyFormatError = 'dlq',
+    parseOnly = false
+}) {
+    const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
+    let options = {
+        checkpointOptions: {
+            localDisk: {
+                writeDirectory: checkpointBaseDir,
+                restoreDirectory: getRestoreDirectory(processorId)
+            },
+            // Checkpoint every five seconds.
+            debugOnlyIntervalMs: 5000,
+        },
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()},
+        featureFlags: {},
+    };
+    if (parseOnly) {
+        options.parseOnly = true;
+    }
+    return {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: `${solarToKafkaFailingNamePrefix}-${topicName}`,
+        pipeline: pipeline.length ? pipeline : [
+            { $source: { connectionName: "sample_solar_1" } },
+            { $emit: {connectionName: connName, topic: topicName } }
         ],
         connections: connectionRegistry,
         options: options,
@@ -479,6 +616,84 @@ function mongoToKafkaSASLSSLHexKey() {
     stopStreamProcessor(mongoToKafkaName);
 }
 
+// This test will execute a pipeline using the partition consumer, which
+// we expect to fail in the resolver callback. We will ensure we get a
+// useful error message.
+function testPartitionConsumerResolverErrors() {
+    const expectedError = "Unable to resolve proxy name - connection currently unavailable";
+
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    // Start the mongoToKafka streamProcessor.
+    let result = db.runCommand(makeFailingKafkaToMongoStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicName1,
+        connName: kafkaSASLSSLNameInvalid
+    }));
+    assert.commandFailed(result);
+    assert(result.errmsg.includes(expectedError));
+}
+
+// This test will execute a pipeline using the partition consumer, which
+// we expect to fail in the connect callback. We will ensure we get a
+// useful error message.
+function testPartitionConsumerConnectErrors() {
+    const expectedError =
+        "VPC Proxy for Kafka connection is not ready yet, check connection status";
+
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    // Start the mongoToKafka streamProcessor.
+    let result = db.runCommand(makeFailingKafkaToMongoStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicName1,
+        connName: kafkaSASLSSLNameHexKey
+    }));
+    assert.commandFailed(result);
+    assert(result.errmsg.includes(expectedError));
+}
+
+// This test will execute a pipeline using the emit operator, which
+// we expect to fail. We will ensure we get a useful error message.
+function testEmitOperatorErrors() {
+    const expectedError =
+        "VPC Proxy for Kafka connection is not ready yet, check connection status";
+
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    // Start the mongoToKafka streamProcessor.
+    let result = db.runCommand(makeFailingSolarToKafkaStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicName1,
+        connName: kafkaSASLSSLNameHexKey
+    }));
+    assert.commandFailed(result);
+    assert(result.errmsg.includes(expectedError));
+}
+
+// This test will execute a pipeline using the emit operator, to write
+// to a dynamic topic, which we expect to fail. We will ensure we get
+// a useful error message.
+function testEmitOperatorErrorsDynamicTopic() {
+    const expectedError =
+        "VPC Proxy for Kafka connection is not ready yet, check connection status";
+
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+    // Start the mongoToKafka streamProcessor.
+    let result = db.runCommand(makeFailingSolarToKafkaStartCmd({
+        collName: sourceColl1.getName(),
+        topicName: topicNameExpr,
+        connName: kafkaSASLSSLNameHexKey
+    }));
+    assert.commandFailed(result);
+    assert(result.errmsg.includes(expectedError));
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
 function runKafkaTest(kafka, testFn, partitionCount = 1) {
     kafka.start(partitionCount);
@@ -493,9 +708,26 @@ function runKafkaTest(kafka, testFn, partitionCount = 1) {
     }
 }
 
+// Runs a test function without a functional GWProxy endpoint, to simulate
+// communications with a failed proxy tier.
+function runFailedKafkaTest(kafka, testFn, partitionCount = 1) {
+    kafka.start(partitionCount);
+    try {
+        // Clear any previous persistent state so that the test starts with a clean slate.
+        dropCollections();
+        testFn();
+    } finally {
+        kafka.stop();
+    }
+}
+
 let kafka = new LocalKafkaCluster();
 let gwproxy = new LocalGWProxyServer();
 
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, mongoToKafkaSASLSSLFailure);
 runKafkaTest(kafka, mongoToKafkaSASLSSLHexKey);
+runFailedKafkaTest(kafka, testPartitionConsumerResolverErrors);
+runFailedKafkaTest(kafka, testPartitionConsumerConnectErrors);
+runFailedKafkaTest(kafka, testEmitOperatorErrors);
+runFailedKafkaTest(kafka, testEmitOperatorErrorsDynamicTopic);

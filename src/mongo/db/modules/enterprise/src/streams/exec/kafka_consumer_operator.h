@@ -17,7 +17,9 @@
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
@@ -172,6 +174,8 @@ private:
             mongo::stdx::unordered_map<std::string, std::string> authConfig;
             boost::optional<std::string> gwproxyEndpoint;
             boost::optional<std::string> gwproxyKey;
+            std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;
+            std::shared_ptr<KafkaConnectAuthCallback> kafkaConnectAuthCallback;
         };
 
         Connector(Context* context, Options options);
@@ -205,6 +209,9 @@ private:
         // Retrieves error details via configured event callback.
         void onConnectionError(SPStatus status);
 
+        // Get verbose stats from network callbacks to display in user error messages.
+        boost::optional<std::string> getVerboseCallbackErrorsIfExists();
+
         Context* _context{nullptr};
         Options _options;
         // Background thread used to establish connection with Kafka.
@@ -218,8 +225,8 @@ private:
         // Used to retrieve error details
         std::unique_ptr<KafkaEventCallback> _eventCallback;
         // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-        std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
-        std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
+        std::shared_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
+        std::shared_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
         // KafkaConsumer instance used to determine the topic/partition map for the topics we
         // will be subscribing to
         std::unique_ptr<RdKafka::KafkaConsumer> _consumer;
@@ -350,8 +357,8 @@ private:
     bool _groupConsumerThreadShutdown{false};
 
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-    std::unique_ptr<RdKafka::ConnectCb> _connectCbImpl;
-    std::unique_ptr<RdKafka::ResolveCb> _resolveCbImpl;
+    std::shared_ptr<KafkaConnectAuthCallback> _connectCbImpl;
+    std::shared_ptr<KafkaResolveCallback> _resolveCbImpl;
 
     // Used in doRunOnce to handle committing offsets to the consumer group. Only used when
     // config.enable_auto_commit is true.
