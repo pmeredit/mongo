@@ -39,7 +39,7 @@ mongo_cc_library(
     deps = [
         "//src/mongo:base",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db:service_context",
-        "//src/mongo/db/catalog:commit_quorum_options",  # TODO(SERVER-93876): Remove.
+        "//src/mongo/db/index_builds:commit_quorum_options",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db/repl:repl_coordinator_interface",  # TODO(SERVER-93876): Remove.
     ],
 )

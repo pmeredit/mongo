@@ -5,7 +5,7 @@
 
 #include "import_collection_coordinator.h"
 
-#include "mongo/db/catalog/commit_quorum_options.h"
+#include "mongo/db/index_builds/commit_quorum_options.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/logv2/log.h"
 
