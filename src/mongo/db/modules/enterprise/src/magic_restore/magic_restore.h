@@ -124,6 +124,13 @@ void dropNonRestoredClusterParameters(OperationContext* opCtx,
 void checkInternalCollectionExists(OperationContext* opCtx, const NamespaceString& nss);
 
 /**
+ * Sets the 'stopped' field on the balancer settings in 'config.settings'.
+ */
+void setBalancerSettingsStopped(OperationContext* opCtx,
+                                repl::StorageInterface* storageInterface,
+                                bool stopped);
+
+/**
  * Creates collections on the node with the given namespace and UUIDs. Ensures the collections have
  * the the same UUID across restored nodes in the same replica set.
  *

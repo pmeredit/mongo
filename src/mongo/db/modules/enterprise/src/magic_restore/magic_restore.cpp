@@ -540,11 +540,17 @@ mongo::ShardIdentity getShardIdentity(OperationContext* opCtx,
     return mongo::ShardIdentity::parse(IDLParserContext("RestoreConfiguration"), shardIdentity);
 }
 
-void setBalancerMode(OperationContext* opCtx, BalancerConfiguration* balancerConfig, bool stopped) {
-    // TODO SERVER-89488: confirm this works as intended.
+void setBalancerSettingsStopped(OperationContext* opCtx,
+                                repl::StorageInterface* storageInterface,
+                                bool stopped) {
+    LOGV2(8948800, "Setting 'stopped' field in balancer settings", "stopped"_attr = stopped);
     fassert(8756803,
-            balancerConfig->setBalancerMode(
-                opCtx, stopped ? BalancerSettingsType::kOff : BalancerSettingsType::kFull));
+            storageInterface->updateSingleton(opCtx,
+                                              NamespaceString::kConfigSettingsNamespace,
+                                              BSON("_id"
+                                                   << "balancer"),
+                                              {BSON("$set" << BSON("stopped" << stopped)),
+                                               Timestamp(0)}));
 }
 
 // Create local.system.collections_to_restore.
@@ -608,12 +614,11 @@ void updateShardingMetadata(OperationContext* opCtx,
     invariant(restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet);
 
     if (isConfig(restoreConfig)) {
-        // Set the balancer state.
+        // Set the balancer state if 'balancerSettings' exists on the restore configuration.
         if (restoreConfig.getBalancerSettings()) {
             checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);
-            auto balancerConfig = Grid::get(opCtx)->getBalancerConfiguration();
-            setBalancerMode(
-                opCtx, balancerConfig, restoreConfig.getBalancerSettings()->getStopped());
+            setBalancerSettingsStopped(
+                opCtx, storageInterface, restoreConfig.getBalancerSettings()->getStopped());
         }
 
         // Drop config.mongos.

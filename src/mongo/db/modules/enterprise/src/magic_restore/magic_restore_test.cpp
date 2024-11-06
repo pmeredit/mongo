@@ -1512,5 +1512,29 @@ DEATH_TEST_REGEX_F(MagicRestoreFixture,
     magic_restore::checkInternalCollectionExists(opCtx, NamespaceString::kConfigSettingsNamespace);
 }
 
+// Tests setting the 'stopped' field in the balancer settings.
+TEST_F(MagicRestoreFixture, SetBalancerSettings) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    // Test setting the 'stopped' field from false to true and vice versa.
+    for (const auto stopped : std::vector{true, false}) {
+        ASSERT_OK(storage->createCollection(
+            opCtx, NamespaceString::kConfigSettingsNamespace, CollectionOptions{}));
+        ASSERT_OK(storage->insertDocuments(opCtx,
+                                           NamespaceString::kConfigSettingsNamespace,
+                                           {InsertStatement{BSON("_id"
+                                                                 << "balancer"
+                                                                 << "stopped" << !stopped)}}));
+
+        magic_restore::setBalancerSettingsStopped(opCtx, storage, stopped);
+        auto res = storage->findSingleton(opCtx, NamespaceString::kConfigSettingsNamespace);
+        ASSERT_OK(res.getStatus());
+        auto balancerSettings = res.getValue();
+        ASSERT_EQ(balancerSettings.getStringField("_id"), "balancer");
+        ASSERT_EQ(balancerSettings.getBoolField("stopped"), stopped);
+        ASSERT_OK(storage->dropCollection(opCtx, NamespaceString::kConfigSettingsNamespace));
+    }
+}
+
 }  // namespace
 }  // namespace mongo::magic_restore
