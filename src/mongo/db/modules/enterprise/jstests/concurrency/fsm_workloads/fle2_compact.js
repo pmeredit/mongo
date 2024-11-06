@@ -8,6 +8,8 @@
  * requires_fcv_70,
  * assumes_read_preference_unchanged,
  * assumes_balancer_off,
+ * # TODO (SERVER-96699): Allow the collection to be sharded.
+ * assumes_unsharded_collection,
  * ]
  */
 
