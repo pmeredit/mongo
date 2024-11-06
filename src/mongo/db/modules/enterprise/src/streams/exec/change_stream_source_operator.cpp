@@ -185,6 +185,7 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
     auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
     _errorPrefix = fmt::format("Change stream $source {}.{} failed", dbName, collName);
+    _stats.connectionType = ConnectionTypeEnum::Atlas;
 }
 
 ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {

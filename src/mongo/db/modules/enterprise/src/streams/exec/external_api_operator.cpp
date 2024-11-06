@@ -60,7 +60,9 @@ ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::
       _options(std::move(options)),
       _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
       _rateLimiter{_rateLimitPerSec, &_options.timer},
-      _cidrDenyList{parseCidrDenyList()} {}
+      _cidrDenyList{parseCidrDenyList()} {
+    _stats.connectionType = ConnectionTypeEnum::WebAPI;
+}
 
 std::vector<CIDR> ExternalApiOperator::parseCidrDenyList() {
     auto denyList =

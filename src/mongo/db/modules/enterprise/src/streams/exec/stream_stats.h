@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "mongo/db/modules/enterprise/src/streams/exec/stages_gen.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/timer.h"
 
@@ -54,6 +55,7 @@ struct OperatorStats {
     boost::optional<mongo::Date_t> minOpenWindowStartTime;
     // The maximum open window's start time. Only set in window assigning operator.
     boost::optional<mongo::Date_t> maxOpenWindowStartTime;
+    boost::optional<mongo::ConnectionTypeEnum> connectionType;
 
     void setMemoryUsageBytes(int64_t bytes) {
         memoryUsageBytes = bytes;

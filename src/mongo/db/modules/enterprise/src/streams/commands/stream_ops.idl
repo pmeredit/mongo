@@ -118,6 +118,10 @@ structs:
                 description: The start time of the max open window. Only set for window assigning operators.
                 type: date
                 optional: true
+            connectionType:
+                description: Type of connection used by the operator. Only included if the 'isInternal' flag is set.
+                type: ConnectionType
+                optional: true
 
     StartStreamProcessorReply:
         description: "Response message for streams_startStreamProcessor command"
@@ -736,6 +740,10 @@ commands:
                 description: "Correlation ID for the request that ties it to a user initiated operation."
                 type: string
                 optional: true
+            isInternal:
+                description: Returns per-operator stats that are needed for internal use only.
+                type: bool
+                default: false
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"

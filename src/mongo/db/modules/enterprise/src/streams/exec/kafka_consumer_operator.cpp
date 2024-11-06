@@ -357,6 +357,7 @@ KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
     }
     // We won't be using _sourceBufferHandle, so release it.
     _sourceBufferHandle.reset();
+    _stats.connectionType = ConnectionTypeEnum::Kafka;
 }
 
 void KafkaConsumerOperator::doStart() {

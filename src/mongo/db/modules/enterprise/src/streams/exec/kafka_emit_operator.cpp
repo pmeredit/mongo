@@ -228,6 +228,7 @@ KafkaEmitOperator::KafkaEmitOperator(Context* context, Options options)
     if (_options.testOnlyPartition) {
         _outputPartition = *_options.testOnlyPartition;
     }
+    _stats.connectionType = ConnectionTypeEnum::Kafka;
 }
 
 void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,

@@ -5,6 +5,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/thread.h"
+#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/processinfo.h"
@@ -594,6 +595,7 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setVerbose(true);
     getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
+    getStatsRequest.setIsInternal(true);
 
     insert(streamManager.get(),
            kTestTenantId1,
@@ -636,6 +638,11 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
 
         ASSERT_EQUALS(0, state.getCheckpointOffset());
     }
+
+    auto operatorStats = statsReply.getOperatorStats();
+    ASSERT_TRUE(operatorStats);
+    ASSERT_TRUE(operatorStats->front().getConnectionType());
+    ASSERT_EQUALS(operatorStats->front().getConnectionType().get(), ConnectionTypeEnum::Kafka);
 
     onExecutorShutdown(streamManager.get(), kTestTenantId1, streamName, Status::OK());
     stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName);

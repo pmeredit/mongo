@@ -39,7 +39,9 @@ using namespace mongo;
 MergeOperator::MergeOperator(Context* context, Options options)
     : QueuedSinkOperator(context, 1 /* numInputs */),
       _options(std::move(options)),
-      _processor(_options.documentSource->getMergeProcessor()) {}
+      _processor(_options.documentSource->getMergeProcessor()) {
+    _stats.connectionType = ConnectionTypeEnum::Atlas;
+}
 
 OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
     // Partitions the docs in 'dataMsg' based on their target namespaces.

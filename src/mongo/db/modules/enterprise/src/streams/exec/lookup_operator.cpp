@@ -35,6 +35,7 @@ LookUpOperator::LookUpOperator(Context* context, Options options)
         _unwindIndexPath = unwindSource->indexPath();
         _unwindPreservesNullAndEmptyArrays = unwindSource->preserveNullAndEmptyArrays();
     }
+    _stats.connectionType = ConnectionTypeEnum::Atlas;  // only supports Atlas
 }
 
 void LookUpOperator::registerMetrics(MetricManager* metricManager) {

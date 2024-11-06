@@ -1382,6 +1382,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                                       StreamProcessorInfo* processorInfo) {
     int64_t scale = request.getScale();
     bool verbose = request.getVerbose();
+    bool isInternal = request.getIsInternal();
     std::string name = request.getName().toString();
     auto activeGauge = _streamProcessorActiveGauges[kStatsCommand];
     ScopeGuard guard([&] {
@@ -1401,7 +1402,8 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                 "streamProcessorId"_attr = request.getProcessorId(),
                 "streamProcessorName"_attr = name,
                 "scale"_attr = scale,
-                "verbose"_attr = verbose);
+                "verbose"_attr = verbose,
+                "isInternal"_attr = isInternal);
 
     GetStatsReply reply;
     reply.setName(name);
@@ -1503,6 +1505,9 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
             stats.setTimeSpentMillis(mongo::duration_cast<Milliseconds>(s.timeSpent));
             stats.setMinOpenWindowStartTime(s.minOpenWindowStartTime);
             stats.setMaxOpenWindowStartTime(s.maxOpenWindowStartTime);
+            if (isInternal) {
+                stats.setConnectionType(s.connectionType);
+            }
             out.push_back(std::move(stats));
         }
         reply.setOperatorStats(std::move(out));

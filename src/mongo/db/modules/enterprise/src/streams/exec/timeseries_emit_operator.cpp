@@ -62,6 +62,7 @@ TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options
     _errorPrefix = fmt::format("Time series $emit to {}.{} failed",
                                *_options.clientOptions.database,
                                *_options.clientOptions.collection);
+    _stats.connectionType = ConnectionTypeEnum::Atlas;
 }
 
 OperatorStats TimeseriesEmitOperator::processDataMsg(StreamDataMsg dataMsg) {
