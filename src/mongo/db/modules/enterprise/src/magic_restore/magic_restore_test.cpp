@@ -784,37 +784,44 @@ TEST_F(MagicRestoreFixture, DropNonRestoredClusterParameters) {
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kClusterParametersNamespace, CollectionOptions{}));
 
-    ASSERT_OK(
-        storage->insertDocuments(opCtx,
-                                 NamespaceString::kClusterParametersNamespace,
-                                 {InsertStatement{BSON("_id"
-                                                       << "shardedClusterCardinalityForDirectConns"
-                                                       << "foobar" << 5)},
-                                  InsertStatement{BSON("_id"
-                                                       << "querySettings"
-                                                       << "testParam"
-                                                       << "17")},
-                                  InsertStatement{BSON("_id"
-                                                       << "randomName"
-                                                       << "testParam" << 3)},
-                                  InsertStatement{BSON("_id"
-                                                       << "pauseMigrationsDuringMultiUpdates"
-                                                       << "testParam"
-                                                       << "17")},
-                                  InsertStatement{BSON("_id"
-                                                       << "defaultMaxTimeMS"
-                                                       << "testParam"
-                                                       << "17")}}));
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kClusterParametersNamespace,
+        {InsertStatement{BSON("_id"
+                              << "shardedClusterCardinalityForDirectConns"
+                              << "foobar" << 5)},
+         InsertStatement{BSON("_id"
+                              << "querySettings"
+                              << "testParam"
+                              << "17")},
+         InsertStatement{BSON("_id"
+                              << "randomName"
+                              << "testParam" << 3)},
+         InsertStatement{BSON("_id"
+                              << "pauseMigrationsDuringMultiUpdates"
+                              << "testParam"
+                              << "17")},
+         InsertStatement{BSON("_id"
+                              << "defaultMaxTimeMS"
+                              << "testParam"
+                              << "17")},
+         InsertStatement{BSON("_id"
+                              << "addOrRemoveShardInProgress"
+                              << "testParam"
+                              << "17")},
+         InsertStatement{BSON("_id"
+                              << "configServerReadPreferenceForCatalogQueries"
+                              << "testParam"
+                              << "17")}}));
 
     auto docs = getDocuments(opCtx, storage, NamespaceString::kClusterParametersNamespace);
-    ASSERT_EQ(5, docs.size());
+    ASSERT_EQ(7, docs.size());
 
     magic_restore::dropNonRestoredClusterParameters(opCtx, storage);
 
-    // Only shardedClusterCardinalityForDirectConns, querySettings, and defaultMaxTimeMs should
-    // remain.
+    // randomName and addOrRemoveShardInProgress parameters have been dropped.
     docs = getDocuments(opCtx, storage, NamespaceString::kClusterParametersNamespace);
-    ASSERT_EQ(3, docs.size());
+    ASSERT_EQ(5, docs.size());
 }
 
 // Test of updateShardNameMetadata for magic_restore::NodeTypeEnum::kDedicatedConfigServer.

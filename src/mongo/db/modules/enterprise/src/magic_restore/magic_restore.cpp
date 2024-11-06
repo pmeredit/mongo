@@ -101,8 +101,16 @@ int64_t BSONStreamReader::getTotalObjectsRead() {
     return _totalObjectsRead;
 }
 
-const std::array<std::string, 3> approvedClusterParameters = {
-    "defaultMaxTimeMS", "querySettings", "shardedClusterCardinalityForDirectConns"};
+const std::array<std::string, 9> approvedClusterParameters = {
+    "defaultMaxTimeMS",
+    "querySettings",
+    "shardedClusterCardinalityForDirectConns",
+    "fleCompactionOptions",
+    "changeStreamOptions",
+    "internalQueryCutoffForSampleFromRandomCursor",
+    "internalSearchOptions",
+    "configServerReadPreferenceForCatalogQueries",
+    "pauseMigrationsDuringMultiUpdates"};
 
 /**
  * Reads oplog entries from the BSONStreamReader and inserts them into the oplog. Each entry is
@@ -698,9 +706,11 @@ void dropNonRestoredClusterParameters(OperationContext* opCtx,
                                       repl::StorageInterface* storageInterface) {
     // Drop config.clusterParameters.
     LOGV2(9106005, "Deleting all non-approved parameters from config.clusterParameters");
-    auto filter = BSON("_id" << BSON("$nin" << BSON_ARRAY(approvedClusterParameters[0]
-                                                          << approvedClusterParameters[1]
-                                                          << approvedClusterParameters[2])));
+    BSONArrayBuilder builder;
+    for (const auto& param : approvedClusterParameters) {
+        builder << param;
+    }
+    auto filter = BSON("_id" << BSON("$nin" << builder.arr()));
     auto status = storageInterface->deleteByFilter(
         opCtx, NamespaceString::kClusterParametersNamespace, filter);
     if (status != ErrorCodes::NamespaceNotFound) {
