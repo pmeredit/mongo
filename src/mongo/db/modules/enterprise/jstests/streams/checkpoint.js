@@ -451,9 +451,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         let statsAfterCheckpoint = test.stats();
 
         // Verify expected state size (if any).
-        assert.gte(statsAfterCheckpoint["stateSize"],
-                   minimumExpectedStateSize,
-                   "expected more state size");
+        assert.soon(
+            () => { return statsAfterCheckpoint["stateSize"] >= minimumExpectedStateSize; });
 
         // Wait for all the output.
         assert.neq(expectedOutput, null);
