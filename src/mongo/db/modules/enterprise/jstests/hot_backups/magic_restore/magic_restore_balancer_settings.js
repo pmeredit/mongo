@@ -138,7 +138,8 @@ configUtils.rst.nodes.forEach((node) => {
 
     // Ensure that after restore, the balancer state is set to 'stopped: true', meaning that it has
     // been stopped.
-    const balancerEnabled = node.getDB("config").getCollection("settings").findOne({_id: "balancer"});
+    const balancerEnabled =
+        node.getDB("config").getCollection("settings").findOne({_id: "balancer"});
     assert.eq(balancerEnabled.stopped, true, tojson(balancerEnabled));
 });
 
