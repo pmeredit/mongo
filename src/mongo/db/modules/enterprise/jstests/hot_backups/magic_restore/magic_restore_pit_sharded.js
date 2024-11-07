@@ -131,8 +131,7 @@ function runTest(insertHigherTermOplogEntry) {
     shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
         magicRestoreTest.rst.nodes.forEach((node) => {
             // We inserted 8 documents and have 2 shards, so 4 per shard.
-            magicRestoreTest.assertOplogCountForNamespace(
-                node, {ns: dbName + "." + coll, op: "i"}, 4);
+            magicRestoreTest.assertOplogCountForNamespace(node, {ns: fullNs, op: "i"}, 4);
 
             let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(node);
             // There might be operations after the backup from periodic jobs such as rangeDeletions
@@ -217,11 +216,13 @@ function runTest(insertHigherTermOplogEntry) {
 
     shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest, idx) => {
         jsTestLog("Starting restore shard " + idx);
+        magicRestoreTest.rst.name = magicRestoreTest.rst.name.replace("-rs", "-dst-rs");
         magicRestoreTest.rst.startSet({
             restart: true,
             dbpath: magicRestoreTest.getBackupDbPath(),
             noCleanData: true,
             shardsvr: "",
+            replSet: magicRestoreTest.rst.name
         });
         magicRestoreTest.rst.awaitNodesAgreeOnPrimary();
         // Make sure that all nodes have installed the config before moving on.

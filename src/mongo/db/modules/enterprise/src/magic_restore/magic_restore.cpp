@@ -403,7 +403,7 @@ void updateShardNameMetadata(OperationContext* opCtx,
         }
 
         if (isConfig(restoreConfig)) {
-            // Update config.reshardingOperations.
+            // Update shard names in config.reshardingOperations.
             fassert(8756801,
                     storageInterface->updateDocuments(
                         opCtx,
@@ -414,19 +414,6 @@ void updateShardNameMetadata(OperationContext* opCtx,
                                                                      << dstShardName)),
                          Timestamp(0)},
                         std::vector<BSONObj>{BSON("src.id" << srcShardName)} /* arrayFilters */));
-            fassert(8756802,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kConfigReshardingOperationsNamespace,
-                        {BSON("state" << BSON("$ne"
-                                              << "committing"))} /* query */,
-                        {BSON("$set" << BSON("state"
-                                             << "aborting"
-                                             << "abortReason"
-                                             << BSON("code" << ErrorCodes::ReshardCollectionAborted
-                                                            << "errmsg"
-                                                            << "aborted by automated restore"))),
-                         Timestamp(0)}));
         }
 
         if (isShard(restoreConfig)) {
@@ -476,8 +463,8 @@ void updateShardNameMetadata(OperationContext* opCtx,
                 opCtx,
                 NamespaceString::kRecipientReshardingOperationsNamespace,
                 {} /* query */,
-                {BSON("$set" << BSON("donorShards.$[src]" << dstShardName)), Timestamp(0)},
-                std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */);
+                {BSON("$set" << BSON("donorShards.$[src].shardId" << dstShardName)), Timestamp(0)},
+                std::vector<BSONObj>{BSON("src.shardId" << srcShardName)} /* arrayFilters */);
             if (status != ErrorCodes::NamespaceNotFound) {
                 fassert(8291406, status);
             }
@@ -644,6 +631,28 @@ void updateShardingMetadata(OperationContext* opCtx,
     mongo::ShardIdentity previousShardIdentity = getShardIdentity(opCtx, storageInterface);
 
     if (isConfig(restoreConfig)) {
+        // Acquire the collection lock in IX mode, in case we have to perform updates.
+        AutoGetCollection autoColl(
+            opCtx, NamespaceString::kConfigReshardingOperationsNamespace, MODE_IX);
+        if (autoColl.getCollection() && !autoColl->isEmpty(opCtx)) {
+            // Set the resharding state to "aborting" for any in-progress resharding operations. We
+            // do this regardless of if there is a shard rename.
+            LOGV2(87429, "Aborting any in-progress resharding operations.");
+            fassert(8756802,
+                    storageInterface->updateDocuments(
+                        opCtx,
+                        NamespaceString::kConfigReshardingOperationsNamespace,
+                        {BSON("state" << BSON("$ne"
+                                              << "committing"))} /* query */,
+                        {BSON("$set" << BSON("state"
+                                             << "aborting"
+                                             << "abortReason"
+                                             << BSON("code" << ErrorCodes::ReshardCollectionAborted
+                                                            << "errmsg"
+                                                            << "aborted by automated restore"))),
+                         Timestamp(0)}));
+        }
+
         // Drop config.placementHistory.
         LOGV2(9322100, "Dropping config.placementHistory");
         fassert(9322101,

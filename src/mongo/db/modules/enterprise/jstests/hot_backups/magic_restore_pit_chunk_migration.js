@@ -133,7 +133,7 @@ function runTest(insertHigherTermOplogEntry) {
             //      151 to chunk [100, MaxKey) on shard0
             // In total that gives 2 + 1 + 2 + 1 entries to shard0 and 2 + 1 on shard1.
             magicRestoreTest.assertOplogCountForNamespace(
-                node, {ns: dbName + "." + coll, op: "i"}, isShard0 ? 6 : 3);
+                node, {ns: fullNs, op: "i"}, isShard0 ? 6 : 3);
 
             let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(node);
             // There might be operations after the backup from periodic jobs such as rangeDeletions
@@ -157,6 +157,7 @@ function runTest(insertHigherTermOplogEntry) {
     shardingRestoreTest.findMaxCheckpointTsAndExtendBackupCursors();
     shardingRestoreTest.setPointInTimeTimestamp();
     shardingRestoreTest.setUpShardingRenamesAndIdentityDocs();
+
     jsTestLog("Stopping all nodes");
     st.stop({noCleanData: true});
 
@@ -216,11 +217,13 @@ function runTest(insertHigherTermOplogEntry) {
     shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest, idx) => {
         const isShard0 = (idx == 0);
         jsTestLog("Starting restore shard " + idx);
+        magicRestoreTest.rst.name = magicRestoreTest.rst.name.replace("-rs", "-dst-rs");
         magicRestoreTest.rst.startSet({
             restart: true,
             dbpath: magicRestoreTest.getBackupDbPath(),
             noCleanData: true,
             shardsvr: "",
+            replSet: magicRestoreTest.rst.name
         });
         magicRestoreTest.rst.awaitNodesAgreeOnPrimary();
         // Make sure that all nodes have installed the config before moving on.

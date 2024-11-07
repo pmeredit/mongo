@@ -114,8 +114,7 @@ function runTest(insertHigherTermOplogEntry) {
 
     shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
         magicRestoreTest.rst.nodes.forEach((node) => {
-            magicRestoreTest.assertOplogCountForNamespace(
-                node, {ns: dbName + "." + coll, op: "i"}, 4);
+            magicRestoreTest.assertOplogCountForNamespace(node, {ns: fullNs, op: "i"}, 4);
             let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(node);
 
             // There might be rangeDeletions ops after the backup, or a
