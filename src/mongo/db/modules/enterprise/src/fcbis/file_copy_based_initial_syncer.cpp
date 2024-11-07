@@ -20,11 +20,11 @@
 #include "mongo/db/repl/last_vote.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_auth.h"
-#include "mongo/db/repl/tenant_migration_access_blocker_util.h"
 #include "mongo/db/repl/transaction_oplog_application.h"
 #include "mongo/db/server_recovery.h"
 #include "mongo/db/shard_role.h"
 #include "mongo/db/storage/encryption_hooks.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
@@ -1997,10 +1997,6 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
     const bool orderedCommit = true;
     _storage->oplogDiskLocRegister(opCtx, initialDataTimestamp, orderedCommit);
 
-    if (repl::ReplicationCoordinator::get(opCtx)->getSettings().isServerless()) {
-        // Construct in-memory state of migrations and prepared transactions.
-        tenant_migration_access_blocker::recoverTenantMigrationAccessBlockers(opCtx);
-    }
     // Setting inReplicationRecovery prevents double-counting of reconstructed prepared
     // transactions.
     inReplicationRecovery(opCtx->getServiceContext()).store(true);
