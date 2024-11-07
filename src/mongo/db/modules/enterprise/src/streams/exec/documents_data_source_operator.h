@@ -28,8 +28,9 @@ public:
 
         // The predefined list of documents to send.
         std::vector<mongo::Document> documents;
-        // The number of documents to send in each call to doRunOnce().
-        int docsPerRun{kDataMsgMaxDocSize};
+        // We send 1 document per batch so watermarks are processed "one doc at a time".
+        // This makes some documentation examples and user testing easier.
+        int docsPerRun{1};
     };
 
     DocumentsDataSourceOperator(Context* context, Options options)
