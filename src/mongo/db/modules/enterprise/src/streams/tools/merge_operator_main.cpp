@@ -202,8 +202,8 @@ int main(int argc, char** argv) {
     auto svcCtx = qtServiceContext.getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
     auto [context, _] = getTestContext(svcCtx);
-    context->expCtx->mongoProcessInterface =
-        std::make_shared<MongoDBProcessInterface>(std::move(options));
+    context->expCtx->setMongoProcessInterface(
+        std::make_shared<MongoDBProcessInterface>(std::move(options)));
 
     StandaloneMergeOperator mergeOperator(context.get());
     mergeOperator.runReplaceInsertExperiment();

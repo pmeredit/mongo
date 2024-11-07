@@ -1547,7 +1547,7 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
                 continue;
             }
             ListStreamProcessorsReplyItem replyItem;
-            replyItem.setNs(processorInfo->context->expCtx->ns);
+            replyItem.setNs(processorInfo->context->expCtx->getNamespaceString());
             replyItem.setTenantId(processorInfo->context->tenantId);
             replyItem.setName(name);
             replyItem.setProcessorId(processorInfo->context->streamProcessorId);

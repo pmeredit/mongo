@@ -59,7 +59,7 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::create(
 boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
 
-    const NamespaceString& nss = expCtx->ns;
+    const NamespaceString& nss = expCtx->getNamespaceString();
     uassert(ErrorCodes::InvalidNamespace,
             "$_backupFile must be run against the 'admin' database with {aggregate: 1}",
             nss.isAdminDB() && nss.isCollectionlessAggregateNS());
@@ -76,7 +76,7 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
 }
 
 bool DocumentSourceBackupFile::backupSessionIsValid() const {
-    auto svcCtx = pExpCtx->opCtx->getServiceContext();
+    auto svcCtx = pExpCtx->getOperationContext()->getServiceContext();
     auto backupCursorService = BackupCursorHooks::get(svcCtx);
 
     auto backupId = _backupFileSpec.getBackupId();
@@ -117,7 +117,7 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
     // We always re-open the file if it was closed and seek to '_offset', so we
     // don't need to do anything special to handle that.
     ON_BLOCK_EXIT([this] {
-        const bool isExhaust = getContext()->opCtx->isExhaust();
+        const bool isExhaust = getContext()->getOperationContext()->isExhaust();
         LOGV2_DEBUG(6170800,
                     1,
                     "Possibly closing file at end of getNext",

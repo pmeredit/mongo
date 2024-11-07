@@ -83,7 +83,7 @@ private:
 TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
     // Setup involved namespaces to avoid crashing on pipeline parse.
     NamespaceString fromNs = NamespaceString::createNamespaceString_forTest("test", "other");
-    getExpCtx()->ns = fromNs;
+    getExpCtx()->setNamespaceString(fromNs);
     getExpCtx()->setResolvedNamespaces(
         {{fromNs.coll().toString(), {fromNs, std::vector<BSONObj>{}}}});
     std::vector<BSONObj> stageSpecs = {
@@ -109,7 +109,8 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
 }
 
 TEST_F(FLEPipelineTest, ThrowsOnInvalidCollectionlessAggregations) {
-    getExpCtx()->ns = NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin);
+    getExpCtx()->setNamespaceString(
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin));
     ASSERT_THROWS_CODE(getSchemaForStage({fromjson("{$currentOp: {}}")}, kDefaultSsnSchema),
                        AssertionException,
                        31011);

@@ -32,13 +32,14 @@ DocumentSourceBackupCursor::DocumentSourceBackupCursor(
     const StorageEngine::BackupOptions& options)
     : DocumentSource(kStageName, pExpCtx),
       _params(std::move(params)),
-      _backupCursorState(pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx, options)),
+      _backupCursorState(pExpCtx->getMongoProcessInterface()->openBackupCursor(
+          pExpCtx->getOperationContext(), options)),
       _kBatchSize(TestingProctor::instance().isEnabled() ? 10 : 1000) {}
 
 DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
     try {
-        pExpCtx->mongoProcessInterface->closeBackupCursor(pExpCtx->opCtx,
-                                                          _backupCursorState.backupId);
+        pExpCtx->getMongoProcessInterface()->closeBackupCursor(pExpCtx->getOperationContext(),
+                                                               _backupCursorState.backupId);
     } catch (DBException& exc) {
         LOGV2_FATAL(50909, "Error closing a backup cursor", "error"_attr = exc);
     }
@@ -103,7 +104,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
                    {"uuid", uuidStr}};
         }
 
-        auto svcCtx = pExpCtx->opCtx->getServiceContext();
+        auto svcCtx = pExpCtx->getOperationContext()->getServiceContext();
         auto backupCursorService = BackupCursorHooks::get(svcCtx);
         backupCursorService->addFile(_backupCursorState.backupId, backupBlock.filePath());
 
@@ -122,7 +123,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     // consuming the results, as well as the ability to send "heartbeats" to prevent the client
     // cursor manager from timing out the backup cursor. A backup cursor does consume resources;
     // in the event the calling process crashes, the cursors should eventually be timed out.
-    pExpCtx->tailableMode = TailableModeEnum::kTailable;
+    pExpCtx->setTailableMode(TailableModeEnum::kTailable);
 
     uassert(ErrorCodes::FailedToParse,
             str::stream() << kStageName
@@ -132,14 +133,14 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     if (replica_set_endpoint::isFeatureFlagEnabled()) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << kStageName << " must be run against the 'local' database",
-                pExpCtx->ns.isLocalDB());
+                pExpCtx->getNamespaceString().isLocalDB());
     }
 
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << kStageName
                           << " cannot be executed on an aggregation against a collection."
                           << " Run the aggregation against the database instead.",
-            pExpCtx->ns.isCollectionlessAggregateNS());
+            pExpCtx->getNamespaceString().isCollectionlessAggregateNS());
 
     uassert(
         ErrorCodes::InvalidNamespace,
@@ -149,7 +150,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
 
     uassert(ErrorCodes::CannotBackup,
             str::stream() << kStageName << " cannot be executed against a router.",
-            !pExpCtx->inRouter && !pExpCtx->fromRouter && !pExpCtx->needsMerge);
+            !pExpCtx->getInRouter() && !pExpCtx->getFromRouter() && !pExpCtx->getNeedsMerge());
 
     // Parse $backupCursor arguments for incremental backups.
     BackupCursorParameters params = BackupCursorParameters::parse(IDLParserContext(""), spec.Obj());

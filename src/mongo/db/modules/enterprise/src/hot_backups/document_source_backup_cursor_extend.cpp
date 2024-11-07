@@ -30,8 +30,8 @@ DocumentSourceBackupCursorExtend::DocumentSourceBackupCursorExtend(
     : DocumentSource(kStageName, pExpCtx),
       _backupId(backupId),
       _extendTo(extendTo),
-      _backupCursorExtendState(
-          pExpCtx->mongoProcessInterface->extendBackupCursor(pExpCtx->opCtx, backupId, extendTo)) {}
+      _backupCursorExtendState(pExpCtx->getMongoProcessInterface()->extendBackupCursor(
+          pExpCtx->getOperationContext(), backupId, extendTo)) {}
 
 DocumentSource::GetNextResult DocumentSourceBackupCursorExtend::doGetNext() {
     if (!_backupCursorExtendState.filePaths.empty()) {
@@ -54,14 +54,14 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
     if (replica_set_endpoint::isFeatureFlagEnabled()) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << kStageName << " must be run against the 'local' database",
-                pExpCtx->ns.isLocalDB());
+                pExpCtx->getNamespaceString().isLocalDB());
     }
 
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << kStageName
                           << " cannot be executed on an aggregation against a collection."
                           << " Run the aggregation against the database instead.",
-            pExpCtx->ns.isCollectionlessAggregateNS());
+            pExpCtx->getNamespaceString().isCollectionlessAggregateNS());
 
     uassert(
         ErrorCodes::InvalidNamespace,
@@ -71,7 +71,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
 
     uassert(ErrorCodes::CannotBackup,
             str::stream() << kStageName << " cannot be executed against a router.",
-            !pExpCtx->inRouter && !pExpCtx->fromRouter && !pExpCtx->needsMerge);
+            !pExpCtx->getInRouter() && !pExpCtx->getFromRouter() && !pExpCtx->getNeedsMerge());
 
     boost::optional<UUID> backupId = boost::none;
     boost::optional<Timestamp> extendTo = boost::none;

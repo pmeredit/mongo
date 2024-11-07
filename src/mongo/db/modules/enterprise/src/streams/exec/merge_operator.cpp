@@ -50,8 +50,8 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
     stats += partitionStats;
 
     // Process each document partition.
-    auto mongoProcessInterface =
-        dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
+    auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+        _options.mergeExpCtx->getMongoProcessInterface().get());
     invariant(mongoProcessInterface);
 
     for (const auto& [nsKey, docIndices] : docPartitions) {
@@ -109,7 +109,7 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
 void MergeOperator::validateConnection() {
     if (_options.coll.isLiteral() && _options.db.isLiteral()) {
         auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
-            _options.mergeExpCtx->mongoProcessInterface.get());
+            _options.mergeExpCtx->getMongoProcessInterface().get());
 
         // If the target is literal, validate that the connection works.
         auto outputNs = getNamespaceString(_options.db.getLiteral(), _options.coll.getLiteral());
@@ -146,8 +146,8 @@ void MergeOperator::errorOut(const mongocxx::exception& e, const mongo::Namespac
                "context"_attr = _context,
                "exception"_attr = e.what(),
                "code"_attr = int(code));
-    auto mongoProcessInterface =
-        dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
+    auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+        _options.mergeExpCtx->getMongoProcessInterface().get());
     invariant(mongoProcessInterface);
     SPStatus status =
         mongocxxExceptionToStatus(e, mongoProcessInterface->uri(), getErrorPrefix(outputNs));
@@ -164,8 +164,8 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                const DocIndices& docIndices,
                                                size_t maxBatchDocSize) {
     OperatorStats stats;
-    auto mongoProcessInterface =
-        dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
+    auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+        _options.mergeExpCtx->getMongoProcessInterface().get());
 
     std::set<FieldPath> dynamicMergeOnFieldPaths;
     if (!_literalMergeOnFieldPaths) {

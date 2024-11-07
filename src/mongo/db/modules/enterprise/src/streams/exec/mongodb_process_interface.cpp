@@ -354,7 +354,8 @@ MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
         return {*fieldPaths, boost::none, supportingUniqueIndex};
     }
 
-    auto docKeyPaths = collectDocumentKeyFieldsActingAsRouter(expCtx->opCtx, outputNs);
+    auto docKeyPaths =
+        collectDocumentKeyFieldsActingAsRouter(expCtx->getOperationContext(), outputNs);
     return {std::set<FieldPath>(std::make_move_iterator(docKeyPaths.begin()),
                                 std::make_move_iterator(docKeyPaths.end())),
             boost::none,

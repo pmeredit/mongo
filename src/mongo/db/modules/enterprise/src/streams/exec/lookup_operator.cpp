@@ -78,7 +78,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
                 // Resets the '_pipeline' if it's exhausted or an error occurred.
                 ScopeGuard resetPipeline{[&] {
                     _unwindCurIndex = 0;
-                    _pipeline->dispose(_context->expCtx->opCtx);
+                    _pipeline->dispose(_context->expCtx->getOperationContext());
                     _pipeline.reset();
                 }};
 

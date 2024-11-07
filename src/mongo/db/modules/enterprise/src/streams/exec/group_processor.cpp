@@ -74,7 +74,7 @@ boost::optional<Document> GroupProcessor::getNext() {
     }
 
     Document out =
-        makeDocument(_groupsIterator->first, _groupsIterator->second, _expCtx->needsMerge);
+        makeDocument(_groupsIterator->first, _groupsIterator->second, _expCtx->getNeedsMerge());
     ++_groupsIterator;
     return out;
 }

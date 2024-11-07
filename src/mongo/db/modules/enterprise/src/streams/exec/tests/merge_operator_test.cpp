@@ -167,7 +167,8 @@ public:
 
     void setUp() override {
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
-        _context->expCtx->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
+        _context->expCtx->setMongoProcessInterface(
+            std::make_shared<MongoProcessInterfaceForTest>());
         _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 
@@ -227,8 +228,8 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -275,8 +276,8 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -323,8 +324,8 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -371,8 +372,8 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsInserted = processInterface->getObjsInserted();
     ASSERT_EQUALS(10, objsInserted.size());
     for (int i = 0; i < 10; ++i) {
@@ -386,8 +387,8 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
 
 // Test that {whenMatched: merge, on: [...]} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedMerge) {
-    _context->expCtx->mongoProcessInterface =
-        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"});
+    _context->expCtx->setMongoProcessInterface(
+        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"}));
 
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
@@ -418,8 +419,8 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(20, objsUpdated.size());
     for (int i = 0; i < 20; ++i) {
@@ -439,8 +440,8 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
 
 // Test that dead letter queue works as expected.
 TEST_F(MergeOperatorTest, DeadLetterQueue) {
-    _context->expCtx->mongoProcessInterface =
-        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"});
+    _context->expCtx->setMongoProcessInterface(
+        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"}));
 
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
@@ -486,8 +487,8 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(2, objsUpdated.size());
     auto verifyObjUpdated = [&](size_t i, size_t j) {
@@ -600,8 +601,8 @@ TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
     mergeOperator->onDataMsg(0, dataMsg);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     auto objsInserted = processInterface->getObjsInserted();
     ASSERT_EQ(objsUpdated.size(), 4);
@@ -683,8 +684,8 @@ TEST_F(MergeOperatorTest, BatchLargerThanQueueMaxSize) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
+        _context->expCtx->getMongoProcessInterface().get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(docsInBatch, objsUpdated.size());
 
@@ -698,7 +699,7 @@ TEST_F(MergeOperatorTest, LocalTest) {
         return;
     }
 
-    _context->expCtx->mongoProcessInterface.reset();
+    _context->expCtx->getMongoProcessInterface().reset();
 
     Connection atlasConn;
     atlasConn.setName("myconnection");
@@ -710,8 +711,8 @@ TEST_F(MergeOperatorTest, LocalTest) {
 
     NamespaceString fromNs =
         NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
-    _context->expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
+    _context->expCtx->setResolvedNamespaces(StringMap<mongo::ResolvedNamespace>{
+        {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
 
     auto mergeObj = fromjson(R"(
 {

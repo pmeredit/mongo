@@ -719,7 +719,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
     configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
     MongoCxxClientOptions clientOptions(atlasOptions);
-    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
+    clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
 
     auto db = options.getDb();
     if (db) {
@@ -885,9 +885,9 @@ void Planner::planMergeSink(const BSONObj& spec) {
             connection.getType() == ConnectionTypeEnum::Atlas);
     auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
                                                       connection.getOptions());
-    if (_context->expCtx->mongoProcessInterface) {
+    if (_context->expCtx->getMongoProcessInterface()) {
         dassert(dynamic_cast<StubMongoProcessInterface*>(
-            _context->expCtx->mongoProcessInterface.get()));
+            _context->expCtx->getMongoProcessInterface().get()));
     }
 
     auto mergeExpressionCtx = ExpressionContextBuilder{}
@@ -896,9 +896,9 @@ void Planner::planMergeSink(const BSONObj& spec) {
                                   .build();
 
     MongoCxxClientOptions clientOptions(atlasOptions);
-    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
-    mergeExpressionCtx->mongoProcessInterface =
-        std::make_shared<MongoDBProcessInterface>(clientOptions);
+    clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
+    mergeExpressionCtx->setMongoProcessInterface(
+        std::make_shared<MongoDBProcessInterface>(clientOptions));
 
     auto documentSource = makeDocumentSourceMerge(mergeOpSpec, mergeExpressionCtx);
 
@@ -1372,7 +1372,7 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
             IDLParserContext("AtlasConnectionOptions"), connection.getOptions());
 
         MongoCxxClientOptions clientOptions(atlasOptions);
-        clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
+        clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
         auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
 
         options.foreignMongoDBClient = std::move(foreignMongoDBClient);
@@ -1538,7 +1538,7 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
 
     // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
     // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
-    LiteParsedPipeline liteParsedPipeline(_context->expCtx->ns, stages);
+    LiteParsedPipeline liteParsedPipeline(_context->expCtx->getNamespaceString(), stages);
     auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
     StringMap<ResolvedNamespace> resolvedNamespaces;
     for (auto& involvedNs : pipelineInvolvedNamespaces) {

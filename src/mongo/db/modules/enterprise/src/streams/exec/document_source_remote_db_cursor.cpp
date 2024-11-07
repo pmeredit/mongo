@@ -48,7 +48,7 @@ DocumentSource::GetNextResult DocumentSourceRemoteDbCursor::doGetNext() {
         }
 
         // If the current batch is exhausted, tries to get the next batch.
-        GetMoreCommandRequest request(_cursorId, pExpCtx->ns.coll().toString());
+        GetMoreCommandRequest request(_cursorId, pExpCtx->getNamespaceString().coll().toString());
         request.setBatchSize(kDefaultBatchSize);
         _reply = _procItf->runCommand(request);
 
@@ -107,7 +107,7 @@ DocumentSourceRemoteDbCursor::DocumentSourceRemoteDbCursor(MongoDBProcessInterfa
     : DocumentSource(kStageName, pipeline->getContext()), _procItf(procItf) {
     using namespace fmt::literals;
 
-    AggregateCommandRequest request(pExpCtx->ns, pipeline->serializeToBson());
+    AggregateCommandRequest request(pExpCtx->getNamespaceString(), pipeline->serializeToBson());
     SimpleCursorOptions cursorOptions;
     cursorOptions.setBatchSize(kDefaultBatchSize);
     request.setCursor(cursorOptions);

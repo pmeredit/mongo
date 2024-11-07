@@ -882,14 +882,14 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
     // Currently, drivers provide the schema only for the main collection, hence, sub-pipelines
     // cannot reference other collections.
     auto referencedCollections = _parsedPipeline->getInvolvedCollections();
-    referencedCollections.insert(_parsedPipeline->getContext()->ns);
+    referencedCollections.insert(_parsedPipeline->getContext()->getNamespaceString());
     uassert(51204,
             "Pipeline over an encrypted collection cannot reference additional collections.",
             referencedCollections.size() == 1);
 
     auto [metadataTree, finalSchema] =
         pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
-            {{_parsedPipeline->getContext()->ns, schema.clone()}},
+            {{_parsedPipeline->getContext()->getNamespaceString(), schema.clone()}},
             *_parsedPipeline.get(),
             propagateSchemaFunction);
 

@@ -416,11 +416,11 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     // temporary database name however the collection name will be used when serializing back to
     // BSON.
 
-    auto findCommand =
-        query_request_helper::makeFromFindCommand(cmdObj,
-                                                  auth::ValidatedTenancyScope::get(expCtx->opCtx),
-                                                  dbName.tenantId(),
-                                                  expCtx->serializationCtxt);
+    auto findCommand = query_request_helper::makeFromFindCommand(
+        cmdObj,
+        auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
+        dbName.tenantId(),
+        expCtx->getSerializationContext());
 
     auto filterPlaceholder =
         replaceEncryptedFieldsInFilter(expCtx, *schemaTree, findCommand->getFilter());
@@ -476,15 +476,15 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
 
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
-    auto request =
-        aggregation_request_helper::parseFromBSON(cmdObj,
-                                                  auth::ValidatedTenancyScope::get(expCtx->opCtx),
-                                                  boost::none,
-                                                  expCtx->serializationCtxt);
+    auto request = aggregation_request_helper::parseFromBSON(
+        cmdObj,
+        auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
+        boost::none,
+        expCtx->getSerializationContext());
 
     // Add the populated list of involved namespaces to the expression context, needed at parse
     // time by stages such as $lookup and $out.
-    expCtx->ns = request.getNamespace();
+    expCtx->setNamespaceString(request.getNamespace());
     expCtx->setResolvedNamespaces([&]() {
         const LiteParsedPipeline liteParsedPipeline(request);
         const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
@@ -526,12 +526,12 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
 
-    auto countCmd =
-        CountCommandRequest::parse(IDLParserContext("count",
-                                                    auth::ValidatedTenancyScope::get(expCtx->opCtx),
-                                                    dbName.tenantId(),
-                                                    SerializationContext::stateCommandRequest()),
-                                   cmdObj);
+    auto countCmd = CountCommandRequest::parse(
+        IDLParserContext("count",
+                         auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
+                         dbName.tenantId(),
+                         SerializationContext::stateCommandRequest()),
+        cmdObj);
     auto query = countCmd.getQuery();
 
     auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, query);
@@ -550,7 +550,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto parsedDistinct = DistinctCommandRequest::parse(
         IDLParserContext("distinct",
-                         auth::ValidatedTenancyScope::get(expCtx->opCtx),
+                         auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
                          dbName.tenantId(),
                          SerializationContext::stateCommandRequest()),
         cmdObj);
@@ -630,7 +630,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
     auto request(write_ops::FindAndModifyCommandRequest::parse(
         IDLParserContext("findAndModify",
-                         auth::ValidatedTenancyScope::get(expCtx->opCtx),
+                         auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
                          dbName.tenantId(),
                          SerializationContext::stateCommandRequest()),
         cmdObj));
@@ -954,9 +954,10 @@ void processQueryCommand(OperationContext* opCtx,
                       .build();
     const auto vts = auth::ValidatedTenancyScope::get(opCtx);
     // assume that the tenantId on dbName wasn't from a prefix
-    expCtx->serializationCtxt = vts != boost::none
-        ? SerializationContext::stateCommandRequest(vts->hasTenantId(), vts->isFromAtlasProxy())
-        : SerializationContext::stateCommandRequest();
+    expCtx->setSerializationContext(
+        vts != boost::none
+            ? SerializationContext::stateCommandRequest(vts->hasTenantId(), vts->isFromAtlasProxy())
+            : SerializationContext::stateCommandRequest());
 
     PlaceHolderResult placeholder =
         func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));
@@ -1121,12 +1122,12 @@ PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<Expression
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
 
-    auto cmd =
-        CreateCommand::parse(IDLParserContext("create",
-                                              auth::ValidatedTenancyScope::get(expCtx->opCtx),
-                                              dbName.tenantId(),
-                                              SerializationContext::stateCommandRequest()),
-                             strippedCmd);
+    auto cmd = CreateCommand::parse(
+        IDLParserContext("create",
+                         auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
+                         dbName.tenantId(),
+                         SerializationContext::stateCommandRequest()),
+        strippedCmd);
     uassert(7501300,
             "Creating a view is not supported with automatic encryption",
             !cmd.getPipeline().has_value() && !cmd.getViewOn().has_value());
@@ -1141,11 +1142,12 @@ PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<Expressio
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CollMod::parse(IDLParserContext("collMod",
-                                               auth::ValidatedTenancyScope::get(expCtx->opCtx),
-                                               dbName.tenantId(),
-                                               SerializationContext::stateCommandRequest()),
-                              strippedCmd);
+    auto cmd = CollMod::parse(
+        IDLParserContext("collMod",
+                         auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
+                         dbName.tenantId(),
+                         SerializationContext::stateCommandRequest()),
+        strippedCmd);
     return addPlaceholdersForCommandWithValidator(
         expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
 }
@@ -1161,7 +1163,7 @@ PlaceHolderResult addPlaceHoldersForCreateIndexes(
 
     auto cmd = CreateIndexesCommand::parse(
         IDLParserContext("createIndexes",
-                         auth::ValidatedTenancyScope::get(expCtx->opCtx),
+                         auth::ValidatedTenancyScope::get(expCtx->getOperationContext()),
                          dbName.tenantId(),
                          SerializationContext::stateCommandRequest()),
         strippedCmd);
