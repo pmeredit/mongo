@@ -99,10 +99,10 @@ void KafkaEmitOperator::Connector::testConnection() {
         }
 
         kafkaErrorCode = _options.producer->metadata(
-            false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
+            false /* all_topics */, topic.get(), &metadata, kKafkaRequestTimeoutMs);
     } else {
         kafkaErrorCode = _options.producer->metadata(
-            true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
+            true /* all_topics */, nullptr, &metadata, kKafkaRequestTimeoutMs);
     }
 
     std::unique_ptr<RdKafka::Metadata> deleter(metadata);
@@ -584,7 +584,6 @@ void KafkaEmitOperator::doStart() {
         options.topicName = _options.topicName.getLiteral();
     }
     options.producer = _producer.get();
-    options.metadataQueryTimeout = _options.metadataQueryTimeout;
     options.kafkaEventCallback = _eventCbImpl.get();
     options.kafkaConnectAuthCallback = _connectCbImpl;
     options.kafkaResolveCallback = _resolveCbImpl;

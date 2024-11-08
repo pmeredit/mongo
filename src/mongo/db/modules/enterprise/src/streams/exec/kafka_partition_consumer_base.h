@@ -39,8 +39,6 @@ public:
         int32_t maxNumDocsToReturn{500};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
-        // Timeout used for Kafka api calls.
-        mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs{10'000};
         // Sleep duration after Kafka api calls fail.
         mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
         // Metrics that track the number of docs and bytes prefetched.

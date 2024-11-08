@@ -87,8 +87,6 @@ public:
         // Partition idle timeout specified in the $source. A value of zero indicates that idleness
         // detection is disabled.
         mongo::stdx::chrono::milliseconds partitionIdleTimeoutMs{0};
-        // Timeout used for Kafka api calls.
-        mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs{10'000};
         // Sleep duration after Kafka api calls fail.
         mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
         // GWProxy endpoint hostname or IP address.
@@ -166,7 +164,6 @@ private:
     public:
         struct Options {
             std::vector<std::string> topicNames;
-            mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs;
             // Sleep duration after Kafka api calls fail.
             mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
             std::string bootstrapServers;

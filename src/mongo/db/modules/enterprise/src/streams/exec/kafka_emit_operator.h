@@ -107,8 +107,6 @@ private:
         struct Options {
             boost::optional<std::string> topicName;
             RdKafka::Producer* producer{nullptr};
-            // Timeout for the metadata query.
-            mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
             // Event callback.
             KafkaEventCallback* kafkaEventCallback{nullptr};
             std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;

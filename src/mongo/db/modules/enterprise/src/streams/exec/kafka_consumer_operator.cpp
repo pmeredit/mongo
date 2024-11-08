@@ -280,8 +280,8 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
         }
 
         RdKafka::Metadata* metadata{nullptr};
-        RdKafka::ErrorCode resp = _consumer->metadata(
-            false, rdTopic.get(), &metadata, _options.kafkaRequestTimeoutMs.count());
+        RdKafka::ErrorCode resp =
+            _consumer->metadata(false, rdTopic.get(), &metadata, kKafkaRequestTimeoutMs);
         std::unique_ptr<RdKafka::Metadata> metadataHolder{metadata};
         const boost::optional<std::string> verboseCallbackErrors =
             getVerboseCallbackErrorsIfExists();
@@ -389,7 +389,6 @@ void KafkaConsumerOperator::doStart() {
         // Now create a Connector instace.
         Connector::Options options{
             .topicNames = _options.topicNames,
-            .kafkaRequestTimeoutMs = _options.kafkaRequestTimeoutMs,
             .kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs,
             .bootstrapServers = _options.bootstrapServers,
             .consumerGroupId = _options.consumerGroupId,
@@ -1178,8 +1177,7 @@ KafkaConsumerOperator::TopicPartitionOffsetMap KafkaConsumerOperator::getCommitt
     }
 
     tassert(8674601, "Expected _groupConsumer to be set", _groupConsumer);
-    RdKafka::ErrorCode errCode =
-        _groupConsumer->committed(partitions, _options.kafkaRequestTimeoutMs.count());
+    RdKafka::ErrorCode errCode = _groupConsumer->committed(partitions, kKafkaRequestTimeoutMs);
     uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
             kafkaErrToString("KafkaConsumerOperator failed to get committed offsets", errCode),
             errCode == RdKafka::ERR_NO_ERROR);
@@ -1307,7 +1305,6 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
     options.startOffset = startOffset;
     options.authConfig = _options.authConfig;
-    options.kafkaRequestTimeoutMs = _options.kafkaRequestTimeoutMs;
     options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
     options.queueSizeGauge = _queueSizeGauge;
     options.queueByteSizeGauge = _queueByteSizeGauge;

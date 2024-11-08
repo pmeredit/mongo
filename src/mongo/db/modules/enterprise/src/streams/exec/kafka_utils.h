@@ -11,6 +11,9 @@
 
 namespace streams {
 
+// Timeout used for rdkafka API calls (like querying offsets).
+constexpr int64_t kKafkaRequestTimeoutMs{30'000};
+
 // Constructs an error message given an Kafka error code and a wrapping message
 std::string kafkaErrToString(const std::string& wrappingErrMsg, RdKafka::ErrorCode err);
 

@@ -359,12 +359,8 @@ int64_t KafkaPartitionConsumer::queryWatermarkOffsets() {
         // We retrieve the current beginning and end with query_watermark_offsets.
         int64_t lowOffset = 0;
         int64_t highOffset = 0;
-        RdKafka::ErrorCode resp =
-            _consumer->query_watermark_offsets(_topic->name(),
-                                               _options.partition,
-                                               &lowOffset,
-                                               &highOffset,
-                                               _options.kafkaRequestTimeoutMs.count());
+        RdKafka::ErrorCode resp = _consumer->query_watermark_offsets(
+            _topic->name(), _options.partition, &lowOffset, &highOffset, kKafkaRequestTimeoutMs);
         if (resp != RdKafka::ERR_NO_ERROR) {
             auto errStr = kafkaErrToString(
                 fmt::format("query_watermark_offsets failed for partition {}", partition()), resp);
