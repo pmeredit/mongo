@@ -15,8 +15,11 @@ import {ReplSetTest} from "jstests/libs/replsettest.js";
 const dbName = "crud";
 
 function exportCollections(numImportThreads, numImportsPerThread) {
-    let standalone = MongoRunner.runMongod();
-    let db = standalone.getDB(dbName);
+    const rst = new ReplSetTest({nodes: 1, name: "export_collection_target"});
+    const nodes = rst.startSet();
+    rst.initiate();
+    let primary = rst.getPrimary();
+    let db = primary.getDB(dbName);
 
     let collections = [];
     jsTestLog("Creating " + (numImportThreads * numImportsPerThread) + " collections");
@@ -36,13 +39,14 @@ function exportCollections(numImportThreads, numImportsPerThread) {
         }
     }
 
-    MongoRunner.stopMongod(standalone);
+    rst.stopSet(null, false, {noCleanData: true});
 
     jsTestLog("Exporting" + (numImportThreads * numImportsPerThread) + " collections");
-    standalone = MongoRunner.runMongod({
-        dbpath: standalone.dbpath,
+    let standalone = MongoRunner.runMongod({
+        dbpath: rst.getDbPath(nodes[0]),
         noCleanData: true,
         queryableBackupMode: "",
+        setParameter: {wiredTigerSkipTableLoggingChecksOnStartup: true}
     });
 
     db = standalone.getDB(dbName);
@@ -52,7 +56,7 @@ function exportCollections(numImportThreads, numImportsPerThread) {
             assert.commandWorked(db.runCommand({exportCollection: coll.name}));
     });
 
-    MongoRunner.stopMongod(standalone);
+    MongoRunner.stopMongod(standalone, null, {skipValidation: true});
     return collections;
 }
 
