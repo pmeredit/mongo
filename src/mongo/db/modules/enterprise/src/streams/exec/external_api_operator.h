@@ -112,6 +112,10 @@ private:
     // document to create a set of headers to be used in the http client.
     std::vector<std::string> evaluateHeaders(const mongo::Document& doc);
 
+    // evaluatePath accepts an input document and applies a mongo expression using that
+    // document to create a url path.
+    std::string evaluatePath(const mongo::Document& doc);
+
     // evaluateQueryParams accepts an input document and applies a mongo expression using that
     // document to create a query string.
     std::string evaluateQueryParams(const mongo::Document& doc);

@@ -272,8 +272,7 @@ const testCases = [
                     "$sum": [1.2, 2, 3]
                 },
                 "BoolParam": true,
-                // TODO(SERVER-96175) unescape the value to ensure that the url encoding works as we'd expect.
-                "SearchParam": "%22foobar%20baz%22" // => "foobar baz"
+                "SearchParam": "\"%!:+-.@/foobar baz\""
             }
         },
         inputDocs: [{a: 1, foo: "DynamicValue"}],
@@ -302,7 +301,7 @@ const testCases = [
                     "FieldPathExprParam": ["DynamicValue"],
                     "ObjectExprParam": ["6.2"],
                     "BoolParam": ["true"],
-                    "SearchParam": ["\"foobar baz\""]
+                    "SearchParam": ["\"%!:+-.@/foobar baz\""]
                 },
             }
         }],
@@ -315,7 +314,7 @@ const testCases = [
         externalAPIOptions: {            
             connectionName: webAPIName,
             as: 'response',
-            urlPath: "/echo/",
+            urlPath: "/foo(bar)",
             requestType: "GET",
             headers: {
                 "FieldPathHeader": "$fullDocument.foo",
@@ -329,8 +328,7 @@ const testCases = [
                     "$sum": [1.2, 2, 3]
                 },
                 "BoolParam": true,
-                // TODO(SERVER-96175) unescape the value to ensure that the url encoding works as we'd expect.
-                "SearchParam": "%22foobar%20baz%22" // => "foobar baz"
+                "Search%Param": "https://user:password@my.domain.net:1234/foo/bar/baz?name=hero&name=sandwich&name=grinder#heading1"
             }
         },
         outputQuery: [{
@@ -349,14 +347,14 @@ const testCases = [
             fullDocument: {foo: "DynamicValue"},
             response: {
                 method: "GET",
-                path: "/echo/",
+                path: "/foo(bar)",
                 query: {
                     "StrParam": ["StaticParameterValue"],
                     "DoubleParam": ["1.100000000002"],
                     "FieldPathExprParam": ["DynamicValue"],
                     "ObjectExprParam": ["6.2"],
                     "BoolParam": ["true"],
-                    "SearchParam": ["\"foobar baz\""]
+                    "Search%Param": ["https://user:password@my.domain.net:1234/foo/bar/baz?name=hero&name=sandwich&name=grinder#heading1"]
                 },
                 headers: {
                     ...basicHeaders,

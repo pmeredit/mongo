@@ -338,6 +338,55 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                 ASSERT_EQ(stats.numOutputBytes, 22);
             },
         },
+        {
+            "should make a valid GET request with a url-encoded URL",
+            [&] {
+                std::string uri = "http://localhost:10000";
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri + "?%25%2B-%3D_%2F%24=%3A%40%23%24%5B%5D%28%29",
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return ExternalApiOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .requestType = HttpClient::HttpMethod::kGET,
+                    .url = uri,
+                    .queryParams =
+                        std::vector<std::pair<std::string, StringOrExpression>>{
+                            {"%+-=_/$", ":@#$[]()"},
+                        },
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson("{foo: \"bar\"}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+                }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
+        },
     };
 
     for (const auto& tc : tests) {
@@ -615,15 +664,16 @@ TEST_F(ExternalApiOperatorTest, GetWithBadQueryParams) {
                 auto dlqMsgs = dlq->getMessages();
                 ASSERT_EQ(1, dlqMsgs.size());
                 ASSERT_EQ(
-                    "Failed to process input document in ExternalApiOperator with error: Expected"
-                    " query parameter expression to evaluate as a number, string, or boolean.",
+                    "Failed to process input document in ExternalApiOperator with error: Expected "
+                    "$externalAPI.parameters values to evaluate as a number, "
+                    "string, or boolean.",
                     dlqMsgs.front()["errInfo"]["reason"].String());
                 ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
             },
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 0);
                 ASSERT_EQ(stats.numOutputBytes, 0);
-                ASSERT_EQ(stats.numDlqBytes, 310);
+                ASSERT_EQ(stats.numDlqBytes, 314);
                 ASSERT_EQ(stats.numDlqDocs, 1);
             });
     }
@@ -703,14 +753,14 @@ TEST_F(ExternalApiOperatorTest, GetWithBadHeaders) {
                 ASSERT_EQ(1, dlqMsgs.size());
                 ASSERT_EQ(
                     "Failed to process input document in ExternalApiOperator with error: Expected "
-                    "header value to evaluate as a string.",
+                    "$externalAPI.headers values to evaluate to a string.",
                     dlqMsgs.front()["errInfo"]["reason"].String());
                 ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
             },
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 0);
                 ASSERT_EQ(stats.numOutputBytes, 0);
-                ASSERT_EQ(stats.numDlqBytes, 276);
+                ASSERT_EQ(stats.numDlqBytes, 291);
                 ASSERT_EQ(stats.numDlqDocs, 1);
             });
     }

@@ -8,6 +8,9 @@
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/stdx/string_view.hpp>
 #include <cstdio>
+#include <curl/curl.h>
+#include <curl/easy.h>
+#include <curl/urlapi.h>
 #include <memory>
 
 #include "mongo/base/error_codes.h"
@@ -44,6 +47,15 @@ std::string getHeaderStr(const std::string& name, const std::string& val) {
 std::string getQueryParamsStr(const std::string& key, const std::string& value) {
     return fmt::format("{}={}", key, value);
 }
+
+std::string urlEncode(const std::string& str) {
+    char* encoded = curl_easy_escape(nullptr, str.c_str(), str.length());
+    tassert(9617500, "Failed to url-encode string.", encoded != nullptr);
+    ScopeGuard guard([&] { curl_free(encoded); });
+
+    return std::string{encoded};
+}
+
 }  // namespace
 
 using namespace mongo;
@@ -273,13 +285,10 @@ boost::optional<mongo::HttpClient::HttpReply> ExternalApiOperator::doRequest(
 }
 
 std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
+    // TODO(SERVER-96880) url encode the user-provided url.
     std::string out = _options.url;
     if (_options.urlPathExpr) {
-        Value pathValue = _options.urlPathExpr->evaluate(doc, &_context->expCtx->variables);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Expected url path expression to evaluate to a string.",
-                pathValue.getType() == mongo::BSONType::String);
-        out += pathValue.getStringData();
+        out += evaluatePath(doc);
     }
 
     if (!_options.queryParams.empty()) {
@@ -287,6 +296,16 @@ std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
     }
 
     return out;
+}
+
+std::string ExternalApiOperator::evaluatePath(const mongo::Document& doc) {
+    Value pathValue = _options.urlPathExpr->evaluate(doc, &_context->expCtx->variables);
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            fmt::format("Expected {}.{} to evaluate to a string.",
+                        kExternalApiStageName,
+                        ExternalAPIOptions::kUrlPathFieldName),
+            pathValue.getType() == mongo::BSONType::String);
+    return pathValue.getString();
 }
 
 std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Document& doc) {
@@ -304,7 +323,9 @@ std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Docum
                 [&](const boost::intrusive_ptr<mongo::Expression>& expr) {
                     auto headerVal = expr->evaluate(doc, &_context->expCtx->variables);
                     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                            "Expected header value to evaluate as a string.",
+                            fmt::format("Expected {}.{} values to evaluate to a string.",
+                                        kExternalApiStageName,
+                                        ExternalAPIOptions::kHeadersFieldName),
                             headerVal.getType() == mongo::BSONType::String);
                     headers.emplace_back(getHeaderStr(kv.first, headerVal.getString()));
                 }},
@@ -323,25 +344,29 @@ std::string ExternalApiOperator::evaluateQueryParams(const mongo::Document& doc)
     for (const auto& kv : _options.queryParams) {
         // Note: the planner parses out expressions that are represented using strings so if
         // operatorHeaders has a string value, it is guaranteed to be a static string.
+        std::string key = urlEncode(kv.first);
         std::visit(
             mongo::OverloadedVisitor{
                 [&](const std::string& str) {
-                    keyValues.push_back(getQueryParamsStr(kv.first, str));
+                    keyValues.push_back(getQueryParamsStr(key, urlEncode(str)));
                 },
                 [&](const boost::intrusive_ptr<mongo::Expression>& expr) {
                     auto paramVal = expr->evaluate(doc, &_context->expCtx->variables);
                     uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
-                            "Expected query parameter expression to evaluate as a number, "
-                            "string, or boolean.",
+                            fmt::format("Expected {}.{} values to evaluate as a number, "
+                                        "string, or boolean.",
+                                        kExternalApiStageName,
+                                        ExternalAPIOptions::kParametersFieldName),
                             paramVal.getType() == mongo::BSONType::String ||
                                 paramVal.getType() == mongo::BSONType::Bool || paramVal.numeric());
 
                     if (paramVal.getType() == mongo::BSONType::String) {
                         // Parse strings separately to avoid unnecessary quotations
                         // surrounding the string output of `.toString()`.
-                        keyValues.push_back(getQueryParamsStr(kv.first, paramVal.getString()));
+                        keyValues.push_back(
+                            getQueryParamsStr(key, urlEncode(paramVal.getString())));
                     } else {
-                        keyValues.push_back(getQueryParamsStr(kv.first, paramVal.toString()));
+                        keyValues.push_back(getQueryParamsStr(key, urlEncode(paramVal.toString())));
                     }
                 }},
             kv.second);

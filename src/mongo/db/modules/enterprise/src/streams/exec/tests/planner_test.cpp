@@ -85,6 +85,7 @@ public:
                                           << "foobar"));
         webApiConn.setOptions(webApiConnOptions.toBSON());
         webApiConn.setType(ConnectionTypeEnum::WebAPI);
+
         _context->connections = {
             {atlasConn.getName().toString(), atlasConn},
             {webApiConn.getName().toString(), webApiConn},
