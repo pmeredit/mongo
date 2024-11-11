@@ -141,34 +141,6 @@ public:
         return batch.front();
     };
 
-    // Verify valid format of namespace and UUID fields for each file.
-    void verifyNsUUID(StorageEngine::StreamingCursor& backupCursor) {
-        auto swBatch = backupCursor.getNextBatch(/*kBatchSize=*/1);
-
-        while (swBatch.isOK()) {
-            auto& batch = swBatch.getValue();
-            if (batch.size() == 0) {
-                // EOF case.
-                return;
-            }
-
-            ASSERT(batch.size() == 1);
-            auto& doc = batch.front();
-            auto filename = getFileName(doc.filePath());
-
-            if (!filename.starts_with("size") && !filename.starts_with("Wired") &&
-                !filename.starts_with("_mdb_catalog")) {
-                ASSERT(doc.ns() && !doc.ns()->isEmpty());
-                ASSERT(doc.uuid());
-            } else {
-                ASSERT(!doc.ns());
-                ASSERT(!doc.uuid());
-            }
-
-            swBatch = backupCursor.getNextBatch(/*kBatchSize=*/1);
-        }
-    }
-
     // Verify the format of the backup cursor fields.
     void validateBackupCursorFields(const BackupBlock& doc) {
         auto filename = getFileName(doc.filePath());
@@ -208,6 +180,7 @@ public:
                                 bool incremental) {
         size_t numSeen = 0;
 
+        // Assert the metadata file exists and check the validity of the format.
         ASSERT(state.preamble);
         auto metadataFileBSON = state.preamble->toBson();
         auto metadataBSON = metadataFileBSON.getObjectField("metadata");
@@ -223,7 +196,7 @@ public:
             ASSERT(!metadataBSON.hasField("srcBackupName"));
         }
 
-        // Ensure the validity of format for the rest of the docs in the file.
+        // Verify valid format of namespace and UUID fields for each doc in the file.
         while (auto doc = getNext(cursor)) {
             numSeen++;
             ASSERT(doc);
@@ -393,10 +366,7 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheck) {
     auto backupCursorState = openBackupCursor();
     auto cursor = backupCursorState.streamingCursor.get();
 
-    auto metadataFile = backupCursorState.preamble;
-    ASSERT(metadataFile);
-    // Verify that the docs in the collection has ns and uuid as expected.
-    verifyNsUUID(*cursor);
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
@@ -413,9 +383,7 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectoryPerDb) {
     auto backupCursorState = openBackupCursor();
     auto cursor = backupCursorState.streamingCursor.get();
 
-    auto metadataFile = backupCursorState.preamble;
-    ASSERT(metadataFile);
-    verifyNsUUID(*cursor);
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
@@ -431,9 +399,7 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckWTDirectoryForIndexes) {
     auto backupCursorState = openBackupCursor();
     auto cursor = backupCursorState.streamingCursor.get();
 
-    auto metadataFile = backupCursorState.preamble;
-    ASSERT(metadataFile);
-    verifyNsUUID(*cursor);
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
@@ -451,9 +417,7 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectories) {
     auto backupCursorState = openBackupCursor();
     auto cursor = backupCursorState.streamingCursor.get();
 
-    auto metadataFile = backupCursorState.preamble;
-    ASSERT(metadataFile);
-    verifyNsUUID(*cursor);
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
@@ -467,8 +431,6 @@ TEST_F(BackupCursorServiceTest, FullBackupCursorFormat) {
 
     auto backupCursorState = openBackupCursor();
     auto cursor = backupCursorState.streamingCursor.get();
-
-    // Assert the metadata file exists and check the validity of the format.
     validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
