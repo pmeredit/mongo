@@ -158,6 +158,7 @@ private:
         mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::Created};
         // CheckpointCoordinator for this streamProcessor.
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
+        std::shared_ptr<Gauge> durationSinceLastRunOnceGauge;
     };
 
     // Encapsulates state for a tenant.

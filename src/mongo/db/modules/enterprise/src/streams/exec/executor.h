@@ -133,6 +133,9 @@ public:
     // storage.
     void onCheckpointFlushed(CheckpointId checkpointId);
 
+    // Returns the duration of the current runOnce() cycle to help detect if the processor is stuck.
+    mongo::Milliseconds durationSinceLastRunOnce() const;
+
 private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
@@ -238,6 +241,8 @@ private:
     std::shared_ptr<IntGauge> _startDurationGauge;
     std::shared_ptr<IntGauge> _stopDurationGauge;
     std::shared_ptr<IntGauge> _maxRunOnceDurationGauge;
+
+    mongo::AtomicWord<mongo::Date_t> _lastRunOnce{mongo::Date_t::now()};
 
     // Have some new outputdocs been emitted by _any_ operator since we last checked.
     // This is used in determining if taking a newer checkpoint can be safely skipped

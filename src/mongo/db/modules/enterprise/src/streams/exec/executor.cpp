@@ -42,6 +42,8 @@ namespace {
 MONGO_FAIL_POINT_DEFINE(streamProcessorStartSleepSeconds);
 // If enabled, executor will sleep for specified duration while stopping the stream processor.
 MONGO_FAIL_POINT_DEFINE(streamProcessorStopSleepSeconds);
+// If enabled, executor will sleep for specified duration at the beginning of runOnce().
+MONGO_FAIL_POINT_DEFINE(streamProcessorRunOnceSleepSeconds);
 
 void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDocs) {
     dassert(source);
@@ -320,6 +322,12 @@ void Executor::updateStats() {
 }
 
 Executor::RunStatus Executor::runOnce() {
+    _lastRunOnce.store(mongo::Date_t::now());
+    if (auto fp = streamProcessorRunOnceSleepSeconds.scoped(); fp.isActive()) {
+        auto sleepSeconds = static_cast<int64_t>(fp.getData()["sleepSeconds"].numberLong());
+        sleepFor(Seconds{sleepSeconds});
+    }
+
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
@@ -483,6 +491,11 @@ Executor::RunStatus Executor::runOnce() {
         return RunStatus::kActive;
     }
     return RunStatus::kIdle;
+}
+
+
+Milliseconds Executor::durationSinceLastRunOnce() const {
+    return Date_t::now() - _lastRunOnce.load();
 }
 
 void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {

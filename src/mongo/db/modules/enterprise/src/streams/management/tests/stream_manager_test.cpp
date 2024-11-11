@@ -8,6 +8,7 @@
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrent_memory_aggregator.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
@@ -678,6 +679,108 @@ TEST_F(StreamManagerTest, GetMetrics) {
     }
 
     stopStreamProcessor(streamManager.get(), kTestTenantId1, streamProcessorName);
+}
+
+TEST_F(StreamManagerTest, GetMetrics_durationSinceLastRunOnce) {
+    setGlobalFailPoint("streamProcessorRunOnceSleepSeconds",
+                       BSON("mode"
+                            << "alwaysOn"
+                            << "data" << BSON("sleepSeconds" << 1)));
+
+    // Deactivate the fail point.
+    mongo::ScopeGuard guard([&] {
+        setGlobalFailPoint("streamProcessorRunOnceSleepSeconds",
+                           BSON("mode"
+                                << "off"));
+    });
+
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    const auto createRequest = [](const std::string& spName) {
+        StartStreamProcessorCommand request;
+        request.setTenantId(StringData(kTestTenantId1));
+        request.setName(StringData(spName));
+        request.setProcessorId(StringData(spName));
+        request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
+        request.setConnections({mongo::Connection(
+            "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+        request.setOptions(mongo::StartOptions{});
+        return request;
+    };
+
+    const std::string sp1Name = "sp1";
+    const auto sp1Request = createRequest(sp1Name);
+    streamManager->startStreamProcessor(sp1Request);
+
+    const std::string sp2Name = "sp2";
+    const auto sp2Request = createRequest(sp2Name);
+    streamManager->startStreamProcessor(sp2Request);
+
+    auto sleepMillis = 100;
+    sleepFor(mongo::Milliseconds{sleepMillis});
+
+    auto metrics = streamManager->getMetrics();
+
+    ASSERT(metrics.getGauges());
+
+    const auto findRunOnceMetric = [](const StartStreamProcessorCommand& request,
+                                      const mongo::GetMetricsReply& metrics) {
+        return std::find_if(metrics.getGauges()->begin(), metrics.getGauges()->end(), [&](auto m) {
+            if (m.getName() != "duration_since_last_runonce") {
+                return false;
+            }
+
+            const auto processorIdLabel =
+                std::find_if(m.getLabels().begin(), m.getLabels().end(), [&](auto l) {
+                    return l.getKey() == kProcessorIdLabelKey;
+                });
+
+            return processorIdLabel->getValue() == request.getProcessorId().toString();
+        });
+    };
+
+    const auto sp1RunOnceMetric = findRunOnceMetric(sp1Request, metrics);
+    ASSERT_GREATER_THAN_OR_EQUALS(sp1RunOnceMetric->getValue(), sleepMillis);
+
+    const auto sp2RunOnceMetric = findRunOnceMetric(sp1Request, metrics);
+    ASSERT_GREATER_THAN_OR_EQUALS(sp2RunOnceMetric->getValue(), sleepMillis);
+
+
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, sp1Name);
+    stopStreamProcessor(streamManager.get(), kTestTenantId1, sp2Name);
+}
+
+TEST_F(StreamManagerTest, GetMetricsWhileClosingSP) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    const std::string streamProcessorName = "sp1";
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData(kTestTenantId1));
+    request.setName(StringData(streamProcessorName));
+    request.setProcessorId(StringData(streamProcessorName));
+    request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
+
+    streamManager->startStreamProcessor(request);
+
+    auto sleepMillis = 100;
+    sleepFor(mongo::Milliseconds{sleepMillis});
+
+    mongo::stdx::thread thread1{[&streamManager] {
+        for (int i = 0; i < 1000; ++i) {
+            streamManager->getMetrics();
+        }
+    }};
+
+
+    mongo::stdx::thread thread2{[this, &streamManager, streamProcessorName] {
+        stopStreamProcessor(streamManager.get(), kTestTenantId1, streamProcessorName);
+    }};
+
+    thread1.join();
+    thread2.join();
 }
 
 TEST_F(StreamManagerTest, List) {

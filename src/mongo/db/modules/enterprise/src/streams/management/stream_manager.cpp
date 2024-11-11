@@ -729,6 +729,19 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
                 inserted);
         auto& processorInfo = it->second;
 
+        // TODO STREAMS-1320: update comment
+        // We register this metric on the StreamManager's metric manager rather than the Executor's
+        // to ensure accuracy if the processor gets stuck. This is necessary because we only take a
+        // snapshot (takeSnapshot()) of the Executor's metrics within the runOnce() function, not
+        // within the "streams_getMetrics" command, to avoid requiring the callback function
+        // provided to the CallbackGauage to be thread-safe.
+        processorInfo->durationSinceLastRunOnceGauge =
+            _metricManager->registerGauge("duration_since_last_runonce",
+                                          "Duration in milliseconds since the last runOnce()",
+                                          getDefaultMetricLabels(processorInfo->context.get()),
+                                          0);
+
+
         if (request.getOptions().getShouldStartSample()) {
             // If this stream processor is ephemeral, then start a sampling session before
             // starting the stream processor.
@@ -1633,6 +1646,9 @@ GetMetricsReply StreamManager::getMetrics() {
                 MetricsVisitor metricsVisitor(&counterMap, &gaugeMap, &histogramMap);
                 sp->executor->getMetricManager()->visitAllMetrics(&metricsVisitor);
                 numStreamProcessorsByStatus[static_cast<int32_t>(sp->streamStatus)]++;
+
+                sp->durationSinceLastRunOnceGauge->set(
+                    sp->executor->durationSinceLastRunOnce().count());
             }
         }
     }
