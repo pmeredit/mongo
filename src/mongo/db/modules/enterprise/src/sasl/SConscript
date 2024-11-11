@@ -1,9 +1,7 @@
 # -*- mode: python; -*-
 
-
 Import("env")
 Import("ssl_provider")
-Import("have_sasl_lib")
 
 env = env.Clone()
 
@@ -18,76 +16,22 @@ if env.TargetOSIs("windows"):
         AIB_COMPONENT="dist-test",
     )
 
-if not have_sasl_lib:
-    env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
-
 if ssl_provider == "openssl":
     env.CppUnitTest(
         target="sasl_oidc_server_test",
-        source=[
-            "oidc_core_options_stub.cpp",
-            "idp_manager_test.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/crypto/jwt",
-            "$BUILD_DIR/mongo/db/server_base",
-            "$BUILD_DIR/mongo/db/server_feature_flags",
-            "$BUILD_DIR/mongo/util/clock_source_mock",
-            "sasl_oidc_server",
-        ],
+        source=[],
+        LIBDEPS=[],
     )
 
-kmsEnv = env.Clone()
-
-kmsEnv.InjectThirdParty(libraries=["libmongocrypt"])
-
-kmsEnv.CppUnitTest(
+env.CppUnitTest(
     target="sasl_aws_protocol_test",
-    source=[
-        "sasl_aws_protocol_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/client/sasl_aws_client",
-        "$BUILD_DIR/mongo/client/sasl_aws_common",
-        "$BUILD_DIR/third_party/libmongocrypt/mongocrypt",
-        "sasl_aws_server",
-    ],
+    source=[],
+    LIBDEPS=[],
 )
 
-if env.TargetOSIs("windows"):
-    # Ensure we're building with /MD or /MDd
-    mdFlags = ["/MD", "/MDd"]
-    hasFlag = 0
-    for mdFlag in mdFlags:
-        if mdFlag in env["CCFLAGS"]:
-            hasFlag += 1
-    if hasFlag != 1:
-        env.FatalError(
-            "You must enable dynamic CRT --dynamic-windows to build the " "enterprise version"
-        )
-else:
+if not env.TargetOSIs("windows"):
     env.CppUnitTest(
         target="sasl_authentication_session_gssapi_test",
-        source=[
-            "sasl_authentication_session_gssapi_test.cpp",
-        ],
-        UNITTEST_HAS_CUSTOM_MAINLINE=True,
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/base",
-            "$BUILD_DIR/mongo/client/clientdriver_network",
-            "$BUILD_DIR/mongo/client/cyrus_sasl_client",
-            "$BUILD_DIR/mongo/db/auth/auth",
-            "$BUILD_DIR/mongo/db/auth/authmocks",
-            "$BUILD_DIR/mongo/db/auth/saslauth",
-            "$BUILD_DIR/mongo/db/service_context_non_d",
-            "$BUILD_DIR/mongo/db/service_context_test_fixture",
-            "$BUILD_DIR/mongo/executor/network_interface_factory",
-            "$BUILD_DIR/mongo/executor/network_interface_thread_pool",
-            "$BUILD_DIR/mongo/executor/thread_pool_task_executor",
-            "$BUILD_DIR/mongo/unittest/unittest",
-            "$BUILD_DIR/mongo/util/net/network",
-            "../ldap/ldap_manager_init",
-            "mongosaslservercommon",
-            "mongosaslserversession",
-        ],
+        source=[],
+        LIBDEPS=[],
     )

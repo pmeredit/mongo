@@ -1,32 +1,14 @@
 # -*- mode: python -*-
 
-Import(["env", "http_client"])
+Import(["env"])
 
 env = env.Clone()
 
 if not env.TargetOSIs("darwin"):
     env.CppUnitTest(
         target="enterprise_ldap_test",
-        source=[
-            "ldap_connection_options_test.cpp",
-            "ldap_health_observer_test.cpp",
-            "ldap_query_test.cpp",
-            "name_mapping/rewrite_rule_test.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/db/auth/auth",
-            "$BUILD_DIR/mongo/db/process_health/fault_manager",
-            "$BUILD_DIR/mongo/db/process_health/fault_manager_test_suite",
-            "$BUILD_DIR/mongo/db/service_context",
-            "$BUILD_DIR/mongo/executor/task_executor_test_fixture",
-            "$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture",
-            "$BUILD_DIR/mongo/util/clock_source_mock",
-            "ldap_health_observer",
-            "ldap_manager_impl",
-            "ldap_name_map",
-            "ldap_query",
-        ],
-        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
+        source=[],
+        LIBDEPS=[],
     )
 
 env.Program(

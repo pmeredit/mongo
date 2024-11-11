@@ -86,8 +86,7 @@ env.AppendUnique(
 
 env.SConscript(
     must_exist=1,
-    dirs=["src/util"]
-    + [
+    dirs=[
         "src/%s" % feature
         for feature in env.Flatten(feature_dirs)
         if feature in env["MONGO_ENTERPRISE_FEATURES"]

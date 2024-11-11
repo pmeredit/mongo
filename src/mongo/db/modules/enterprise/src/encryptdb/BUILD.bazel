@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -124,6 +124,10 @@ mongo_cc_library(
         "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
         "//conditions:default": [],
     }),
+    target_compatible_with = select({
+        "//bazel/config:use_wiredtiger_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         "key_acquisition",
         "keystore_metadata",
@@ -135,5 +139,63 @@ mongo_cc_library(
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
         "//src/third_party/wiredtiger",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "enterprise_encryptdb_test",
+    srcs = [
+        "encryption_key_manager_noop.h",
+        "encryption_layout_test.cpp",
+        "keystore_metadata_test.cpp",
+        "keystore_test.cpp",
+        "remove_saver_test.cpp",
+    ],
+    local_defines = select({
+        "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
+        "//conditions:default": [],
+    }),
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        ":encryptdb",
+        ":keystore_metadata",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/modules/enterprise:kmip",
+        "//src/mongo/db/modules/enterprise:kmip_configuration",
+        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+        "//src/mongo/db/storage:remove_saver",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+        "//src/mongo/rpc",
+        "//src/mongo/util/net:network",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "enterprise_encryptdb_noubsan_test",
+    srcs = [
+        "encryption_key_manager_noop.h",
+        "wiredtiger_encryption_test.cpp",
+    ],
+    local_defines = select({
+        "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
+        "//conditions:default": [],
+    }),
+    tags = ["mongo_unittest_third_group"],
+    target_compatible_with = select({
+        "//bazel/config:ubsan_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":encryptdb",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:shard_role_api",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/auth:security_file",
+        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
+        "//src/mongo/util/net:network",
     ],
 )

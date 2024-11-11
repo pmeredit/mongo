@@ -32,52 +32,8 @@ env.Program(
 
 env.CppUnitTest(
     target="audit_test",
-    source=[
-        "audit_enc_comp_manager_test.cpp",
-        "audit_file_header_test.cpp",
-        "audit_key_manager_test.cpp",
-        "audit_sequence_id_test.cpp",
-        "audit_output_test.cpp",
-        "logger/rotatable_file_writer_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "$BUILD_DIR/mongo/db/auth/authprivilege",
-        "$BUILD_DIR/mongo/db/catalog/catalog_helpers",
-        "$BUILD_DIR/mongo/db/change_stream_options_manager",
-        "$BUILD_DIR/mongo/db/commands/create_command",
-        "$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition",
-        "$BUILD_DIR/mongo/db/op_observer/op_observer_util",
-        "$BUILD_DIR/mongo/db/repl/oplog",
-        "$BUILD_DIR/mongo/db/repl/oplog_interface_local",
-        "$BUILD_DIR/mongo/db/repl/replmocks",
-        "$BUILD_DIR/mongo/db/repl/storage_interface_impl",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
-        "$BUILD_DIR/mongo/db/service_context_test_fixture",
-        "$BUILD_DIR/mongo/idl/cluster_server_parameter",
-        "$BUILD_DIR/mongo/transport/transport_layer_mock",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser",
-        "$BUILD_DIR/mongo/util/signal_handlers",
-        "../../symmetric_crypto_enterprise",
-        "audit_config",
-        "audit_enc_comp_manager",
-        "audit_enterprise",
-        "audit_key_manager_mock",
-        "audit_mongod",
-    ],
-)
-
-env.Library(
-    target="audit_key_manager_mock",
-    source=[
-        "audit_key_manager_mock.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
-    ],
+    source=[],
+    LIBDEPS=[],
 )
 
 # writes multi-byte sequences to console

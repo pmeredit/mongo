@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -252,5 +252,61 @@ mongo_cc_library(
         "//src/mongo/db/s:forwardable_operation_metadata",
         "//src/mongo/db/s:sharding_commands_d",
         "//src/mongo/s/write_ops:batch_write_types",
+    ],
+)
+
+mongo_cc_library(
+    name = "audit_key_manager_mock",
+    srcs = [
+        "audit_key_manager_mock.cpp",
+    ],
+    hdrs = [
+        "audit_key_manager.h",
+        "audit_key_manager_mock.h",
+    ],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/crypto:symmetric_crypto",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "audit_test",
+    srcs = [
+        "audit_enc_comp_manager_test.cpp",
+        "audit_file_header_test.cpp",
+        "audit_key_manager_test.cpp",
+        "audit_output_test.cpp",
+        "audit_sequence_id_test.cpp",
+        "//src/mongo/db/modules/enterprise/src/audit/logger:rotatable_file_writer_test.cpp",
+    ],
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        ":audit_config",
+        ":audit_enc_comp_manager",
+        ":audit_enterprise",
+        ":audit_key_manager_mock",
+        ":audit_mongod",
+        "//src/mongo/crypto:symmetric_crypto",
+        "//src/mongo/db:change_stream_options_manager",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/auth:authprivilege",
+        "//src/mongo/db/catalog:catalog_helpers",
+        "//src/mongo/db/commands:create_command",
+        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+        "//src/mongo/db/modules/enterprise/src/encryptdb:key_acquisition",
+        "//src/mongo/db/op_observer:op_observer_util",
+        "//src/mongo/db/repl:oplog",
+        "//src/mongo/db/repl:oplog_interface_local",
+        "//src/mongo/db/repl:replmocks",
+        "//src/mongo/db/repl:storage_interface_impl",
+        "//src/mongo/idl:cluster_server_parameter",
+        "//src/mongo/idl:server_parameter_test_util",
+        "//src/mongo/transport:transport_layer_mock",
+        "//src/mongo/util:signal_handlers",
+        "//src/mongo/util/options_parser",
     ],
 )

@@ -29,3 +29,26 @@ mongo_cc_library(
         "//src/mongo:base",
     ],
 )
+
+mongo_cc_library(
+    name = "report_tool",
+    srcs = [
+        "report.cpp",
+    ],
+    hdrs = [
+        "report.h",
+    ],
+    deps = [
+        "//src/mongo:base",
+    ],
+)
+
+mongo_cc_library(
+    name = "core_options_stub",
+    srcs = [
+        "core_options_stub.cpp",
+    ],
+    deps = [
+        "//src/mongo:base",
+    ],
+)

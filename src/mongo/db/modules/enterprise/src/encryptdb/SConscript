@@ -5,60 +5,25 @@ Import("get_option")
 
 env = env.Clone()
 
+if not wiredtiger:
+    env.FatalError("EncryptedStorage requires WiredTiger")
+
+env.CppUnitTest(
+    target="enterprise_encryptdb_test",
+    source=[],
+    LIBDEPS=[],
+)
+
 using_ubsan = False
 sanitizer_list = get_option("sanitize")
 if sanitizer_list:
     using_ubsan = "undefined" in sanitizer_list.split(",")
 
-if not wiredtiger:
-    env.FatalError("EncryptedStorage requires WiredTiger")
-
-wtEnv = env.Clone()
-wtEnv.InjectThirdParty(libraries=["wiredtiger"])
-if env.TargetOSIs("darwin", "macOS"):
-    wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"])
-
-wtEnv.CppUnitTest(
-    target="enterprise_encryptdb_test",
-    source=[
-        "keystore_metadata_test.cpp",
-        "keystore_test.cpp",
-        "encryption_layout_test.cpp",
-        "remove_saver_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/db/service_context_test_fixture",
-        "$BUILD_DIR/mongo/db/storage/remove_saver",
-        "$BUILD_DIR/mongo/db/storage/storage_options",
-        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
-        "$BUILD_DIR/mongo/rpc/rpc",
-        "$BUILD_DIR/mongo/util/net/network",
-        "../../kmip",
-        "../../kmip_configuration",
-        "../../symmetric_crypto_enterprise",
-        "encryptdb",
-        "keystore_metadata",
-    ],
-)
-
 if not using_ubsan:
-    wtEnv.CppUnitTest(
+    env.CppUnitTest(
         target="enterprise_encryptdb_noubsan_test",
-        source=[
-            "wiredtiger_encryption_test.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/db/auth/authmocks",
-            "$BUILD_DIR/mongo/db/auth/security_file",
-            "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
-            "$BUILD_DIR/mongo/db/shard_role_api",
-            "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
-            "$BUILD_DIR/mongo/util/net/network",
-            "../../symmetric_crypto_enterprise",
-            "encryptdb",
-        ],
+        source=[],
+        LIBDEPS=[],
     )
 
 env.Program(
