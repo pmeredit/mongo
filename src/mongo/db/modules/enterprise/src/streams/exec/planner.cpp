@@ -1458,7 +1458,7 @@ void Planner::planLimit(mongo::DocumentSource* source) {
 }
 
 void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
-    // TODO(SERVER-95624): ensure that _stream_meta will be passed into the external api target url.
+    _context->projectStreamMetaPriorToSinkStage = true;
 
     auto parsedOperatorOptions =
         ExternalAPIOptions::parse(IDLParserContext("externalAPI"), docSource->bsonOptions());
@@ -1478,6 +1478,7 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
         .as = parsedOperatorOptions.getAs().toString(),
         .connectionTimeoutSecs = mongo::Seconds{connOptions.getConnectionTimeoutSec()},
         .requestTimeoutSecs = mongo::Seconds{connOptions.getRequestTimeoutSec()},
+        .onError = parsedOperatorOptions.getOnError(),
     };
 
     if (const auto& headersOpt = connOptions.getHeaders(); headersOpt) {

@@ -28,6 +28,7 @@ function runTest({
     expectedDlq = [],
     fieldsToSkip = [],
     featureFlags = {},
+    expectedStatus = "running",
 }) {
     const waitTimeMs = 30000;
     const dbName = "external_api_test";
@@ -71,6 +72,14 @@ function runTest({
 
     // evg timing is flakey for doc insert
     assert.commandWorked(inputColl.insertMany(inputDocs));
+
+    if (expectedStatus != "running") {
+        assert.soon(() => { return sp.stats()["status"] == expectedStatus; },
+                    "waiting for expected status",
+                    waitTimeMs);
+        return;
+    }
+
     try {
         // Wait for all the messages to be read.
         assert.soon(() => { return sp.stats()["inputMessageCount"] == inputDocs.length; },
@@ -97,7 +106,7 @@ function runTest({
     assert.eq(sp.stats()["outputMessageCount"], expectedOutput.length);
     assert.eq(sp.stats()["dlqMessageCount"], expectedDlq.length);
 
-    let allFieldsToSkip = ["_id"];
+    let allFieldsToSkip = ["_id", "responseTimeMs"];
     if (fieldsToSkip) {
         allFieldsToSkip.push(...fieldsToSkip);
     }
@@ -186,9 +195,14 @@ const testCases = [
         inputDocs: [{a: 1}],
         expectedRequests:
             [{method: "GET", path: "/echo/tc1", headers: basicHeaders, query: {}, body: ""}],
-        outputQuery: [{$project: {fullDocument: 1, response: 1}}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.externalAPI": 1}}],
         expectedOutput: [{
             fullDocument: {a: 1},
+            _stream_meta: {externalAPI: {
+                url: restServerUrl + "/echo/tc1",
+                requestType: "GET",
+                httpStatusCode: 200,
+            }},
             response: {method: "GET", path: "/echo/tc1", headers: basicHeaders, query: {}, body:
             ""}
         }],
@@ -209,15 +223,69 @@ const testCases = [
                 "response.inner.headers": 1,
                 "response.inner.query": 1,
                 "response.inner.body.fullDocument": 1,
-            }
+                "_stream_meta.externalAPI": 1,
+            },
         }],
         expectedOutput: [{
             fullDocument: {a: 1},
+            _stream_meta: {externalAPI: {
+                url: restServerUrl + "/echo/tc2",
+                requestType: "POST",
+                httpStatusCode: 200,
+            }},
             response: {inner: {method: "POST", path: "/echo/tc2", headers: {...basicHeaders,
             "Content-Length" : "626", "Content-Type": "application/json"}, query: {},
             body: {fullDocument: {a: 1}}}}
         }],
         allowAllTraffic: true,
+    },
+    {
+        description: "error responses should prompt DLQ messages to be made by default",
+        spName: "tcOnErrorDefault",
+        externalAPIOptions:
+            {connectionName: webAPIName, urlPath: "/notfound/tcOnErrorDefault", requestType: "GET", as: 'response'},
+        inputDocs: [{a: 1}],
+        allowAllTraffic: true,
+        expectedDlq: [{a: 1}],
+    },
+    {
+        description: "error responses should prompt DLQ messages to be made when configured to do so",
+        spName: "tcOnErrorDLQ",
+        externalAPIOptions:
+            {connectionName: webAPIName, urlPath: "/notfound/tcOnErrorDLQ", requestType: "GET", as: 'response', onError: "dlq"},
+        inputDocs: [{a: 1}],
+        expectedDlq: [{a: 1}],
+    },
+    {
+        description: "error responses should put SP in error state when configured to do so",
+        spName: "tcOnErrorFail",
+        externalAPIOptions:
+            {connectionName: webAPIName, urlPath: "/notfound/tcOnErrorFail", requestType: "GET", as:
+            'response', onError: "fail"},
+        inputDocs: [{a: 1}],
+        allowAllTraffic: true,
+        expectedStatus: "error",
+    },
+    {
+        description: "error responses should be ignored when configured to do so",
+        spName: "tcOnErrorIgnore",
+        externalAPIOptions:
+            {connectionName: webAPIName, urlPath: "/notfound/tcOnErrorIgnore", requestType: "GET", as:
+            'response', onError: "ignore"},
+        inputDocs: [{a: 1}],
+        allowAllTraffic: true,
+        expectedRequests:
+            [{method: "GET", path: "/notfound/tcOnErrorIgnore", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.externalAPI": 1}}],
+        expectedOutput: [{
+            fullDocument: {a: 1},
+            _stream_meta: {externalAPI: {
+                url: restServerUrl + "/notfound/tcOnErrorIgnore",
+                requestType: "GET",
+                httpStatusCode: 404,
+            }},
+            response: {},
+        }],
     },
     {
         description: "put request with added headers should work",
@@ -238,9 +306,15 @@ const testCases = [
             "response.method": 1,
             "response.path": 1,
             "response.headers": 1,
+            "_stream_meta.externalAPI": 1,
         }}],
         expectedOutput: [{
             fullDocument: {a: 1, foo: "DynamicValue"},
+            _stream_meta: {externalAPI: {
+                url: restServerUrl + "/echo/tc3",
+                requestType: "PUT",
+                httpStatusCode: 200,
+            }},
             response: {
                 method: "PUT",
                 path: "/echo/tc3",
@@ -283,10 +357,16 @@ const testCases = [
                 "response.path": 1,
                 "response.query": 1,
                 "response.headers": 1,
+                "_stream_meta.externalAPI": 1,
             }
         }],
         expectedOutput: [{
             fullDocument: {a: 1, foo: "DynamicValue"},
+            _stream_meta: {externalAPI: {
+                url: restServerUrl + "/echo/tc4?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&SearchParam=%22%25%21%3A%2B-.%40%2Ffoobar%20baz%22",
+                requestType: "PATCH",
+                httpStatusCode: 200,
+            }},
             response: {
                 method: "PATCH",
                 path: "/echo/tc4",
@@ -339,12 +419,18 @@ const testCases = [
                 "response.query": 1,
                 "response.headers": 1,
                 "response.body.fullDocument": 1,
+                "_stream_meta.externalAPI": 1,
             }
        }],
        expectedRequests: [],
        inputDocs: [{foo: "DynamicValue"}],
        expectedOutput: [{
             fullDocument: {foo: "DynamicValue"},
+            _stream_meta: {externalAPI: {
+                url: restServerUrl + "/foo(bar)?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3A%2F%2Fuser%3Apassword%40my.domain.net%3A1234%2Ffoo%2Fbar%2Fbaz%3Fname%3Dhero%26name%3Dsandwich%26name%3Dgrinder%23heading1",
+                requestType: "GET",
+                httpStatusCode: 200,
+            }},
             response: {
                 method: "GET",
                 path: "/foo(bar)",

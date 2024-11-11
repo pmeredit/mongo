@@ -8,6 +8,7 @@ global:
 imports:
     - "mongo/db/basic_types.idl"
     - "mongo/db/pipeline/value.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/common.idl"
 
 enums:
     StreamMetaSourceType:
@@ -153,6 +154,23 @@ structs:
                 type: int
                 optional: true
 
+    StreamMetaExternalAPI:
+        description: "The definition of the externalAPI field of stream metadata"
+        strict: false
+        fields:
+            url:
+                description: "The URL of the web api"
+                type: string
+            requestType:
+                description: "The HTTP verb used when making a request to the web api"
+                type: HttpMethod
+            httpStatusCode:
+                description: "The HTTP status code returned in the response"
+                type: int
+            responseTimeMs:
+                description: "The amount time elapsed from when the request was sent and when a response was received"
+                type: int
+    
     StreamMeta:
         description: "_stream_meta object definition"
         strict: false
@@ -164,6 +182,10 @@ structs:
             window:
                 description: "window field of _stream_meta object"
                 type: StreamMetaWindow
+                optional: true
+            externalAPI:
+                description: "externalAPI field of _stream_meta object"
+                type: StreamMetaExternalAPI
                 optional: true
 
     SampleDataSourceSolarSpecObs:

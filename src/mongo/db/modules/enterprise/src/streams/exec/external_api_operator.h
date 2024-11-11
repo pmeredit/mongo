@@ -8,19 +8,23 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/cidr.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/time_support.h"
+#include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
+#include "streams/exec/stream_stats.h"
 
 namespace streams {
 
@@ -69,6 +73,9 @@ public:
 
         // timer is the timer to be used for rate limiting
         Timer timer{};
+
+        // Specifies how error responses are handled
+        mongo::OnErrorEnum onError{mongo::OnErrorEnum::DLQ};
     };
 
     ExternalApiOperator(Context* context, Options options);
@@ -120,11 +127,6 @@ private:
     // document to create a query string.
     std::string evaluateQueryParams(const mongo::Document& doc);
 
-    // doRequest creates a request struct, performs the request to the configured URL and
-    // returns the response.
-    boost::optional<mongo::HttpClient::HttpReply> doRequest(StringData url,
-                                                            ConstDataRange httpPayload);
-
     // makeDocumentWithAPIResponse sets the api response as a value in the input document using
     // a user-configured key.
     mongo::Document makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
@@ -138,6 +140,16 @@ private:
     // initializeHTTPClient creates an http client, sets http-request-related settings as
     // configured by the user
     void initializeHTTPClient();
+
+    // writeToStreamMeta writes to a StreamDocuments' stream meta
+    void writeToStreamMeta(StreamDocument* streamDoc,
+                           const std::string& requestUrl,
+                           mongo::HttpClient::HttpReply httpResponse,
+                           double responseTimeMs);
+
+    // writeToDLQ writes StreamDocument to the DLQ with a specified error message and operator stats
+    // for the given document
+    void writeToDLQ(StreamDocument* streamDoc, const std::string& errorMsg, ProcessResult& result);
 
     ExternalApiOperator::Options _options;
 

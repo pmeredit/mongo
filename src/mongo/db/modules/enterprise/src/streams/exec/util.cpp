@@ -231,6 +231,32 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                 *internalStreamMeta.getWindow()->getPartition());
         }
     }
+
+    if (auto externalAPI = internalStreamMeta.getExternalAPI(); externalAPI) {
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
+                                     << StreamMetaExternalAPI::kUrlFieldName)
+                          .ss.str()),
+            Value(externalAPI->getUrl()));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
+                                     << StreamMetaExternalAPI::kRequestTypeFieldName)
+                          .ss.str()),
+            Value(HttpMethod_serializer(externalAPI->getRequestType())));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
+                                     << StreamMetaExternalAPI::kHttpStatusCodeFieldName)
+                          .ss.str()),
+            Value(externalAPI->getHttpStatusCode()));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
+                                     << StreamMetaExternalAPI::kResponseTimeMsFieldName)
+                          .ss.str()),
+            Value(externalAPI->getResponseTimeMs()));
+    }
     return newStreamMeta.freeze();
 }
 

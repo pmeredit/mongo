@@ -26,6 +26,7 @@ idl_generator(
     name = "stages_gen",
     src = "stages.idl",
     deps = [
+        ":common_gen",
         "//src/mongo/db:basic_types_gen",
         "//src/mongo/db/pipeline:document_source_change_stream_gen",
         "//src/mongo/db/pipeline:document_source_merge_gen",
@@ -38,6 +39,7 @@ idl_generator(
     name = "exec_internal_gen",
     src = "exec_internal.idl",
     deps = [
+        ":common_gen",
         "//src/mongo/db:basic_types_gen",
         "//src/mongo/db/pipeline:value_gen",
     ],

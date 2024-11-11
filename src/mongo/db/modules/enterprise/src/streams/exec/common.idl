@@ -8,6 +8,17 @@ global:
 imports:
     - "mongo/db/basic_types.idl"
 
+enums:
+    HttpMethod:
+        type: string
+        description: "The supported HTTP Verbs. The enums have the 'Method' prefix because 'delete' conflicts with a builtin C++ keyword."
+        values:
+            MethodGet: "GET"
+            MethodPost: "POST"
+            MethodPatch: "PATCH"
+            MethodPut: "PUT"
+            MethodDelete: "DELETE"
+
 structs:
 
     MetricLabel:

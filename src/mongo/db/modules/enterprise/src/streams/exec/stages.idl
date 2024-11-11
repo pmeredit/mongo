@@ -14,6 +14,7 @@ imports:
     - "mongo/db/pipeline/document_source_change_stream.idl"
     - "mongo/db/pipeline/name_expression.idl"
     - "mongo/db/timeseries/timeseries.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/common.idl"
 
 types:
     pipeline:
@@ -126,15 +127,6 @@ enums:
             snappy: "snappy"
             lz4: "lz4"
             zstd: "zstd"
-    HttpMethod:
-        type: string
-        description: "The supported HTTP Verbs. The enums have the 'Method' prefix because 'delete' conflicts with a builtin C++ keyword."
-        values:
-            MethodGet: "GET"
-            MethodPost: "POST"
-            MethodPatch: "PATCH"
-            MethodPut: "PUT"
-            MethodDelete: "DELETE"
 
     KafkaAcks:
         type: string
@@ -144,6 +136,14 @@ enums:
             Negative: "-1"
             None: "0"
             One: "1"
+
+    OnError:
+        type: string
+        description: "Describes how a document processing error should be handled"
+        values:
+            DLQ: "dlq"
+            Ignore: "ignore"
+            Fail: "fail"
 
 structs:
     StreamTimeDuration:
@@ -521,6 +521,10 @@ structs:
             as:
                 description: "Defines the field name for REST API responses."
                 type: string
+            onError:
+                description: "Describes how error responses from the external API are handled"
+                type: OnError
+                default: DLQ
 
     ChangeStreamSourceOptions:
         description: "$source stage options for a change stream"

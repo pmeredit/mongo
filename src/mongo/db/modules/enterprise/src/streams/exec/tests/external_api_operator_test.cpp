@@ -2,13 +2,20 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/external_api_operator.h"
+
+#include <bsoncxx/exception/error_code.hpp>
+#include <bsoncxx/exception/exception.hpp>
+#include <cstdint>
 #include <deque>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
@@ -16,17 +23,18 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/net/http_client_mock.h"
-#include "mongo/util/system_tick_source.h"
+#include "mongo/util/str.h"
 #include "mongo/util/tick_source_mock.h"
-#include "streams/exec/external_api_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/source_operator.h"
+#include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/test_utils.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -85,6 +93,22 @@ public:
                                             std::chrono::system_clock::now().time_since_epoch()}});
     }
 
+    void assertStreamMetaExternalAPI(StreamMetaExternalAPI expectedStreamMetaExternalAPI,
+                                     BSONObj actualStreamMetaExternalAPIBson) {
+        auto url = actualStreamMetaExternalAPIBson["url"];
+        ASSERT_TRUE(url.ok());
+        ASSERT_STRING_CONTAINS(url.String(), expectedStreamMetaExternalAPI.getUrl());
+
+        auto requestType = actualStreamMetaExternalAPIBson["requestType"];
+        ASSERT_TRUE(requestType.ok());
+        ASSERT_EQ(requestType.String(),
+                  HttpMethod_serializer(expectedStreamMetaExternalAPI.getRequestType()));
+
+        auto httpStatusCode = actualStreamMetaExternalAPIBson["httpStatusCode"];
+        ASSERT_TRUE(httpStatusCode.ok());
+        ASSERT_EQ(httpStatusCode.Int(), expectedStreamMetaExternalAPI.getHttpStatusCode());
+    }
+
 protected:
     std::unique_ptr<Context> _context;
     std::unique_ptr<Executor> _executor;
@@ -92,6 +116,20 @@ protected:
     std::unique_ptr<ExternalApiOperator> _oper;
     std::unique_ptr<InMemorySinkOperator> _sink;
 };
+
+int computeNumDlqBytes(std::queue<mongo::BSONObj> dlqMsgs) {
+    int numBytes{};
+    for (auto dlqMsgsCopy = std::move(dlqMsgs); !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
+        numBytes += dlqMsgsCopy.front().objsize();
+    }
+
+    return numBytes;
+}
+
+std::string expectedErrResponseErrMsg(int statusCode, std::string body = "") {
+    return fmt::format(
+        "Received error response from server. status code: {}, body: {}", statusCode, body);
+}
 
 struct ExternalApiOpereratorTestCase {
     const std::string description;
@@ -133,7 +171,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
             },
             std::vector<StreamDocument>{Document{fromjson("{'path': '/1'}")},
                                         Document{fromjson("{'path': '/2'}")}},
-            [](std::deque<StreamMsgUnion> messages) {
+            [this](std::deque<StreamMsgUnion> messages) {
                 ASSERT_EQ(messages.size(), 1);
                 auto msg = messages.at(0);
 
@@ -149,6 +187,14 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     auto ack = response["ack"];
                     ASSERT_TRUE(ack.ok());
                     ASSERT_EQ(ack.String(), "ok");
+
+                    StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                    expectedStreamMetaExternalAPI.setUrl(StringData{"http://localhost:10000"});
+                    expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
+                    expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+                    assertStreamMetaExternalAPI(
+                        expectedStreamMetaExternalAPI,
+                        doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
                 }
             },
             [](OperatorStats stats) {
@@ -190,7 +236,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
             },
             std::vector<StreamDocument>{Document{fromjson("{'path': '/1'}")},
                                         Document{fromjson("{'path': '/2'}")}},
-            [](std::deque<StreamMsgUnion> messages) {
+            [this](std::deque<StreamMsgUnion> messages) {
                 ASSERT_EQ(messages.size(), 1);
                 auto msg = messages.at(0);
 
@@ -209,6 +255,14 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     auto ack = inner["ack"];
                     ASSERT_TRUE(ack.ok());
                     ASSERT_EQ(ack.String(), "ok");
+
+                    StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                    expectedStreamMetaExternalAPI.setUrl(StringData{"http://localhost:10000"});
+                    expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodPost);
+                    expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+                    assertStreamMetaExternalAPI(
+                        expectedStreamMetaExternalAPI,
+                        doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
                 }
             },
             [](OperatorStats stats) {
@@ -260,7 +314,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                 Document{fromjson(
                     "{\"str\": \"DynamicValue\", \"int\": 10, \"decimal\": 1.1, \"bool\": true}")},
             },
-            [](std::deque<StreamMsgUnion> messages) {
+            [this](std::deque<StreamMsgUnion> messages) {
                 ASSERT_EQ(messages.size(), 1);
                 auto msg = messages.at(0);
 
@@ -276,6 +330,17 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     auto ack = response["ack"];
                     ASSERT_TRUE(ack.ok());
                     ASSERT_EQ(ack.String(), "ok");
+
+                    StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                    expectedStreamMetaExternalAPI.setUrl(
+                        StringData{"http://localhost:10000"} +
+                        "?stringParam=bar&strExprParam=DynamicValue&intExprParam=10&"
+                        "decimalExprParam=1.1&boolExprParam=true");
+                    expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
+                    expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+                    assertStreamMetaExternalAPI(
+                        expectedStreamMetaExternalAPI,
+                        doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
                 }
             },
             [](OperatorStats stats) {
@@ -315,7 +380,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
             std::vector<StreamDocument>{
                 Document{fromjson("{'foo': 'DynamicValue'}")},
             },
-            [](std::deque<StreamMsgUnion> messages) {
+            [this](std::deque<StreamMsgUnion> messages) {
                 ASSERT_EQ(messages.size(), 1);
                 auto msg = messages.at(0);
 
@@ -331,6 +396,14 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     auto ack = response["ack"];
                     ASSERT_TRUE(ack.ok());
                     ASSERT_EQ(ack.String(), "ok");
+
+                    StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                    expectedStreamMetaExternalAPI.setUrl(StringData{"http://localhost:10000"});
+                    expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodPost);
+                    expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+                    assertStreamMetaExternalAPI(
+                        expectedStreamMetaExternalAPI,
+                        doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
                 }
             },
             [](OperatorStats stats) {
@@ -496,7 +569,7 @@ TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
                                                          << "ok"))});
     };
 
-    auto testAssert = [](std::deque<StreamMsgUnion> messages) {
+    auto testAssert = [this, uri](std::deque<StreamMsgUnion> messages) {
         ASSERT_EQ(messages.size(), 1);
         auto msg = messages.at(0);
 
@@ -504,13 +577,21 @@ TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
         ASSERT(!msg.controlMsg);
         ASSERT_EQ(msg.dataMsg->docs.size(), 1);
 
-        auto doc = msg.dataMsg->docs[0].doc.toBson();
+        auto streamDoc = msg.dataMsg->docs[0];
+        auto doc = streamDoc.doc.toBson();
         auto response = doc["response"].Obj();
         ASSERT_TRUE(!response.isEmpty());
 
         auto ack = response["ack"];
         ASSERT_TRUE(ack.ok());
         ASSERT_EQ(ack.String(), "ok");
+
+        StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+        expectedStreamMetaExternalAPI.setUrl(uri);
+        expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
+        expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+        assertStreamMetaExternalAPI(expectedStreamMetaExternalAPI,
+                                    doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
     };
 
     setupDag(std::move(options));
@@ -560,7 +641,7 @@ TEST_F(ExternalApiOperatorTest, RateLimitingParametersUpdate) {
                                                          << "ok"))});
     };
 
-    auto testAssert = [](std::deque<StreamMsgUnion> messages) {
+    auto testAssert = [this, uri](std::deque<StreamMsgUnion> messages) {
         ASSERT_EQ(messages.size(), 1);
         auto msg = messages.at(0);
 
@@ -568,13 +649,21 @@ TEST_F(ExternalApiOperatorTest, RateLimitingParametersUpdate) {
         ASSERT(!msg.controlMsg);
         ASSERT_EQ(msg.dataMsg->docs.size(), 1);
 
-        auto doc = msg.dataMsg->docs[0].doc.toBson();
+        auto streamDoc = msg.dataMsg->docs[0];
+        auto doc = streamDoc.doc.toBson();
         auto response = doc["response"].Obj();
         ASSERT_TRUE(!response.isEmpty());
 
         auto ack = response["ack"];
         ASSERT_TRUE(ack.ok());
         ASSERT_EQ(ack.String(), "ok");
+
+        StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+        expectedStreamMetaExternalAPI.setUrl(uri);
+        expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
+        expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+        assertStreamMetaExternalAPI(expectedStreamMetaExternalAPI,
+                                    doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
     };
 
     setupDag(std::move(options));
@@ -765,4 +854,479 @@ TEST_F(ExternalApiOperatorTest, GetWithBadHeaders) {
             });
     }
 }
+TEST_F(ExternalApiOperatorTest, ShouldDLQOnErrorResponseByDefault) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::uint16_t statusCode{400};
+    std::string responseBody{tojson(BSON("ack"
+                                         << "ok"))};
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString() + "/1",
+        },
+        MockHttpClient::Response{.code = statusCode, .body = responseBody});
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString() + "/2",
+        },
+        MockHttpClient::Response{.code = statusCode, .body = responseBody});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .urlPathExpr = ExpressionFieldPath::parse(
+            _context->expCtx.get(), "$path", _context->expCtx->variablesParseState),
+        .as = "response",
+    };
+
+    setupDag(std::move(options));
+
+    std::vector<StreamDocument> inputMsgs = {Document{fromjson("{'path': '/1'}")},
+                                             Document{fromjson("{'path': '/2'}")}};
+    std::queue<mongo::BSONObj> dlqMsgs;
+    testAgainstDocs(
+        std::move(inputMsgs),
+        [this, &dlqMsgs, statusCode, responseBody](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 0);
+
+            auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+            ASSERT_EQ(dlq->numMessages(), 2);
+
+            dlqMsgs = dlq->getMessages();
+            for (auto dlqMsgsCopy{dlqMsgs}; !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
+                auto msg = dlqMsgsCopy.front();
+                ASSERT_EQ(msg["errInfo"]["reason"].String(),
+                          "Failed to process input document in ExternalApiOperator with error: " +
+                              expectedErrResponseErrMsg(statusCode, responseBody));
+            }
+        },
+        [this, &dlqMsgs](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 24);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
+            ASSERT_EQ(stats.numDlqDocs, 2);
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldDLQOnErrorResponse) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::uint16_t statusCode{400};
+    std::string responseBody{tojson(BSON("ack"
+                                         << "ok"))};
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString() + "/1",
+        },
+        MockHttpClient::Response{.code = statusCode, .body = responseBody});
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString() + "/2",
+        },
+        MockHttpClient::Response{.code = 400, .body = responseBody});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .urlPathExpr = ExpressionFieldPath::parse(
+            _context->expCtx.get(), "$path", _context->expCtx->variablesParseState),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::DLQ,
+    };
+
+    setupDag(std::move(options));
+
+    std::vector<StreamDocument> inputMsgs = {Document{fromjson("{'path': '/1'}")},
+                                             Document{fromjson("{'path': '/2'}")}};
+    std::queue<mongo::BSONObj> dlqMsgs;
+    testAgainstDocs(
+        std::move(inputMsgs),
+        [this, &dlqMsgs, statusCode, responseBody](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 0);
+
+            auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+            ASSERT_EQ(dlq->numMessages(), 2);
+
+            dlqMsgs = dlq->getMessages();
+            for (auto dlqMsgsCopy{dlqMsgs}; !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
+                auto msg = dlqMsgsCopy.front();
+                ASSERT_EQ(msg["errInfo"]["reason"].String(),
+                          "Failed to process input document in ExternalApiOperator with "
+                          "error: " +
+                              expectedErrResponseErrMsg(statusCode, responseBody));
+            }
+        },
+        [this, &dlqMsgs](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 24);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
+            ASSERT_EQ(stats.numDlqDocs, 2);
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldIgnoreOnErrorResponse) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kDELETE,
+            uri.toString() + "/1",
+        },
+        MockHttpClient::Response{.code = 400,
+                                 .body = tojson(BSON("ack"
+                                                     << "ok"))});
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kDELETE,
+            uri.toString() + "/2",
+        },
+        MockHttpClient::Response{.code = 400,
+                                 .body = tojson(BSON("ack"
+                                                     << "ok"))});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kDELETE,
+        .url = uri.toString(),
+        .urlPathExpr = ExpressionFieldPath::parse(
+            _context->expCtx.get(), "$path", _context->expCtx->variablesParseState),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::Ignore,
+    };
+
+    setupDag(std::move(options));
+
+    std::vector<StreamDocument> inputMsgs = {Document{fromjson("{'path': '/1'}")},
+                                             Document{fromjson("{'path': '/2'}")}};
+    testAgainstDocs(
+        std::move(inputMsgs),
+        [this, uri](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 1);
+            auto msg = messages.at(0);
+
+            ASSERT(msg.dataMsg);
+            ASSERT(!msg.controlMsg);
+            ASSERT_EQ(msg.dataMsg->docs.size(), 2);
+
+            for (const auto& streamDoc : msg.dataMsg->docs) {
+                auto docBSON = streamDoc.doc.toBson();
+                auto response = docBSON["response"].Obj();
+                ASSERT_TRUE(!response.isEmpty());
+                auto ack = response["ack"];
+                ASSERT_TRUE(ack.ok());
+                ASSERT_EQ(ack.String(), "ok");
+
+                StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                expectedStreamMetaExternalAPI.setUrl(uri);
+                expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodDelete);
+                expectedStreamMetaExternalAPI.setHttpStatusCode(400);
+                assertStreamMetaExternalAPI(
+                    expectedStreamMetaExternalAPI,
+                    docBSON[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
+            }
+        },
+        [](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 24);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, 0);
+            ASSERT_EQ(stats.numDlqDocs, 0);
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, FailOnError) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+
+    std::uint16_t statusCode{400};
+    auto responseBody = tojson(BSON("ack"
+                                    << "ok"));
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = statusCode, .body = responseBody});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::Fail,
+    };
+
+    setupDag(std::move(options));
+
+    ASSERT_THROWS_WHAT(
+        testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+                        [](auto _) {}),
+        DBException,
+        expectedErrResponseErrMsg(statusCode, responseBody));
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldFailOnNon2XXStatus) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    auto rawMockHttpClient = mockHttpClient.get();
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+    };
+
+    setupDag(std::move(options));
+
+    auto responseBody = tojson(BSON("ack"
+                                    << "ok"));
+    for (uint16_t httpStatusCode : {199, 300, 400, 500}) {
+        rawMockHttpClient->expect(
+            MockHttpClient::Request{
+                HttpClient::HttpMethod::kGET,
+                uri.toString(),
+            },
+            MockHttpClient::Response{.code = httpStatusCode, .body = responseBody});
+
+        testAgainstDocs(
+            std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+            [this, httpStatusCode, responseBody](std::deque<StreamMsgUnion> _) {
+                auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+                ASSERT_EQ(dlq->numMessages(), 1);
+
+                auto dlqMsgs = dlq->getMessages();
+                auto dlqDoc = std::move(dlqMsgs.front());
+                ASSERT_EQ(dlqDoc["errInfo"]["reason"].String(),
+                          "Failed to process input document in ExternalApiOperator with error: " +
+                              expectedErrResponseErrMsg(httpStatusCode, responseBody));
+            });
+    }
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldDLQOnUnsupportedResponseFormatByDefault) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200, .body = "<info>im xml</info>"});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+    };
+
+    setupDag(std::move(options));
+
+    std::queue<BSONObj> dlqMsgs;
+    testAgainstDocs(
+        std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+        [this, &dlqMsgs](std::deque<StreamMsgUnion> _) {
+            auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+            ASSERT_EQ(dlq->numMessages(), 1);
+
+            dlqMsgs = dlq->getMessages();
+            auto dlqMsgsCopy{dlqMsgs};
+
+            auto dlqDoc = std::move(dlqMsgsCopy.front());
+            ASSERT_STRING_CONTAINS(
+                dlqDoc["errInfo"]["reason"].String(),
+                "Failed to process input document in ExternalApiOperator with error: "
+                "Failed to parse response body in ExternalApiOperator with error:");
+        },
+        [&dlqMsgs](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 19);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
+            ASSERT_EQ(stats.numDlqDocs, 1);
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldDLQOnUnsupportedResponseFormat) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200, .body = "<info>im xml</info>"});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::DLQ,
+    };
+
+    setupDag(std::move(options));
+
+    std::queue<BSONObj> dlqMsgs;
+    testAgainstDocs(
+        std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+        [this, &dlqMsgs](std::deque<StreamMsgUnion> _) {
+            auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+            ASSERT_EQ(dlq->numMessages(), 1);
+
+            dlqMsgs = dlq->getMessages();
+            auto dlqMsgsCopy{dlqMsgs};
+
+            auto dlqDoc = std::move(dlqMsgsCopy.front());
+            ASSERT_STRING_CONTAINS(
+                dlqDoc["errInfo"]["reason"].String(),
+                "Failed to process input document in ExternalApiOperator with error: "
+                "Failed to parse response body in ExternalApiOperator with error:");
+        },
+        [&dlqMsgs](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 19);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
+            ASSERT_EQ(stats.numDlqDocs, 1);
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldFailOnUnsupportedResponseFormat) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200, .body = "<info>im xml</info>"});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::Fail,
+    };
+
+    setupDag(std::move(options));
+
+    ASSERT_THROWS(
+        testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+                        [](auto _) {}),
+        bsoncxx::exception);
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldIgnoreUnsupportedResponseFormat) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200, .body = "<info>im xml</info>"});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::Ignore,
+    };
+
+    setupDag(std::move(options));
+
+    testAgainstDocs(
+        std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+        [this, uri](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 1);
+            auto msg = messages.at(0);
+
+            ASSERT(msg.dataMsg);
+            ASSERT(!msg.controlMsg);
+            ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+            auto streamDoc = msg.dataMsg->docs[0];
+            auto docBSON = streamDoc.doc.toBson();
+            auto response = docBSON["response"].Obj();
+            ASSERT_TRUE(response.isEmpty());
+
+            StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+            expectedStreamMetaExternalAPI.setUrl(uri);
+            expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
+            expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+            assertStreamMetaExternalAPI(
+                expectedStreamMetaExternalAPI,
+                docBSON[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
+        },
+        [](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 19);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, 0);
+            ASSERT_EQ(stats.numDlqDocs, 0);
+        });
+}
+
+TEST_F(ExternalApiOperatorTest, ShouldSupportEmptyPayload) {
+    StringData uri{"http://localhost:10000"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kDELETE,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200, .body = ""});
+
+    ExternalApiOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .requestType = HttpClient::HttpMethod::kDELETE,
+        .url = uri.toString(),
+        .as = "response",
+    };
+
+    setupDag(std::move(options));
+
+    testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+                    [this, uri](std::deque<StreamMsgUnion> messages) {
+                        ASSERT_EQ(messages.size(), 1);
+                        auto msg = messages.at(0);
+
+                        ASSERT(msg.dataMsg);
+                        ASSERT(!msg.controlMsg);
+                        ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                        auto streamDoc = msg.dataMsg->docs[0];
+                        auto docBSON = streamDoc.doc.toBson();
+                        auto response = docBSON["response"].Obj();
+                        ASSERT_TRUE(response.isEmpty());
+
+                        StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                        expectedStreamMetaExternalAPI.setUrl(uri);
+                        expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodDelete);
+                        expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+                        assertStreamMetaExternalAPI(
+                            expectedStreamMetaExternalAPI,
+                            docBSON[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
+                    });
+}
+
+// TODO(SERVER-95032): Add failure case test where we DLQ a a document once we can use the planner
+// to create the pipeline
+
 };  // namespace streams
