@@ -237,7 +237,7 @@ protected:
         dbThreadPoolOptions.minThreads = 1U;
         dbThreadPoolOptions.maxThreads = 1U;
         dbThreadPoolOptions.onCreateThread = [](const std::string& threadName) {
-            Client::initThread(threadName.c_str(), getGlobalServiceContext()->getService());
+            Client::initThread(threadName, getGlobalServiceContext()->getService());
         };
         _dbWorkThreadPool = std::make_unique<ThreadPool>(dbThreadPoolOptions);
         _dbWorkThreadPool->startup();
