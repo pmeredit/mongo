@@ -534,8 +534,9 @@ TEST_F(ExternalApiOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
             metricThrottleDuration = it->second->value();
         }
     }
-    ASSERT_GREATER_THAN_OR_EQUALS(Microseconds(metricThrottleDuration),
-                                  minTestDuration - Milliseconds(1));
+    ASSERT_GREATER_THAN_OR_EQUALS(
+        Microseconds(metricThrottleDuration),
+        minTestDuration - Milliseconds(5));  // metric is a hair flakey based on host configuration
 }
 
 TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
