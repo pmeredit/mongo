@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/util/assert_util.h"
@@ -19,10 +18,10 @@
 #include "mongo/util/net/cidr.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/time_support.h"
+#include "streams/exec/feedable_pipeline.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/rate_limiter.h"
-#include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 
@@ -62,6 +61,8 @@ public:
         std::vector<std::pair<std::string, StringOrExpression>> operatorHeaders;
         // Represents the key that this operator will associate with the response value.
         std::string as;
+        // The payloadPipeline is to run against the dataMsg docs passed into the operator.
+        boost::optional<FeedablePipeline> payloadPipeline;
         // Represents the timeout for establishing a connection to the
         // external api.
         mongo::Seconds connectionTimeoutSecs{30};

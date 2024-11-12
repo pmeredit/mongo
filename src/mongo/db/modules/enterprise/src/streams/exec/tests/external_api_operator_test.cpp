@@ -460,6 +460,61 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                 ASSERT_EQ(stats.numOutputBytes, 0);
             },
         },
+        {
+            "should make a POST request with payload pipeline",
+            [&] {
+                auto rawPipeline = std::vector<mongo::BSONObj>{
+                    fromjson(
+                        R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }}, { $project: { include: 1 }})"),
+                };
+                auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
+                pipeline->optimizePipeline();
+
+                std::string uri = "http://localhost:10000";
+
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kPOST,
+                        uri,
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return ExternalApiOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .requestType = HttpClient::HttpMethod::kPOST,
+                    .url = uri,
+                    .as = "response",
+                    .payloadPipeline = FeedablePipeline{std::move(pipeline)},
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson(
+                    "{'fullDocument':{ 'payload': {'include': 'feefie', 'exlude': 'fohfum'}}}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+                }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 38);
+            },
+        },
     };
 
     for (const auto& tc : tests) {

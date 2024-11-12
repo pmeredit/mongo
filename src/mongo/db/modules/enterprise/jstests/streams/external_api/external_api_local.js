@@ -452,6 +452,34 @@ const testCases = [
        allowAllTraffic: true,
     },
     {
+        description: "post request with inner pipeline should send a payload and save response to the as field",
+        spName: "payloadPipeline",
+        externalAPIOptions:
+            {connectionName: webAPIName, urlPath: "/echo/payloadPipeline", requestType: "POST", as:
+            'response', payload: [{$replaceRoot: { newRoot: "$fullDocument.payloadToSend" } }, { $addFields: { sum: { $sum: "$randomArray" }}}, { $project: { success: 1, sum: 1 }} ]},
+        inputDocs: [{payloadToSend: {success: "yes I worked", shouldBeExcludeFromRequest: true, randomArray: [1,2,3]}}],
+        expectedRequests:
+            [{method: "POST", path: "/echo/payloadPipeline", headers: {...basicHeaders,
+                "Content-Type": "application/json", "Content-Length" : "34"}, query: {}, body: {success: "yes I worked", sum: 6}}],
+        outputQuery: [{
+            $project: {
+                fullDocument: 1,
+                "response.method": 1,
+                "response.path": 1,
+                "response.headers": 1,
+                "response.query": 1,
+                "response.body": 1,
+            }
+        }],
+        expectedOutput: [{
+            fullDocument: {payloadToSend: {success: "yes I worked", shouldBeExcludeFromRequest: true, randomArray: [1,2,3]}},
+            response: {method: "POST", path: "/echo/payloadPipeline", headers: {...basicHeaders,
+            "Content-Length" : "34", "Content-Type": "application/json"}, query: {},
+            body: {success: "yes I worked", sum: 6}}
+        }],
+        allowAllTraffic: true,
+    },
+    {
         description: "http client should block request and send it to the dlq based on override feature flag",
         spName: "tcFirewallBlockedRequestFF",
         externalAPIOptions:

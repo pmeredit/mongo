@@ -19,7 +19,7 @@ imports:
 types:
     pipeline:
         bson_serialization_type: any
-        description: "An array of objects specifying the window's inner pipeline."
+        description: "An array of objects specifying an operator's inner pipeline."
         cpp_type: "std::vector<mongo::BSONObj>"
         deserializer: ::mongo::parsePipelineFromBSON
 
@@ -525,6 +525,10 @@ structs:
                 description: "Describes how error responses from the external API are handled"
                 type: OnError
                 default: DLQ
+            payload:
+                description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent. Only supported with POST, PUT, and PATCH"
+                type: pipeline
+                optional: true
 
     ChangeStreamSourceOptions:
         description: "$source stage options for a change stream"

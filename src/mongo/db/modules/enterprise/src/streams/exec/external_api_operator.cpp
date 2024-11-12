@@ -233,10 +233,23 @@ void ExternalApiOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
 
 ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     StreamDocument* streamDoc) {
+    ProcessResult processResult{};
+
+    boost::optional<Document> result;
+    if (_options.payloadPipeline) {
+        _options.payloadPipeline->addDocument(streamDoc->doc);
+        try {
+            result = _options.payloadPipeline->getNext();
+        } catch (const DBException& e) {
+            writeToDLQ(streamDoc, e.what(), processResult);
+            return processResult;
+        }
+        tassert(9503400, "Expected result doc to exist", result);
+    }
+
+    const mongo::Document& payloadDoc = result ? *result : streamDoc->doc;
     auto& inputDoc = streamDoc->doc;
     boost::optional<mongo::HttpClient::HttpReply> httpResponse;
-
-    ProcessResult processResult{};
 
     std::string requestUrl;
     std::vector<std::string> headers;
@@ -255,7 +268,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
         case HttpClient::HttpMethod::kPOST:
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
-            rawDoc = tojson(inputDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
+            rawDoc = tojson(payloadDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
             headers.emplace_back("Content-Type: application/json");
             break;
         }
@@ -325,8 +338,8 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     mongo::BSONObj apiResponse;
     try {
         if (rawResponse.size()) {
-            // TODO(SERVER-96836): Determine the response body format via the content-type header
-            // and add support for plaintext responses
+            // TODO(SERVER-96836): Determine the response body format via the content-type
+            // header and add support for plaintext responses
             auto responseView =
                 bsoncxx::stdx::string_view{std::move(rawResponse.data()), rawResponse.size()};
             apiResponse = fromBsoncxxDocument(bsoncxx::from_json(responseView));

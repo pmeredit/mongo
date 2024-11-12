@@ -62,6 +62,7 @@
 #include "streams/exec/documents_data_source_operator.h"
 #include "streams/exec/external_api_operator.h"
 #include "streams/exec/feature_flag.h"
+#include "streams/exec/feedable_pipeline.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -159,31 +160,33 @@ struct StageTraits {
     bool allowedInMainPipeline{false};
     // Whether the stage is allowed in the inner pipeline of a window stage.
     bool allowedInWindowPipeline{false};
+    // Whether the stage is allowed in the inner pipeline of a externalAPI stage.
+    bool allowedInExternalApiPipeline{false};
 };
 
 mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
     stdx::unordered_map<std::string, StageTraits>{
-        {"$addFields", {StageType::kAddFields, true, true}},
-        {"$match", {StageType::kMatch, true, true}},
-        {"$project", {StageType::kProject, true, true}},
-        {"$redact", {StageType::kRedact, true, true}},
-        {"$replaceRoot", {StageType::kReplaceRoot, true, true}},
-        {"$replaceWith", {StageType::kReplaceRoot, true, true}},
-        {"$set", {StageType::kSet, true, true}},
-        {"$unset", {StageType::kProject, true, true}},
-        {"$unwind", {StageType::kUnwind, true, true}},
-        {"$merge", {StageType::kMerge, true, false}},
-        {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
-        {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
-        {"$sessionWindow", {StageType::kSessionWindow, true, false}},
-        {"$validate", {StageType::kValidate, true, true}},
-        {"$lookup", {StageType::kLookUp, true, true}},
-        {"$group", {StageType::kGroup, false, true}},
-        {"$sort", {StageType::kSort, false, true}},
-        {"$count", {StageType::kCount, false, true}},
-        {"$limit", {StageType::kLimit, false, true}},
-        {"$emit", {StageType::kEmit, true, false}},
-        {"$externalAPI", {StageType::kExternalAPI, true, true}},
+        {"$addFields", {StageType::kAddFields, true, true, true}},
+        {"$match", {StageType::kMatch, true, true, false}},
+        {"$project", {StageType::kProject, true, true, true}},
+        {"$redact", {StageType::kRedact, true, true, false}},
+        {"$replaceRoot", {StageType::kReplaceRoot, true, true, true}},
+        {"$replaceWith", {StageType::kReplaceRoot, true, true, false}},
+        {"$set", {StageType::kSet, true, true, true}},
+        {"$unset", {StageType::kProject, true, true, false}},
+        {"$unwind", {StageType::kUnwind, true, true, false}},
+        {"$merge", {StageType::kMerge, true, false, false}},
+        {"$tumblingWindow", {StageType::kTumblingWindow, true, false, false}},
+        {"$hoppingWindow", {StageType::kHoppingWindow, true, false, false}},
+        {"$sessionWindow", {StageType::kSessionWindow, true, false, false}},
+        {"$validate", {StageType::kValidate, true, true, false}},
+        {"$lookup", {StageType::kLookUp, true, true, false}},
+        {"$group", {StageType::kGroup, false, true, false}},
+        {"$sort", {StageType::kSort, false, true, false}},
+        {"$count", {StageType::kCount, false, true, false}},
+        {"$limit", {StageType::kLimit, false, true, false}},
+        {"$emit", {StageType::kEmit, true, false, false}},
+        {"$externalAPI", {StageType::kExternalAPI, true, true, false}},
     };
 
 // Default fast checkpoint interval: 5 minutes.
@@ -192,24 +195,44 @@ static constexpr mongo::stdx::chrono::milliseconds kFastCheckpointInterval{5 * 6
 // in the execution plan.
 static constexpr mongo::stdx::chrono::milliseconds kSlowCheckpointInterval{60 * 60 * 1000};
 
+enum class PipelineType {
+    kMain,
+    kWindow,
+    kExternalApi,
+};
+
 // Verifies that a stage specified in the input pipeline is a valid stage.
-void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
+void enforceStageConstraints(const std::string& name, PipelineType pipelineType) {
     auto it = stageTraits.find(name);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unsupported stage: " << name,
             it != stageTraits.end());
 
     const auto& stageInfo = it->second;
-    if (isMainPipeline) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+    switch (pipelineType) {
+        case PipelineType::kMain:
+            // if there are ever stages that are only supported in the inner pipeline of a non
+            // window stage then this function needs to be refactored
+            uassert(
+                ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << name
                               << " stage is only permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInMainPipeline);
-    } else {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            break;
+        case PipelineType::kWindow:
+            uassert(
+                ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << name
                               << " stage is not permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInWindowPipeline);
+            break;
+        case PipelineType::kExternalApi:
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    str::stream() << name
+                                  << " stage is not permitted in the payload (inner pipeline) of "
+                                     "an externalAPI stage",
+                    stageInfo.allowedInExternalApiPipeline);
+            break;
     }
 }
 
@@ -1095,7 +1118,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     bool needMaintainStreamMeta = true;
     for (auto& stageObj : options.getPipeline()) {
         std::string stageName(stageObj.firstElementFieldNameStringData());
-        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        enforceStageConstraints(stageName, PipelineType::kWindow);
         ownedPipeline.push_back(std::move(stageObj).getOwned());
         if (stageName == DocumentSourceGroup::kStageName) {
             needMaintainStreamMeta = false;
@@ -1194,7 +1217,7 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     bool needMaintainStreamMeta = true;
     for (auto& stageObj : options.getPipeline()) {
         std::string stageName(stageObj.firstElementFieldNameStringData());
-        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        enforceStageConstraints(stageName, PipelineType::kWindow);
         ownedPipeline.push_back(std::move(stageObj).getOwned());
         if (stageName == DocumentSourceGroup::kStageName) {
             needMaintainStreamMeta = false;
@@ -1272,7 +1295,7 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
     bool needMaintainStreamMeta = true;
     for (auto& stageObj : options.getPipeline()) {
         std::string stageName(stageObj.firstElementFieldNameStringData());
-        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        enforceStageConstraints(stageName, PipelineType::kWindow);
         ownedPipeline.push_back(std::move(stageObj).getOwned());
         if (stageName == DocumentSourceGroup::kStageName) {
             needMaintainStreamMeta = false;
@@ -1481,6 +1504,19 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
         .onError = parsedOperatorOptions.getOnError(),
     };
 
+    if (const auto& payloadPipeline = parsedOperatorOptions.getPayload(); payloadPipeline) {
+        std::vector<mongo::BSONObj> stages;
+        stages.reserve(payloadPipeline->size());
+        for (auto& stageObj : *payloadPipeline) {
+            std::string stageName(stageObj.firstElementFieldNameStringData());
+            enforceStageConstraints(stageName, PipelineType::kExternalApi);
+            stages.emplace_back(std::move(stageObj).getOwned());
+        }
+
+        auto [pipeline, pipelineRewriter] = preparePipeline(std::move(stages));
+        options.payloadPipeline = FeedablePipeline{std::move(pipeline)};
+    }
+
     if (const auto& headersOpt = connOptions.getHeaders(); headersOpt) {
         std::vector<std::string> connHeaders;
         connHeaders.reserve(headersOpt->nFields());
@@ -1566,8 +1602,8 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
         }
     }
 
-    // Analyze dependencies of stream metadata. We need to project stream meta prior to the sink
-    // stage if there is explict dependency..
+    // Analyze dependencies of stream metadata. We need to project stream meta prior to the
+    // sink stage if there is explict dependency..
     if (_context->streamMetaFieldName) {
         int blockingWindowAwareOperators = 0;
         bool hasStreamMetaDependency = false;
@@ -1580,8 +1616,8 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
                 hasStreamMetaDependency = true;
             } else {
                 if (deps.needWholeDocument) {
-                    // If the stage references $$ROOT then this flag will be set and we should
-                    // see it as depending on stream metadata.
+                    // If the stage references $$ROOT then this flag will be set and we
+                    // should see it as depending on stream metadata.
                     hasStreamMetaDependency = true;
                 }
                 for (const auto& field : deps.fields) {
@@ -1913,7 +1949,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     while (current != bsonPipeline.end() &&
            !isSinkStage(current->firstElementFieldNameStringData())) {
         std::string stageName(current->firstElementFieldNameStringData());
-        enforceStageConstraints(stageName, true /* isMainPipeline */);
+        enforceStageConstraints(stageName, PipelineType::kMain);
 
         middleStages.emplace_back(*current);
         ++current;

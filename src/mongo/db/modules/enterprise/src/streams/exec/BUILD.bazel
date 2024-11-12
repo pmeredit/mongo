@@ -249,6 +249,7 @@ mongo_cc_library(
         "external_api_operator.h",
         "fake_kafka_partition_consumer.h",
         "feature_flag.h",
+        "feedable_pipeline.h",
         "generated_data_source_operator.h",
         "group_operator.h",
         "group_processor.h",
