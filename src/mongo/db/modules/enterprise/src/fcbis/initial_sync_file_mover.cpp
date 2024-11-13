@@ -32,11 +32,10 @@ void InitialSyncFileMover::recoverFileCopyBasedInitialSyncAtStartup() {
     auto initialSyncDir = dbpath;
     initialSyncDir.append(kInitialSyncDir.toString());
     if (!boost::filesystem::exists(initialSyncDir)) {
-        LOGV2_DEBUG(5783400,
-                    3,
-                    "No file copy based initial sync was in progress, so no recovery is necessary",
-                    "dbpath"_attr = dbpath.string(),
-                    "initialSyncDir"_attr = initialSyncDir.string());
+        LOGV2(5783400,
+              "No file copy based initial sync was in progress, so no recovery is necessary",
+              "dbpath"_attr = dbpath.string(),
+              "initialSyncDir"_attr = initialSyncDir.string());
         return;
     }
     auto filesToDeleteTmpMarker = dbpath;
@@ -214,24 +213,21 @@ void InitialSyncFileMover::deleteFiles(const std::vector<std::string>& filesToDe
         }
         auto file_status = boost::filesystem::status(fullPath);
         if (!boost::filesystem::exists(file_status)) {
-            LOGV2_DEBUG(5783404,
-                        2,
-                        "Not deleting because file or directory does not exist",
-                        "filename"_attr = filename,
-                        "fullPath"_attr = fullPath.string());
+            LOGV2(5783404,
+                  "Not deleting because file or directory does not exist",
+                  "filename"_attr = filename,
+                  "fullPath"_attr = fullPath.string());
         } else if (boost::filesystem::is_directory(file_status)) {
-            LOGV2_DEBUG(5783408,
-                        2,
-                        "Deleting directory",
-                        "filename"_attr = filename,
-                        "fullPath"_attr = fullPath.string());
+            LOGV2(5783408,
+                  "Deleting directory",
+                  "filename"_attr = filename,
+                  "fullPath"_attr = fullPath.string());
             boost::filesystem::remove_all(fullPath);
         } else {
-            LOGV2_DEBUG(5783409,
-                        2,
-                        "Deleting file",
-                        "filename"_attr = filename,
-                        "fullPath"_attr = fullPath.string());
+            LOGV2(5783409,
+                  "Deleting file",
+                  "filename"_attr = filename,
+                  "fullPath"_attr = fullPath.string());
             boost::filesystem::remove(fullPath);
         }
         removedFiles.insert(topPath.string());
@@ -286,12 +282,11 @@ void InitialSyncFileMover::_moveFiles(const std::vector<std::string>& filesToMov
                                      "destinationPath"_attr = destinationPath.string());
                 _cleanupAfterFailedMoveAndFassert();
             }
-            LOGV2_DEBUG(5783414,
-                        2,
-                        "A file to be moved does not exist.  It may have been moved previously",
-                        "filename"_attr = filename,
-                        "fullSourcePath"_attr = fullSourcePath.string(),
-                        "destinationPath"_attr = destinationPath.string());
+            LOGV2(5783414,
+                  "A file to be moved does not exist.  It may have been moved previously",
+                  "filename"_attr = filename,
+                  "fullSourcePath"_attr = fullSourcePath.string(),
+                  "destinationPath"_attr = destinationPath.string());
             continue;
         }
         fullSourcePath = boost::filesystem::canonical(fullSourcePath);

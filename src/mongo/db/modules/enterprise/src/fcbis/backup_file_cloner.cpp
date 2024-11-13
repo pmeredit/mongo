@@ -166,14 +166,13 @@ void BackupFileCloner::runQuery() {
     } catch (const DBException& e) {
         // We cannot continue after an error when processing exhaust cursors. Instead we must
         // reconnect, which is handled by the BaseCloner.
-        LOGV2_DEBUG(5781715,
-                    1,
-                    "Backup file cloning received an exception while downloading data",
-                    "error"_attr = e.toStatus(),
-                    "source"_attr = getSource(),
-                    "backupId"_attr = _backupId,
-                    "remoteFile"_attr = _remoteFileName,
-                    "fileOffset"_attr = getFileOffset());
+        LOGV2(5781715,
+              "Backup file cloning received an exception while downloading data",
+              "error"_attr = e.toStatus(),
+              "source"_attr = getSource(),
+              "backupId"_attr = _backupId,
+              "remoteFile"_attr = _remoteFileName,
+              "fileOffset"_attr = getFileOffset());
         getClient()->shutdown();
         throw;
     }

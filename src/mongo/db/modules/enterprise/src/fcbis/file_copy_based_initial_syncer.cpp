@@ -257,22 +257,27 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
     }
 
     _lastApplied = {OpTime(), Date_t()};
-
+    LOGV2(9650300, "Starting FCBIS");
     return AsyncTry([this, self = shared_from_this(), executor, token] {
                stdx::lock_guard<stdx::mutex> lock(_mutex);
                _attemptCancellationSource = CancellationSource(token);
+               LOGV2(9650301, "Selecting FCBIS source");
                return _selectAndValidateSyncSource(
                           lock, executor, _attemptCancellationSource.token())
                    .then([this, self = shared_from_this(), executor](HostAndPort) {
+                       LOGV2(9650302, "Start syncing files");
                        return _startSyncingFiles(executor, _attemptCancellationSource.token());
                    })
                    .then([this, self = shared_from_this()] {
+                       LOGV2(9650303, "Prepare storage directories");
                        return _prepareStorageDirectoriesForMovingPhase();
                    })
                    .then([this, self = shared_from_this()] {
+                       LOGV2(9650304, "Start moving storage files");
                        return _startMovingNewStorageFilesPhase();
                    })
                    .then([this, self = shared_from_this()] {
+                       LOGV2(9650305, "Update last applied value");
                        _updateLastAppliedOptime();
                        return _lastApplied;
                    });
@@ -529,6 +534,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
             }
 
             _syncSource = status.getValue();
+            LOGV2(9650306, "Found sync source", "host"_attr = _syncSource.toString());
             return true;
         })
         .withDelayBetweenIterations(_opts.syncSourceRetryWait)
@@ -578,10 +584,10 @@ void FileCopyBasedInitialSyncer::_killBackupCursor() {
         return;
     }
 
-    LOGV2_DEBUG(5782305, 2, "Cancelling the 'getMore' requests that keeps the backCursor alive.");
+    LOGV2(5782305, "Cancelling the 'getMore' requests that keeps the backCursor alive.");
     _syncingFilesState.backupCursorKeepAliveCancellation.cancel();
 
-    LOGV2_DEBUG(5782306, 2, "Trying to kill the backup cursor");
+    LOGV2(5782306, "Trying to kill the backup cursor");
     const auto cmdObj = BSON("killCursors" << _syncingFilesState.backupCursorCollection << "cursors"
                                            << BSON_ARRAY(_syncingFilesState.backupCursorId));
     executor::RemoteCommandRequest request(
@@ -839,15 +845,15 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                     _getBSONField(metaData, "dbpath", "remote dbpath").str();
                 _syncingFilesState.backupCursorId = data.cursorId;
                 _syncingFilesState.backupCursorCollection = data.nss.coll().toString();
-                LOGV2_DEBUG(
-                    5782308,
-                    2,
-                    "Opened backup cursor on sync source.",
-                    "SyncSrc"_attr = _syncSource,
-                    "backupId"_attr = _syncingFilesState.backupId.value(),
-                    "lastSyncedStableTimestamp"_attr = _syncingFilesState.lastSyncedStableTimestamp,
-                    "backupCursorId"_attr = _syncingFilesState.backupCursorId,
-                    "backupCursorCollection"_attr = _syncingFilesState.backupCursorCollection);
+                LOGV2(5782308,
+
+                      "Opened backup cursor on sync source.",
+                      "SyncSrc"_attr = _syncSource,
+                      "backupId"_attr = _syncingFilesState.backupId.value(),
+                      "lastSyncedStableTimestamp"_attr =
+                          _syncingFilesState.lastSyncedStableTimestamp,
+                      "backupCursorId"_attr = _syncingFilesState.backupCursorId,
+                      "backupCursorCollection"_attr = _syncingFilesState.backupCursorCollection);
             } else {
                 // Ensure filename field exists.
                 _getBSONField(doc, "filename", "backupCursor's batches");
@@ -1725,14 +1731,13 @@ void FileCopyBasedInitialSyncer::cancelCurrentAttempt() {
     stdx::lock_guard lk(_mutex);
     if (_isActive(lk)) {
         // TODO: Log which # attempt we are on.
-        LOGV2_DEBUG(5781902, 1, "Cancelling the current file copy based initial sync attempt.");
+        LOGV2(5781902, "Cancelling the current file copy based initial sync attempt.");
         _cancelRemainingWork(lk);
     } else {
-        LOGV2_DEBUG(5781903,
-                    1,
-                    "There is no initial sync attempt to cancel because the file copy based "
-                    "initial syncer is not "
-                    "currently active.");
+        LOGV2(5781903,
+              "There is no initial sync attempt to cancel because the file copy based "
+              "initial syncer is not "
+              "currently active.");
     }
 }
 
@@ -1961,6 +1966,7 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
         _markInitialSyncCompleted(lock, lastApplied);
         _stateCondition.notify_all();
     }
+    LOGV2(9650307, "FCBIS complete");
 }
 
 void FileCopyBasedInitialSyncer::_markInitialSyncCompleted(
