@@ -17,6 +17,8 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/write_unit_of_work.h"
+#include "mongo/db/timeseries/timeseries_collmod.h"
+#include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/util/assert_util.h"
@@ -28,6 +30,8 @@ namespace mongo {
 namespace {
 
 const NamespaceString kNss = NamespaceString::createNamespaceString_forTest("db", "collection");
+const NamespaceString kTs =
+    NamespaceString::createNamespaceString_forTest("timeseries-test", "collection");
 
 }  // namespace
 
@@ -68,10 +72,11 @@ public:
 
     UUID createCollection(OperationContext* opCtx,
                           const NamespaceString& nss,
-                          Timestamp timestamp) {
+                          Timestamp timestamp,
+                          const CollectionOptions& options = CollectionOptions()) {
         _setupDDLOperation(opCtx, timestamp);
         WriteUnitOfWork wuow(opCtx);
-        UUID uuid = _createCollection(opCtx, nss, boost::none);
+        UUID uuid = _createCollection(opCtx, nss, options);
         wuow.commit();
         storageEngine->setStableTimestamp(timestamp);
         return uuid;
@@ -148,30 +153,68 @@ public:
         auto uuid = doc.uuid();
         auto required = doc.isRequired();
 
-        // Verify that the correct WiredTiger files are marked as required.
-        if (filename == "WiredTiger" || filename == "WiredTiger.backup" ||
-            filename == "WiredTigerHS.wt" || filename.starts_with("WiredTigerLog.")) {
-            ASSERT(!ns);
-            ASSERT(required);
-            ASSERT(!uuid);  // Empty
-            return;
+        // If a file is unchanged in a subsequent incremental backup, a single block's offset and
+        // length will remain at zero.
+        if (doc.length() != 0 && doc.offset() != 0) {
+
+            // If the fileSize is the same as the length, then WT is asking us to take a full
+            // backup of this file.
+            if (doc.fileSize() != doc.length()) {
+
+                // The length must be strictly less than or equal to 16MB, which was the
+                // specified block size during the full backup.
+                ASSERT_LTE(doc.length(), 16 * 1024 * 1024);
+                ASSERT_GTE(doc.offset(), 0);
+            } else {
+                ASSERT_EQ(doc.offset(), 0);
+            }
         }
 
-        // Verify that the correct MongoDB files are marked as required.
-        if (filename == "_mdb_catalog.wt" || filename == "sizeStorer.wt") {
+        // Verify that the correct WiredTiger and MongoDB files are marked as required.
+        if (filename == "WiredTiger" || filename == "WiredTiger.backup" ||
+            filename == "WiredTigerHS.wt" || filename.starts_with("WiredTigerLog.") ||
+            filename == "_mdb_catalog.wt" || filename == "sizeStorer.wt") {
+            ASSERT(required);
             ASSERT(!ns);    // Empty
             ASSERT(!uuid);  // Empty
             return;
         }
 
-        ASSERT(ns);
+        // Denylisting internal files that don't need to have ns/uuid set. Denylisting known
+        // patterns will help catch subtle API changes if new filename patterns are added that
+        // don't generate ns/uuid.
+        if (required &&
+            (!filename.starts_with("Wired") && !filename.starts_with("_") &&
+             !filename.starts_with("size"))) {
+            ASSERT(ns);
+            ASSERT(uuid);
+        }
 
-        std::string nss = ns->toStringForErrorMsg();
+        std::string nss = ns->toString_forTest();
 
-        ASSERT(filename.starts_with("collection-") || filename.starts_with("index-"));
+        if (filename.starts_with("collection-") || filename.starts_with("index-")) {
+            ASSERT(ns);
+            ASSERT(uuid);
+
+            // Verify time-series collection has internal "system.buckets." string removed
+            if (nss.find("timeseries-test") != std::string::npos) {
+                ASSERT(!ns->isTimeseriesBucketsCollection());
+                ASSERT(!required);
+                return;
+            } else if (nss.starts_with("local") || nss.starts_with("admin") ||
+                       nss.starts_with("config") ||
+                       nss.find("test.system.views") != std::string::npos) {
+
+                // Verify that internal database and system.views files are marked required.
+                ASSERT(required);
+                return;
+            }
+        }
+
+        // Everything else should not be marked as required.
         ASSERT(!required);
-        ASSERT_EQ(kNss, ns);
         ASSERT(uuid);
+        ASSERT(ns);
     }
 
     // Verify the format of fields in the document.
@@ -185,16 +228,17 @@ public:
         auto metadataFileBSON = state.preamble->toBson();
         auto metadataBSON = metadataFileBSON.getObjectField("metadata");
         ASSERT_EQ(metadataBSON.getBoolField("disableIncrementalBackup"), false);
-        ASSERT_EQ(metadataBSON.getBoolField("incrementalBackup"), incremental);
         ASSERT_EQ(metadataBSON.getIntField("blockSize"), 16);
 
-        if (incremental) {
-            ASSERT(metadataBSON.hasField("thisBackupName"));
-            ASSERT(metadataBSON.hasField("srcBackupName"));
-        } else {
-            ASSERT(!metadataBSON.hasField("thisBackupName"));
-            ASSERT(!metadataBSON.hasField("srcBackupName"));
-        }
+        // These fields only exist if we are doing incremental backup.
+        ASSERT_EQ(metadataBSON.getBoolField("incrementalBackup"), incremental);
+        ASSERT_EQ(metadataBSON.hasField("thisBackupName"), incremental);
+        ASSERT_EQ(metadataBSON.hasField("srcBackupName"), incremental);
+
+        ASSERT(!metadataBSON.hasField("filename"));
+        ASSERT(!metadataBSON.hasField("fileSize"));
+        ASSERT(!metadataBSON.hasField("offset"));
+        ASSERT(!metadataBSON.hasField("length"));
 
         // Verify valid format of namespace and UUID fields for each doc in the file.
         while (auto doc = getNext(cursor)) {
@@ -220,25 +264,21 @@ private:
 
     UUID _createCollection(OperationContext* opCtx,
                            const NamespaceString& nss,
-                           boost::optional<UUID> uuid = boost::none) {
+                           const CollectionOptions& options) {
         AutoGetDb databaseWriteGuard(opCtx, nss.dbName(), MODE_IX);
         auto db = databaseWriteGuard.ensureDbExists(opCtx);
         ASSERT(db);
 
         Lock::CollectionLock lk(opCtx, nss, MODE_IX);
 
-        CollectionOptions options;
-        if (uuid) {
-            options.uuid.emplace(*uuid);
-        } else {
-            options.uuid.emplace(UUID::gen());
-        }
+        CollectionOptions newOptions = options;
+        newOptions.uuid.emplace(UUID::gen());
 
         // Adds the collection to the durable catalog.
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
         std::pair<RecordId, std::unique_ptr<RecordStore>> catalogIdRecordStorePair =
             uassertStatusOK(storageEngine->getCatalog()->createCollection(
-                opCtx, nss, options, /*allocateDefaultSpace=*/true));
+                opCtx, nss, newOptions, /*allocateDefaultSpace=*/true));
         auto& catalogId = catalogIdRecordStorePair.first;
         auto catalogEntry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, catalogId);
         auto metadata = catalogEntry->metadata;
@@ -249,7 +289,7 @@ private:
 
         // Adds the collection to the in-memory catalog.
         CollectionCatalog::get(opCtx)->onCreateCollection(opCtx, std::move(ownedCollection));
-        return *options.uuid;
+        return *newOptions.uuid;
     }
 
     void _dropCollection(OperationContext* opCtx, const NamespaceString& nss, Timestamp timestamp) {
@@ -456,6 +496,36 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormat) {
 
     storageEngine->checkpoint();
 
+    // Check the validity of incremental backup fields.
+    backupCursorState = openBackupCursor({.incrementalBackup = true,
+                                          .thisBackupName = std::string("b"),
+                                          .srcBackupName = std::string("a")});
+    cursor = backupCursorState.streamingCursor.get();
+
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/true);
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+}
+
+TEST_F(BackupCursorServiceTest, IncBackupCursorFormatTimeSeries) {
+    // Testing incremental backup document format with time-series.
+    const Timestamp createCollectionTs = Timestamp(25, 25);
+    auto storage = std::make_unique<repl::StorageInterfaceImpl>();
+
+    CollectionOptions options;
+    options.timeseries = TimeseriesOptions(/*timeField=*/"time");
+    [[maybe_unused]] auto uuid = createCollection(opCtx.get(), kTs, createCollectionTs);
+
+    auto backupCursorState =
+        openBackupCursor({.incrementalBackup = true, .thisBackupName = std::string("a")});
+    auto cursor = backupCursorState.streamingCursor.get();
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+
+    // Insert documents to create changes which the incremental backup will make us copy.
+    shard_role_details::getRecoveryUnit(opCtx.get())->clearCommitTimestamp();
+    for (auto i = 25; i < 50; i++) {
+        ASSERT_OK(storage->insertDocument(
+            opCtx.get(), kTs, {BSON("_id" << i << "time" << Date_t::now()), Timestamp(30, 30)}, 0));
+    }
     // Check the validity of incremental backup fields.
     backupCursorState = openBackupCursor({.incrementalBackup = true,
                                           .thisBackupName = std::string("b"),
