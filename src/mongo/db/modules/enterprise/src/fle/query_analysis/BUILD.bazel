@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -60,5 +60,32 @@ mongo_cc_library(
         "//src/mongo/db/query/write_ops:write_ops_parsers",
         "//src/mongo/db/update:update_driver",
         "//src/mongo/util:pcre_wrapper",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "enterprise_fle_query_analysis_test",
+    srcs = [
+        "aggregate_expression_intender_range_test.cpp",
+        "aggregate_expression_intender_test.cpp",
+        "encryption_schema_tree_test.cpp",
+        "expression_analysis_test.cpp",
+        "fle2_test_fixture.cpp",
+        "fle2_test_fixture.h",
+        "fle_match_expression_test.cpp",
+        "fle_pipeline_test.cpp",
+        "fle_test_fixture.cpp",
+        "fle_test_fixture.h",
+        "query_analysis_test.cpp",
+    ],
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        ":query_analysis",
+        "//src/mongo/db:service_context_non_d",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/pipeline:aggregation_context_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/idl:server_parameter_test_util",
     ],
 )
