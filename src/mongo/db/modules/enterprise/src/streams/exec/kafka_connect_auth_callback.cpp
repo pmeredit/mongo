@@ -107,6 +107,7 @@ std::unique_ptr<mongo::crypto::SymmetricEncryptor> KafkaConnectAuthCallback::get
     return std::move(e.getValue());
 }
 
+namespace {
 std::array<std::uint8_t, kNonceSizeBytes> getRandomInitializationVector() {
     std::array<std::uint8_t, kNonceSizeBytes> iv;
     Status status = crypto::engineRandBytes(iv);
@@ -114,6 +115,7 @@ std::array<std::uint8_t, kNonceSizeBytes> getRandomInitializationVector() {
 
     return iv;
 }
+}  // namespace
 
 std::vector<uint8_t> KafkaConnectAuthCallback::buildJSONPayload(const std::string& hostname,
                                                                 const std::string timestamp,

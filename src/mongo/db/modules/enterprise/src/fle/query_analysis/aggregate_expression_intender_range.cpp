@@ -68,34 +68,6 @@ FieldPath stripCurrentIfPresent(FieldPath path) {
 }
 
 /**
- * Functions that take either a value or an ExpressionObject. These recursively walk the object and
- * report the full paths and values at all leaf nodes in the object. In the ExpressionObject version
- * this will error on any non-constant or non-object expressions, as these are not supported for
- * encrypted comparisons.
- */
-std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(ExpressionObject* objExpr,
-                                                                  FieldPath basePath) {
-    std::vector<std::pair<FieldPath, Value>> retVec;
-    // This is a vector of string field path pairs to expressions.
-    auto childExprs = objExpr->getChildExpressions();
-    for (const auto& [fieldPathStr, childExpr] : childExprs) {
-        std::vector<std::pair<FieldPath, Value>> thisChildPaths;
-        if (auto constantExpr = dynamic_cast<ExpressionConstant*>(childExpr.get())) {
-            auto constantValue = constantExpr->getValue();
-            // Traverse constant object in array to find all encrypted fields.
-            thisChildPaths = query_analysis::reportFullPathsAndValues(
-                constantValue, basePath.concat(fieldPathStr));
-        } else if (auto objectExpr = dynamic_cast<ExpressionObject*>(childExpr.get())) {
-            thisChildPaths = reportFullPathsAndValues(objectExpr, basePath.concat(fieldPathStr));
-        } else {
-            uasserted(6994302, "Can only compare encrypted field to object or constant in $in");
-        }
-        retVec.insert(retVec.begin(), thisChildPaths.begin(), thisChildPaths.end());
-    }
-    return retVec;
-}
-
-/**
  * For a range index we generate the new expressions that need to replace comparison operators
  * but defer the actual replacement to the In/Post visitors.
  */

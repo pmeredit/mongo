@@ -15,12 +15,14 @@ namespace streams {
 
 using namespace mongo;
 
+namespace {
 int randomInt(mongo::PseudoRandom& random, int min, int max) {
     dassert(max > min);
     // nextInt32 returns a half open [0, max) interval so we add 1 to max.
     auto randomValue = random.nextInt32(max + 1 - min);
     return randomValue + min;
 }
+}  // namespace
 
 class SourceBufferManagerTest : public unittest::Test {
 public:

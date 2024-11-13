@@ -29,6 +29,7 @@
 #include "mongo/crypto/symmetric_key.h"
 
 namespace mongo {
+namespace {
 
 int decryptToolMain(int argc, char* argv[]) {
     setupSignalHandlers();
@@ -155,7 +156,7 @@ int decryptToolMain(int argc, char* argv[]) {
 
     return 0;
 }
-
+}  // namespace
 }  // namespace mongo
 
 #if defined(_WIN32)

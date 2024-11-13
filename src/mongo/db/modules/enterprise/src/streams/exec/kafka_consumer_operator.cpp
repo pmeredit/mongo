@@ -48,18 +48,6 @@ bool topicPartitionExists(const std::vector<KafkaConsumerOperator::TopicPartitio
     return false;
 }
 
-bool topicExists(const std::string& topic,
-                 const std::vector<KafkaConsumerOperator::TopicPartition>& topicPartitions) {
-    for (const auto& [topicName, _] : topicPartitions) {
-        if (topicName == topic) {
-            return true;
-        }
-    }
-    return false;
-}
-
-}  // namespace
-
 using namespace mongo;
 
 // Helper method used to create KafkaConsumer. Used from KafkaConsumerOperator::Connector
@@ -130,6 +118,8 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
 
     return kafkaConsumer;
 }
+
+}  // namespace
 
 KafkaConsumerOperator::TopicPartition::TopicPartition(std::string topicName, int32_t partition)
     : topic{std::move(topicName)}, partitionId{partition} {}

@@ -64,9 +64,6 @@ MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepBeforeConnect);
 // events
 MONGO_FAIL_POINT_DEFINE(changestreamSlowEventProcessing);
 
-// Name of the error code field name in the raw server error object.
-static constexpr char kErrorCodeFieldName[] = "code";
-
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
 mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
@@ -290,12 +287,6 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     _consumerStats += {.memoryUsageBytes = -batch.getByteSize()};
     _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
     return batch;
-}
-
-void pushdownPipeline(mongocxx::pipeline& cxxPipeline, const std::vector<BSONObj>& pipeline) {
-    for (const auto& stage : pipeline) {
-        cxxPipeline.append_stage(toBsoncxxView(stage));
-    }
 }
 
 void ChangeStreamSourceOperator::connectToSource() {

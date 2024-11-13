@@ -46,14 +46,6 @@ struct Metrics {
     double numOngoing{0};
 };
 
-std::string getProcessorIdLabel(const std::vector<mongo::MetricLabel>& labels) {
-    auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {
-        return l.getKey() == kProcessorIdLabelKey;
-    });
-    invariant(result != labels.end());
-    return result->getValue().toString();
-}
-
 Metrics getMetrics(Executor* executor, std::string processorId) {
     TestMetricsVisitor metrics;
     executor->getMetricManager()->visitAllMetrics(&metrics);

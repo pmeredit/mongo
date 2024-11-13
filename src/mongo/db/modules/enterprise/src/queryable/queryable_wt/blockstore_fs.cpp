@@ -90,6 +90,7 @@ static int queryableWtFileSync(WT_FILE_HANDLE*, WT_SESSION*);
  * queryableWtFsCreate --
  *   Initialization point for the queryable file system
  */
+MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config);
 MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config) {
     WT_CONFIG_ITEM k, v;
     WT_CONFIG_PARSER* config_parser;
@@ -313,15 +314,6 @@ static int queryableWtFileSync(WT_FILE_HANDLE* baseFileHandle, WT_SESSION* sessi
 
 namespace mongo {
 namespace queryable {
-namespace {
-bool endsWith(const std::string& value, const std::string& ending) {
-    if (ending.size() > value.size())
-        return false;
-
-    return value.compare(value.length() - ending.size(), ending.size(), ending) == 0;
-}
-}  // namespace
-
 int BlockstoreFileSystem::open(const char* name,
                                uint32_t flags,
                                BlockstoreFileHandle** fileHandle) {

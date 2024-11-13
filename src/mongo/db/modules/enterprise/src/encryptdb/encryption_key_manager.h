@@ -51,9 +51,7 @@ public:
      * Initialize the EncryptionKeyManager. The encryptionParams and SSLParams
      * must outlive the EncryptionKeyManager.
      */
-    EncryptionKeyManager(const std::string& dbPath,
-                         EncryptionGlobalParams* encryptionParams,
-                         SSLParams* sslParams);
+    EncryptionKeyManager(const std::string& dbPath, EncryptionGlobalParams* encryptionParams);
 
     ~EncryptionKeyManager() override;
 
@@ -206,11 +204,6 @@ private:
      * Pointer to the encryption parameters to use.
      */
     EncryptionGlobalParams* _encryptionParams;
-
-    /**
-     * Pointer to the SSLParams struct to use.
-     */
-    SSLParams* _sslParams;
 };
 
 /**

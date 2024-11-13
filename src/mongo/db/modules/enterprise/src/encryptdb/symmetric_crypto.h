@@ -18,7 +18,6 @@
 namespace mongo {
 namespace crypto {
 
-size_t aesGetIVSize(crypto::aesMode mode);
 size_t aesGetTagSize(crypto::aesMode mode);
 std::pair<std::size_t, std::size_t> expectedPlaintextLen(aesMode, const std::uint8_t*, std::size_t);
 void aesGenerateIV(const SymmetricKey* key,

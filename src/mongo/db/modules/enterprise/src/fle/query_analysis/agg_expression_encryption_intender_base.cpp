@@ -57,6 +57,7 @@ void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& sub
     subtreeStack.push({outputType});
 }
 
+namespace {
 [[noreturn]] void uassertedEncryptedInEvaluatedContext(const FieldPath& currentField,
                                                        const StringData evaluatedBy) {
     uasserted(31110,
@@ -81,6 +82,7 @@ void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& sub
                             ""s,
                             [](auto&& l, auto&& r) { return l + " result of " + r; }));
 }
+}  // namespace
 
 [[noreturn]] void uassertedUnencryptedEncryptedMismatch(
     const FieldPath& currentField, const std::vector<FieldPath>& comparedFields) {

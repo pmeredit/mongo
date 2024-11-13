@@ -273,7 +273,6 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
 
 namespace {
 static constexpr size_t kMaxTopicNamesCacheSize = 1000;
-}
 
 std::vector<char> serializeInt(int32_t valueInt) {
     // Big-endian serialization
@@ -295,6 +294,7 @@ std::vector<char> serializeDouble(double valueDouble) {
     DataView(doubleBytes.data()).write<BigEndian<double>>(valueDouble);
     return doubleBytes;
 }
+}  // namespace
 
 void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
                                            const std::string& topicName,

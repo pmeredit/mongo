@@ -285,6 +285,8 @@ int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
                                      nullptr);
 }
 
+// This is called via dlsym()
+extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection);
 extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection) {
     return mongo_addWiredTigerEncryptors_impl(connection);
 }

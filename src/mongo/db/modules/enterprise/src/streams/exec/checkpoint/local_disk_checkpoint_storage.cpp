@@ -98,7 +98,7 @@ CheckpointId LocalDiskCheckpointStorage::doStartCheckpoint() {
     _activeCheckpointSave =
         ActiveCheckpointSave{.checkpointId = next,
                              .checkpointStartTime = Date_t::now(),
-                             .manifest = ManifestBuilder{next, _context, getManifestFilePath(dir)},
+                             .manifest = ManifestBuilder{_context, getManifestFilePath(dir)},
                              .directory = dir};
 
     LOGV2_INFO(

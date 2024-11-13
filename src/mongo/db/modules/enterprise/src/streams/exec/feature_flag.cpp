@@ -196,7 +196,7 @@ const FeatureFlagDefinition FeatureFlags::kKafkaTotalQueuedBytes{
     // No more than 128MB on an SP10.
     {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(128L * 1024 * 1024)}}};
 
-
+namespace {
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};
@@ -215,6 +215,7 @@ mongo::Value defaultCidrDenyListValue() {
         mongo::Value{std::string{"240.0.0.0/4"}},     // R
     });
 }
+}  // namespace
 
 // If overriding this feature flag in a non-test environment make sure to include the CIDRs defined
 // in defaultCidrDenyListValue.

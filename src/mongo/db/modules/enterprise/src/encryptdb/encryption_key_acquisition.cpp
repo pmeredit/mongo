@@ -64,6 +64,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptio
                                           0);
 }
 
+namespace {
 Status _startPolling(KMIPService& kmipService, const KMIPParams& kmipParams, StringData keyId) {
     auto status =
         KMIPIsActivePollingJob::get(getGlobalServiceContext())
@@ -123,6 +124,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> _createKey(KMIPService& kmipService,
 
     return swKey;
 }
+}  // namespace
 
 StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams& kmipParams,
                                                                StringData keyId,

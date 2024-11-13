@@ -34,6 +34,7 @@ KMIPIsActivePollingJob* KMIPIsActivePollingJob::get(ServiceContext* service) {
     return getKMIPIsActivePollingJob(service).get();
 }
 
+namespace {
 const std::map<uint32_t, std::string> keyStateToString{{0x00, "stateless"},
                                                        {0x01, "preActive"},
                                                        {0x02, "active"},
@@ -86,6 +87,7 @@ void run(std::string keyId) try {
                   "key_uid"_attr = keyId,
                   "error"_attr = e);
 }
+}  // namespace
 
 Status KMIPIsActivePollingJob::createJob(KMIPService& kmipService,
                                          std::string keyId,

@@ -34,6 +34,7 @@
 
 using namespace mongo;
 using namespace streams;
+namespace {
 
 BSONObj readBsonFromJsonFile(std::string fileName) {
     std::ifstream infile(fileName.c_str());
@@ -133,6 +134,7 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
         std::cout << "DLQ: " << msg << std::endl;
     }
 }
+}  // namespace
 
 /**
  * Runs given stream pipeline locally.

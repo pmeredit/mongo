@@ -21,6 +21,7 @@
 
 namespace mongo {
 
+namespace {
 int getDnsPortNumber(const std::vector<std::pair<dns::SRVHostEntry, Seconds>>& dnsRecords,
                      const LDAPHost& host) {
     int dnsPort = dnsRecords.front().first.port;
@@ -33,6 +34,7 @@ int getDnsPortNumber(const std::vector<std::pair<dns::SRVHostEntry, Seconds>>& d
     }
     return dnsPort;
 }
+}  // namespace
 
 LDAPResolvedHost LDAPDNSResolverCache::_getResolvedHost(const LDAPHost& host,
                                                         const CacheEntry& entry) {
