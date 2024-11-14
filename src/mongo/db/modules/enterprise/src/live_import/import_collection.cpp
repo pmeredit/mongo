@@ -218,10 +218,9 @@ void importCollection(OperationContext* opCtx,
 
             // If the collection creation rolls back, ensure that the Top entry created for the
             // collection is deleted.
-            shard_role_details::getRecoveryUnit(opCtx)->onRollback(
-                [nss, serviceContext = opCtx->getServiceContext()](OperationContext*) {
-                    Top::get(serviceContext).collectionDropped(nss);
-                });
+            shard_role_details::getRecoveryUnit(opCtx)->onRollback([nss](OperationContext* opCtx) {
+                Top::getDecoration(opCtx).collectionDropped(nss);
+            });
 
             // In order to make the storage timestamp for the collection import always correct even
             // when other operations are present in the same storage transaction, we reserve an
