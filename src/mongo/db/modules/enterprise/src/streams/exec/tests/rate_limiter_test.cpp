@@ -5,6 +5,7 @@
 #include "mongo/unittest/framework.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/tick_source.h"
 #include "mongo/util/tick_source_mock.h"
 #include "streams/exec/rate_limiter.h"
 #include <random>
@@ -218,6 +219,18 @@ TEST(RateLimiterTest, ShouldAcceptAllRequests) {
             tickSource.advance(Milliseconds(200));
         }
     }
+}
+
+TEST(RateLimiterTest, SupportsDecimalRate) {
+    RateLimiter rateLimiter{0.4, 10, &timer};
+
+    ASSERT_EQ(rateLimiter.consume(10), Milliseconds(0));
+
+    tickSource.advance(Milliseconds(4000));
+    ASSERT_EQ(rateLimiter.consume(7), Milliseconds(13500));
+
+    tickSource.advance(Milliseconds(13500));
+    ASSERT_EQ(rateLimiter.consume(7), Milliseconds(0));
 }
 
 }  // namespace

@@ -21,7 +21,7 @@ public:
      * tokensRefilledPerSec specifies how many tokens should be generated per second. capacity
      * specifies the maximum number of tokens the bucket can hold.
      */
-    RateLimiter(int64_t tokensRefilledPerSec, int64_t capacity, Timer* timer);
+    RateLimiter(double tokensRefilledPerSec, int64_t capacity, Timer* timer);
 
     // Constructs a RateLimiter whose full burst period is a second
     RateLimiter(int64_t tokensRefilledPerSec, Timer* timer);
@@ -30,11 +30,11 @@ public:
     // available.
     Microseconds consume(int64_t tokens = 1);
 
-    void setTokensRefilledPerSec(int64_t tokensRefilledPerSec);
+    void setTokensRefilledPerSec(double tokensRefilledPerSec);
     void setCapacity(int64_t capacity);
 
 private:
-    int64_t _tokensRefilledPerSec;
+    double _tokensRefilledPerSec;
     int64_t _capacity;
 
     Timer* _timer;

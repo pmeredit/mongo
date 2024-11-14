@@ -15,7 +15,7 @@ constexpr int kMicrosecondsPerSecond = 1'000'000;
 
 namespace streams {
 
-RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, int64_t capacity, Timer* timer)
+RateLimiter::RateLimiter(double tokensRefilledPerSec, int64_t capacity, Timer* timer)
     : _tokensRefilledPerSec{tokensRefilledPerSec},
       _capacity{capacity},
       _timer{timer},
@@ -29,7 +29,7 @@ RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, int64_t capacity, Timer* 
 }
 
 RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, Timer* timer) {
-    *this = RateLimiter{tokensRefilledPerSec, tokensRefilledPerSec, timer};
+    *this = RateLimiter{1.0 * tokensRefilledPerSec, tokensRefilledPerSec, timer};
 }
 
 Microseconds RateLimiter::consume(int64_t tokens) {
@@ -58,7 +58,7 @@ Microseconds RateLimiter::consume(int64_t tokens) {
     return Microseconds(0);
 }
 
-void RateLimiter::setTokensRefilledPerSec(int64_t tokensRefilledPerSec) {
+void RateLimiter::setTokensRefilledPerSec(double tokensRefilledPerSec) {
     *this = RateLimiter{tokensRefilledPerSec, _capacity, _timer};
 }
 
