@@ -21,6 +21,9 @@
 
 namespace streams {
 
+static constexpr int32_t kSinkDataMsgMaxDocSize = 50000;
+static constexpr int32_t kSinkDataMsgMaxByteSize = 15 * 1024 * 1024;
+
 struct Context;
 class MetricManager;
 

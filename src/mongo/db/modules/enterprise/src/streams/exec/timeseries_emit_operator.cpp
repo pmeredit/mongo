@@ -175,7 +175,7 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
         // - maxDocCount number of documents are processes, or
         // - curBatchByteSize is more than the dataMsh max byte size
         if ((curIdx == dataMsg.docs.size() && !docBatch.empty()) ||
-            docBatch.size() == maxDocCount || curBatchByteSize >= kDataMsgMaxByteSize) {
+            docBatch.size() == maxDocCount || curBatchByteSize >= kSinkDataMsgMaxDocSize) {
             try {
                 int64_t curBatchSize = docBatch.size();
                 auto start = stdx::chrono::steady_clock::now();

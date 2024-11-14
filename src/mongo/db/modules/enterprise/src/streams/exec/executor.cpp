@@ -1,6 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include <cstddef>
 #include <functional>
 #include <memory>
 
@@ -380,7 +381,8 @@ Executor::RunStatus Executor::runOnce() {
         }
 
         if (_testOnlyDocsQueue.getStats().queueDepth > 0) {
-            auto [testOnlyDocs, _] = _testOnlyDocsQueue.popManyUpTo(kDataMsgMaxByteSize);
+            auto [testOnlyDocs, _] =
+                _testOnlyDocsQueue.popManyUpTo(static_cast<long>(16 * 1024 * 1024));
             for (auto& docs : testOnlyDocs) {
                 testOnlyInsert(source, std::move(docs));
             }

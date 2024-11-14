@@ -66,7 +66,7 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
         } catch (const mongocxx::exception& e) {
             errorOut(e, outputNs);
         }
-        stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
+        stats += processStreamDocs(dataMsg, outputNs, docIndices, kSinkDataMsgMaxDocSize);
     }
 
     return stats;

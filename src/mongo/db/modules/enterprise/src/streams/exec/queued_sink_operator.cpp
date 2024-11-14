@@ -3,17 +3,19 @@
  */
 #include "streams/exec/queued_sink_operator.h"
 
-#include "mongo/base/error_codes.h"
-#include "mongo/logv2/log.h"
-#include "streams/exec/connection_status.h"
-#include "streams/exec/stream_processor_feature_flags.h"
-#include "streams/util/exception.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
 
+#include "mongo/base/error_codes.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
+#include "streams/exec/message.h"
+#include "streams/exec/operator.h"
+#include "streams/exec/stream_processor_feature_flags.h"
+#include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -154,20 +156,52 @@ void QueuedSinkOperator::consumeLoop() {
     bool done{false};
     SPStatus status;
 
+    StreamDataMsg batchMsg{};
+    int64_t batchMsgDataSize{0};
+
+    std::function<void()> sendBatchMsgFn = [&]() {
+        auto stats = processDataMsg(std::move(batchMsg));
+        batchMsg = StreamDataMsg{};
+        batchMsgDataSize = 0;
+        stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
+        _consumerStats += stats;
+    };
+
     while (!done) {
         try {
-            auto msg = _queue.pop();
-            if (msg.flushSignal) {
+            auto msg = _queue.tryPop();
+            if (!msg) {
+                if (batchMsg.docs.size() > 0) {
+                    sendBatchMsgFn();
+                }
+                continue;
+            }
+            if (msg->flushSignal) {
+                if (batchMsg.docs.size() > 0) {
+                    sendBatchMsgFn();
+                }
                 stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
                 _pendingFlush = false;
                 _flushedCv.notify_all();
-            } else {
-                _queueSizeGauge->incBy(-1 * int64_t(msg.data->docs.size()));
-                _queueByteSizeGauge->incBy(-1 * msg.data->getByteSize());
-                auto stats = processDataMsg(std::move(*msg.data));
-
-                stdx::lock_guard<stdx::mutex> lock(_consumerMutex);
-                _consumerStats += stats;
+                continue;
+            }
+            batchMsg.docs.reserve(batchMsg.docs.size() + msg->data->docs.size());
+            int docsHandled{0};
+            for (auto& streamDoc : msg->data->docs) {
+                auto docSize = streamDoc.doc.getApproximateSize();
+                if (batchMsgDataSize + docSize >= kSinkDataMsgMaxByteSize ||
+                    batchMsg.docs.size() + 1 == kSinkDataMsgMaxDocSize) {
+                    sendBatchMsgFn();
+                    batchMsg.docs.reserve(msg->data->docs.size() - docsHandled);
+                }
+                if (!batchMsg.creationTimer) {
+                    batchMsg.creationTimer = msg->data->creationTimer;
+                }
+                _queueSizeGauge->incBy(-1);
+                _queueByteSizeGauge->incBy(-1 * docSize);
+                batchMsg.docs.emplace_back(std::move(streamDoc));
+                batchMsgDataSize += docSize;
+                docsHandled++;
             }
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
@@ -203,5 +237,4 @@ void QueuedSinkOperator::consumeLoop() {
     _consumerThreadRunning = false;
     _flushedCv.notify_all();
 }
-
 };  // namespace streams
