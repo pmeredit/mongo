@@ -25,7 +25,6 @@
 
 namespace mongo {
 namespace audit {
-namespace {
 
 StatusWith<AuditHeaderOptionsDocument> parseAuditHeaderFromJSON(const std::string& header) try {
     BSONObj fileHeaderBSON = fromjson(header);
@@ -200,7 +199,7 @@ void auditDecryptorTool(int argc, char* argv[]) try {
     std::cerr << cause << std::endl;
     quickExit(ExitCode::fail);
 }
-}  // namespace
+
 }  // namespace audit
 }  // namespace mongo
 

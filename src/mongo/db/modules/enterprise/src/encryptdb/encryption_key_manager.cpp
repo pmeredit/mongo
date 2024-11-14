@@ -115,13 +115,15 @@ Status KeystoreSchemaVersionServerParameter::setFromString(StringData value,
 }
 
 EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
-                                           EncryptionGlobalParams* encryptionParams)
+                                           EncryptionGlobalParams* encryptionParams,
+                                           SSLParams* sslParams)
     : _dbPath(fs::path(dbPath)),
       _keystoreBasePath(_dbPath / "key.store"),
       _masterKeyRequested(false),
       _keyRotationAllowed(false),
       _tmpDataKey(crypto::aesGenerate(crypto::sym256KeySize, kTmpDataKeyId)),
-      _encryptionParams(encryptionParams) {}
+      _encryptionParams(encryptionParams),
+      _sslParams(sslParams) {}
 
 EncryptionKeyManager::~EncryptionKeyManager() {}
 
@@ -734,8 +736,8 @@ std::int32_t EncryptionKeyManager::getKeystoreVersion() const {
 }
 
 void initializeEncryptionKeyManager(ServiceContext* service) {
-    auto keyManager =
-        std::make_unique<EncryptionKeyManager>(storageGlobalParams.dbpath, &encryptionGlobalParams);
+    auto keyManager = std::make_unique<EncryptionKeyManager>(
+        storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
     EncryptionHooks::set(service, std::move(keyManager));
 }
 

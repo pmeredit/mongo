@@ -18,7 +18,7 @@ class SymmetricKey;
 class EncryptionKeyManagerNoop : public EncryptionKeyManager {
 public:
     EncryptionKeyManagerNoop()
-        : EncryptionKeyManager("", nullptr),
+        : EncryptionKeyManager("", nullptr, nullptr),
           _testMasterKey(std::move(getKey("test", FindMode::kCurrent).getValue())) {}
 
     StatusWith<std::unique_ptr<SymmetricKey>> getKey(const SymmetricKeyId& keyID,

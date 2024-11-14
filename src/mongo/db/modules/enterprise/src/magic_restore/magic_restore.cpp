@@ -100,7 +100,6 @@ int64_t BSONStreamReader::getTotalObjectsRead() {
     return _totalObjectsRead;
 }
 
-namespace {
 void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader) {
     LOGV2(8290818, "Writing additional PIT oplog entries into oplog");
     auto restoreConfigBytes = reader.getTotalBytesRead();
@@ -141,7 +140,7 @@ void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader)
           "total entries inserted"_attr = reader.getTotalObjectsRead() - 1,
           "total bytes inserted"_attr = reader.getTotalBytesRead() - restoreConfigBytes);
 }
-}  // namespace
+
 
 void executeCredentialsCommand(OperationContext* opCtx,
                                const BSONObj& cmd,
@@ -296,7 +295,6 @@ void createInternalCollectionsWithUuid(
     }
 }
 
-namespace {
 bool isConfig(const RestoreConfiguration& restoreConfig) {
     auto nType = restoreConfig.getNodeType();
     return nType == NodeTypeEnum::kConfigShard || nType == NodeTypeEnum::kDedicatedConfigServer;
@@ -306,7 +304,6 @@ bool isShard(const RestoreConfiguration& restoreConfig) {
     auto nType = restoreConfig.getNodeType();
     return nType == NodeTypeEnum::kConfigShard || nType == NodeTypeEnum::kShard;
 }
-}  // namespace
 
 void updateShardNameMetadata(OperationContext* opCtx,
                              const RestoreConfiguration& restoreConfig,
@@ -510,7 +507,6 @@ void updateShardNameMetadata(OperationContext* opCtx,
     }
 }
 
-namespace {
 mongo::ShardIdentity getShardIdentity(OperationContext* opCtx,
                                       repl::StorageInterface* storageInterface) {
     // Find the shard identity document in admin.system.version.
@@ -537,7 +533,6 @@ void setBalancerMode(OperationContext* opCtx, BalancerConfiguration* balancerCon
             balancerConfig->setBalancerMode(
                 opCtx, stopped ? BalancerSettingsType::kOff : BalancerSettingsType::kFull));
 }
-}  // namespace
 
 // Create local.system.collections_to_restore.
 void createCollectionsToRestore(

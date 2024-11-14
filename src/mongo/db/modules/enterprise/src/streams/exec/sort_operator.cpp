@@ -22,6 +22,10 @@ using namespace mongo;
 
 namespace streams {
 
+namespace {
+static const int kSortOperatorMaxRecordSizeLimit = 10 * 1024 * 1024;
+}
+
 SortOperator::SortOperator(Context* context, Options options)
     : WindowAwareOperator(context), _options(std::move(options)) {}
 

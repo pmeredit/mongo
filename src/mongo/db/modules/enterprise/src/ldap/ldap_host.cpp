@@ -100,7 +100,6 @@ std::string LDAPHost::toString() const {
                          << ")";
 }
 
-namespace {
 std::string joinLdapHost(std::vector<LDAPHost> hosts,
                          char joinChar,
                          std::function<std::string(const LDAPHost&)> func) {
@@ -113,7 +112,6 @@ std::string joinLdapHost(std::vector<LDAPHost> hosts,
     }
     return s.str();
 }
-}  // namespace
 
 std::string joinLdapHost(std::vector<LDAPHost> hosts, char joinChar) {
     return joinLdapHost(hosts, joinChar, [](const LDAPHost& host) { return host.getName(); });

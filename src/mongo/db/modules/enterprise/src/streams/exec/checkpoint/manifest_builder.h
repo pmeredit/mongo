@@ -56,8 +56,12 @@ public:
     static const int kMinAllowedVersion;
     static const int kVersionWithNoSummaryStats;
 
-    ManifestBuilder(Context* context, std::filesystem::path manifestFilePath)
-        : _context{context}, _manifestFilePath{std::move(manifestFilePath)} {}
+    ManifestBuilder(CheckpointId checkpointId,
+                    Context* context,
+                    std::filesystem::path manifestFilePath)
+        : _checkpointId{checkpointId},
+          _context{context},
+          _manifestFilePath{std::move(manifestFilePath)} {}
     // This function gets called when an operator provides a new state record of size recLen. It
     // 1) create a new Range entry for this operator if needed (either operator is seen for the
     // first time or operator state needs to be added to a new state file). 2) If the last range
@@ -78,6 +82,7 @@ private:
     // The state file checksums for each file
     std::map<int, uint32_t> _stateFileChecksums;
 
+    CheckpointId _checkpointId;
     Context* _context{nullptr};
     std::filesystem::path _manifestFilePath;
 };

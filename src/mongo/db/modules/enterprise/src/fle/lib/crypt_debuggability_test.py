@@ -55,7 +55,7 @@ def debuggability_test():
         "(anonymous namespace)::MongoCryptTest::checkAnalysisSuccess",
         "mongo_crypt_v1_analyze_query",
         "mongo::analyzeQuery",
-        "mongo::(anonymous namespace)::analyzeNonExplainQuery",
+        "mongo::analyzeNonExplainQuery",
         "mongo::query_analysis::(anonymous namespace)::processQueryCommand",
     ]
     for func in breaks:

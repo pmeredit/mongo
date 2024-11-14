@@ -43,7 +43,6 @@ namespace streams {
 
 using namespace mongo;
 
-namespace {
 class ExternalApiOperatorTest : public AggregationContextFixture {
 public:
     ExternalApiOperatorTest() : AggregationContextFixture() {
@@ -139,7 +138,6 @@ struct ExternalApiOpereratorTestCase {
     const std::function<void(const std::deque<StreamMsgUnion>&)> msgsAssertFn;
     const std::function<void(OperatorStats)> statsAssertFn;
 };
-}  // namespace
 
 TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
     ExternalApiOpereratorTestCase tests[] = {

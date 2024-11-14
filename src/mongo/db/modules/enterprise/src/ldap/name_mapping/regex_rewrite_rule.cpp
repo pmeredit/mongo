@@ -42,7 +42,6 @@ RegexRewriteRule::RegexRewriteRule(pcre::Regex match,
       _substitution(std::move(substitution)),
       _stringRepresentation(std::move(stringRepresentation)) {}
 
-namespace {
 /**
  * Strict string to number parsing.
  * Number may only have base-10 digits.
@@ -66,7 +65,6 @@ bool _parseGroup(StringData possibleNumber, std::size_t max, std::size_t* group)
     *group = ret;
     return true;
 }
-}  // namespace
 
 StatusWith<std::string> RegexRewriteRule::resolve(
     LDAPRunner* runner,

@@ -24,7 +24,6 @@ namespace streams {
 
 using KafkaEmitTest = AggregationContextFixture;
 
-namespace {
 int randomInt(mongo::PseudoRandom& random, int min, int max) {
     dassert(max > min);
     // nextInt32 returns a half open [0, max) interval so we add 1 to max.
@@ -93,7 +92,6 @@ auto removeProjections(std::vector<StreamDocument> docs) {
     }
     return docs;
 }
-}  // namespace
 
 // This test uses KafkaEmitOperator to write 100k documents to 12 different Kafka
 // partitions. The test then uses KafkaConsumerOperator to validate the same
@@ -162,7 +160,6 @@ TEST_F(KafkaEmitTest, RoundTrip) {
     }
 }
 
-namespace {
 void assertBinDataEquals(const BSONBinData& lhs, const BSONBinData& rhs) {
     ASSERT_EQ(lhs.type, rhs.type);
     ASSERT_EQ(lhs.length, rhs.length);
@@ -172,7 +169,6 @@ void assertBinDataEquals(const BSONBinData& lhs, const BSONBinData& rhs) {
         ASSERT_EQ(lhsData[i], rhsData[i]);
     }
 }
-}  // namespace
 
 TEST_F(KafkaEmitTest, TestSerializeHeaders) {
     auto [context, _] = getTestContext(getServiceContext());

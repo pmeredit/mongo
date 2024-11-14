@@ -31,6 +31,7 @@ namespace {
 
 static const auto _decoration =
     ServiceContext::declareDecoration<std::unique_ptr<mongocxx::instance>>();
+}
 
 std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri& uri) {
     // mongocxx will include the URI in some errors messages. In Atlas Stream Processing
@@ -43,7 +44,6 @@ std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri
     }
     return sanitized;
 }
-}  // namespace
 
 mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
     auto& mongocxxInstance = _decoration(svcCtx);

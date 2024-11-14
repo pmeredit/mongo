@@ -1044,7 +1044,6 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
     ASSERT_EQ(docs[3].getStringField("toShardId"), restoreShard1);
 }
 
-namespace {
 void checkNoOpOplogEntry(std::vector<BSONObj>& docs,
                          Timestamp expectedTs,
                          long long expectedTerm,
@@ -1058,7 +1057,6 @@ void checkNoOpOplogEntry(std::vector<BSONObj>& docs,
     ASSERT_EQ(docs[0].getIntField("t"), expectedTerm);
     ASSERT_EQ(docs[0].getField("wall").Date(), expectedDate);
 }
-}  // namespace
 
 TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryHighTerm) {
     auto storage = storageInterface();

@@ -323,7 +323,8 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
 
     auto const service = getGlobalServiceContext();
     // Override the Noop encryption manager with the real encryption manager.
-    setupEncryption<EncryptionKeyManager>(service, dbPathStr, &encryptionGlobalParams);
+    setupEncryption<EncryptionKeyManager>(
+        service, dbPathStr, &encryptionGlobalParams, &sslGlobalParams);
 
     auto const encryptionManager = EncryptionKeyManager::get(service);
 
@@ -402,7 +403,8 @@ TEST(EncryptionKeyManager, DirtyCBCIsNoOp) {
 
     auto const service = getGlobalServiceContext();
     // Override the Noop encryption manager with the real encryption manager.
-    setupEncryption<EncryptionKeyManager>(service, dbPathStr, &encryptionGlobalParams);
+    setupEncryption<EncryptionKeyManager>(
+        service, dbPathStr, &encryptionGlobalParams, &sslGlobalParams);
 
     auto encryptionManager = EncryptionKeyManager::get(service);
 
@@ -418,7 +420,8 @@ TEST(EncryptionKeyManager, DirtyCBCIsNoOp) {
 
     // Set up the encryption manager again so the old one gets destroyed and a new one
     // has to go through the initialization process.
-    setupEncryption<EncryptionKeyManager>(service, dbPathStr, &encryptionGlobalParams);
+    setupEncryption<EncryptionKeyManager>(
+        service, dbPathStr, &encryptionGlobalParams, &sslGlobalParams);
 
     encryptionManager = EncryptionKeyManager::get(service);
 

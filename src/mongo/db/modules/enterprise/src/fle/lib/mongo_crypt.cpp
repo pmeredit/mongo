@@ -139,10 +139,11 @@ static void buildExplainReturnMessage(OperationContext* opCtx,
     }
 }
 
-namespace {
 BSONObj analyzeNonExplainQuery(const BSONObj document,
                                OperationContext* opCtx,
                                const NamespaceString ns) {
+    using VTS = auth::ValidatedTenancyScope;
+
     mongo::OpMsgRequest opmsg;
     opmsg.body = document;
     if (auto tenant = ns.dbName().tenantId()) {
@@ -283,10 +284,7 @@ BSONObj analyzeExplainQuery(const BSONObj document,
     buildExplainReturnMessage(opCtx, &explainBuilder, innerResult, explainCmd.getVerbosity());
     return explainBuilder.obj();
 }
-}  // namespace
 
-// This is used in tests but not exposed in a header
-BSONObj analyzeQuery(BSONObj document, OperationContext* opCtx, NamespaceString ns);
 BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const NamespaceString ns) {
     const StringData commandName = document.firstElementFieldName();
     if (commandName == "explain"_sd) {
@@ -295,7 +293,6 @@ BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const Name
     return analyzeNonExplainQuery(document, opCtx, ns);
 }
 
-namespace {
 uint64_t getMongoCryptVersion() {
     return (static_cast<uint64_t>(version::kMajorVersion) << 48) |
         (static_cast<uint64_t>(version::kMinorVersion) << 32) |
@@ -310,7 +307,6 @@ const char* getMongoCryptVersionStr() {
     static const auto version = "mongo_crypt_v1-" MONGO_DISTMOD "-" + version::kVersion;
     return version.c_str();
 }
-}  // namespace
 
 }  // namespace mongo
 

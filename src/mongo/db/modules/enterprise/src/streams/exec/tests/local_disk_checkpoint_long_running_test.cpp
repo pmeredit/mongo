@@ -79,6 +79,8 @@ const BSONObj* get_object() {
     return &objs[rand_range(0, objs.size() - 1)];
 }
 
+}  // namespace
+
 using namespace streams;
 using fspath = std::filesystem::path;
 
@@ -283,7 +285,6 @@ int nospaceTest() {
 
     return 1;
 }
-}  // namespace
 
 int main(int argc, char** argv) {
 

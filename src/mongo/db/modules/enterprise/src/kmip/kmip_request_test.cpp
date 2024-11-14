@@ -62,6 +62,18 @@ const size_t kRequestPayloadSizeIndex = 103U;
 const size_t kVersionMajorIndex = 35U;
 const size_t kVersionMinorIndex = 51U;
 
+void printExpectedOutput(std::vector<uint8_t> const& output) {
+    int count = 0;
+    for (auto val : output) {
+        count++;
+        std::cout << unsignedHex(+val) << " ";
+        if (count % 8 == 0) {
+            std::cout << '\n';
+        }
+    }
+    std::cout << '\n' << std::endl;
+}
+
 // clang-format off
 std::vector<uint8_t> expectedOutput = {
     0x42, 0x00, 0x78, 0x01, 0x00, 0x00, 0x00, 0xFF,

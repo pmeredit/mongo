@@ -18,7 +18,17 @@ namespace mongo {
 MONGO_FAIL_POINT_DEFINE(auditLogRotateFileExists);
 namespace logger {
 
+namespace {
+
 using namespace fmt::literals;
+
+/**
+ * Renames file "oldName" to "newName".
+ *
+ * Both names are UTF-8 encoded.
+ */
+int renameFile(const std::string& oldName, const std::string& newName);
+}  // namespace
 
 #ifdef _WIN32
 namespace {
