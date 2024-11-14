@@ -29,6 +29,14 @@ namespace mongo {
 
 namespace {
 
+const Timestamp createCollectionTs = Timestamp(10, 10);
+
+const NamespaceString kAdmin =
+    NamespaceString::createNamespaceString_forTest("admin", "collection");
+const NamespaceString kConfig =
+    NamespaceString::createNamespaceString_forTest("config", "collection");
+const NamespaceString kLocal =
+    NamespaceString::createNamespaceString_forTest("local", "collection");
 const NamespaceString kNss = NamespaceString::createNamespaceString_forTest("db", "collection");
 const NamespaceString kTs =
     NamespaceString::createNamespaceString_forTest("timeseries-test", "collection");
@@ -375,7 +383,6 @@ protected:
 };
 
 TEST_F(BackupCursorServiceTest, OpenBackupCursor) {
-    const Timestamp createCollectionTs = Timestamp(10, 10);
     createCollection(opCtx.get(), kNss, createCollectionTs);
     storageEngine->checkpoint();
     auto backupCursorState = openBackupCursor();
@@ -399,7 +406,6 @@ TEST_F(BackupCursorServiceTest, OpenBackupCursor) {
 
 TEST_F(BackupCursorServiceTest, NsUUIDCheck) {
     // NS and UUID check on a full backup
-    const Timestamp createCollectionTs = Timestamp(10, 10);
     createCollection(opCtx.get(), kNss, createCollectionTs);
     storageEngine->checkpoint();
 
@@ -412,8 +418,6 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheck) {
 
 TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectoryPerDb) {
     // NS and UUID check on a full backup with directoryperdb = True
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-
     storageGlobalParams.directoryperdb = true;
 
     createCollection(opCtx.get(), kNss, createCollectionTs);
@@ -429,8 +433,6 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectoryPerDb) {
 
 TEST_F(BackupCursorServiceTest, NsUUIDCheckWTDirectoryForIndexes) {
     // NS and UUID check on a full backup with directoryForIndexes = True
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-
     wiredTigerGlobalOptions.directoryForIndexes = true;
 
     createCollection(opCtx.get(), kNss, createCollectionTs);
@@ -446,8 +448,6 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckWTDirectoryForIndexes) {
 
 TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectories) {
     // NS and UUID check on a full backup with both directoryperdb and directoryForIndexes
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-
     wiredTigerGlobalOptions.directoryForIndexes = true;
     storageGlobalParams.directoryperdb = true;
 
@@ -464,8 +464,6 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectories) {
 
 TEST_F(BackupCursorServiceTest, FullBackupCursorFormat) {
     // Testing non-incremental backup document format
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-
     createCollection(opCtx.get(), kNss, createCollectionTs);
     storageEngine->checkpoint();
 
@@ -475,9 +473,44 @@ TEST_F(BackupCursorServiceTest, FullBackupCursorFormat) {
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
+TEST_F(BackupCursorServiceTest, FullBackupCursorFormatAdmin) {
+    // Testing non-incremental backup document format for admin database
+    createCollection(opCtx.get(), kAdmin, createCollectionTs);
+    storageEngine->checkpoint();
+
+    auto backupCursorState = openBackupCursor();
+    auto cursor = backupCursorState.streamingCursor.get();
+
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+}
+
+TEST_F(BackupCursorServiceTest, FullBackupCursorFormatConfig) {
+    // Testing non-incremental backup document format for config database
+    createCollection(opCtx.get(), kConfig, createCollectionTs);
+    storageEngine->checkpoint();
+
+    auto backupCursorState = openBackupCursor();
+    auto cursor = backupCursorState.streamingCursor.get();
+
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+}
+
+TEST_F(BackupCursorServiceTest, FullBackupCursorFormatLocal) {
+    // Testing non-incremental backup document format for local database
+    createCollection(opCtx.get(), kLocal, createCollectionTs);
+    storageEngine->checkpoint();
+
+    auto backupCursorState = openBackupCursor();
+    auto cursor = backupCursorState.streamingCursor.get();
+
+    validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+}
+
 TEST_F(BackupCursorServiceTest, IncBackupCursorFormat) {
     // Testing incremental backup document format.
-    const Timestamp createCollectionTs = Timestamp(15, 15);
     auto storage = std::make_unique<repl::StorageInterfaceImpl>();
 
     [[maybe_unused]] auto uuid = createCollection(opCtx.get(), kNss, createCollectionTs);
@@ -508,7 +541,6 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormat) {
 
 TEST_F(BackupCursorServiceTest, IncBackupCursorFormatTimeSeries) {
     // Testing incremental backup document format with time-series.
-    const Timestamp createCollectionTs = Timestamp(25, 25);
     auto storage = std::make_unique<repl::StorageInterfaceImpl>();
 
     CollectionOptions options;
