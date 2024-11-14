@@ -441,7 +441,9 @@ TEST(MagicRestore, RestoreConfigurationShardingRenameNoShardIdentity) {
 class MagicRestoreFixture : public ServiceContextMongoDTest {
 public:
     explicit MagicRestoreFixture(Options options = {})
-        : ServiceContextMongoDTest(std::move(options)) {}
+        : ServiceContextMongoDTest(std::move(options)) {
+        AuthorizationManager::get(getService())->setAuthEnabled(true);
+    }
 
     OperationContext* operationContext() {
         return _opCtx.get();
@@ -1172,15 +1174,6 @@ TEST_F(MagicRestoreFixture, CreateNewAutomationCredentials) {
 // specified roles or users already exist.
 TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
     auto storage = storageInterface();
-
-    // The update code path checks if the role and user exist in the mock authorization manager
-    // backend, so we need to set it up.
-    auto globalAuthzManagerFactory = std::make_unique<AuthorizationManagerFactoryMock>();
-    AuthorizationManager::set(getService(), globalAuthzManagerFactory->createShard(getService()));
-    AuthorizationManager::get(getService())->setAuthEnabled(true);
-
-    auth::AuthorizationBackendInterface::set(
-        getService(), globalAuthzManagerFactory->createBackendInterface(getService()));
 
     auto mockBackend = reinterpret_cast<auth::AuthorizationBackendMock*>(
         auth::AuthorizationBackendInterface::get(getService()));
