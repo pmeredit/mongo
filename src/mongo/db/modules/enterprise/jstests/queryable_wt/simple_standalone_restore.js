@@ -3,7 +3,7 @@
  *
  * @tags: [requires_wiredtiger]
  */
-import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {
     kSeparator
 } from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
@@ -51,7 +51,7 @@ while (backupCursor.hasNext()) {
 
     // Copy all the files for the full backup.
     jsTestLog("Copying file: " + tojson(doc));
-    _copyFileHelper(
+    copyFileHelper(
         {filename: doc.filename, fileSize: doc.fileSize}, conn.dbpath, TestData.queryable_dbpath);
 }
 

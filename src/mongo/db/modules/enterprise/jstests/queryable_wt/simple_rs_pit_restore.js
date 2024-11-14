@@ -3,7 +3,7 @@
  *
  * @tags: [requires_wiredtiger]
  */
-import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {
     kSeparator
@@ -61,9 +61,9 @@ while (backupCursor.hasNext()) {
 
     // Copy all the files for the full backup.
     jsTestLog("Copying file: " + tojson(doc));
-    _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
-                    primary.dbpath,
-                    TestData.queryable_dbpath);
+    copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
+                   primary.dbpath,
+                   TestData.queryable_dbpath);
 }
 
 backupCursor.close();

@@ -12,7 +12,7 @@
  *     requires_wiredtiger
  * ]
  */
-import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {extractUUIDFromObject} from "jstests/libs/uuid_util.js";
 import {
@@ -84,14 +84,14 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
         // Copy all the files for the full backup.
         jsTestLog("Copying for full backup: " + tojson(doc));
-        _copyFileHelper(
+        copyFileHelper(
             {filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, fullBackupPath);
 
         if (doc.required) {
             jsTestLog("Copying required file for selective backup: " + tojson(doc));
-            _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
-                            primary.dbpath,
-                            selectiveBackupPath);
+            copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
+                           primary.dbpath,
+                           selectiveBackupPath);
             continue;
         }
 
@@ -119,9 +119,9 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
             }
 
             jsTestLog("Copying for selective backup: " + tojson(doc));
-            _copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
-                            primary.dbpath,
-                            selectiveBackupPath);
+            copyFileHelper({filename: doc.filename, fileSize: doc.fileSize},
+                           primary.dbpath,
+                           selectiveBackupPath);
             continue;
         }
 
@@ -156,7 +156,7 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
         optionalFilesCopied[doc.uuid] = entry;
 
         jsTestLog("Copying for selective backup: " + tojson(doc));
-        _copyFileHelper(
+        copyFileHelper(
             {filename: doc.filename, fileSize: doc.fileSize}, primary.dbpath, selectiveBackupPath);
     }
 
