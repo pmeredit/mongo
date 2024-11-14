@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "magic_restore/magic_restore_structs_gen.h"
 #include "mongo/bson/bsonelement.h"
@@ -37,7 +38,7 @@
 #include "mongo/util/exit.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
-#include <vector>
+#include "mongo/util/string_map.h"
 
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kMagicRestore
@@ -519,7 +520,7 @@ mongo::ShardIdentity getShardIdentity(OperationContext* opCtx,
                                                .firstElement()));
 
     // mongo::ShardIdentity::parse expects only the 3 fields below, removing others.
-    auto fieldsToRemove = shardIdentity.getFieldNames<std::set<std::string>>();
+    auto fieldsToRemove = shardIdentity.getFieldNames<StringDataSet>();
     fieldsToRemove.erase("shardName");
     fieldsToRemove.erase("clusterId");
     fieldsToRemove.erase("configsvrConnectionString");

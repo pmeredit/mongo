@@ -461,9 +461,7 @@ private:
         if (dataKeyObj.isEmpty()) {
             uasserted(ErrorCodes::BadValue, "Invalid keyAltName.");
         }
-        BSONElement uuidElem;
-        dataKeyObj.getObjectID(uuidElem);
-        return uassertStatusOK(UUID::parse(uuidElem));
+        return uassertStatusOK(UUID::parse(dataKeyObj["_id"]));
     }
 
     NamespaceString getBulkWriteNs(const BSONObj& body) {
