@@ -29,7 +29,6 @@
 #include "mongo/util/net/http_client_mock.h"
 #include "mongo/util/str.h"
 #include "mongo/util/tick_source_mock.h"
-#include "mongo/util/timer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
@@ -108,10 +107,6 @@ public:
         auto httpStatusCode = actualStreamMetaExternalAPIBson["httpStatusCode"];
         ASSERT_TRUE(httpStatusCode.ok());
         ASSERT_EQ(httpStatusCode.Int(), expectedStreamMetaExternalAPI.getHttpStatusCode());
-    }
-
-    void tryLog(int id, std::function<void(int logID)> logFn) {
-        _oper->tryLog(id, logFn);
     }
 
 protected:
@@ -1385,85 +1380,6 @@ TEST_F(ExternalApiOperatorTest, ShouldSupportEmptyPayload) {
                             expectedStreamMetaExternalAPI,
                             docBSON[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
                     });
-}
-
-TEST_F(ExternalApiOperatorTest, ShouldNotLogSameIDWithinAMinute) {
-    int count{0};
-
-    TickSourceMock<Milliseconds> tickSource;
-    _oper = std::make_unique<ExternalApiOperator>(_context.get(),
-                                                  ExternalApiOperator::Options{
-                                                      .timer = Timer{&tickSource},
-                                                  });
-
-    auto incCount = [&count](int _) -> void { count++; };
-
-    // Should log
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 1);
-
-    // Should not log since no time has passed
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 1);
-
-    // Should not log since insufficient time has passed
-    tickSource.advance(Seconds(59));
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 1);
-
-    // Should log since sufficient time has passed
-    tickSource.advance(Seconds(1));
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 2);
-
-    // Should not log since no time has passed
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 2);
-}
-
-TEST_F(ExternalApiOperatorTest, ShouldLogDifferentIDWithinAMinute) {
-    int count{0};
-
-    TickSourceMock<Milliseconds> tickSource;
-    _oper = std::make_unique<ExternalApiOperator>(_context.get(),
-                                                  ExternalApiOperator::Options{
-                                                      .timer = Timer{&tickSource},
-                                                  });
-
-    auto incCount = [&count](int _) -> void { count++; };
-
-    // Should log for any ID
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 1);
-    tryLog(1, incCount);
-    ASSERT_EQ(count, 2);
-
-    // Should only log for new IDs
-    tickSource.advance(Seconds(59));
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 2);
-    tryLog(1, incCount);
-    ASSERT_EQ(count, 2);
-    tryLog(2, incCount);
-    ASSERT_EQ(count, 3);
-
-    // Should only log for IDs 0 and 1
-    tickSource.advance(Seconds(59));
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 4);
-    tryLog(1, incCount);
-    ASSERT_EQ(count, 5);
-    tryLog(2, incCount);
-    ASSERT_EQ(count, 5);
-
-    // Should log for all IDs since sufficient time has passed for
-    tickSource.advance(Minutes(2));
-    tryLog(0, incCount);
-    ASSERT_EQ(count, 6);
-    tryLog(1, incCount);
-    ASSERT_EQ(count, 7);
-    tryLog(2, incCount);
-    ASSERT_EQ(count, 8);
 }
 
 // TODO(SERVER-95032): Add failure case test where we DLQ a a document once we can use the planner
