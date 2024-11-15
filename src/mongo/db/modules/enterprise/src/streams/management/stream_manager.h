@@ -35,13 +35,9 @@ class Future;
 
 namespace streams {
 
-namespace {
-
 // Fixed memory limit buffer space, the memory limit will be set to the process memory
 // limit minus this buffer space.
-static constexpr int64_t kMemoryLimitBufferSpaceBytes = 2LL * 1024 * 1024 * 1024;  // 2 GB
-
-};  // namespace
+inline constexpr int64_t kMemoryLimitBufferSpaceBytes = 2LL * 1024 * 1024 * 1024;  // 2 GB
 
 /**
  * StreamManager is the entrypoint for all streamProcessor management operations.

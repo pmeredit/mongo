@@ -11,11 +11,9 @@
 
 #include "streams/exec/kafka_callback_base.h"
 
-namespace {
-using AddrInfoPtr = std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)>;
-}
 namespace streams {
 
+using AddrInfoPtr = std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)>;
 struct Context;
 
 // KafkaResolveCallback is used to resolve names when VPC peering is enabled.
