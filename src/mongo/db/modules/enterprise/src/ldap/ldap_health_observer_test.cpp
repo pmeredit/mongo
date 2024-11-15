@@ -26,7 +26,7 @@ using test::FaultManagerTest;
 class LdapHealthObserverTest : public FaultManagerTest {
 public:
     void setUp() override {
-        createServiceContextIfNeeded();
+        advanceTime(Seconds(100));
         bumpUpLogging();
         resetManager();
 
@@ -69,7 +69,7 @@ public:
             std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
         auto manager = std::make_unique<LDAPManagerImpl>(
             std::move(runner), std::move(queryParameters), std::move(mapper));
-        LDAPManager::set(svcCtx(), std::move(manager));
+        LDAPManager::set(getServiceContext(), std::move(manager));
     }
 
     LdapHealthObserver& observer() {

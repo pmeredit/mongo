@@ -69,7 +69,8 @@ public:
         : ServiceContextMongoDTest(std::make_unique<MongoDScopedGlobalServiceContextForTest>(
               ServiceContext::make(std::make_unique<ClockSourceMock>(),
                                    std::make_unique<ClockSourceMock>()),
-              Options{}.engine("devnull"))) {}
+              Options{}.engine("devnull"),
+              shouldSetupTL)) {}
 
     executor::ThreadPoolMock::Options makeThreadPoolMockOptions() const;
 
