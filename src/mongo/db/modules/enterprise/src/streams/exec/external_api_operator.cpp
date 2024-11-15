@@ -9,6 +9,7 @@
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/stdx/string_view.hpp>
 #include <cstdio>
+#include <cstring>
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <curl/urlapi.h>
@@ -24,6 +25,8 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/json.h"
 #include "mongo/logv2/log.h"
+#include "mongo/logv2/log_attr.h"
+#include "mongo/logv2/log_severity.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
@@ -317,6 +320,13 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
                             rawResponse),
                 httpResponse->code >= 200 && httpResponse->code < 300);
     } catch (const DBException& e) {
+        tryLog(9604800, [&](int logID) {
+            LOGV2_INFO(logID,
+                       "Error occurred while performing request in ExternalApiOperator",
+                       "context"_attr = _context,
+                       "error"_attr = e.what());
+        });
+
         switch (_options.onError) {
             case mongo::OnErrorEnum::DLQ: {
                 writeToDLQ(streamDoc, e.what(), processResult);
@@ -345,6 +355,13 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
             apiResponse = fromBsoncxxDocument(bsoncxx::from_json(responseView));
         }
     } catch (const bsoncxx::exception& e) {
+        tryLog(9604801, [&](int logID) {
+            LOGV2_INFO(logID,
+                       "Error occured while reading response in ExternalApiOperator",
+                       "context"_attr = _context,
+                       "error"_attr = e.what());
+        });
+
         switch (_options.onError) {
             case mongo::OnErrorEnum::DLQ: {
                 writeToDLQ(streamDoc,
@@ -473,6 +490,18 @@ mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(const mongo::Do
     MutableDocument output(std::move(inputDoc));
     output.setNestedField(_options.as, std::move(apiResponse));
     return output.freeze();
+}
+
+void ExternalApiOperator::tryLog(int id, std::function<void(int logID)> logFn) {
+    if (!_logIDToRateLimiter.contains(id)) {
+        _logIDToRateLimiter[id] = std::make_unique<RateLimiter>(kTryLogRate, 1, &_options.timer);
+    }
+
+    if (_logIDToRateLimiter[id]->consume() > Seconds(0)) {
+        return;
+    }
+
+    logFn(id);
 }
 
 int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
