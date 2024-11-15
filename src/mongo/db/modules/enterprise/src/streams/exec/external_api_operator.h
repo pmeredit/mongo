@@ -9,10 +9,12 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
+#include "mongo/logv2/log_attr.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/cidr.h"
@@ -99,6 +101,10 @@ protected:
 
 
 private:
+    friend class ExternalApiOperatorTest;
+
+    static constexpr double kTryLogRate{1.0 / 60};
+
     struct ProcessResult {
         bool addDocToOutputMsg{false};
         int64_t dataMsgBytes{0};
@@ -152,6 +158,9 @@ private:
     // for the given document
     void writeToDLQ(StreamDocument* streamDoc, const std::string& errorMsg, ProcessResult& result);
 
+    // tryLog will only log if the given logID hasn't been used within the last minute
+    void tryLog(int id, std::function<void(int logID)> logFn);
+
     ExternalApiOperator::Options _options;
 
     int64_t _rateLimitPerSec;
@@ -160,6 +169,8 @@ private:
     std::vector<mongo::CIDR> _cidrDenyList;
 
     std::shared_ptr<Counter> _throttleDurationCounter;
+
+    stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
 };
 
 int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);
