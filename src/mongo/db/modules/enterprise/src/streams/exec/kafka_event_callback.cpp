@@ -9,6 +9,8 @@
 
 #include "mongo/bson/bsontypes.h"
 #include "mongo/stdx/mutex.h"
+#include "mongo/util/duration.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
 
@@ -46,6 +48,11 @@ bool KafkaEventCallback::hasError() {
 }
 
 SPStatus KafkaEventCallback::appendRecentErrorsToStatus(SPStatus status) {
+    if (!hasError()) {
+        // If there are no errors, we should wait briefly to see if any new errors are appended from
+        // the async callback
+        sleepFor(Seconds{2});
+    }
     std::deque<std::string> kafkaMessages;
     {
         stdx::unique_lock<stdx::mutex> lock(_mutex);
