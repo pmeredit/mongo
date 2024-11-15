@@ -37,7 +37,8 @@ const st = new ShardingTest({
         rs1: {nodes: [{}, {rsConfig: {priority: 0}}]}
     },
     mongos: 1,
-    config: [{}, {rsConfig: {priority: 0}}]
+    config: [{}, {rsConfig: {priority: 0}}],
+    initiateWithDefaultElectionTimeout: true
 });
 
 const dbName = "db";

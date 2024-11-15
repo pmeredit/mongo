@@ -33,7 +33,7 @@ function runTest(nodeOptionsArg) {
     jsTestLog("Running PIT magic restore with nodeOptionsArg: " + tojson(nodeOptionsArg));
     const sourceCluster = new ReplSetTest({nodes: 1, nodeOptions: nodeOptionsArg});
     sourceCluster.startSet();
-    sourceCluster.initiateWithHighElectionTimeout();
+    sourceCluster.initiate();
 
     const sourcePrimary = sourceCluster.getPrimary();
     const dbName = "db";
