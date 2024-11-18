@@ -483,8 +483,7 @@ std::shared_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
 
     // For multitenancy test we use the serverless_test db to store the keyvault. See SERVER-72809.
     // We enable gMultitenancySupport flag in the shell when using a database named serverless_test
-    // for auth::ValidatedTenancyScopeFactory::parse. Setting this flag in the shell is incompatible
-    // with serverless tenant migration tests which is why it is not set in resmoke suite config.
+    // for auth::ValidatedTenancyScopeFactory::parse.
     if (encryptionOptions.getKeyVaultNamespace().startsWith("serverless_test")) {
         gMultitenancySupport = true;
     }
