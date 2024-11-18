@@ -82,8 +82,8 @@ let reshardingHang =
     configureFailPoint(st.configRS.getPrimary(), "reshardingPauseCoordinatorBeforeBlockingWrites");
 const awaitResult = startParallelShell(
     funWithArgs(function(ns) {
-        assert.commandWorked(
-            db.adminCommand({reshardCollection: ns, key: {numForPartition: "hashed"}}));
+        assert.commandWorked(db.adminCommand(
+            {reshardCollection: ns, key: {numForPartition: "hashed"}, numInitialChunks: 2}));
     }, fullNs), st.s.port);
 
 reshardingHang.wait();
@@ -215,6 +215,7 @@ const excludedCollections = [
     "localReshardingOperations.donor",
     "localReshardingOperations.recipient",
     "localReshardingOperations.recipient.progress_applier",
+    "localReshardingOperations.recipient.progress_fetcher",
     "cache.chunks.config.system.sessions",
     `cache.chunks.${dbName}.${coll}`,
     `cache.chunks.db.system.resharding.${collUuid}`,

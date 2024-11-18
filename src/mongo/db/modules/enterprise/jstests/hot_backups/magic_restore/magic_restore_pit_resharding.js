@@ -91,8 +91,8 @@ function runTest(insertHigherTermOplogEntry) {
                                             "reshardingPauseCoordinatorBeforeBlockingWrites");
     const awaitResult = startParallelShell(
         funWithArgs(function(ns) {
-            assert.commandWorked(
-                db.adminCommand({reshardCollection: ns, key: {numForPartition: "hashed"}}));
+            assert.commandWorked(db.adminCommand(
+                {reshardCollection: ns, key: {numForPartition: "hashed"}, numInitialChunks: 2}));
         }, fullNs), st.s.port);
 
     reshardingHang.wait();
@@ -270,11 +270,6 @@ function runTest(insertHigherTermOplogEntry) {
                 expectedNumDocsSnapshot: 4,
             });
 
-            const donors = node.getDB("config")
-                               .getCollection("localReshardingOperations.donor")
-                               .find()
-                               .toArray();
-
             // Each 'config.localReshardingOperations.donor' entry has the following shape:
             // {
             //   ...
@@ -291,17 +286,17 @@ function runTest(insertHigherTermOplogEntry) {
             //       ...
             //   ]
             // }
-            assert(donors.every(donor => {
-                return donor.mutableState.abortReason.code ===
-                    ErrorCodes.ReshardCollectionAborted &&
-                    donor.recipientShards.every(recipientShardId => regex.test(recipientShardId));
-            }),
-                   tojson(donors));
-
-            const recipients = node.getDB("config")
-                                   .getCollection("localReshardingOperations.recipient")
+            assert.soonNoExcept(() => {
+                const donors = node.getDB("config")
+                                   .getCollection("localReshardingOperations.donor")
                                    .find()
                                    .toArray();
+                return donors.every(({mutableState, recipientShards}) => {
+                    return mutableState.abortReason.code === ErrorCodes.ReshardCollectionAborted &&
+                        recipientShards.every(recipientShardId => regex.test(recipientShardId));
+                });
+            });
+
             // Each 'config.localReshardingOperations.recipient' entry has the following shape:
             // {
             //   ...
@@ -320,12 +315,16 @@ function runTest(insertHigherTermOplogEntry) {
             //     ...
             //   ]
             // }
-            assert(recipients.every(recipient => {
-                return recipient.mutableState.abortReason.code ===
-                    ErrorCodes.ReshardCollectionAborted &&
-                    recipient.donorShards.every(donorShardId => regex.test(donorShardId.shardId));
-            }),
-                   tojson(recipients));
+            assert.soonNoExcept(() => {
+                const recipients = node.getDB("config")
+                                       .getCollection("localReshardingOperations.recipient")
+                                       .find()
+                                       .toArray();
+                return recipients.every(({mutableState, donorShards}) => {
+                    return mutableState.abortReason.code === ErrorCodes.ReshardCollectionAborted &&
+                        donorShards.every(donorShardId => regex.test(donorShardId.shardId));
+                });
+            });
 
             // Disable the failpoint so that the documents in the 'localReshardingOperations'
             // collection can be dropped.
@@ -359,6 +358,7 @@ function runTest(insertHigherTermOplogEntry) {
         "localReshardingOperations.donor",
         "localReshardingOperations.recipient",
         "localReshardingOperations.recipient.progress_applier",
+        "localReshardingOperations.recipient.progress_fetcher",
         "cache.chunks.config.system.sessions",
         `cache.chunks.${dbName}.${coll}`,
         `cache.chunks.db.system.resharding.${collUuid}`,

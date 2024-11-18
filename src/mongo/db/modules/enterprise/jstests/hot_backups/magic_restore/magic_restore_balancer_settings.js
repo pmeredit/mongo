@@ -26,6 +26,10 @@ import {ShardedMagicRestoreTest} from "jstests/libs/sharded_magic_restore_test.j
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
 
+// TODO SERVER-87225: Enable fast count on validate when operations applied during a restore are
+// counted correctly.
+TestData.skipEnforceFastCountOnValidate = true;
+
 jsTestLog(
     "Running non-PIT magic restore with balancer settings specified in the restore configuration");
 // Setting priorities on the second node because assertConfigIsCorrect checks terms:
