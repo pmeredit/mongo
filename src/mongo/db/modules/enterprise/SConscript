@@ -87,6 +87,9 @@ env.AppendUnique(
 env.SConscript(
     must_exist=1,
     dirs=[
+        "src/kmip",
+    ]
+    + [
         "src/%s" % feature
         for feature in env.Flatten(feature_dirs)
         if feature in env["MONGO_ENTERPRISE_FEATURES"]
@@ -95,22 +98,6 @@ env.SConscript(
         "env",
     ],
 )
-
-if "encryptdb" in env["MONGO_ENTERPRISE_FEATURES"] or "audit" in env["MONGO_ENTERPRISE_FEATURES"]:
-    env.CppUnitTest(
-        target="kmip_test",
-        source=[
-            "src/kmip/kmip_request_test.cpp",
-            "src/kmip/kmip_response_test.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/db/concurrency/lock_manager",
-            "$BUILD_DIR/mongo/db/server_base",
-            "$BUILD_DIR/mongo/transport/transport_layer_common",
-            "kmip",
-            "kmip_configuration",
-        ],
-    )
 
 if env.TargetOSIs("windows"):
     libs = []

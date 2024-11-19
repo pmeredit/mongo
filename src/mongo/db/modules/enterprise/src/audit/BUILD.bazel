@@ -84,8 +84,8 @@ mongo_cc_library(
     deps = [
         "audit_config",
         "//src/mongo/db:server_base",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
         "//src/mongo/db/modules/enterprise/src/encryptdb:key_acquisition",
+        "//src/mongo/db/modules/enterprise/src/encryptdb:symmetric_crypto_enterprise",
         "//src/mongo/transport:message_compressor",
     ],
 )
@@ -300,8 +300,8 @@ mongo_cc_unit_test(
         "//src/mongo/db/auth:authprivilege",
         "//src/mongo/db/catalog:catalog_helpers",
         "//src/mongo/db/commands:create_command",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
         "//src/mongo/db/modules/enterprise/src/encryptdb:key_acquisition",
+        "//src/mongo/db/modules/enterprise/src/encryptdb:symmetric_crypto_enterprise",
         "//src/mongo/db/op_observer:op_observer_util",
         "//src/mongo/db/repl:oplog",
         "//src/mongo/db/repl:oplog_interface_local",

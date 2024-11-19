@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -12,4 +12,70 @@ exports_files(
 idl_generator(
     name = "kmip_options_gen",
     src = "kmip_options.idl",
+)
+
+mongo_cc_library(
+    name = "kmip_configuration",
+    srcs = [
+        ":kmip_options_gen",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:enterprise_feature_audit_enabled": [],
+        "//bazel/config:enterprise_feature_encryptdb_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_library(
+    name = "kmip",
+    srcs = [
+        "kmip_key_active_periodic_job.cpp",
+        "kmip_request.cpp",
+        "kmip_response.cpp",
+        "kmip_service.cpp",
+    ],
+    hdrs = [
+        "kmip_key_active_periodic_job.h",
+        "kmip_request.h",
+        "kmip_response.h",
+        "kmip_service.h",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:enterprise_feature_audit_enabled": [],
+        "//bazel/config:enterprise_feature_encryptdb_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":kmip_configuration",
+        "//src/mongo/crypto:symmetric_crypto",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db/modules/enterprise/src/encryptdb:symmetric_crypto_enterprise",
+        "//src/mongo/util/net:network",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "kmip_test",
+    srcs = [
+        "kmip_request_test.cpp",
+        "kmip_response_test.cpp",
+    ],
+    tags = ["mongo_unittest_second_group"],
+    target_compatible_with = select({
+        "//bazel/config:enterprise_feature_audit_enabled": [],
+        "//bazel/config:enterprise_feature_encryptdb_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":kmip",
+        ":kmip_configuration",
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/concurrency:lock_manager",
+        "//src/mongo/transport:transport_layer_common",
+    ],
 )

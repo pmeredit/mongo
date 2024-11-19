@@ -63,7 +63,7 @@ mongo_cc_library(
     ],
     deps = [
         "//src/mongo/db/auth:security_file",
-        "//src/mongo/db/modules/enterprise:kmip",
+        "//src/mongo/db/modules/enterprise/src/kmip",
     ],
 )
 
@@ -77,10 +77,10 @@ mongo_cc_library(
         "keystore_metadata.h",
     ],
     deps = [
+        ":symmetric_crypto_enterprise",
         "//src/mongo/crypto:symmetric_crypto",
         "//src/mongo/db:server_base",
         "//src/mongo/db:service_context",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
         "//src/mongo/db/storage:storage_engine_metadata",
     ],
 )
@@ -97,10 +97,10 @@ mongo_cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
-        "encryptdb",
+        ":encryptdb",
+        ":symmetric_crypto_enterprise",
         "//src/mongo/db:shard_role_api",
         "//src/mongo/db/commands:server_status_core",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
     ],
 )
 
@@ -129,16 +129,48 @@ mongo_cc_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "key_acquisition",
-        "keystore_metadata",
+        ":key_acquisition",
+        ":keystore_metadata",
+        ":symmetric_crypto_enterprise",
         "//src/mongo/crypto:symmetric_crypto",
         "//src/mongo/db:server_base",
         "//src/mongo/db/catalog:catalog_impl",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
         "//src/mongo/db/storage:encryption_hooks",
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
         "//src/third_party/wiredtiger",
+    ],
+)
+
+mongo_cc_library(
+    name = "symmetric_crypto_enterprise",
+    srcs = [
+        "encryption_options.cpp",
+        "encryption_options_gen",
+        "symmetric_crypto.cpp",
+        "symmetric_crypto_smoke.cpp",
+        "//src/mongo/db/modules/enterprise/src/kmip:kmip_options.cpp",
+    ],
+    hdrs = [
+        "encryption_options.h",
+        "symmetric_crypto.h",
+        "symmetric_crypto_smoke.h",
+        "//src/mongo/db/modules/enterprise/src/kmip:kmip_consts.h",
+        "//src/mongo/db/modules/enterprise/src/kmip:kmip_options.h",
+    ],
+    target_compatible_with = select({
+        "//bazel/config:enterprise_feature_audit_enabled": [],
+        "//bazel/config:enterprise_feature_encryptdb_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":log_redact_options",
+        "//src/mongo/base:secure_allocator",
+        "//src/mongo/crypto:symmetric_crypto",
+        "//src/mongo/db/modules/enterprise/src/kmip:kmip_configuration",
+        "//src/mongo/util:secure_zero_memory",
+        "//src/mongo/util/net:ssl_manager",
+        "//src/mongo/util/options_parser",
     ],
 )
 
@@ -159,12 +191,12 @@ mongo_cc_unit_test(
     deps = [
         ":encryptdb",
         ":keystore_metadata",
+        ":symmetric_crypto_enterprise",
         "//src/mongo/db:server_base",
         "//src/mongo/db:service_context_test_fixture",
         "//src/mongo/db/auth:authmocks",
-        "//src/mongo/db/modules/enterprise:kmip",
-        "//src/mongo/db/modules/enterprise:kmip_configuration",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
+        "//src/mongo/db/modules/enterprise/src/kmip",
+        "//src/mongo/db/modules/enterprise/src/kmip:kmip_configuration",
         "//src/mongo/db/storage:remove_saver",
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
@@ -190,11 +222,11 @@ mongo_cc_unit_test(
     }),
     deps = [
         ":encryptdb",
+        ":symmetric_crypto_enterprise",
         "//src/mongo/db:service_context_d_test_fixture",
         "//src/mongo/db:shard_role_api",
         "//src/mongo/db/auth:authmocks",
         "//src/mongo/db/auth:security_file",
-        "//src/mongo/db/modules/enterprise:symmetric_crypto_enterprise",
         "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
         "//src/mongo/util/net:network",
     ],
