@@ -1543,31 +1543,22 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
     }
 
     if (const auto& urlPathOpt = parsedOperatorOptions.getUrlPath(); urlPathOpt) {
-        std::visit(OverloadedVisitor{
-                       [&](const BSONObj& bson) {
-                           options.urlPathExpr =
-                               Expression::parseExpression(_context->expCtx.get(),
-                                                           std::move(bson),
-                                                           _context->expCtx->variablesParseState);
-                       },
-                       [&](const std::string& str) {
-                           if (str[0] == '$') {
-                               options.urlPathExpr = ExpressionFieldPath::parse(
-                                   _context->expCtx.get(),
-                                   std::move(str),
-                                   _context->expCtx->variablesParseState);
-                           } else {
-                               std::string baseUrl{std::move(options.url)};
-                               if (baseUrl.back() == '/' && str.front() == '/') {
-                                   baseUrl.pop_back();
-                               } else if (baseUrl.back() != '/' && str.front() != '/') {
-                                   baseUrl += "/";
-                               }
-                               baseUrl += str;
-
-                               options.url = std::move(baseUrl);
-                           }
-                       }},
+        std::visit(OverloadedVisitor{[&](const BSONObj& bson) {
+                                         options.urlPathExpr = Expression::parseExpression(
+                                             _context->expCtx.get(),
+                                             std::move(bson),
+                                             _context->expCtx->variablesParseState);
+                                     },
+                                     [&](const std::string& str) {
+                                         if (str[0] == '$') {
+                                             options.urlPathExpr = ExpressionFieldPath::parse(
+                                                 _context->expCtx.get(),
+                                                 std::move(str),
+                                                 _context->expCtx->variablesParseState);
+                                         } else {
+                                             options.url = options.url + str;
+                                         }
+                                     }},
                    *urlPathOpt);
     }
 

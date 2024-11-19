@@ -12,6 +12,7 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <curl/urlapi.h>
+#include <iostream>
 #include <memory>
 #include <string>
 
@@ -30,7 +31,6 @@
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/overloaded_visitor.h"
 #include "mongo/util/str.h"
-#include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/log_util.h"
@@ -78,43 +78,6 @@ HttpMethodEnum httpMethodClientToIDLType(HttpClient::HttpMethod requestType) {
             tasserted(ErrorCodes::InternalError, "Unknown requestType");
     }
 }
-
-std::string urlEncodeAndJoinQueryParams(const std::vector<std::string>& params) {
-    std::vector<std::string> encoded;
-    encoded.reserve(params.size());
-
-    for (const auto& param : params) {
-        size_t splitIdx = param.find('=');
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                str::stream()
-                    << "Query parameters defined in " << kExternalApiStageName
-                    << " must have key-value pairs separated with a '=' character non-empty keys.",
-                splitIdx != std::string::npos && splitIdx > 0);
-        std::string key = urlEncode(param.substr(0, splitIdx));
-        std::string value = urlEncode(param.substr(splitIdx + 1));
-        std::string kvString;
-        str::joinStringDelim({std::move(key), std::move(value)}, &kvString, '=');
-        encoded.push_back(std::move(kvString));
-    }
-
-    std::string out;
-    str::joinStringDelim(encoded, &out, '&');
-    return out;
-}
-
-void validateQueryParam(const std::string& param) {
-    std::vector<std::string> keyAndValue;
-    str::splitStringDelim(param, &keyAndValue, '=');
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << "Query parameters defined in " << kExternalApiStageName
-                          << " must separate the key and value with a '=' character.",
-            keyAndValue.size() == 2);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << "Query parameters defined in " << kExternalApiStageName
-                          << " must have a non-empty key.",
-            !keyAndValue.at(0).empty());
-}
-
 }  // namespace
 
 using namespace mongo;
@@ -132,16 +95,7 @@ ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::
       _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
       _rateLimiter{_rateLimitPerSec, &_options.timer},
       _cidrDenyList{parseCidrDenyList()} {
-    tassert(
-        9688098, str::stream() << "Insufficient libcurl version.", LIBCURL_VERSION_NUM >= 0x074e00);
-
     _stats.connectionType = ConnectionTypeEnum::WebAPI;
-    parseBaseUrl();
-    validateOptions();
-
-    if (!_options.urlPathExpr && _options.queryParams.empty()) {
-        _staticEncodedUrl = makeUrlString({}, {});
-    }
 }
 
 std::vector<CIDR> ExternalApiOperator::parseCidrDenyList() {
@@ -304,7 +258,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     try {
         requestUrl = (_options.urlPathExpr || _options.queryParams.size() > 0)
             ? evaluateFullUrl(streamDoc->doc)
-            : _staticEncodedUrl;
+            : _options.url;
         headers = evaluateHeaders(inputDoc);
     } catch (const DBException& e) {
         writeToDLQ(streamDoc, e.what(), processResult);
@@ -350,12 +304,6 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     try {
         Timer timer{};
 
-        if (mongo::getTestCommandsEnabled()) {
-            LOGV2_INFO(9688099,
-                       "Making https request.",
-                       "context"_attr = _context,
-                       "url"_attr = requestUrl);
-        }
         httpResponse = _options.httpClient->request(_options.requestType, requestUrl, data);
         tassert(9502901, "Expected HTTP response to be set", httpResponse);
 
@@ -444,17 +392,17 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
 }
 
 std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
-    std::vector<std::string> queryParams;
-    std::string path;
+    // TODO(SERVER-96880) url encode the user-provided url.
+    std::string out = _options.url;
     if (_options.urlPathExpr) {
-        path = evaluatePath(doc);
+        out += evaluatePath(doc);
     }
 
     if (!_options.queryParams.empty()) {
-        queryParams = evaluateQueryParams(doc);
+        out += evaluateQueryParams(doc);
     }
 
-    return makeUrlString(std::move(path), std::move(queryParams));
+    return out;
 }
 
 std::string ExternalApiOperator::evaluatePath(const mongo::Document& doc) {
@@ -493,20 +441,22 @@ std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Docum
     return headers;
 }
 
-std::vector<std::string> ExternalApiOperator::evaluateQueryParams(const mongo::Document& doc) {
-    std::vector<std::string> keyValues;
+std::string ExternalApiOperator::evaluateQueryParams(const mongo::Document& doc) {
     if (_options.queryParams.empty()) {
-        return keyValues;
+        return "";
     }
 
+    std::vector<std::string> keyValues{};
     keyValues.reserve(_options.queryParams.size());
     for (const auto& kv : _options.queryParams) {
         // Note: the planner parses out expressions that are represented using strings so if
         // operatorHeaders has a string value, it is guaranteed to be a static string.
-        const std::string& key = kv.first;
+        std::string key = urlEncode(kv.first);
         std::visit(
             mongo::OverloadedVisitor{
-                [&](const std::string& str) { keyValues.push_back(getQueryParamsStr(key, str)); },
+                [&](const std::string& str) {
+                    keyValues.push_back(getQueryParamsStr(key, urlEncode(str)));
+                },
                 [&](const boost::intrusive_ptr<mongo::Expression>& expr) {
                     auto paramVal = expr->evaluate(doc, &_context->expCtx->variables);
                     uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
@@ -520,15 +470,18 @@ std::vector<std::string> ExternalApiOperator::evaluateQueryParams(const mongo::D
                     if (paramVal.getType() == mongo::BSONType::String) {
                         // Parse strings separately to avoid unnecessary quotations
                         // surrounding the string output of `.toString()`.
-                        keyValues.push_back(getQueryParamsStr(key, paramVal.getString()));
+                        keyValues.push_back(
+                            getQueryParamsStr(key, urlEncode(paramVal.getString())));
                     } else {
-                        keyValues.push_back(getQueryParamsStr(key, paramVal.toString()));
+                        keyValues.push_back(getQueryParamsStr(key, urlEncode(paramVal.toString())));
                     }
                 }},
             kv.second);
     }
 
-    return keyValues;
+    std::string out;
+    str::joinStringDelim(keyValues, &out, '&');
+    return "?" + std::move(out);
 }
 
 mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
@@ -548,255 +501,6 @@ void ExternalApiOperator::tryLog(int id, std::function<void(int logID)> logFn) {
     }
 
     logFn(id);
-}
-
-void ExternalApiOperator::parseBaseUrl() {
-    char *scheme{nullptr}, *user{nullptr}, *password{nullptr}, *host{nullptr}, *port{nullptr},
-        *path{nullptr}, *query{nullptr}, *fragment{nullptr};
-    auto handle = curl_url();
-
-    tassert(9617501, "Failed to initialize curl url handle", handle != nullptr);
-    ScopeGuard guard([&] {
-        curl_free(scheme);
-        curl_free(user);
-        curl_free(password);
-        curl_free(host);
-        curl_free(port);
-        curl_free(path);
-        curl_free(query);
-        curl_free(fragment);
-        curl_url_cleanup(handle);
-    });
-
-    UrlComponents out{};
-    auto result = curl_url_set(handle, CURLUPART_URL, _options.url.c_str(), 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions, "Parsing url failed.", result == CURLUE_OK);
-
-    result = curl_url_get(handle, CURLUPART_SCHEME, &scheme, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url scheme failed or is not defined",
-            result == CURLUE_OK && scheme != nullptr);
-    if (scheme != nullptr) {
-        out.scheme = std::string{scheme};
-    }
-
-    result = curl_url_get(handle, CURLUPART_USER, &user, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url username failed",
-            result == CURLUE_OK || result == CURLUE_NO_USER);
-    if (user != nullptr) {
-        out.user = std::string{user};
-    }
-
-    result = curl_url_get(handle, CURLUPART_PASSWORD, &password, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url password failed",
-            result == CURLUE_OK || result == CURLUE_NO_PASSWORD);
-    if (password != nullptr) {
-        out.password = std::string{password};
-    }
-
-    result = curl_url_get(handle, CURLUPART_HOST, &host, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
-            result == CURLUE_OK);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions, "Parsing url failed.", host != nullptr);
-    if (host != nullptr) {
-        out.host = std::string{host};
-    }
-
-    result = curl_url_get(handle, CURLUPART_PORT, &port, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
-            result == CURLUE_OK || result == CURLUE_NO_PORT);
-    if (port != nullptr) {
-        out.port = std::string{port};
-    }
-
-    result = curl_url_get(handle, CURLUPART_PATH, &path, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
-            result == CURLUE_OK);
-    if (path != nullptr) {
-        out.path = std::string{path};
-    }
-
-    result = curl_url_get(handle, CURLUPART_QUERY, &query, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url query params failed",
-            result == CURLUE_OK || result == CURLUE_NO_QUERY);
-    if (query != nullptr) {
-        std::vector<std::string> queryParamStrings;
-        str::splitStringDelim(std::string{query}, &queryParamStrings, '&');
-        for (const std::string& kv : queryParamStrings) {
-            validateQueryParam(kv);
-        }
-        out.queryParams = std::move(queryParamStrings);
-    }
-
-    result = curl_url_get(handle, CURLUPART_FRAGMENT, &fragment, 0);
-    uassert(9617510,
-            "Parsing url fragment failed",
-            result == CURLUE_OK || result == CURLUE_NO_FRAGMENT);
-    if (fragment != nullptr) {
-        out.fragment = std::string{fragment};
-    }
-
-    _baseUrlComponents = out;
-}
-
-std::string ExternalApiOperator::makeUrlString(std::string additionalPath,
-                                               std::vector<std::string> additionalQueryParams) {
-    CURLU* handle = curl_url();
-    ScopeGuard guard([&] { curl_url_cleanup(handle); });
-
-    CURLUcode result;
-
-    result = curl_url_set(handle, CURLUPART_SCHEME, _baseUrlComponents.scheme.c_str(), 0);
-    uassert(
-        ErrorCodes::StreamProcessorInvalidOptions, "Failed to set scheme.", result == CURLUE_OK);
-
-    if (!_baseUrlComponents.user.empty()) {
-        result = curl_url_set(handle, CURLUPART_USER, _baseUrlComponents.user.c_str(), 0);
-        uassert(
-            ErrorCodes::StreamProcessorInvalidOptions, "Failed to set user.", result == CURLUE_OK);
-    }
-    if (!_baseUrlComponents.password.empty()) {
-        result = curl_url_set(handle, CURLUPART_PASSWORD, _baseUrlComponents.password.c_str(), 0);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Failed to set password.",
-                result == CURLUE_OK);
-    }
-
-    result = curl_url_set(handle, CURLUPART_HOST, _baseUrlComponents.host.c_str(), 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions, "Failed to set host.", result == CURLUE_OK);
-
-    if (!_baseUrlComponents.port.empty()) {
-        result = curl_url_set(handle, CURLUPART_PORT, _baseUrlComponents.port.c_str(), 0);
-        uassert(
-            ErrorCodes::StreamProcessorInvalidOptions, "Failed to set port.", result == CURLUE_OK);
-    }
-
-    if (!_baseUrlComponents.path.empty() || !additionalPath.empty()) {
-        auto path = joinPaths(_baseUrlComponents.path, additionalPath);
-        result = curl_url_set(handle, CURLUPART_PATH, path.c_str(), CURLU_URLENCODE);
-        uassert(
-            ErrorCodes::StreamProcessorInvalidOptions, "Failed to set path.", result == CURLUE_OK);
-    }
-
-    if (!_baseUrlComponents.queryParams.empty() || !additionalQueryParams.empty()) {
-        additionalQueryParams.reserve(_baseUrlComponents.queryParams.size() +
-                                      additionalQueryParams.size());
-        if (!_baseUrlComponents.queryParams.empty()) {
-            additionalQueryParams.insert(additionalQueryParams.begin(),
-                                         _baseUrlComponents.queryParams.begin(),
-                                         _baseUrlComponents.queryParams.end());
-        }
-        std::string queryString = urlEncodeAndJoinQueryParams(additionalQueryParams);
-        result = curl_url_set(handle, CURLUPART_QUERY, queryString.c_str(), 0);
-        uassert(
-            ErrorCodes::StreamProcessorInvalidOptions, "Failed to set query.", result == CURLUE_OK);
-    }
-
-    if (!_baseUrlComponents.fragment.empty()) {
-        result = curl_url_set(
-            handle, CURLUPART_FRAGMENT, _baseUrlComponents.fragment.c_str(), CURLU_URLENCODE);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Failed to set fragment.",
-                result == CURLUE_OK);
-    }
-
-    char* out{nullptr};
-    ScopeGuard g([&] { curl_free(out); });
-    result = curl_url_get(handle, CURLUPART_URL, &out, 0);
-    tassert(9617515, "Failed to build url.", result == CURLUE_OK);
-    return std::string{out};
-}
-
-void ExternalApiOperator::validateOptions() {
-    bool baseUrlHasQuery = _baseUrlComponents.queryParams.size() > 0;
-    bool baseUrlHasFragment = !_baseUrlComponents.fragment.empty();
-
-    bool pathOptDefined = _options.urlPathExpr != nullptr;
-    bool queryOptDefined = !_options.queryParams.empty();
-
-    // These validations generally prevent users from making the operator interpolate parts of
-    // an url that the base url has already defined a later part for. For example, appending path on
-    // a base url that contains query params.
-    // ie: adding "/foo/bar" path to "http://localhost:80?foo=bar".
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            fmt::format("The url defined in {}.connection.url contains a fragment that can "
-                        "conflict with a query "
-                        "or url path in the operator definition.",
-                        kExternalApiStageName),
-            !(baseUrlHasFragment && (pathOptDefined || queryOptDefined)));
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            fmt::format("The url defined in {}.connection.url contains query parameters that can "
-                        "conflict with a "
-                        "url path in the operator definition.",
-                        kExternalApiStageName),
-            !(baseUrlHasQuery && pathOptDefined));
-
-    if (!mongo::getTestCommandsEnabled()) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                fmt::format("The url defined in {}.connection.url must use https",
-                            kExternalApiStageName),
-                _baseUrlComponents.scheme == kHttpsScheme);
-    }
-
-    for (const std::string& headerValue : _options.connectionHeaders) {
-        auto headerEndIdx = headerValue.find(':');
-        auto key = headerValue.substr(0, headerEndIdx);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                fmt::format("Keys defined in {}.connection.headers must not be empty.",
-                            kExternalApiStageName),
-                !key.empty());
-    }
-    for (const auto& headers : _options.operatorHeaders) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                fmt::format("Keys defined in {}.headers must not be empty.", kExternalApiStageName),
-                !headers.first.empty());
-    }
-}
-
-std::string ExternalApiOperator::joinPaths(const std::string& basePath, const std::string& path) {
-    auto isEmpty = [](const std::string& s) { return s.empty() || s == "/"; };
-    // removes preceding and trailing slashes
-    auto cleanSlashes = [isEmpty](const std::string& s) {
-        if (isEmpty(s)) {
-            return s;
-        }
-
-        std::string out = s;
-        if (out.front() == '/') {
-            out = out.substr(1);
-        }
-        if (out.back() == '/') {
-            out.pop_back();
-        }
-        return out;
-    };
-
-    bool basePathIsEmpty = isEmpty(basePath);
-    bool pathIsEmpty = isEmpty(path);
-
-    std::string out = "/";
-    if (basePathIsEmpty && pathIsEmpty) {
-        return out;
-    }
-    if (basePathIsEmpty) {
-        return out + cleanSlashes(path);
-    }
-    if (pathIsEmpty) {
-        return out + cleanSlashes(basePath);
-    }
-
-    // At this point, we need to join 2 non-empty paths.
-    out.append(cleanSlashes(basePath));
-    out.push_back('/');
-    out.append(cleanSlashes(path));
-
-    return out;
 }
 
 int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {

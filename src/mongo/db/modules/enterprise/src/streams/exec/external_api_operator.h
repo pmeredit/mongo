@@ -6,7 +6,6 @@
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <cstdint>
-#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -43,7 +42,6 @@ using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo:
 class ExternalApiOperator : public Operator {
 public:
     static constexpr StringData kName = "ExternalApiOperator";
-    static constexpr StringData kHttpsScheme = "https";
 
     struct Options {
         std::unique_ptr<mongo::HttpClient> httpClient{};
@@ -56,7 +54,7 @@ public:
         // the connection.
         boost::intrusive_ptr<mongo::Expression> urlPathExpr{nullptr};
 
-        // Defined in the connection.
+        // Defined in the connection. Evaluated once on startup.
         std::vector<std::string> connectionHeaders;
         // Query parameters used when making a HTTP request. Evaluated at runtime on each
         // document.
@@ -82,25 +80,12 @@ public:
         // Specifies how error responses are handled
         mongo::OnErrorEnum onError{mongo::OnErrorEnum::DLQ};
     };
-    struct UrlComponents {
-        std::string scheme;
-        std::string user;
-        std::string password;
-        std::string host;
-        std::string port;
-        std::string path;
-        std::vector<std::string> queryParams;
-        std::string fragment;
-    };
 
     ExternalApiOperator(Context* context, Options options);
 
     const Options& getOptions();
 
     void registerMetrics(MetricManager* metricManager) override;
-
-    // joinPaths is a helper that handles joining two strings representing url paths.
-    static std::string joinPaths(const std::string& basePath, const std::string& path);
 
 protected:
     std::string doGetName() const override {
@@ -147,19 +132,13 @@ private:
 
     // evaluateQueryParams accepts an input document and applies a mongo expression using that
     // document to create a query string.
-    std::vector<std::string> evaluateQueryParams(const mongo::Document& doc);
+    std::string evaluateQueryParams(const mongo::Document& doc);
 
     // makeDocumentWithAPIResponse sets the api response as a value in the input document using
     // a user-configured key.
     mongo::Document makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
                                                 mongo::Value apiResponse);
 
-    // parseBaseUrl parses the base url provided via the options member variable sets a member
-    // representing the parsed components of the provided base url.
-    void parseBaseUrl();
-
-    // makeUrlString accepts additional path segments and query params to form a url string.
-    std::string makeUrlString(std::string path, std::vector<std::string> queryParams);
 
     // parseCidrDenyList will retrieve the feature flag value from context and return a new
     // cidrDenyList
@@ -182,19 +161,12 @@ private:
     // tryLog will only log if the given logID hasn't been used within the last minute
     void tryLog(int id, std::function<void(int logID)> logFn);
 
-    // validateOptions is called when the operator is initialized and checks whether the options
-    // passed into the operator are valid. Throws a user error if not valid.
-    void validateOptions();
-
     ExternalApiOperator::Options _options;
 
     int64_t _rateLimitPerSec;
     RateLimiter _rateLimiter;
-    // staticEncodedUrl is defined only if the operator has no per-document evaluations to perform
-    // that modifies the url.
-    std::string _staticEncodedUrl;
+
     std::vector<mongo::CIDR> _cidrDenyList;
-    UrlComponents _baseUrlComponents;
 
     std::shared_ptr<Counter> _throttleDurationCounter;
 
