@@ -71,7 +71,7 @@ public:
           _sessionCache(_connection.getConnection(), _connection.getClockSource()) {}
 
     void writeData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_sessionCache, &_oplogManager);
+        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_sessionCache, nullptr);
         ru.setOperationContext(opCtx);
         WiredTigerSession* mongoSession = ru.getSession();
 
@@ -130,7 +130,7 @@ public:
     }
 
     void readData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit recoveryUnit(&_sessionCache, &_oplogManager);
+        WiredTigerRecoveryUnit recoveryUnit(&_sessionCache, nullptr);
         recoveryUnit.setOperationContext(opCtx);
         WiredTigerSession* mongoSession = recoveryUnit.getSession();
         WT_SESSION* session = mongoSession->getSession();
@@ -160,7 +160,6 @@ private:
     std::string _cipherName;
     WiredTigerConnection _connection;
     WiredTigerSessionCache _sessionCache;
-    WiredTigerOplogManager _oplogManager;
 };
 
 class WiredTigerEncryptionTest : public ServiceContextMongoDTest {};
