@@ -849,38 +849,6 @@ function testAfterInvalidateWithFullDocumentOnly() {
 
 testAfterInvalidateWithFullDocumentOnly();
 
-function testInvalidPipeline() {
-    clearState();
-
-    let sourceSpec = {
-        connectionName: connectionName,
-        db: writeDBTwo,
-        coll: writeCollOne,
-        config: {
-            pipeline: [
-                // Invalid pipeline.
-                {"$foo": 1}
-            ]
-        }
-    };
-
-    const processorName = "changeStreamSourceProcessor";
-    sp.createStreamProcessor(processorName, [
-        {$source: sourceSpec},
-        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
-    ]);
-
-    const processor = sp[processorName];
-    let result = processor.start({featureFlags: {}}, false /* assertWorked */);
-    // This is the error the target changestream $source gives us.
-    assert.commandFailedWithCode(result, 40324);
-    assert.eq(
-        "Change stream $source writeToThisOtherDB.writeToThisColl failed: Unrecognized pipeline stage name: '$foo': generic server error",
-        result.errmsg);
-}
-
-testInvalidPipeline();
-
 function testCollWithoutDb() {
     clearState();
     const processorName = "changeStreamSourceProcessor";
@@ -1083,3 +1051,116 @@ assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
 
     assert.commandWorked(processor.stop());
 }());
+
+function createChangestreamSourceProcessor(processorName, sourceSpecOverrides) {
+    let sourceSpec = {
+        connectionName: connectionName,
+        db: writeDBOne,
+        coll: writeCollOne,
+    };
+
+    sourceSpec = {...sourceSpec, ...sourceSpecOverrides};
+
+    sp.createStreamProcessor(processorName,
+                             [{$source: sourceSpec}, {$emit: {connectionName: '__testMemory'}}]);
+
+    return sp[processorName];
+}
+
+function testChangeStreamOnTimeseries() {
+    clearState();
+
+    const timeseriesCollName = "timeseriesColl";
+    assert.commandWorked(db.getSiblingDB(writeDBOne).createCollection(timeseriesCollName, {
+        timeseries: {
+            timeField: "timestamp",
+            metaField: "metadata",
+            granularity: "seconds",
+        },
+    }));
+
+    let sourceSpecOverrides = {
+        coll: timeseriesCollName,
+    };
+
+    const processorName = "changeStreamSourceProcessor";
+    const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
+    const startResult = processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert.commandFailedWithCode(startResult, ErrorCodes.StreamProcessorInvalidOptions);
+    assert.eq(startResult.errorLabels[0], "StreamProcessorUserError");
+}
+
+testChangeStreamOnTimeseries();
+
+function runChangeStreamSourceTestFailOnStart(
+    sourceSpecOverrides, expectedErrCode, expectedErrLabels = []) {
+    clearState();
+
+    const processorName = "changeStreamSourceProcessor";
+    const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
+
+    let startResult = processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert.commandFailedWithCode(startResult, expectedErrCode);
+    assert.eq(startResult.errorLabels.length, expectedErrLabels.length);
+    for (const label of expectedErrLabels) {
+        startResult.errorLabels.includes(label);
+    }
+}
+
+// Should fail due to unsupported operator in the source's aggregation pipeline
+runChangeStreamSourceTestFailOnStart(
+    {config: {pipeline: [{$someStageThatDoesNotExist: {}}]}},
+    ErrorCodes.StreamProcessorInvalidOptions,
+    ["StreamProcessorUserError"],
+);
+
+// Should fail due to empty stage specification in source's aggregation pipeline
+runChangeStreamSourceTestFailOnStart(
+    {config: {pipeline: [{}]}},
+    ErrorCodes.StreamProcessorInvalidOptions,
+    ["StreamProcessorUserError"],
+);
+
+// Should fail due to stage specification having more than one field in source's aggregation
+// pipeline
+runChangeStreamSourceTestFailOnStart(
+    {
+        config: {
+            pipeline: [{
+                $match: {"fullDocument.a": 33},
+                $addFields: {"someField": "someValue"},
+            }]
+        }
+    },
+    ErrorCodes.StreamProcessorInvalidOptions,
+    ["StreamProcessorUserError"],
+);
+
+function runChangeStreamSourceTestFailOnInsert(sourceSpecOverrides, expectedErrCode, isUserError) {
+    clearState();
+
+    const processorName = "changeStreamSourceProcessor";
+    const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
+    processor.start({featureFlags: {}, shouldStartSample: true});
+
+    performWrites();
+    let spListResult;
+    assert.soon(() => {
+        let listResult = listStreamProcessors();
+        assert.eq(listResult["ok"], 1, listResult);
+        spListResult = listResult.streamProcessors.find((item) => item.name == processorName);
+        return spListResult.status == "error";
+    });
+
+    processor.stop();
+
+    assert.eq(spListResult?.error.code, expectedErrCode);
+    assert.eq(spListResult?.error.userError, isUserError);
+}
+
+// Should fail on write due to modifying changestream resume token
+runChangeStreamSourceTestFailOnInsert(
+    {config: {pipeline: [{$replaceRoot: {newRoot: {_id: 123}}}]}},
+    ErrorCodes.StreamProcessorInvalidOptions,
+    true,
+);

@@ -11,6 +11,7 @@
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/types.hpp>
 #include <chrono>
+#include <cstdint>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/query_exception.hpp>
@@ -66,6 +67,10 @@ MONGO_FAIL_POINT_DEFINE(changestreamSlowEventProcessing);
 
 // Name of the error code field name in the raw server error object.
 static constexpr char kErrorCodeFieldName[] = "code";
+
+// Arbitrary error codes for invalid changestream aggregation pipelines
+static constexpr ErrorCodes::Error kEmptyPipelineErrorCode{40323};
+static constexpr ErrorCodes::Error kUnrecognizedPipelineStageNameErrorCode{40324};
 
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
@@ -410,24 +415,45 @@ void ChangeStreamSourceOperator::fetchLoop() {
     auto translateCode = [&](ErrorCodes::Error newCode) -> SPStatus {
         return SPStatus{Status{newCode, status.toString()}, status.unsafeReason()};
     };
-    if (status.code() == ErrorCodes::ChangeStreamHistoryLost) {
-        // We cannot resume from this point in the changestream.
-        status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource);
-    } else if (_options.fullDocumentMode == FullDocumentModeEnum::kRequired &&
-               status.code() == ErrorCodes::NoMatchingDocument) {
-        // If the user specifies fullDocumentMode==kRequired, the server will return
-        // NoMatchingDocument if the event doesn't have the corresponding postImage in the oplog.
-        status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
-    } else if (status.code() == ErrorCodes::BSONObjectTooLarge) {
-        // Currently a pipeline like [$source: {db: test}, $merge: {into: {db: test}}] will create
-        // an infinite loop. The loop creates a document that keeps getting larger. Eventually the
-        // _changestream server_ will complain with a BSONObjectTooLarge error.
-        status = translateCode(ErrorCodes::StreamProcessorSourceDocTooLarge);
-    } else if (status.code() == ErrorCodes::Error{19}) {
-        // mongocxx throws this error code when the watch call fails to connect to the target.
-        // This is one of the places where mongocxx error codes don't align with the server
-        // error codes.
-        status = translateCode(ErrorCodes::StreamProcessorAtlasConnectionError);
+    switch (int32_t statusCode = status.code(); statusCode) {
+        case ErrorCodes::ChangeStreamHistoryLost:
+            // We cannot resume from this point in the changestream.
+            status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource);
+            break;
+        case ErrorCodes::NoMatchingDocument:
+            if (_options.fullDocumentMode == FullDocumentModeEnum::kRequired) {
+                // If the user specifies fullDocumentMode==kRequired, the server will return
+                // NoMatchingDocument if the event doesn't have the corresponding postImage in the
+                // oplog.
+                status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
+            }
+            break;
+        case ErrorCodes::BSONObjectTooLarge:
+            // Currently a pipeline like [$source: {db: test}, $merge: {into: {db: test}}] will
+            // create an infinite loop. The loop creates a document that keeps getting larger.
+            // Eventually the _changestream server_ will complain with a BSONObjectTooLarge error.
+            status = translateCode(ErrorCodes::StreamProcessorSourceDocTooLarge);
+            break;
+        case ErrorCodes::Error{19}:
+            // mongocxx throws this error code when the watch call fails to connect to the target.
+            // This is one of the places where mongocxx error codes don't align with the server
+            // error codes.
+            status = translateCode(ErrorCodes::StreamProcessorAtlasConnectionError);
+            break;
+        case kEmptyPipelineErrorCode:
+            // Caused by a source pipeline aggregation stage specification having non-singular
+            // number of fields
+        case kUnrecognizedPipelineStageNameErrorCode:
+            // Caused by a source pipeline aggregation having a unrecognized stage
+        case ErrorCodes::ChangeStreamFatalError:
+            // Caused by a source pipeline aggregation attempting to modify an incoming doc's _id
+            // field
+        case ErrorCodes::CommandNotSupportedOnView:
+            // Caused by a changestream source pointing to a timeseries collection
+            status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
+            break;
+        default:
+            break;
     }
 
     // If the status returned is not OK, set the error in connectionStatus.
