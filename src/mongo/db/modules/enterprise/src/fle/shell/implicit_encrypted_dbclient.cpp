@@ -75,8 +75,8 @@ public:
 
                 BSONObj schemaObj = schemaElem.Obj();
 
-                if (schemaObj.hasField("escCollection") && schemaObj.hasField("eccCollection") &&
-                    schemaObj.hasField("ecocCollection") && schemaObj.hasField("encryptedFields")) {
+                if (schemaObj.hasField("escCollection") && schemaObj.hasField("ecocCollection") &&
+                    schemaObj.hasField("encryptedFields")) {
 
                     return SchemaInfo{schemaObj.getOwned(),
                                       Date_t::now(),

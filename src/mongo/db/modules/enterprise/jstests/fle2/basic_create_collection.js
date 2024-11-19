@@ -77,22 +77,6 @@ client.runEncryptionOperation(() => {
 // Test that bsontype needs to be specified if queries is specified, and that bsontype
 // does not need to be specified if queries is not specified.
 
-// EncryptedFieldConfig specifies a ecc collection, which should not be allowed on create.
-const encFieldsWithECC = {
-    encryptedFields: {
-        escCollection: "enxcol_.encFieldsWithECC.esc",
-        eccCollection: "enxcol_.encFieldsWithECC.ecc",
-        ecocCollection: "enxcol_.encFieldsWithECC.ecoc",
-        "fields": [
-            {
-                "path": "ssn",
-                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "bsonType": "int",
-            },
-        ]
-    }
-};
-
 // Queries specified, bsonType not specified. Should error.
 const encFieldsBad = {
     encryptedFields: {
@@ -135,7 +119,6 @@ assert.commandWorked(client.createEncryptionCollection("enc_fields_good_a", encF
 assert.commandWorked(client.createEncryptionCollection("enc_fields_good_b", encFieldsGoodB));
 assert.throwsWithCode(
     () => client.createBasicEncryptionCollection("enc_fields_bad", encFieldsBad, 6412601), 6412601);
-client.createBasicEncryptionCollection("encFieldsWithECC", encFieldsWithECC, 7568300);
 
 // Double fields with range index cannot have min/max.
 const encFieldsRangeDouble = {

@@ -80,8 +80,6 @@ function verifyCleanupStats(cleanupStats, trackerStats, readEstimate) {
               NumberLong(trackerStats.escNonAnchors + trackerStats.escDeletableAnchors));
     // # of ESC reads is at least readEstimate
     assert.gte(cleanupStats.esc.read, NumberLong(readEstimate));
-
-    assert(!cleanupStats.hasOwnProperty("ecc"));
 }
 
 function verifyServerStatusCleanupStats(cleanupStats, previousServerStats, currentServerStats) {
@@ -103,7 +101,6 @@ function verifyServerStatusCleanupStats(cleanupStats, previousServerStats, curre
               NumberLong(previousServerStats.esc.deleted + cleanupStats.esc.deleted));
     assert.eq(currentServerStats.esc.read,
               NumberLong(previousServerStats.esc.read + cleanupStats.esc.read));
-    assert(!currentServerStats.hasOwnProperty("ecc"));
 }
 
 function runTest(conn, primaryConn) {

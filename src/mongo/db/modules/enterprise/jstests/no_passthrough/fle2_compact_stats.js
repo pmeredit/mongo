@@ -72,7 +72,6 @@ function runTest(conn, primaryConn) {
         assert.eq(stats1.esc.updated, NumberLong(0));
         // 32 non-anchors are deleted
         assert.eq(stats1.esc.deleted, NumberLong(32));
-        assert(!stats1.hasOwnProperty("ecc"));
 
         // The read count varies based on the exact way tags are generated because the keys are
         // non-deterministic, but a lower bound can be calculated as follows:
@@ -91,7 +90,6 @@ function runTest(conn, primaryConn) {
         assert.eq(serverStatusFle.esc.updated, NumberLong(0));
         assert.eq(serverStatusFle.esc.deleted, NumberLong(32));
         assert.gte(serverStatusFle.esc.read, NumberLong(97));
-        assert(!serverStatusFle.hasOwnProperty("ecc"));
 
         // Insert more non-unique values for "first"
         for (let i = 1; i <= 5; i++) {
@@ -114,7 +112,6 @@ function runTest(conn, primaryConn) {
         //                         2 * (4 AnchorBinaryHops reads) +
         //                         (1 + ceil(log2(16))) + (1 + ceil(log2(17)))
         assert.gte(stats2.esc.read, NumberLong(29));
-        assert(!stats2.hasOwnProperty("ecc"));
 
         client.assertEncryptedCollectionCounts(collName, 42, 8, 0);
         client.assertStateCollectionsAfterCompact(collName, true /* ecocExists */);
@@ -126,7 +123,6 @@ function runTest(conn, primaryConn) {
         assert.eq(serverStatusFle.esc.updated, NumberLong(0));
         assert.eq(serverStatusFle.esc.deleted, NumberLong(42));
         assert.gte(serverStatusFle.esc.read, NumberLong(126));
-        assert(!serverStatusFle.hasOwnProperty("ecc"));
     });
 }
 
