@@ -138,7 +138,8 @@ function runTest({
 
     for (let i = 0; i < expectedRequests.length; i++) {
         const fileName = restServer.getPayloadDirectory() + "/" + spName + "_" + i + ".json";
-        assert.soon(() => fileExists(fileName));
+        assert.soon(() => fileExists(fileName),
+                    `waiting to find rest server logged request file: ${fileName}`);
 
         const payload = JSON.parse(cat(fileName));
         assert.eq(payload.method, expectedRequests[i].method);
@@ -170,12 +171,14 @@ restServer.start();
 
 const restServerUrl = 'http://localhost:' + restServer.getPort();
 const webAPIName = "webAPI1";
+const webAPINameWithTrailingSlash = "webAPI2";
 const dbConnectionName = "db1";
 const mongoUrl = 'mongodb://' + db.getMongo().host;
 
 const connectionRegistry = [
     {name: dbConnectionName, type: 'atlas', options: {uri: mongoUrl}},
     {name: webAPIName, type: 'web_api', options: {url: restServerUrl}},
+    {name: webAPINameWithTrailingSlash, type: 'web_api', options: {url: restServerUrl + "/"}},
 ];
 const streams = new Streams(TEST_TENANT_ID, connectionRegistry);
 
@@ -363,7 +366,7 @@ const testCases = [
         expectedOutput: [{
             fullDocument: {a: 1, foo: "DynamicValue"},
             _stream_meta: {externalAPI: {
-                url: restServerUrl + "/echo/tc4?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&SearchParam=%22%25%21%3A%2B-.%40%2Ffoobar%20baz%22",
+                url: restServerUrl + "/echo/tc4?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&SearchParam=%22%25%21%3a%2b-.%40%2ffoobar%20baz%22",
                 requestType: "PATCH",
                 httpStatusCode: 200,
             }},
@@ -427,13 +430,13 @@ const testCases = [
        expectedOutput: [{
             fullDocument: {foo: "DynamicValue"},
             _stream_meta: {externalAPI: {
-                url: restServerUrl + "/foo(bar)?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3A%2F%2Fuser%3Apassword%40my.domain.net%3A1234%2Ffoo%2Fbar%2Fbaz%3Fname%3Dhero%26name%3Dsandwich%26name%3Dgrinder%23heading1",
+                url: restServerUrl + "/foo%28bar%29?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
                 requestType: "GET",
                 httpStatusCode: 200,
             }},
             response: {
                 method: "GET",
-                path: "/foo(bar)",
+                path: "/foo%28bar%29",
                 query: {
                     "StrParam": ["StaticParameterValue"],
                     "DoubleParam": ["1.100000000002"],
@@ -495,6 +498,40 @@ const testCases = [
             {connectionName: webAPIName, urlPath: "/echo/tcFirewallBlockedRequestDefault", requestType: "GET", as: 'response'},
         inputDocs: [{a: 1}],
         expectedDlq: [{a: 1}],
+    },
+    {
+        description: "GET with path to evaluate should make a successful request",
+        spName: "evaluatedPath",
+        externalAPIOptions:
+            {connectionName: webAPIName, urlPath: "$fullDocument.foo", requestType: "GET", as:
+            'response'},
+        inputDocs: [{foo: "/echo/evaluatedPath"}],
+        expectedRequests:
+            [{method: "GET", path: "/echo/evaluatedPath", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1}}],
+        expectedOutput: [{
+            fullDocument: {foo: "/echo/evaluatedPath"},
+            response: {method: "GET", path: "/echo/evaluatedPath", headers: basicHeaders, query: {}, body:
+            ""}
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "GET with trailing slash should make request",
+        spName: "trailingSlash",
+        externalAPIOptions:
+            {connectionName: webAPINameWithTrailingSlash, requestType: "GET", urlPath: "/echo/trailingSlash/", as:
+            'response'},
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/echo/trailingSlash", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1}}],
+        expectedOutput: [{
+            fullDocument: {foo: "bar"},
+            response: {method: "GET", path: "/echo/trailingSlash", headers: basicHeaders, query: {}, body:
+            ""}
+        }],
+        allowAllTraffic: true,
     },
 ];
 

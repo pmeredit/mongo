@@ -86,9 +86,24 @@ public:
         webApiConn.setOptions(webApiConnOptions.toBSON());
         webApiConn.setType(ConnectionTypeEnum::WebAPI);
 
+        Connection webApiConnWithQuery{};
+        webApiConnWithQuery.setName("webapi2");
+        WebAPIConnectionOptions webApiConnOptionsWithQuery{"https://mongodb.com/foo?foo=bar"};
+        webApiConnWithQuery.setOptions(webApiConnOptionsWithQuery.toBSON());
+        webApiConnWithQuery.setType(ConnectionTypeEnum::WebAPI);
+
+        Connection webApiConnWithFragment{};
+        webApiConnWithFragment.setName("webapi3");
+        WebAPIConnectionOptions webApiConnOptionsWithFragment{
+            "https://mongodb.com/foo?foo=bar#heading"};
+        webApiConnWithFragment.setOptions(webApiConnOptionsWithFragment.toBSON());
+        webApiConnWithFragment.setType(ConnectionTypeEnum::WebAPI);
+
         _context->connections = {
             {atlasConn.getName().toString(), atlasConn},
             {webApiConn.getName().toString(), webApiConn},
+            {webApiConnWithQuery.getName().toString(), webApiConnWithQuery},
+            {webApiConnWithFragment.getName().toString(), webApiConnWithFragment},
         };
 
         auto inMemoryConnection = testInMemoryConnectionRegistry();
@@ -2797,6 +2812,51 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             ErrorCodes::StreamProcessorInvalidOptions,
             "StreamProcessorInvalidOptions: Headers defined in the pipeline operator can only "
             "define string values or field path expressions.");
+    }
+
+    {
+        // trying to append path when queries exist
+        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi2",
+                as: "response",
+                urlPath: "$foo"
+            }
+        }
+    ])"),
+                                                        {},
+                                                        {}),
+                                    DBException,
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "StreamProcessorInvalidOptions: The url defined in "
+                                    "$externalAPI.connection.url contains query parameters that "
+                                    "can conflict with a url path in the operator definition.");
+    }
+
+    {
+        // trying to append query params when fragment exists
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalApiTest(parsePipeline(R"(
+    [
+        {
+            $externalAPI: {
+                connectionName: "webapi3",
+                as: "response",
+                parameters: {
+                    foo: "bar"
+                }
+            }
+        }
+    ])"),
+                                {},
+                                {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: The url defined in $externalAPI.connection.url "
+            "contains a fragment that can conflict with a query or url path in the operator "
+            "definition.");
     }
 
     {
