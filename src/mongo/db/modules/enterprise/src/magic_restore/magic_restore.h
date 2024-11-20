@@ -87,10 +87,9 @@ void updateShardNameMetadata(OperationContext* opCtx,
  * for unrestored collections.
  */
 class NamespaceUUIDPair;
-void createCollectionsToRestore(
-    OperationContext* opCtx,
-    const std::vector<mongo::magic_restore::NamespaceUUIDPair>& nsAndUuids,
-    repl::StorageInterface* storageInterface);
+void createCollectionsToRestore(OperationContext* opCtx,
+                                const std::vector<NamespaceUUIDPair>& nsAndUuids,
+                                repl::StorageInterface* storageInterface);
 
 /**
  * Helper function that runs the functions needed for a selective restore. This function will only
@@ -103,6 +102,27 @@ void runSelectiveRestoreSteps(OperationContext* opCtx,
                               const RestoreConfiguration& restoreConfig,
                               repl::StorageInterface* storageInterface);
 
+/**
+ * Returns local resharding metadata collection names that match the regex
+ * "localReshardingOplogBuffer.*" or "localReshardingConflictStash.*". These namespaces have the
+ * form 'config.localReshardingOplogBuffer.<uuid>.<shardId>' and
+ * 'config.localReshardingConflictStash.<uuid>.<shardId>'. As these namespaces include dynamic
+ * UUIDs, we need to call 'listCollections' to retrieve all collections that need to be modified.
+ * This list is used to rename these collections on shard nodes to refer to new shard IDs.
+ */
+std::vector<std::string> getLocalReshardingMetadataColls(OperationContext* opCtx);
+
+/**
+ * Iterates the local resharding metadata collections and replaces references of srcShardName with
+ * dstShardName. It's possible that a single node has references to multiple old shard names, so we
+ * need to check every collection name against every shard name mapping.
+ */
+void renameLocalReshardingMetadataCollections(
+    OperationContext* opCtx,
+    repl::StorageInterface* storageInterface,
+    const std::vector<std::string>& reshardingMetadataColls,
+    const ShardId& srcShardName,
+    const ShardId& dstShardName);
 
 /**
  * Performs follow-up steps for sharded clusters.

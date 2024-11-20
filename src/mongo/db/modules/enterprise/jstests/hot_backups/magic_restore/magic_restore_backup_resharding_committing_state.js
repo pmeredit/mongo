@@ -1,28 +1,9 @@
 /*
- * Tests a PIT sharded cluster magic restore with resharding and sharding renames.
- * The test does the following:
- *
- * - Starts a sharded cluster, shards the collection, moves chunks, inserts some initial data.
- * - Starts a resharding operation and sets a failpoint to pause it mid-way. This will ensure
- *   resharding metadata collections exist in the backup.
- * - Creates the backup data files, copies data files to the restore dbpath.
- * - Writes additional data that will be truncated by magic restore, since they occur after the
- *   checkpoint timestamp. However, these writes will still be reflected in the final state of the
- *   data due to the PIT restore.
- * - Computes dbHashes.
- * - Computes maxCheckpointTs, extends the cursors to maxCheckpointTs and closes the backup cursor.
- * - Unblocks the resharding failpoint and ensures the resharding operation finishes on the
- *   source cluster.
- * - Stops all nodes.
- * - Writes a restore configuration object and the source oplog entries from after the checkpoint
- *   timestamp to a named pipe via the mongo shell.
- * - Starts the nodes with --magicRestore, which parses the restore configuration, inserts and
- *   applies the additional oplog entries, and exits cleanly. We perform a shard rename, and so the
- *   node will update relevant sharding metadata with the new shard ID.
- * - Restarts the nodes in the initial sharded cluster and asserts that the replica set config and
- *   data are as expected, dbHashes match, and that the shard names were updated. We check modified
- *   sharding metadata documents to ensure we've correctly updated shard ID fields to refer to the
- *   new shard ID.
+ * Tests a non-PIT sharded cluster magic restore with resharding in the committing state and
+ * sharding renames. The test ensures that a resharding operation in the "committing" state is not
+ * aborted during restore, and can complete after the restored node starts back up. It also ensures
+ * that local resharding metadata collections that exist while resharding is in progress are
+ * successfully renamed.
  *
  * @tags: [
  *     requires_persistence,
@@ -53,8 +34,7 @@ function runTest(insertHigherTermOplogEntry) {
             rs1: {nodes: [{}, {rsConfig: {priority: 0}}]}
         },
         mongos: 1,
-        config: [{}, {rsConfig: {priority: 0}}],
-        initiateWithDefaultElectionTimeout: true
+        config: [{}, {rsConfig: {priority: 0}}]
     });
 
     const dbName = "db";
@@ -86,9 +66,10 @@ function runTest(insertHigherTermOplogEntry) {
         shardingRestoreTest.shardRestoreTests[0].getCollUuid(st.rs0.getPrimary(), dbName, coll));
 
     // Pause resharding so that resharding metadata collections are included in the backed up data
-    // files.
-    let reshardingHang = configureFailPoint(st.configRS.getPrimary(),
-                                            "reshardingPauseCoordinatorBeforeBlockingWrites");
+    // files. This failpoint pauses resharding after we've set the state to committing, but before
+    // we've marked resharding as complete.
+    const reshardingHang = configureFailPoint(st.configRS.getPrimary(),
+                                              "reshardingPauseBeforeTellingParticipantsToCommit");
     const awaitResult = startParallelShell(
         funWithArgs(function(ns) {
             assert.commandWorked(db.adminCommand(
@@ -97,52 +78,25 @@ function runTest(insertHigherTermOplogEntry) {
 
     reshardingHang.wait();
 
+    const reshardingState = st.getDB("config").getCollection("reshardingOperations").findOne();
+    assert.eq(reshardingState.state, "committing", tojson(reshardingState));
+
     jsTestLog("Taking checkpoints and opening backup cursors");
     shardingRestoreTest.takeCheckpointsAndOpenBackups();
-
-    // These documents will be truncated by magic restore, since they were written after the backup
-    // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
-    // restore, so they will be reinserted and reflected in the final state of the data.
-    jsTestLog("Inserting data after backup cursor");
-    [-151, -51, 51, 151].forEach(
-        val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
-    expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
-    assert.eq(expectedDocs.length, 8);
-
-    jsTestLog("Getting backup cluster dbHashes");
-    // expected DBs are admin, config and db
-    shardingRestoreTest.storePreRestoreDbHashes();
-
-    shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
-        magicRestoreTest.rst.nodes.forEach((node) => {
-            magicRestoreTest.assertOplogCountForNamespace(node, {ns: fullNs, op: "i"}, 4);
-
-            let {entriesAfterBackup} = magicRestoreTest.getEntriesAfterBackup(node);
-            // There might be operations after the backup from periodic jobs such as rangeDeletions
-            // or ensureMajorityPrimaryAndScheduleDbTask and entries from moving the chunk,
-            // so we filter those out for the comparison but still pass them into magic restore as
-            // additional oplog entries to apply.
-            const filteredEntriesAfterBackup =
-                entriesAfterBackup.filter(elem => elem.op == "i" && elem.ns == fullNs);
-            assert.eq(filteredEntriesAfterBackup.length,
-                      2,
-                      `filteredEntriesAfterBackup = ${
-                          tojson(filteredEntriesAfterBackup)} is not of length 2`);
-        });
-    });
-
-    shardingRestoreTest.findMaxCheckpointTsAndExtendBackupCursors();
-    shardingRestoreTest.setPointInTimeTimestamp();
-    shardingRestoreTest.setUpShardingRenamesAndIdentityDocs();
 
     // Allow the resharding operation to finish on the source cluster.
     reshardingHang.off();
     awaitResult();
 
-    // Ensure the shard key on the source cluster has been changed due to the resharding operation
-    // completing successfully.
-    const shardKey = st.getDB("config").getCollection("collections").findOne({_id: fullNs});
+    // Ensure the shard key on the source cluster has been changed.
+    let shardKey = st.getDB("config").getCollection("collections").findOne({_id: fullNs});
     assert.eq(shardKey.key, {numForPartition: "hashed"});
+
+    jsTestLog("Getting backup cluster dbHashes");
+    shardingRestoreTest.storePreRestoreDbHashes();
+
+    shardingRestoreTest.findMaxCheckpointTsAndExtendBackupCursors();
+    shardingRestoreTest.setUpShardingRenamesAndIdentityDocs();
 
     jsTestLog("Stopping all nodes");
     st.stop({noCleanData: true});
@@ -183,12 +137,8 @@ function runTest(insertHigherTermOplogEntry) {
         const reshardingOps = node.getDB("config").getCollection("reshardingOperations").findOne();
         assert.eq(reshardingOps.reshardingKey, {numForPartition: "hashed"}, tojson(reshardingOps));
 
-        // Ensure the resharding operation was aborted by restore.
-        assert.eq(reshardingOps.state, "aborting", tojson(reshardingOps));
-        assert.eq(
-            reshardingOps.abortReason,
-            {code: ErrorCodes.ReshardCollectionAborted, errmsg: "aborted by automated restore"},
-            tojson(reshardingOps));
+        // Ensure the resharding operation in the committing state was not aborted by restore.
+        assert.eq(reshardingOps.state, "committing", tojson(reshardingOps));
 
         // Check that documents in the 'config.reshardingOperations' collection refer to the new
         // shard ID.
@@ -201,9 +151,14 @@ function runTest(insertHigherTermOplogEntry) {
             "config.reshardingOperations recipientShards entry ID does not match new shard ID regex. " +
                 tojson(reshardingOps.recipientShards));
 
-        // Confirm the shard key was not changed on the restore node, since resharding was aborted.
-        const shardKey = node.getDB("config").getCollection("collections").findOne({_id: fullNs});
-        assert.eq(shardKey.key, {numForPartition: 1}, tojson(shardKey));
+        // Confirm the shard key has changed on the restored config node.
+        const collectionInfo =
+            node.getDB("config").getCollection("collections").findOne({_id: fullNs});
+        assert.eq(collectionInfo.key, {numForPartition: "hashed"}, tojson(collectionInfo));
+        // As the resharding operation hasn't fully completed, the 'config.collection' entry still
+        // has resharding fields indicating the operation is still committing. Once the shard nodes
+        // are started, the resharding operation will complete.
+        assert.eq(collectionInfo.reshardingFields.state, "committing");
 
         let entries = node.getDB("config").getCollection("databases").find().toArray();
         assert.eq(entries.length, 1);
@@ -243,12 +198,6 @@ function runTest(insertHigherTermOplogEntry) {
             noCleanData: true,
             shardsvr: "",
             replSet: magicRestoreTest.rst.name,
-            // Prevent the 'localReshardingOperations' documents from being dropped, so we can check
-            // their fields for the shard rename.
-            setParameter: {
-                "failpoint.removeRecipientDocFailpoint": tojson({mode: "alwaysOn"}),
-                "failpoint.removeDonorDocFailpoint": tojson({mode: "alwaysOn"})
-            },
         });
         magicRestoreTest.rst.awaitNodesAgreeOnPrimary();
         // Make sure that all nodes have installed the config before moving on.
@@ -258,19 +207,6 @@ function runTest(insertHigherTermOplogEntry) {
 
         magicRestoreTest.rst.nodes.forEach((node) => {
             node.setSecondaryOk();
-            const restoredDocs =
-                node.getDB(dbName).getCollection(coll).find().sort({numForPartition: 1}).toArray();
-            // Each shard should have half the total number of documents.
-            assert.eq(restoredDocs.length, 4);
-            magicRestoreTest.postRestoreChecks({
-                node: node,
-                dbName: dbName,
-                collName: coll,
-                expectedOplogCountForNs: 4,
-                opFilter: "i",
-                expectedNumDocsSnapshot: 4,
-            });
-
             // Each 'config.localReshardingOperations.donor' entry has the following shape:
             // {
             //   ...
@@ -293,7 +229,7 @@ function runTest(insertHigherTermOplogEntry) {
                                    .find()
                                    .toArray();
                 return donors.every(({mutableState, recipientShards}) => {
-                    return mutableState.abortReason.code === ErrorCodes.ReshardCollectionAborted &&
+                    mutableState.state === "done" &&
                         recipientShards.every(recipientShardId => regex.test(recipientShardId));
                 });
             });
@@ -322,18 +258,9 @@ function runTest(insertHigherTermOplogEntry) {
                                        .find()
                                        .toArray();
                 return recipients.every(({mutableState, donorShards}) => {
-                    return mutableState.abortReason.code === ErrorCodes.ReshardCollectionAborted &&
+                    mutableState.state === "done" &&
                         donorShards.every(donorShardId => regex.test(donorShardId.shardId));
                 });
-            });
-
-            // Disable the failpoint so that the documents in the 'localReshardingOperations'
-            // collection can be dropped.
-            magicRestoreTest.rst.nodes.forEach((node) => {
-                assert.commandWorked(node.adminCommand(
-                    {'configureFailPoint': 'removeRecipientDocFailpoint', 'mode': 'off'}));
-                assert.commandWorked(node.adminCommand(
-                    {'configureFailPoint': 'removeDonorDocFailpoint', 'mode': 'off'}));
             });
         });
     });
@@ -363,12 +290,10 @@ function runTest(insertHigherTermOplogEntry) {
         "cache.chunks.config.system.sessions",
         `cache.chunks.${dbName}.${coll}`,
         `cache.chunks.db.system.resharding.${collUuid}`,
-        // The source cluster had local resharding metadata collections when the hash
-        // snapshot was taken, so we should skip checking for them on the restored node.
+        // The restored node will not have the following namespace ending in jsTestName()-rs{0,1}
+        // after resharding completes.
         `localReshardingOplogBuffer.${collUuid}.${jsTestName()}-rs0`,
         `localReshardingOplogBuffer.${collUuid}.${jsTestName()}-rs1`,
-        `localReshardingConflictStash.${collUuid}.${jsTestName()}-rs0`,
-        `localReshardingConflictStash.${collUuid}.${jsTestName()}-rs1`,
         `system.resharding.${collUuid}`,
         "localReshardingResumeData.recipient",
         "system.sharding_ddl_coordinators",
@@ -381,22 +306,28 @@ function runTest(insertHigherTermOplogEntry) {
         "changelog",
         "placementHistory"
     ];
-    shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
 
     primary = configUtils.rst.getPrimary();
     const configDB = primary.getDB("config");
+    // We expect the resharding operation to complete on the config server.
+    assert.soonNoExcept(
+        () => configDB.getCollection("reshardingOperations").find().toArray().length == 0);
+
+    // Ensure the shard key on the restored cluster has been changed.
+    shardKey = configDB.getCollection("collections").findOne({_id: fullNs});
+    assert.eq(shardKey.key, {numForPartition: "hashed"});
+
+    shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
+
     // config.placementHistory is dropped during the restore procedure.
-    assert.eq(configDB.getCollection("placementHistory").find().toArray(), 0);
+    assert.eq(primary.getDB("config").getCollection("placementHistory").find().toArray(), 0);
 
     jsTestLog("Checking sharding renames on the config shard");
+
     const shards = configDB.getCollection("shards").find().sort({"_id": 1}).toArray();
     assert.eq(shards.length, 2);
     assert(shards.every(shard => { return regex.test(shard._id) && regex.test(shard.host); }),
            tojson(shards));
-
-    // We expect the resharding services to clean up the aborted resharding metadata.
-    assert.soonNoExcept(
-        () => configDB.getCollection("reshardingOperations").find().toArray().length == 0);
 
     const chunks = configDB.getCollection("chunks").find().sort({"shard": 1}).toArray();
     // After the restore, resharding is aborted and there are only 2 entries for the 2 chunks

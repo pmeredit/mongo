@@ -33,6 +33,7 @@
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/server_lifecycle_monitor.h"
+#include "mongo/db/shard_id.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/balancer_configuration.h"
@@ -327,6 +328,54 @@ bool isShard(const RestoreConfiguration& restoreConfig) {
     return nType == NodeTypeEnum::kConfigShard || nType == NodeTypeEnum::kShard;
 }
 
+void renameLocalReshardingMetadataCollections(
+    OperationContext* opCtx,
+    repl::StorageInterface* storageInterface,
+    const std::vector<std::string>& reshardingMetadataColls,
+    const ShardId& srcShardName,
+    const ShardId& dstShardName) {
+    pcre::Regex re(".*" + srcShardName.toString() + "$");
+
+    for (std::string name : reshardingMetadataColls) {
+        fassert(8742900, name.starts_with("localResharding"));
+        if (re.match(name)) {
+            const auto fromNs = NamespaceString::makeGlobalConfigCollection(name);
+
+            // Finds the position of the first character of the source shard ID, and then replaces
+            // it with the destination shard ID.
+            const auto pos = name.find(srcShardName.toString());
+            name.replace(pos, srcShardName.toString().length(), dstShardName.toString());
+
+            const auto toNs = NamespaceString::makeGlobalConfigCollection(name);
+            LOGV2(8742901,
+                  "Renaming resharding metadata collection",
+                  "fromNs"_attr = fromNs,
+                  "toNs"_attr = toNs);
+            fassert(8742902,
+                    storageInterface->renameCollection(opCtx, fromNs, toNs, false /* stayTemp */));
+        }
+    }
+}
+
+std::vector<std::string> getLocalReshardingMetadataColls(OperationContext* opCtx) {
+    DBDirectClient client(opCtx);
+    const auto filter = BSON(
+        "type"
+        << "collection"
+        << "name"
+        << BSON("$regex" << BSONRegEx("^(" + NamespaceString::kReshardingConflictStashPrefix + "|" +
+                                      NamespaceString::kReshardingLocalOplogBufferPrefix + ")")));
+
+    const auto collInfos = client.getCollectionInfos(DatabaseName::kConfig, filter);
+    std::vector<std::string> collectionNames;
+    std::transform(collInfos.begin(),
+                   collInfos.end(),
+                   std::back_inserter(collectionNames),
+                   [](const BSONObj& coll) { return coll.getStringField("name").toString(); });
+
+    return collectionNames;
+}
+
 void updateShardNameMetadata(OperationContext* opCtx,
                              const RestoreConfiguration& restoreConfig,
                              repl::StorageInterface* storageInterface) {
@@ -335,6 +384,9 @@ void updateShardNameMetadata(OperationContext* opCtx,
     if (!shardingRename) {
         return;
     }
+
+    // These collections are renamed on shards.
+    const auto reshardingMetadataColls = getLocalReshardingMetadataColls(opCtx);
 
     for (const auto& shardRenameMapping : shardingRename.get()) {
         const auto& srcShardName = shardRenameMapping.getSourceShardName();
@@ -511,6 +563,9 @@ void updateShardNameMetadata(OperationContext* opCtx,
             if (status != ErrorCodes::NamespaceNotFound) {
                 fassert(8256803, status);
             }
+
+            renameLocalReshardingMetadataCollections(
+                opCtx, storageInterface, reshardingMetadataColls, srcShardName, dstShardName);
         }
     }
 }

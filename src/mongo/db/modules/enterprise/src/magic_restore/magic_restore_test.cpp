@@ -14,6 +14,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_manager_factory_mock.h"
 #include "mongo/db/auth/authorization_router_impl.h"
+#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
@@ -22,7 +23,6 @@
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/service_entry_point_shard_role.h"
 #include "mongo/db/storage/storage_options.h"
-#include "mongo/transport/transport_layer_mock.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
@@ -1581,6 +1581,179 @@ TEST_F(MagicRestoreFixture, SetBalancerSettings) {
         ASSERT_EQ(balancerSettings.getBoolField("stopped"), stopped);
         ASSERT_OK(storage->dropCollection(opCtx, NamespaceString::kConfigSettingsNamespace));
     }
+}
+
+// Test collection info retrieval when multiple collections match the regex.
+TEST_F(MagicRestoreFixture, LocalReshardingMetadataBothCollectionsMatchRegex) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    const auto dbName = "config";
+
+    const std::vector<std::string> expectedColls = {"localReshardingConflictStash.00.shardId",
+                                                    "localReshardingOplogBuffer.01.shardId"};
+
+    for (const auto& collName : expectedColls) {
+        ASSERT_OK(storage->createCollection(
+            opCtx,
+            NamespaceString::createNamespaceString_forTest(dbName, collName),
+            CollectionOptions{}));
+    }
+
+    auto colls = magic_restore::getLocalReshardingMetadataColls(opCtx);
+    // listCollections output is unsorted.
+    std::sort(colls.begin(), colls.end());
+    ASSERT_EQ(colls.size(), expectedColls.size());
+    for (size_t i = 0; i < expectedColls.size(); ++i) {
+        ASSERT_EQ(colls[i], expectedColls[i]);
+    }
+}
+
+// Test collection info retrieval when only some collection names match the regex.
+TEST_F(MagicRestoreFixture, LocalReshardingMetadataOnlyOneCollectionMatchesRegex) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    const auto dbName = "config";
+
+    const std::vector<std::string> expectedColls = {"localReshardingConflictStash.00.shardId",
+                                                    // coll1 is missing a letter in the prefix.
+                                                    "locaReshardingOplogBuffer.01.shardId"};
+
+    for (const auto& collName : expectedColls) {
+        ASSERT_OK(storage->createCollection(
+            opCtx,
+            NamespaceString::createNamespaceString_forTest(dbName, collName),
+            CollectionOptions{}));
+    }
+
+    auto colls = magic_restore::getLocalReshardingMetadataColls(opCtx);
+    ASSERT_EQ(colls.size(), 1);
+    ASSERT_EQ(colls.front(), expectedColls[0]);
+}
+
+// Test that collection info retrieval returns an empty list when no collection names match the
+// regex.
+TEST_F(MagicRestoreFixture, LocalReshardingMetadataNoCollectionsMatchRegex) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    const auto dbName = "config";
+
+    const std::vector<std::string> expectedColls = {"localReshardingFoo.00.shardId",
+                                                    "localReshardingBar.01.shardId"};
+
+    for (const auto& collName : expectedColls) {
+        ASSERT_OK(storage->createCollection(
+            opCtx,
+            NamespaceString::createNamespaceString_forTest(dbName, collName),
+            CollectionOptions{}));
+    }
+
+    auto colls = magic_restore::getLocalReshardingMetadataColls(opCtx);
+    ASSERT(colls.empty());
+}
+
+// Test collection info retrieval when multiple collections match the same prefix in the regex.
+TEST_F(MagicRestoreFixture, LocalReshardingMetadataCollectionsSamePrefix) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    const auto dbName = "config";
+
+    const std::vector<std::string> expectedColls = {"localReshardingConflictStash.00.shardId",
+                                                    "localReshardingConflictStash.01.shardId",
+                                                    "localReshardingOplogBuffer.00.shardId",
+                                                    "localReshardingOplogBuffer.01.shardId"};
+
+    for (const auto& collName : expectedColls) {
+        ASSERT_OK(storage->createCollection(
+            opCtx,
+            NamespaceString::createNamespaceString_forTest(dbName, collName),
+            CollectionOptions{}));
+    }
+
+    auto colls = magic_restore::getLocalReshardingMetadataColls(opCtx);
+    // listCollections output is unsorted.
+    std::sort(colls.begin(), colls.end());
+    ASSERT_EQ(colls.size(), expectedColls.size());
+    for (size_t i = 0; i < expectedColls.size(); ++i) {
+        ASSERT_EQ(colls[i], expectedColls[i]);
+    }
+}
+
+// Test renaming local resharding metadata collections.
+TEST_F(MagicRestoreFixture, LocalReshardingMetadataRenameSuccess) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    const auto dbName = "config";
+
+    const std::vector<std::string> collsWithOldShardId = {
+        "localReshardingConflictStash.00.oldShardId", "localReshardingOplogBuffer.01.oldShardId"};
+
+    for (const auto& collName : collsWithOldShardId) {
+        ASSERT_OK(storage->createCollection(
+            opCtx,
+            NamespaceString::createNamespaceString_forTest(dbName, collName),
+            CollectionOptions{}));
+    }
+    renameLocalReshardingMetadataCollections(
+        opCtx, storage, collsWithOldShardId, ShardId{"oldShardId"}, ShardId{"newShardId"});
+
+    auto colls = magic_restore::getLocalReshardingMetadataColls(opCtx);
+    std::sort(colls.begin(), colls.end());
+
+    const std::vector<std::string> expectedColls = {"localReshardingConflictStash.00.newShardId",
+                                                    "localReshardingOplogBuffer.01.newShardId"};
+    ASSERT_EQ(colls.size(), expectedColls.size());
+    for (size_t i = 0; i < expectedColls.size(); ++i) {
+        ASSERT_EQ(colls[i], expectedColls[i]);
+    }
+}
+
+// Test passing an empty list into renameLocalReshardingMetadataCollections succeeds without
+// renaming any collections.
+TEST_F(MagicRestoreFixture, LocalReshardingMetadataNoCollsInlist) {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+    const auto dbName = "config";
+
+    const std::vector<std::string> expectedColls = {"collection0", "collection1"};
+    for (const auto& collName : expectedColls) {
+        ASSERT_OK(storage->createCollection(
+            opCtx,
+            NamespaceString::createNamespaceString_forTest(dbName, collName),
+            CollectionOptions{}));
+    }
+
+    renameLocalReshardingMetadataCollections(opCtx,
+                                             storage,
+                                             std::vector<std::string>{} /* empty list */,
+                                             ShardId{"oldShardId"},
+                                             ShardId{"newShardId"});
+
+    DBDirectClient client(opCtx);
+    const auto collInfo = client.getCollectionInfos(DatabaseName::kConfig);
+    std::vector<std::string> colls;
+    for (const auto& coll : collInfo) {
+        colls.push_back(coll.getStringField("name").toString());
+    }
+    // listCollections output is unsorted.
+    std::sort(colls.begin(), colls.end());
+
+    ASSERT_EQ(colls.size(), expectedColls.size());
+    for (size_t i = 0; i < expectedColls.size(); ++i) {
+        ASSERT_EQ(colls[i], expectedColls[i]);
+    }
+}
+
+// Test that passing any non-resharding collection name that doesn't match the regex into
+// renameLocalReshardingMetadataCollections will fassert.
+DEATH_TEST_REGEX_F(MagicRestoreFixture,
+                   LocalReshardingMetadataCollListIsntReshardingMetadata,
+                   "8742900") {
+    auto opCtx = operationContext();
+    auto storage = storageInterface();
+
+    const std::vector<std::string> colls = {"notReshardingCollection"};
+    renameLocalReshardingMetadataCollections(
+        opCtx, storage, colls, ShardId{"oldShardId"}, ShardId{"newShardId"});
 }
 
 }  // namespace
