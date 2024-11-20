@@ -477,7 +477,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
                     !outputSchema->getEncryptionMetadata());
             return std::move(outputSchema);
         }
+        // TODO SERVER-97375 Add support for kSetMetadata.
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
+        case TransformerInterface::TransformerType::kSetMetadata:
             uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
     }
     MONGO_UNREACHABLE;
@@ -585,7 +587,9 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
                                                        replaceRoot.getExpressionToModify(),
                                                        false);
         }
+        // TODO SERVER-97375 Add support for kSetMetadata.
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
+        case TransformerInterface::TransformerType::kSetMetadata:
             uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
     }
     return aggregate_expression_intender::Intention::NotMarked;

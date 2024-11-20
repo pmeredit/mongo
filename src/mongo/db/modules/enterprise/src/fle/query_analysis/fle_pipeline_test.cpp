@@ -7,6 +7,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/unittest.h"
 
 namespace mongo {
@@ -582,6 +583,16 @@ TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldF
                                                                         << "$user")));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31129);
+}
+
+TEST_F(FLEPipelineTest, ScoreFailsUnsupportedCommand) {
+    RAIIServerParameterControllerForTest controller("featureFlagSearchHybridScoring", true);
+
+    BSONObj scoreSpec = BSON("$score" << BSON("score"
+                                              << "$myScore"));
+    ASSERT_THROWS_CODE(getSchemaForStage({scoreSpec}, kDefaultSsnSchema),
+                       AssertionException,
+                       ErrorCodes::CommandNotSupported);
 }
 
 }  // namespace
