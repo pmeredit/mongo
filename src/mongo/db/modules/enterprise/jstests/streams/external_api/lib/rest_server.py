@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import subprocess
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -173,25 +174,62 @@ def run(port, directory) -> int:
         server.serve_forever()
 
 
+MIN_LIBCURL_VERSION = "7.78.0"
+MIN_LIBCURL_MAJOR_VERSION = 7
+MIN_LIBCURL_MINOR_VERSION = 78
+MIN_LIBCURL_PATCH_VERSION = 0
+
+
+def check_deps():
+    # check whether this host has sufficient curl version
+    result = subprocess.run(["curl", "--version"], capture_output=True, text=True)
+    tokens = result.stdout.split(" ")
+    version = tokens[1]
+    logger.info(f"Curl version: {version}")
+
+    semver = version.split(".")
+    received_major_version = int(semver[0])
+    received_minor_version = int(semver[1])
+    received_patch_version = int(semver[2])
+    if received_major_version < MIN_LIBCURL_MAJOR_VERSION:
+        raise ValueError(
+            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {version}."
+        )
+    if received_minor_version < MIN_LIBCURL_MINOR_VERSION:
+        raise ValueError(
+            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {version}."
+        )
+    if received_patch_version < MIN_LIBCURL_PATCH_VERSION:
+        raise ValueError(
+            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {version}."
+        )
+
+
 if __name__ == "__main__":
     path = Path(__file__)
     os.chdir(path.parent.absolute())
 
     parser = argparse.ArgumentParser(description="Rest Server For Testing")
 
-    parser.add_argument(
-        "-p", "--port", action="store", required=True, type=int, help="HTTP Listen Port"
-    )
+    parser.add_argument("-p", "--port", action="store", type=int, help="HTTP Listen Port")
     parser.add_argument(
         "-d",
         "--directory",
         action="store",
-        required=True,
         type=str,
         help="HTTP incoming requests directory",
+    )
+    parser.add_argument(
+        "-c",
+        "--check",
+        action="store_true",
+        help="Whether to perform dependency check",
     )
 
     sub = parser.add_subparsers(title="Rest Server subcommands", help="sub-command help")
 
     (args, _) = parser.parse_known_args()
-    run(args.port, args.directory)
+    if args.check:
+        check_deps()
+    else:
+        run(args.port, args.directory)

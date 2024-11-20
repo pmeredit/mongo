@@ -4,6 +4,8 @@
 
 import {getPython3Binary} from "jstests/libs/python.js";
 
+export const InsufficientCurlVersionError =
+    new Error("Insufficient curl version to run $http operator");
 export class TestRESTServer {
     /**
      * Create a new server.
@@ -19,9 +21,35 @@ export class TestRESTServer {
     }
 
     /**
-     * Start server
+     * Checks dependencies and starts server. Throws an error if dependency check fails.
      */
-    start() {
+    tryStart() {
+        print("Checking test server dependencies");
+
+        let args = [
+            this.python,
+            this.web_server_py,
+            "-c",
+        ];
+
+        this.pid = _startMongoProgram({args: args});
+        let output;
+        assert.soon(() => {
+            output = checkProgram(this.pid);
+            return output.exitCode !== undefined;
+        });
+
+        if (rawMongoProgramOutput(".*").search("Insufficient curl version") !== -1) {
+            throw InsufficientCurlVersionError;
+        }
+
+        this._start();
+    }
+
+    /**
+     * Starts server
+     */
+    _start() {
         print("Test REST server program is starting");
 
         let args = [

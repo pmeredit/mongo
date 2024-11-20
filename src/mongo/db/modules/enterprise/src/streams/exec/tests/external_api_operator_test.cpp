@@ -7,6 +7,7 @@
 #include <bsoncxx/exception/error_code.hpp>
 #include <bsoncxx/exception/exception.hpp>
 #include <cstdint>
+#include <curl/curl.h>
 #include <deque>
 #include <fmt/core.h>
 #include <fmt/format.h>
@@ -48,6 +49,11 @@ class ExternalApiOperatorTest : public AggregationContextFixture {
 public:
     ExternalApiOperatorTest() : AggregationContextFixture() {
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
+        curl_global_init(CURL_GLOBAL_ALL);
+    }
+
+    ~ExternalApiOperatorTest() override {
+        curl_global_cleanup();
     }
 
     void setupDag(ExternalApiOperator::Options opts) {
@@ -114,6 +120,15 @@ public:
         _oper->tryLog(id, logFn);
     }
 
+    std::string createUrlFromParts(const std::string& baseUrl,
+                                   const std::string& path,
+                                   const std::vector<std::string>& queryParams) {
+        auto oper = std::make_unique<ExternalApiOperator>(
+            _context.get(), ExternalApiOperator::Options{.url = baseUrl});
+        oper->parseBaseUrl();
+        return oper->makeUrlString(path, queryParams);
+    }
+
 protected:
     std::unique_ptr<Context> _context;
     std::unique_ptr<Executor> _executor;
@@ -144,8 +159,70 @@ struct ExternalApiOpereratorTestCase {
     const std::function<void(OperatorStats)> statsAssertFn;
 };
 
+
+// These tests require the use of curl_url_set and curl_url_get which was introduced to curl
+// in 7.78.0. We cannot run these tests in evergreen hosts with libcurl versions lower than this.
+// https://curl.se/libcurl/c/curl_url_set.html
+#if LIBCURL_VERSION_NUM < 0x074e00
+
+// Add a single target for this test suite to avoid "no suites registered" error.
+TEST_F(ExternalApiOperatorTest, Noop) {}
+
+#else
+
 TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
     ExternalApiOpereratorTestCase tests[] = {
+        {
+            "should make 1 basic GET request",
+            [&] {
+                std::string uri = "http://localhost:10000/";
+                // Set up mock http client.
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri,
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return ExternalApiOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .url = uri,
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{Document{fromjson("{'foo': 'bar'}")}},
+            [this](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+
+                    StreamMetaExternalAPI expectedStreamMetaExternalAPI;
+                    expectedStreamMetaExternalAPI.setUrl(StringData{"http://localhost:10000"});
+                    expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
+                    expectedStreamMetaExternalAPI.setHttpStatusCode(200);
+                    assertStreamMetaExternalAPI(
+                        expectedStreamMetaExternalAPI,
+                        doc[*_context->streamMetaFieldName].Obj()["externalAPI"].Obj());
+                }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
+        },
         {
             "should make 2 get requests basing the url path on a string expression",
             [&] {
@@ -295,7 +372,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     MockHttpClient::Request{
                         HttpClient::HttpMethod::kGET,
                         uri +
-                            "?stringParam=bar&strExprParam=DynamicValue&intExprParam=10&"
+                            "/?stringParam=bar&strExprParam=DynamicValue&intExprParam=10&"
                             "decimalExprParam=1.1&boolExprParam=true",
                     },
                     MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
@@ -339,7 +416,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                     StreamMetaExternalAPI expectedStreamMetaExternalAPI;
                     expectedStreamMetaExternalAPI.setUrl(
                         StringData{"http://localhost:10000"} +
-                        "?stringParam=bar&strExprParam=DynamicValue&intExprParam=10&"
+                        "/?stringParam=bar&strExprParam=DynamicValue&intExprParam=10&"
                         "decimalExprParam=1.1&boolExprParam=true");
                     expectedStreamMetaExternalAPI.setRequestType(HttpMethodEnum::MethodGet);
                     expectedStreamMetaExternalAPI.setHttpStatusCode(200);
@@ -356,7 +433,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
         {
             "should make a POST request with valid headers",
             [&] {
-                std::string uri = "http://localhost:10000";
+                std::string uri = "http://localhost:10000/";
                 auto expCtx =
                     boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
                 auto getFieldExpr = Expression::parseExpression(
@@ -424,7 +501,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                 mockHttpClient->expect(
                     MockHttpClient::Request{
                         HttpClient::HttpMethod::kGET,
-                        uri + "?%25%2B-%3D_%2F%24=%3A%40%23%24%5B%5D%28%29",
+                        uri + "/?%25%2b-=_%2f%24%3d%3a%40%23%24%5b%5d%28%29",
                     },
                     MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
 
@@ -475,7 +552,7 @@ TEST_F(ExternalApiOperatorTest, ExternalApiOperatorTestCases) {
                 auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
                 pipeline->optimizePipeline();
 
-                std::string uri = "http://localhost:10000";
+                std::string uri = "http://localhost:10000/";
 
                 std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
                 mockHttpClient->expect(
@@ -599,8 +676,8 @@ TEST_F(ExternalApiOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
         minTestDuration - Milliseconds(5));  // metric is a hair flakey based on host configuration
 }
 
-TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
-    StringData uri{"http://localhost:10000"};
+TEST_F(ExternalApiOperatorTest, IsThrottledWithOverriddenThrottleFnAndTimer) {
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     auto rawMockHttpClient = mockHttpClient.get();
@@ -672,7 +749,7 @@ TEST_F(ExternalApiOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
 }
 
 TEST_F(ExternalApiOperatorTest, RateLimitingParametersUpdate) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     auto rawMockHttpClient = mockHttpClient.get();
@@ -757,46 +834,94 @@ TEST_F(ExternalApiOperatorTest, GetWithBadQueryParams) {
     StringData uri{"http://localhost:10000"};
     auto expCtx = boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
 
-    std::vector<boost::intrusive_ptr<mongo::Expression>> badExpressionParams{
-        // Object
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$arrayToObject: [[{k: \"age\", v: 91}]] }"),
-                                           _context->expCtx->variablesParseState),
-        // Array
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$objectToArray: { item: \"foo\", qty: 25}}"),
-                                           _context->expCtx->variablesParseState),
-        // BinData / UUID
-        mongo::Expression::parseExpression(
-            expCtx.get(),
-            fromjson("{$toUUID: \"0e3b9063-8abd-4eb3-9f9f-f4c59fd30a60\"}"),
-            _context->expCtx->variablesParseState),
-        // ObjectId
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$toObjectId: \"5ab9cbfa31c2ab715d42129e\"}"),
-                                           _context->expCtx->variablesParseState),
-        // Date
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$toDate: 1730145590000}"),
-                                           _context->expCtx->variablesParseState),
-        // Null
-        mongo::Expression::parseExpression(
-            expCtx.get(),
-            // Note: $convert returns null if input is null.
-            fromjson("{$convert: {input: null, to: {type: \"double\"}}}"),
-            _context->expCtx->variablesParseState),
-    };
+    // Test bad param types.
+    {
+        std::vector<boost::intrusive_ptr<mongo::Expression>> badExpressionParams{
+            // Object
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$arrayToObject: [[{k: \"age\", v: 91}]] }"),
+                _context->expCtx->variablesParseState),
+            // Array
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$objectToArray: { item: \"foo\", qty: 25}}"),
+                _context->expCtx->variablesParseState),
+            // BinData / UUID
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$toUUID: \"0e3b9063-8abd-4eb3-9f9f-f4c59fd30a60\"}"),
+                _context->expCtx->variablesParseState),
+            // ObjectId
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$toObjectId: \"5ab9cbfa31c2ab715d42129e\"}"),
+                _context->expCtx->variablesParseState),
+            // Date
+            mongo::Expression::parseExpression(expCtx.get(),
+                                               fromjson("{$toDate: 1730145590000}"),
+                                               _context->expCtx->variablesParseState),
+            // Null
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                // Note: $convert returns null if input is null.
+                fromjson("{$convert: {input: null, to: {type: \"double\"}}}"),
+                _context->expCtx->variablesParseState),
+        };
 
-    for (const auto& badParam : badExpressionParams) {
-        // param evaluating to empty value.
+        for (const auto& badParam : badExpressionParams) {
+            // param evaluating to empty value.
+            std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+            ExternalApiOperator::Options options{
+                .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                .requestType = HttpClient::HttpMethod::kGET,
+                .url = uri.toString(),
+                .queryParams = std::vector<std::pair<std::string, StringOrExpression>>{{
+                    "badInput",
+                    badParam,
+                }},
+                .as = "response",
+            };
+
+            setupDag(std::move(options));
+            testAgainstDocs(
+                std::vector<StreamDocument>{
+                    Document{fromjson("{'foo': 'DynamicValue'}")},
+                },
+                [&](std::deque<StreamMsgUnion> messages) {
+                    // The invalid expression should've caused the doc to go into the DLQ.
+                    ASSERT_EQ(messages.size(), 0);
+
+                    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+                    auto dlqMsgs = dlq->getMessages();
+                    ASSERT_EQ(1, dlqMsgs.size());
+                    ASSERT_EQ(
+                        "Failed to process input document in ExternalApiOperator with error: "
+                        "Expected "
+                        "$externalAPI.parameters values to evaluate as a number, "
+                        "string, or boolean.",
+                        dlqMsgs.front()["errInfo"]["reason"].String());
+                    ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
+                },
+                [](OperatorStats stats) {
+                    ASSERT_EQ(stats.numInputBytes, 0);
+                    ASSERT_EQ(stats.numOutputBytes, 0);
+                    ASSERT_EQ(stats.numDlqBytes, 314);
+                    ASSERT_EQ(stats.numDlqDocs, 1);
+                });
+        }
+    }
+
+    // Test malformed param formatting
+    {
         std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
         ExternalApiOperator::Options options{
             .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
             .requestType = HttpClient::HttpMethod::kGET,
             .url = uri.toString(),
             .queryParams = std::vector<std::pair<std::string, StringOrExpression>>{{
-                "badInput",
-                badParam,
+                "",  // Empty key is invalid.
+                "bar",
             }},
             .as = "response",
         };
@@ -807,77 +932,123 @@ TEST_F(ExternalApiOperatorTest, GetWithBadQueryParams) {
                 Document{fromjson("{'foo': 'DynamicValue'}")},
             },
             [&](std::deque<StreamMsgUnion> messages) {
-                // The invalid expression should've caused the doc to go into the DLQ.
                 ASSERT_EQ(messages.size(), 0);
 
                 auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
                 auto dlqMsgs = dlq->getMessages();
                 ASSERT_EQ(1, dlqMsgs.size());
                 ASSERT_EQ(
-                    "Failed to process input document in ExternalApiOperator with error: Expected "
-                    "$externalAPI.parameters values to evaluate as a number, "
-                    "string, or boolean.",
+                    "Failed to process input document in ExternalApiOperator with error: Query "
+                    "parameters defined in $externalAPI must have key-value pairs separated with a "
+                    "'=' character non-empty keys.",
                     dlqMsgs.front()["errInfo"]["reason"].String());
                 ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
             },
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 0);
                 ASSERT_EQ(stats.numOutputBytes, 0);
-                ASSERT_EQ(stats.numDlqBytes, 314);
+                ASSERT_EQ(stats.numDlqBytes, 343);
                 ASSERT_EQ(stats.numDlqDocs, 1);
             });
     }
 }
 
 TEST_F(ExternalApiOperatorTest, GetWithBadHeaders) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     auto expCtx = boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
 
 
-    std::vector<boost::intrusive_ptr<mongo::Expression>> badExpressionHeaders{
-        // Undefined
-        mongo::ExpressionFieldPath::parse(
-            expCtx.get(), "$randomFieldThatDoesntExist", _context->expCtx->variablesParseState),
-        // Boolean
-        mongo::Expression::parseExpression(
-            expCtx.get(), fromjson("{$eq: [24, 24] }"), _context->expCtx->variablesParseState),
-        // Int
-        mongo::Expression::parseExpression(
-            expCtx.get(), fromjson("{$sum: [1,2,3]}"), _context->expCtx->variablesParseState),
-        // Decimal
-        mongo::Expression::parseExpression(
-            expCtx.get(), fromjson("{$sum: [1,2,3]}"), _context->expCtx->variablesParseState),
-        // Object
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$arrayToObject: [[{k: \"age\", v: 91}]] }"),
-                                           _context->expCtx->variablesParseState),
-        // Array
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$objectToArray: { item: \"foo\", qty: 25}}"),
-                                           _context->expCtx->variablesParseState),
-        // BinData / UUID
-        mongo::Expression::parseExpression(
-            expCtx.get(),
-            fromjson("{$toUUID: \"0e3b9063-8abd-4eb3-9f9f-f4c59fd30a60\"}"),
-            _context->expCtx->variablesParseState),
-        // ObjectId
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$toObjectId: \"5ab9cbfa31c2ab715d42129e\"}"),
-                                           _context->expCtx->variablesParseState),
-        // Date
-        mongo::Expression::parseExpression(expCtx.get(),
-                                           fromjson("{$toDate: 1730145590000}"),
-                                           _context->expCtx->variablesParseState),
-        // Null
-        mongo::Expression::parseExpression(
-            expCtx.get(),
-            // Note: $convert returns null if input is null.
-            fromjson("{$convert: {input: null, to: {type: \"double\"}}}"),
-            _context->expCtx->variablesParseState),
-    };
+    // Test bad header value types
+    {
+        std::vector<boost::intrusive_ptr<mongo::Expression>> badExpressionHeaders{
+            // Undefined
+            mongo::ExpressionFieldPath::parse(
+                expCtx.get(), "$randomFieldThatDoesntExist", _context->expCtx->variablesParseState),
+            // Boolean
+            mongo::Expression::parseExpression(
+                expCtx.get(), fromjson("{$eq: [24, 24] }"), _context->expCtx->variablesParseState),
+            // Int
+            mongo::Expression::parseExpression(
+                expCtx.get(), fromjson("{$sum: [1,2,3]}"), _context->expCtx->variablesParseState),
+            // Decimal
+            mongo::Expression::parseExpression(
+                expCtx.get(), fromjson("{$sum: [1,2,3]}"), _context->expCtx->variablesParseState),
+            // Object
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$arrayToObject: [[{k: \"age\", v: 91}]] }"),
+                _context->expCtx->variablesParseState),
+            // Array
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$objectToArray: { item: \"foo\", qty: 25}}"),
+                _context->expCtx->variablesParseState),
+            // BinData / UUID
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$toUUID: \"0e3b9063-8abd-4eb3-9f9f-f4c59fd30a60\"}"),
+                _context->expCtx->variablesParseState),
+            // ObjectId
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                fromjson("{$toObjectId: \"5ab9cbfa31c2ab715d42129e\"}"),
+                _context->expCtx->variablesParseState),
+            // Date
+            mongo::Expression::parseExpression(expCtx.get(),
+                                               fromjson("{$toDate: 1730145590000}"),
+                                               _context->expCtx->variablesParseState),
+            // Null
+            mongo::Expression::parseExpression(
+                expCtx.get(),
+                // Note: $convert returns null if input is null.
+                fromjson("{$convert: {input: null, to: {type: \"double\"}}}"),
+                _context->expCtx->variablesParseState),
+        };
 
-    for (const auto& badHeader : badExpressionHeaders) {
-        // header evaluating to empty value.
+        for (const auto& badHeader : badExpressionHeaders) {
+            // header evaluating to empty value.
+            std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+
+            ExternalApiOperator::Options options{
+                .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                .requestType = HttpClient::HttpMethod::kGET,
+                .url = uri.toString(),
+                .operatorHeaders =
+                    std::vector<std::pair<std::string, StringOrExpression>>{
+                        {"badHeader", badHeader}},
+                .as = "response",
+            };
+
+            setupDag(std::move(options));
+            testAgainstDocs(
+                std::vector<StreamDocument>{
+                    Document{fromjson("{'foo': 'DynamicValue'}")},
+                },
+                [&](std::deque<StreamMsgUnion> messages) {
+                    // The invalid expression should've caused the doc to go into the DLQ.
+                    ASSERT_EQ(messages.size(), 0);
+
+                    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+                    auto dlqMsgs = dlq->getMessages();
+                    ASSERT_EQ(1, dlqMsgs.size());
+                    ASSERT_EQ(
+                        "Failed to process input document in ExternalApiOperator with error: "
+                        "Expected "
+                        "$externalAPI.headers values to evaluate to a string.",
+                        dlqMsgs.front()["errInfo"]["reason"].String());
+                    ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
+                },
+                [](OperatorStats stats) {
+                    ASSERT_EQ(stats.numInputBytes, 0);
+                    ASSERT_EQ(stats.numOutputBytes, 0);
+                    ASSERT_EQ(stats.numDlqBytes, 291);
+                    ASSERT_EQ(stats.numDlqDocs, 1);
+                });
+        }
+    }
+
+    // Test malformed headers
+    {
         std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
 
         ExternalApiOperator::Options options{
@@ -885,36 +1056,17 @@ TEST_F(ExternalApiOperatorTest, GetWithBadHeaders) {
             .requestType = HttpClient::HttpMethod::kGET,
             .url = uri.toString(),
             .operatorHeaders =
-                std::vector<std::pair<std::string, StringOrExpression>>{{"badHeader", badHeader}},
+                std::vector<std::pair<std::string, StringOrExpression>>{
+                    {"", "bar"}},  // header key cannot be empty
             .as = "response",
         };
 
-        setupDag(std::move(options));
-        testAgainstDocs(
-            std::vector<StreamDocument>{
-                Document{fromjson("{'foo': 'DynamicValue'}")},
-            },
-            [&](std::deque<StreamMsgUnion> messages) {
-                // The invalid expression should've caused the doc to go into the DLQ.
-                ASSERT_EQ(messages.size(), 0);
-
-                auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
-                auto dlqMsgs = dlq->getMessages();
-                ASSERT_EQ(1, dlqMsgs.size());
-                ASSERT_EQ(
-                    "Failed to process input document in ExternalApiOperator with error: Expected "
-                    "$externalAPI.headers values to evaluate to a string.",
-                    dlqMsgs.front()["errInfo"]["reason"].String());
-                ASSERT_EQ("ExternalApiOperator", dlqMsgs.front()["operatorName"].String());
-            },
-            [](OperatorStats stats) {
-                ASSERT_EQ(stats.numInputBytes, 0);
-                ASSERT_EQ(stats.numOutputBytes, 0);
-                ASSERT_EQ(stats.numDlqBytes, 291);
-                ASSERT_EQ(stats.numDlqDocs, 1);
-            });
+        ASSERT_THROWS_WHAT(setupDag(std::move(options)),
+                           DBException,
+                           "Keys defined in $externalAPI.headers must not be empty.");
     }
 }
+
 TEST_F(ExternalApiOperatorTest, ShouldDLQOnErrorResponseByDefault) {
     StringData uri{"http://localhost:10000"};
     // Set up mock http client.
@@ -1104,7 +1256,7 @@ TEST_F(ExternalApiOperatorTest, ShouldIgnoreOnErrorResponse) {
 }
 
 TEST_F(ExternalApiOperatorTest, FailOnError) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
 
@@ -1136,7 +1288,7 @@ TEST_F(ExternalApiOperatorTest, FailOnError) {
 }
 
 TEST_F(ExternalApiOperatorTest, ShouldFailOnNon2XXStatus) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     auto rawMockHttpClient = mockHttpClient.get();
@@ -1176,7 +1328,7 @@ TEST_F(ExternalApiOperatorTest, ShouldFailOnNon2XXStatus) {
 }
 
 TEST_F(ExternalApiOperatorTest, ShouldDLQOnUnsupportedResponseFormatByDefault) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
@@ -1220,7 +1372,7 @@ TEST_F(ExternalApiOperatorTest, ShouldDLQOnUnsupportedResponseFormatByDefault) {
 }
 
 TEST_F(ExternalApiOperatorTest, ShouldDLQOnUnsupportedResponseFormat) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
@@ -1265,7 +1417,7 @@ TEST_F(ExternalApiOperatorTest, ShouldDLQOnUnsupportedResponseFormat) {
 }
 
 TEST_F(ExternalApiOperatorTest, ShouldFailOnUnsupportedResponseFormat) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
@@ -1292,7 +1444,7 @@ TEST_F(ExternalApiOperatorTest, ShouldFailOnUnsupportedResponseFormat) {
 }
 
 TEST_F(ExternalApiOperatorTest, ShouldIgnoreUnsupportedResponseFormat) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
@@ -1344,7 +1496,7 @@ TEST_F(ExternalApiOperatorTest, ShouldIgnoreUnsupportedResponseFormat) {
 }
 
 TEST_F(ExternalApiOperatorTest, ShouldSupportEmptyPayload) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
@@ -1393,6 +1545,7 @@ TEST_F(ExternalApiOperatorTest, ShouldNotLogSameIDWithinAMinute) {
     TickSourceMock<Milliseconds> tickSource;
     _oper = std::make_unique<ExternalApiOperator>(_context.get(),
                                                   ExternalApiOperator::Options{
+                                                      .url = "http://localhost",
                                                       .timer = Timer{&tickSource},
                                                   });
 
@@ -1427,6 +1580,7 @@ TEST_F(ExternalApiOperatorTest, ShouldLogDifferentIDWithinAMinute) {
     TickSourceMock<Milliseconds> tickSource;
     _oper = std::make_unique<ExternalApiOperator>(_context.get(),
                                                   ExternalApiOperator::Options{
+                                                      .url = "http://localhost",
                                                       .timer = Timer{&tickSource},
                                                   });
 
@@ -1468,5 +1622,137 @@ TEST_F(ExternalApiOperatorTest, ShouldLogDifferentIDWithinAMinute) {
 
 // TODO(SERVER-95032): Add failure case test where we DLQ a a document once we can use the planner
 // to create the pipeline
+
+
+// This block validates libcurl parsing + url building behavior.
+TEST_F(ExternalApiOperatorTest, LibCurlUrlBuilding) {
+    struct TestCase {
+        std::string baseUrl;
+        std::string path;
+        std::vector<std::string> queryParams;
+        std::string expectedUrl;
+        std::string expectedErrorMessage;
+    };
+
+    std::vector<TestCase> testCases{
+        // scheme tests
+        {"foo.com", "", {}, "", "Parsing url failed."},         // missing scheme
+        {"asdf://foo.com", "", {}, "", "Parsing url failed."},  // invalid scheme
+
+        // username/password tests
+        {"http://username@foo.com", "", {}, "http://username@foo.com/", ""},    // only username
+        {"http://username:@foo.com", "", {}, "http://username@foo.com/", ""},   // only username
+        {"http://:password@foo.com", "", {}, "http://:password@foo.com/", ""},  // only password
+        {"http://username::password@foo.com", "", {}, "http://username::password@foo.com/", ""},
+
+        // hostname tests
+        {"http://192.168.1.1", "", {}, "http://192.168.1.1/", ""},    // ip hostname
+        {"http://:32", "", {}, "http://:32", "Parsing url failed."},  // no hostname
+
+        // port tests
+        {"https://localhost:23", "", {}, "https://localhost:23/", ""},  // basic
+        {"http://localhost:", "", {}, "http://localhost/", ""},         // no port
+
+        // path tests
+        {"http://foo.com", "a", {}, "http://foo.com/a", ""},
+        {"http://foo.com/", "b", {}, "http://foo.com/b", ""},
+        {"http://foo.com//c", "", {}, "http://foo.com//c", ""},
+        {"http://foo.com//", "c", {}, "http://foo.com//c", ""},
+        {"http://foo.com/a", "b/c", {}, "http://foo.com/a/b/c", ""},
+        {"http://foo.com/d/", "/e/f", {}, "http://foo.com/d/e/f", ""},
+        {"http://foo.com/d/", "/", {}, "http://foo.com/d", ""},
+        {"http://foo.com/d/", "..", {}, "http://foo.com/d/..", ""},
+        {"http://foo.com/a/b$$/c", "/d", {}, "http://foo.com/a/b%24%24/c/d", ""},
+
+        // query tests
+        {"https://foo.com?foo=bar", {}, {}, "https://foo.com/?foo=bar", ""},  // basic
+        {"https://foo.com?=bar",
+         "",
+         {},
+         "",
+         "Query parameters defined in $externalAPI must have a non-empty key."},  // empty key
+        {"https://foo.com",
+         "",
+         {"bar=baz"},
+         "https://foo.com/?bar=baz",
+         ""},  // appending query to empty base query
+        {"https://foo.com?foo=bar",
+         "",
+         {"bar=baz"},
+         "https://foo.com/?foo=bar&bar=baz",
+         ""},  // appending query to non-empty base query
+
+        // fragment tests
+        {"https://foo.com/#", "", {}, "https://foo.com/", ""},             // empty fragment
+        {"https://foo.com/#foo", "", {}, "https://foo.com/#foo", ""},      // basic fragment
+        {"https://foo.com/#foo#", "", {}, "https://foo.com/#foo%23", ""},  // fragment containing #
+
+        // happy path
+        {"http://foo.com", "", {}, "http://foo.com/", ""},  // basic
+        {"http://user:password@foo.com:4000/foo?bar=baz#header",
+         "",
+         {},
+         "http://user:password@foo.com:4000/foo?bar=baz#header",
+         ""},
+    };
+
+    for (const auto& tc : testCases) {
+        LOGV2_INFO(9688097,
+                   "Running test case",
+                   "baseUrl"_attr = tc.baseUrl,
+                   "path"_attr = tc.path,
+                   "queryParams"_attr = tc.queryParams);
+        if (tc.expectedErrorMessage.empty()) {
+            auto actualUrl = createUrlFromParts(tc.baseUrl, tc.path, tc.queryParams);
+            ASSERT_EQ(actualUrl, tc.expectedUrl);
+        } else {
+            ASSERT_THROWS_WHAT(createUrlFromParts(tc.baseUrl, tc.path, tc.queryParams),
+                               DBException,
+                               tc.expectedErrorMessage);
+        }
+    }
+}
+
+// Tests URL path joining behavior
+TEST_F(ExternalApiOperatorTest, JoinPath) {
+    struct TestCase {
+        std::string basePath;
+        std::string path;
+        std::string expected;
+    };
+
+    std::vector<TestCase> testCases{
+        {"", "", "/"},
+        {"/", "/", "/"},
+        {"/", "", "/"},
+        {"", "/", "/"},
+        {"/foo", "", "/foo"},
+        {"", "/foo", "/foo"},
+        {"/", "/foo", "/foo"},
+        {"/", "foo", "/foo"},
+        {"/foo", "/", "/foo"},
+        {"/foo/", "/", "/foo"},
+        {"/foo/", "//", "/foo/"},
+        {"/foo/bar", "//", "/foo/bar/"},
+        {"/foo//bar", "//", "/foo//bar/"},
+        {"/foo/bar", "/baz", "/foo/bar/baz"},
+        {"/foo/bar", "baz", "/foo/bar/baz"},
+        {"/foo/bar", "//baz", "/foo/bar//baz"},
+        {"/foo/bar", "..", "/foo/bar/.."},
+        {"/foo/bar", "../...", "/foo/bar/../..."},
+        {"/", "../...", "/../..."},
+        {"//c", "foo", "//c/foo"},
+        {"//c", "foo//bar", "//c/foo//bar"},
+    };
+
+
+    for (const auto& tc : testCases) {
+        LOGV2_INFO(9688096, "Running test", "basePath"_attr = tc.basePath, "path"_attr = tc.path);
+        auto actualUrl = ExternalApiOperator::joinPaths(tc.basePath, tc.path);
+        ASSERT_EQ(actualUrl, tc.expected);
+    }
+}
+
+#endif  // LIBCURL_VERSION_NUM > 0x074e00
 
 };  // namespace streams
