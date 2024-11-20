@@ -1153,42 +1153,50 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             result.errmsg);
     }
 
-    basicMatchStopStartTest();
-    smokeTestCorrectness();
-    smokeTestCorrectnessTumblingWindow();
-    smokeTestStopStartWindow();
-    hoppingWindowGroupTest();
-    hoppingWindowSortTest();
-    smokeTestCheckpointOnStop();
-    smokeTestCheckpointOnStart();
-    smokeTestCorrectnessChangestream();
-    failPointTestAfterFirstOutput();
-    smokeTestStatsInCheckpoint();
-    smokeTestEmptyChangestream();
-    emptyChangestreamResumeTokenAdvances();
-    mismatchedCheckpointOperators();
+    const runTest = (func) => {
+        jsTestLog(`Running: ${func.toString()}`);
+        func();
+    };
 
-    const buildInfo = db.runCommand("buildInfo");
-    assert(buildInfo.hasOwnProperty("allocator"));
+    runTest(smokeTestCorrectnessTumblingWindow);
+    runTest(mismatchedCheckpointOperators);
+    if (useRestoredExecutionPlan) {
+        // To save test execution time, only run these tests
+        // for the prod configuration where we use the restored execution plan.
+        runTest(basicMatchStopStartTest);
+        runTest(smokeTestCorrectness);
+        runTest(smokeTestStopStartWindow);
+        runTest(hoppingWindowGroupTest);
+        runTest(hoppingWindowSortTest);
+        runTest(smokeTestCheckpointOnStop);
+        runTest(smokeTestCheckpointOnStart);
+        runTest(smokeTestCorrectnessChangestream);
+        runTest(failPointTestAfterFirstOutput);
+        runTest(smokeTestStatsInCheckpoint);
+        runTest(smokeTestEmptyChangestream);
+        runTest(emptyChangestreamResumeTokenAdvances);
 
-    if (buildInfo.allocator === "tcmalloc-google") {
-        assert.commandWorked(
-            db.adminCommand({setParameter: 1, heapProfilingSampleIntervalBytes: 1024 * 1024}));
-        assert.soon(() => {
-            let result = db.serverStatus();
-            assert.commandWorked(result);
-            return result.hasOwnProperty("heapProfile");
-        }, "Heap profile serverStatus section is not present");
+        const buildInfo = db.runCommand("buildInfo");
+        assert(buildInfo.hasOwnProperty("allocator"));
 
-        // Uncomment these to test 1GB and 4GB windows locally.
-        // largeTumblingWindow(1000);
-        // largeTumblingWindow(4000);
-        largeTumblingWindow(10);
+        if (buildInfo.allocator === "tcmalloc-google") {
+            assert.commandWorked(
+                db.adminCommand({setParameter: 1, heapProfilingSampleIntervalBytes: 1024 * 1024}));
+            assert.soon(() => {
+                let result = db.serverStatus();
+                assert.commandWorked(result);
+                return result.hasOwnProperty("heapProfile");
+            }, "Heap profile serverStatus section is not present");
+
+            // Uncomment these to test 1GB and 4GB windows locally.
+            // largeTumblingWindow(1000);
+            // largeTumblingWindow(4000);
+            largeTumblingWindow(10);
+        }
     }
 }
 
 testBoth(true /* useNewCheckpointing */, true /* useRestoredExecutionPlan */);
-// TODO(SERVER-92447): Remove this.
 testBoth(true /* useNewCheckpointing */, false /* useRestoredExecutionPlan */);
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);
