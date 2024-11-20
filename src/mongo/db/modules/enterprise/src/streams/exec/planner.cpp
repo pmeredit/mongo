@@ -189,12 +189,6 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$externalAPI", {StageType::kExternalAPI, true, true, false}},
     };
 
-// Default fast checkpoint interval: 5 minutes.
-static constexpr mongo::stdx::chrono::milliseconds kFastCheckpointInterval{5 * 60 * 1000};
-// Default slow checkpoint interval: 60 minutes. Used when there is a window serializing its state
-// in the execution plan.
-static constexpr mongo::stdx::chrono::milliseconds kSlowCheckpointInterval{60 * 60 * 1000};
-
 enum class PipelineType {
     kMain,
     kWindow,
@@ -1152,12 +1146,6 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     invariant(_windowPlanningInfo->numWindowAwareStages ==
               _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
-    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
-    if (val) {
-        _context->checkpointInterval = std::chrono::milliseconds(val.get());
-    } else {
-        _context->checkpointInterval = kSlowCheckpointInterval;
-    }
     return serializedWindowStage(
         kTumblingWindowStageName, bsonOptions, std::move(optimizedPipeline));
 }
@@ -1251,12 +1239,6 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     invariant(_windowPlanningInfo->numWindowAwareStages ==
               _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
-    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
-    if (val) {
-        _context->checkpointInterval = std::chrono::milliseconds(val.get());
-    } else {
-        _context->checkpointInterval = kSlowCheckpointInterval;
-    }
     return serializedWindowStage(kHoppingWindowStageName, bsonOptions, std::move(executionPlan));
 }
 
@@ -1353,12 +1335,6 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
     invariant(_windowPlanningInfo->numWindowAwareStages ==
               _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
-    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
-    if (val) {
-        _context->checkpointInterval = std::chrono::milliseconds(val.get());
-    } else {
-        _context->checkpointInterval = kSlowCheckpointInterval;
-    }
     return serializedWindowStage(
         kSessionWindowStageName, bsonOptions, std::move(optimizedPipeline));
 }
@@ -1861,18 +1837,6 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
 }
 
 std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipeline) {
-    // Set the checkpoint interval. This might be modified if we're planning window stages.
-    // If there are no windows in the pipeline or we are using "fast mode" window checkpointing,
-    // checkpoints are small. So we write a checkpoint every 5 minutes.
-    // If we are using "slow mode" window checkpointing, checkpoints might be large, so we
-    // checkpoint every 1 hour.
-    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
-    if (val) {
-        _context->checkpointInterval = std::chrono::milliseconds(val.get());
-    } else {
-        _context->checkpointInterval = kFastCheckpointInterval;
-    }
-
     std::unique_ptr<OperatorDag> result;
     try {
         result = planInner(bsonPipeline);

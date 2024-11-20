@@ -143,6 +143,11 @@ public:
     // The executor calls this to get the checkpoints that have been flushed to remote storage.
     std::deque<mongo::CheckpointDescription> getFlushedCheckpoints();
 
+    // The byte size of the last checkpoint committed.
+    int64_t getLastCheckpointSizeBytes() {
+        return _lastCheckpointSizeBytes;
+    }
+
 protected:
     explicit CheckpointStorage(Context* ctxt);
 
@@ -177,6 +182,7 @@ protected:
 
 private:
     friend class KafkaConsumerOperatorTest;
+    friend class StreamManagerTest;
 
     virtual CheckpointId doStartCheckpoint() = 0;
     virtual void doCommitCheckpoint(CheckpointId chkId) = 0;

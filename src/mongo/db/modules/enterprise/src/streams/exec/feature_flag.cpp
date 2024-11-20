@@ -11,6 +11,7 @@
 #include "streams/exec/config_gen.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/operator.h"
+#include "streams/util/units.h"
 
 namespace streams {
 
@@ -196,6 +197,20 @@ const FeatureFlagDefinition FeatureFlags::kKafkaTotalQueuedBytes{
     // No more than 128MB on an SP10.
     {{kStreamsSppTierSP10, mongo::Value::createIntOrLong(128L * 1024 * 1024)}}};
 
+const FeatureFlagDefinition FeatureFlags::kCheckpointMinIntervalSeconds{
+    "checkpointMinIntervalSeconds",
+    "Specifies the minimum periodic checkpoint interval",
+    mongo::Value::createIntOrLong(5 * 60)};
+
+const FeatureFlagDefinition FeatureFlags::kCheckpointMaxIntervalSeconds{
+    "checkpointMaxIntervalSeconds",
+    "Specifies the maximum periodic checkpoint interval",
+    mongo::Value::createIntOrLong(60 * 60)};
+
+const FeatureFlagDefinition FeatureFlags::kCheckpointStateSizeToUseMaxIntervalBytes{
+    "checkpointStateSizeToUseMaxIntervalBytes",
+    "Specifies the byte size for which to use the maximum periodic checkpoint interval",
+    mongo::Value::createIntOrLong(100_MiB)};
 
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {

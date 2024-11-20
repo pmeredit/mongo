@@ -67,10 +67,7 @@ struct Context {
     // currently active to prevent checkpoint coordinators from exceeding the defined concurrency
     // when applicable
     std::shared_ptr<ConcurrentCheckpointController> concurrentCheckpointController;
-
-    // Defines the checkpoint interval used for periodic checkpoints.
-    // Set in the Planner depending on the plan.
-    mongo::stdx::chrono::milliseconds checkpointInterval;
+    // Stream processor feature flags.
     boost::optional<StreamProcessorFeatureFlags> featureFlags;
     // The stream metadata field name. If none, disable projecting stream metadata.
     boost::optional<std::string> streamMetaFieldName{boost::none};

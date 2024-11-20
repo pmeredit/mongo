@@ -1029,19 +1029,34 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         // Start the checkpoint coordinator if checkpoint is supported for the given source.
         if (isCheckpointSuportedForSource) {
             const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
+            boost::optional<mongo::Milliseconds> fixedInterval;
             if (checkpointOptions->getDebugOnlyIntervalMs()) {
                 // If provided, use the client supplied interval.
-                processorInfo->context->checkpointInterval =
-                    stdx::chrono::milliseconds{*checkpointOptions->getDebugOnlyIntervalMs()};
+                fixedInterval = Milliseconds{*checkpointOptions->getDebugOnlyIntervalMs()};
             }
 
+            auto minInterval =
+                *processorInfo->context->featureFlags
+                     ->getFeatureFlagValue(FeatureFlags::kCheckpointMinIntervalSeconds)
+                     .getInt();
+            auto maxInterval =
+                *processorInfo->context->featureFlags
+                     ->getFeatureFlagValue(FeatureFlags::kCheckpointMaxIntervalSeconds)
+                     .getInt();
+            auto byteSizeToUseMaxInterval =
+                *processorInfo->context->featureFlags
+                     ->getFeatureFlagValue(FeatureFlags::kCheckpointStateSizeToUseMaxIntervalBytes)
+                     .getInt();
             processorInfo->checkpointCoordinator =
                 std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
                     .processorId = processorInfo->context->streamProcessorId,
                     .enableDataFlow = request.getOptions().getEnableDataFlow(),
                     .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
                         !processorInfo->context->restoreCheckpointId,
-                    .checkpointIntervalMs = processorInfo->context->checkpointInterval,
+                    .minInterval = Seconds{minInterval},
+                    .maxInterval = Seconds{maxInterval},
+                    .stateSizeToUseMaxInterval = byteSizeToUseMaxInterval,
+                    .fixedInterval = fixedInterval,
                     .storage = processorInfo->context->checkpointStorage.get(),
                     .checkpointController = _concurrentCheckpointController,
                 });

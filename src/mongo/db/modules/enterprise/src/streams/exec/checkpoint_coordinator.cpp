@@ -20,10 +20,20 @@ using namespace std::chrono_literals;
 namespace streams {
 
 CheckpointCoordinator::CheckpointCoordinator(Options options)
-    : _options(std::move(options)), _lastCheckpointTimestamp{steady_clock::now()} {}
+    : _options(std::move(options)),
+      _lastCheckpointTimestamp{steady_clock::now()},
+      _interval{_options.minInterval} {
+    if (_options.fixedInterval) {
+        setCheckpointInterval(*_options.fixedInterval);
+    }
+}
 
 boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointControlMsgIfReady(
     const CheckpointRequest& req) {
+    if (!_options.fixedInterval) {
+        _interval = getDynamicInterval(req.lastCheckpointSizeBytes);
+    }
+
     auto createCheckpoint = evaluateIfCheckpointShouldBeWritten(req);
 
     if (createCheckpoint == CreateCheckpoint::kNotNeeded) {
@@ -45,7 +55,16 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
         }
         return boost::none;
     }
+
     return createCheckpointControlMsg();
+}
+
+mongo::Milliseconds CheckpointCoordinator::getDynamicInterval(int64_t stateSize) {
+    const int64_t range = _options.maxInterval.count() - _options.minInterval.count();
+    const double multiplier =
+        std::min(1.0, static_cast<double>(stateSize) / _options.stateSizeToUseMaxInterval);
+    const double interval = _options.minInterval.count() + (multiplier * range);
+    return Milliseconds(static_cast<int64_t>(interval));
 }
 
 CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpointShouldBeWritten(
@@ -94,7 +113,7 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     // Else, if sufficient time has elapsed, then take a checkpoint.
     auto now = steady_clock::now();
     dassert(_lastCheckpointTimestamp <= now);
-    if (now - _lastCheckpointTimestamp <= _options.checkpointIntervalMs) {
+    if (now - _lastCheckpointTimestamp <= _interval.toSystemDuration()) {
         return CreateCheckpoint::kNotNeeded;
     }
     return CreateCheckpoint::kIfRoom;

@@ -9,6 +9,7 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/message.h"
+#include "streams/util/units.h"
 
 namespace mongo {
 class ServiceContext;
@@ -37,8 +38,14 @@ public:
         // before we start executing. We do this to have a well defined starting point
         // so if a crash occurs after data is output, we can get back to the same input data.
         bool writeFirstCheckpoint{false};
-        // Determines the frequency at which checkpoint messages are created.
-        mongo::stdx::chrono::milliseconds checkpointIntervalMs;
+        // Minimum periodic checkpoint interval.
+        mongo::Milliseconds minInterval{mongo::Minutes(5)};
+        // Maximum periodic checkpoint interval.
+        mongo::Milliseconds maxInterval{mongo::Minutes(60)};
+        // The state size at which the maximum interval will be used.
+        int64_t stateSizeToUseMaxInterval{100_MiB};
+        // A fixed interval to use between checkpoints.
+        boost::optional<mongo::Milliseconds> fixedInterval;
         // The checkpoint storage.
         CheckpointStorage* storage{nullptr};
         std::shared_ptr<ConcurrentCheckpointController> checkpointController;
@@ -54,6 +61,8 @@ public:
         WriteCheckpointCommand writeCheckpointCommand{WriteCheckpointCommand::kNone};
         // Are we shutting down?
         bool shutdown{false};
+        // Size of the last committed checkpoint in bytes
+        int64_t lastCheckpointSizeBytes{0};
     };
 
     CheckpointCoordinator(Options options);
@@ -66,20 +75,21 @@ public:
     boost::optional<CheckpointControlMsg> getCheckpointControlMsgIfReady(
         const CheckpointRequest& req);
 
-    // Return the checkpoint interval.
-    const mongo::stdx::chrono::milliseconds& getCheckpointInterval() {
-        return _options.checkpointIntervalMs;
-    }
-
     bool writtenFirstCheckpoint() const {
         return _writtenFirstCheckpoint;
     }
 
-    void setCheckpointInterval(mongo::stdx::chrono::milliseconds value) {
-        _options.checkpointIntervalMs = value;
+    void setCheckpointInterval(mongo::Milliseconds value) {
+        _options.fixedInterval = value;
+        _interval = value;
     }
 
 private:
+    friend class CheckpointTest;
+    friend class StreamManagerTest;
+
+    mongo::Milliseconds getDynamicInterval(int64_t stateSize);
+
     enum class CreateCheckpoint { kNotNeeded, kIfRoom, kForce };
     CreateCheckpoint evaluateIfCheckpointShouldBeWritten(const CheckpointRequest& req);
     CheckpointControlMsg createCheckpointControlMsg();
@@ -87,6 +97,7 @@ private:
 
     Options _options;
     mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> _lastCheckpointTimestamp;
+    mongo::Milliseconds _interval;
 };
 
 }  // namespace streams

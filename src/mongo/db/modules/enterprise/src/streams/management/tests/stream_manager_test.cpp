@@ -140,6 +140,38 @@ public:
         spInfo->executor->runOnce();
     }
 
+    void setLastCheckpointSize(StreamManager::StreamProcessorInfo* info, int64_t bytes) {
+        stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
+        info->context->checkpointStorage->_lastCheckpointSizeBytes = bytes;
+    }
+
+    void setLastCheckpointTime(
+        StreamManager::StreamProcessorInfo* info,
+        mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> time) {
+        stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
+        info->checkpointCoordinator->_lastCheckpointTimestamp = time;
+    }
+
+    void setUncheckpointedState(StreamManager::StreamProcessorInfo* info,
+                                bool uncheckpointedState) {
+        stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
+        info->executor->_uncheckpointedState = uncheckpointedState;
+    }
+
+    void waitForCheckpointInterval(StreamManager::StreamProcessorInfo* info,
+                                   Milliseconds expected) {
+        auto deadline = Date_t::now() + Minutes{1};
+        while (Date_t::now() < deadline) {
+            auto actual = Milliseconds{getCheckpointInterval(info).count()};
+            std::cout << "actual: " << actual << std::endl;
+            if (expected == actual) {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{100});
+        }
+        ASSERT(false);
+    }
+
     const auto& getTestOnlyDocs(StreamManager* streamManager,
                                 std::string tenantId,
                                 std::string streamName) {
@@ -198,7 +230,8 @@ public:
 
     std::chrono::milliseconds getCheckpointInterval(
         StreamManager::StreamProcessorInfo* processorInfo) {
-        return processorInfo->executor->_context->checkpointInterval;
+        stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
+        return std::chrono::milliseconds(processorInfo->checkpointCoordinator->_interval.count());
     }
 
     // Used to act like the streams Agent and flush committed checkpoints.
@@ -1010,7 +1043,16 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
         ASSERT(processorInfo->checkpointCoordinator);
         ASSERT_EQ(stdx::chrono::milliseconds{expectedIntervalMs},
-                  processorInfo->checkpointCoordinator->getCheckpointInterval());
+                  getCheckpointInterval(processorInfo));
+
+        setLastCheckpointSize(processorInfo, 100_MiB);
+        // set this to force another checkpoint
+        setLastCheckpointTime(processorInfo,
+                              stdx::chrono::steady_clock::now() - stdx::chrono::hours{1});
+        setUncheckpointedState(processorInfo, true);
+        // since the last checkpoint was 100MB, after a runOnce call in the executor background
+        // thread, the checkpoint interval should increase to 60 minutes.
+        waitForCheckpointInterval(processorInfo, Milliseconds{Minutes{60}});
 
         mongo::BSONObj featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: 50000}}}");
@@ -1067,7 +1109,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
             }
         ]
     )",
-              60 * 1000 * 60);
+              5 * 1000 * 60);
 
     innerTest(R"(
         [
@@ -1091,7 +1133,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
             }
         ]
     )",
-              60 * 1000 * 60);
+              5 * 1000 * 60);
 
     innerTest(R"(
         [

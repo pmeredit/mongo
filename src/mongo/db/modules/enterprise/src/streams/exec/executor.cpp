@@ -441,7 +441,9 @@ Executor::RunStatus Executor::runOnce() {
                     .changeStreamAdvanced = changeStreamAdvanced,
                     .uncheckpointedState = _uncheckpointedState,
                     .writeCheckpointCommand = _writeCheckpointCommand.load(),
-                    .shutdown = true});
+                    .shutdown = true,
+                    .lastCheckpointSizeBytes =
+                        _context->checkpointStorage->getLastCheckpointSizeBytes()});
             if (checkpointControlMsg) {
                 ScopeGuard guard(
                     [&] { _context->concurrentCheckpointController->onCheckpointComplete(); });
@@ -462,11 +464,13 @@ Executor::RunStatus Executor::runOnce() {
     // Send a new checkpoint message only if source or sink have advanced since last checkpoint
     if (checkpointCoordinator) {
         auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
-            CheckpointCoordinator::CheckpointRequest{.changeStreamAdvanced = changeStreamAdvanced,
-                                                     .uncheckpointedState = _uncheckpointedState,
-                                                     .writeCheckpointCommand =
-                                                         _writeCheckpointCommand.load(),
-                                                     .shutdown = false});
+            CheckpointCoordinator::CheckpointRequest{
+                .changeStreamAdvanced = changeStreamAdvanced,
+                .uncheckpointedState = _uncheckpointedState,
+                .writeCheckpointCommand = _writeCheckpointCommand.load(),
+                .shutdown = false,
+                .lastCheckpointSizeBytes =
+                    _context->checkpointStorage->getLastCheckpointSizeBytes()});
 
         if (checkpointControlMsg) {
             ScopeGuard guard(
@@ -679,10 +683,9 @@ void Executor::updateContextFeatureFlags() {
             _context->featureFlags->getFeatureFlagValue(FeatureFlags::kCheckpointDurationInMs)
                 .getInt();
         if (val) {
-            _context->checkpointInterval = std::chrono::milliseconds(val.get());
             auto checkpointCoordinator = _options.checkpointCoordinator;
             if (checkpointCoordinator) {
-                checkpointCoordinator->setCheckpointInterval(_context->checkpointInterval);
+                checkpointCoordinator->setCheckpointInterval(Milliseconds{val.get()});
             }
         }
     }

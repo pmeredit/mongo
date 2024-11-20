@@ -62,6 +62,9 @@ public:
     static const FeatureFlagDefinition kMaxConcurrentCheckpoints;
     static const FeatureFlagDefinition kCidrDenyList;
     static const FeatureFlagDefinition kKafkaTotalQueuedBytes;
+    static const FeatureFlagDefinition kCheckpointMinIntervalSeconds;
+    static const FeatureFlagDefinition kCheckpointMaxIntervalSeconds;
+    static const FeatureFlagDefinition kCheckpointStateSizeToUseMaxIntervalBytes;
 };
 
 }  // namespace streams

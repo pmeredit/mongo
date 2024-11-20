@@ -318,6 +318,20 @@ public:
         return doc.toBson().removeField("_stream_meta").removeField("_ts");
     }
 
+    Milliseconds getInterval(CheckpointCoordinator* coordinator) {
+        return coordinator->_interval;
+    }
+
+    void setLastCheckpointTime(
+        CheckpointCoordinator* coordinator,
+        mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> time) {
+        coordinator->_lastCheckpointTimestamp = time;
+    }
+
+    Milliseconds getDynamicInterval(CheckpointCoordinator* coordinator, int64_t stateSize) {
+        return coordinator->getDynamicInterval(stateSize);
+    }
+
     // Workaround for parametrized tests.
     void Test_AlwaysCheckpoint_EmptyPipeline(bool useNewStorage);
     void Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool useNewStorage);
@@ -634,7 +648,8 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
         auto coordinator = std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
             .processorId = "",
             .writeFirstCheckpoint = false,
-            .checkpointIntervalMs = spec.checkpointInterval,
+            .minInterval = Milliseconds(spec.checkpointInterval.count()),
+            .maxInterval = Milliseconds(10 * spec.checkpointInterval.count()),
             .storage = storage.get(),
             .checkpointController = context->concurrentCheckpointController});
         auto start = stdx::chrono::steady_clock::now();
@@ -690,7 +705,8 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
             .processorId = "",
             .enableDataFlow = spec.enableDataFlow,
             .writeFirstCheckpoint = spec.writeFirstCheckpoint,
-            .checkpointIntervalMs = spec.checkpointInterval,
+            .minInterval = Milliseconds(spec.checkpointInterval.count()),
+            .maxInterval = Milliseconds(10 * spec.checkpointInterval.count()),
             .storage = storage.get(),
             .checkpointController = context->concurrentCheckpointController});
 
@@ -880,6 +896,50 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
     runTestCase(Spec{.enableDataFlow = false, .tc = checkpointSkippedFromDisabledDataFlowTc});
 }
 
+// Test the periodic checkpoint interval for different sizes of the last checkpoint.
+TEST_F(CheckpointTest, DynamicCheckpointInterval) {
+    CheckpointTestWorkload workload("[]", std::vector<BSONObj>{}, _serviceContext);
+    auto storage = workload.props().context->checkpointStorage.get();
+    CheckpointCoordinator::Options options{
+        .processorId = "",
+        .writeFirstCheckpoint = true,
+        .storage = storage,
+        .checkpointController = workload.props().context->concurrentCheckpointController};
+    auto coordinator = std::make_unique<CheckpointCoordinator>(options);
+
+    ASSERT_EQ(Milliseconds(Minutes(5)), getDynamicInterval(coordinator.get(), 0));
+    ASSERT_EQ(Milliseconds(Minutes(60)), getDynamicInterval(coordinator.get(), 100_MiB));
+    ASSERT_EQ(Milliseconds(Seconds(60 * 32 + 30)), getDynamicInterval(coordinator.get(), 50_MiB));
+
+    auto writeDummyCheckpoint = [&](CheckpointId id) {
+        {
+            auto writer = storage->createStateWriter(id, 0);
+            storage->appendRecord(writer.get(), Document(BSON("a" << 1)));
+        }
+        storage->commitCheckpoint(id);
+    };
+
+    auto msg = coordinator->getCheckpointControlMsgIfReady(CheckpointCoordinator::CheckpointRequest{
+        .uncheckpointedState = true, .lastCheckpointSizeBytes = 0});
+    ASSERT(msg);
+    writeDummyCheckpoint(msg->id);
+    ASSERT_EQ(options.minInterval, getInterval(coordinator.get()));
+
+    coordinator = std::make_unique<CheckpointCoordinator>(options);
+    msg = coordinator->getCheckpointControlMsgIfReady(CheckpointCoordinator::CheckpointRequest{
+        .uncheckpointedState = true, .lastCheckpointSizeBytes = 100_MiB});
+    ASSERT(msg);
+    writeDummyCheckpoint(msg->id);
+    ASSERT_EQ(options.maxInterval, getInterval(coordinator.get()));
+    ASSERT_EQ(Minutes(60), getInterval(coordinator.get()));
+
+    coordinator = std::make_unique<CheckpointCoordinator>(options);
+    msg = coordinator->getCheckpointControlMsgIfReady(CheckpointCoordinator::CheckpointRequest{
+        .uncheckpointedState = true, .lastCheckpointSizeBytes = 1_MiB});
+    ASSERT(msg);
+    writeDummyCheckpoint(msg->id);
+    ASSERT_EQ(Minutes(5) + Seconds(33), getInterval(coordinator.get()));
+}
 
 TEST_F(CheckpointTest, CoordinatorGetCheckpointControlMsgIfReady) {
     Test_CoordinatorGetCheckpointControlMsgIfReady();
