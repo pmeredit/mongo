@@ -48,9 +48,9 @@ public:
         bool planMainPipeline{true};
         // The minimum OperatorId to use for the created Operator instances.
         OperatorId minOperatorId{0};
-        // If true, the pipeline is optimized during planning.
-        // Set to false when restoring from an execution plan.
-        bool shouldOptimize{true};
+        // If true, we're planning and optimizing a user's pipeline.
+        // If false, we're restoring from an already optimized execution plan in a checkpoint.
+        bool planningUserPipeline{true};
         // Set to true when validating an modify request when the user specifies
         // resumeFromCheckpoint=true.
         bool shouldValidateModifyRequest{false};

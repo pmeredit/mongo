@@ -1133,7 +1133,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
-    if (_options.shouldOptimize) {
+    if (_options.planningUserPipeline) {
         // If we're planning the user pipeline and there's no window aware stage,
         // create a dummy window aware limit to maintain window semantics.
         // Otherwise, if we require metadata to be projected and the first window stage is
@@ -1232,7 +1232,7 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
-    if (_options.shouldOptimize) {
+    if (_options.planningUserPipeline) {
         // If we're planning the user pipeline and there's no window aware stage,
         // create a dummy window aware limit to maintain window semantics.
         // Otherwise, if we require metadata to be projected and the first window stage is
@@ -1312,7 +1312,7 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
 
-    if (_options.shouldOptimize) {
+    if (_options.planningUserPipeline) {
         if (_windowPlanningInfo->numBlockingWindowAwareStages == 0) {
             // If there's either no window aware stages, prepend dummy sort operator.
             // You need a blocking window aware operator (i.e. sort) in the pipeline so that
@@ -1583,8 +1583,19 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
     }
     _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
     auto pipeline = Pipeline::parse(stages, _context->expCtx);
-    if (_options.shouldOptimize) {
+    if (_options.planningUserPipeline) {
         pipeline->optimizePipeline();
+    } else {
+        // Optimize each individual stage and its expressions,
+        // but don't do any stage reordering or fusion.
+        Pipeline::SourceContainer optimizedSources;
+        for (auto&& source : pipeline->getSources()) {
+            if (auto out = source->optimize()) {
+                optimizedSources.push_back(out);
+            }
+        }
+        pipeline->getSources().swap(optimizedSources);
+        Pipeline::stitch(&pipeline->getSources());
     }
 
     // Count the number of window aware stages in the pipeline.
@@ -1880,7 +1891,7 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     if (_options.shouldValidateModifyRequest) {
         tassert(ErrorCodes::InternalError,
                 "shouldOptimize should be true when validating a pipeline edit.",
-                _options.shouldOptimize);
+                _options.planningUserPipeline);
         tassert(ErrorCodes::InternalError,
                 "restoredCheckpointUserPipeline should be set when validating a pipeline edit.",
                 _context->restoredCheckpointInfo &&

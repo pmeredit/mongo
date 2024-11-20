@@ -1677,7 +1677,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
         }
 
-        Planner plannerAfterRestore(context.get(), Planner::Options{.shouldOptimize = false});
+        Planner plannerAfterRestore(context.get(), Planner::Options{.planningUserPipeline = false});
         auto dag2 = planInner(&plannerAfterRestore, dag->optimizedPipeline());
         // Assert the operators produced from plan with no optimization are equal to the operators
         // produced from the user's BSON pipeline with optimization
@@ -2335,6 +2335,40 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
     ])",
               {"ChangeStreamConsumerOperator", "ExternalApiOperator", "MergeOperator"});
+
+    // test constant folding within an $addFields expression
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $addFields: {
+                a: {
+                    $and: [
+                        true,
+                        false,
+                        true,
+                        false
+                    ]
+                }
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "AddFieldsOperator", "MergeOperator"});
 }
 
 // Test that the plan returns an ErrorCodes::StreamProcessorInvalidOptions for underlying

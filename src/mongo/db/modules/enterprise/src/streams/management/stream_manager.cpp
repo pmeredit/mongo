@@ -987,7 +987,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     bool planUserPipeline = executionPlan.empty();
     if (planUserPipeline) {
         // Plan the OperatorDag using a user supplied pipeline.
-        plannerOptions.shouldOptimize = true;
+        plannerOptions.planningUserPipeline = true;
         // During a customer's modify request, SPM sends a mongostream.validateOnly request with
         // a restore checkpoint. When resumeFromCheckpointAfterModify is true, we set
         // shouldValidateModifyRequest so the planner validates the modify is allowed.
@@ -995,7 +995,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             isModifyRequest && request.getOptions().getResumeFromCheckpointAfterModify();
     } else {
         // Plan the OperatorDag using an execution plan stored in checkpoints.
-        plannerOptions.shouldOptimize = false;
+        plannerOptions.planningUserPipeline = false;
     }
 
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());

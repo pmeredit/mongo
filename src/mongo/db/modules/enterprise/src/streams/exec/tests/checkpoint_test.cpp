@@ -151,7 +151,7 @@ public:
         // be used in the runOnce call below.
         startCheckpointRestore(checkpointControlMsg->id);
 
-        Planner planner{props().context.get(), Planner::Options{.shouldOptimize = false}};
+        Planner planner{props().context.get(), Planner::Options{.planningUserPipeline = false}};
         auto checkpointId = getLatestCommittedCheckpointId();
         auto dag = planner.plan(props().userBson);
         props().dag = std::move(dag);
@@ -205,7 +205,7 @@ public:
         _props.context->restoreCheckpointId = checkpointId;
         _props.context->connections = testKafkaConnectionRegistry();
 
-        Planner::Options plannerOptions{.shouldOptimize = false};
+        Planner::Options plannerOptions{.planningUserPipeline = false};
         Planner planner(_props.context.get(), plannerOptions);
         _props.dag = planner.plan(_props.context->executionPlan);
 
