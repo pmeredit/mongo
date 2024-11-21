@@ -154,8 +154,7 @@ public:
 
     void setUncheckpointedState(StreamManager::StreamProcessorInfo* info,
                                 bool uncheckpointedState) {
-        stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        info->executor->_uncheckpointedState = uncheckpointedState;
+        info->executor->_uncheckpointedState.store(uncheckpointedState);
     }
 
     void waitForCheckpointInterval(StreamManager::StreamProcessorInfo* info,

@@ -246,7 +246,7 @@ private:
 
     // Have some new outputdocs been emitted by _any_ operator since we last checked.
     // This is used in determining if taking a newer checkpoint can be safely skipped
-    bool _uncheckpointedState{false};
+    mongo::AtomicWord<bool> _uncheckpointedState{false};
 
     // Is there a pending external writeCheckpoint request
     mongo::AtomicWord<WriteCheckpointCommand> _writeCheckpointCommand{

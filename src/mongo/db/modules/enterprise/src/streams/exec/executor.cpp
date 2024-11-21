@@ -293,16 +293,16 @@ void Executor::updateStats() {
 
     if (delta.numOutputDocs || delta.numDlqDocs) {
         // no need to check thru all the individual operators
-        _uncheckpointedState = true;
+        _uncheckpointedState.store(true);
     }
 
-    if (!_uncheckpointedState) {
+    if (!_uncheckpointedState.load()) {
         // Need to check thru each operators outputdocs stats since the summary
         // only considers that for the sink operator
         for (unsigned i = 0; i < _streamStats.operatorStats.size(); i++) {
             if (newStats.operatorStats[i].numOutputDocs >
                 _streamStats.operatorStats[i].numOutputDocs) {
-                _uncheckpointedState = true;
+                _uncheckpointedState.store(true);
                 break;
             }
         }
@@ -439,7 +439,7 @@ Executor::RunStatus Executor::runOnce() {
             auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
                 CheckpointCoordinator::CheckpointRequest{
                     .changeStreamAdvanced = changeStreamAdvanced,
-                    .uncheckpointedState = _uncheckpointedState,
+                    .uncheckpointedState = _uncheckpointedState.load(),
                     .writeCheckpointCommand = _writeCheckpointCommand.load(),
                     .shutdown = true,
                     .lastCheckpointSizeBytes =
@@ -463,10 +463,11 @@ Executor::RunStatus Executor::runOnce() {
 
     // Send a new checkpoint message only if source or sink have advanced since last checkpoint
     if (checkpointCoordinator) {
+        bool uncheckpointedState = _uncheckpointedState.load();
         auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
             CheckpointCoordinator::CheckpointRequest{
                 .changeStreamAdvanced = changeStreamAdvanced,
-                .uncheckpointedState = _uncheckpointedState,
+                .uncheckpointedState = uncheckpointedState,
                 .writeCheckpointCommand = _writeCheckpointCommand.load(),
                 .shutdown = false,
                 .lastCheckpointSizeBytes =
@@ -478,7 +479,7 @@ Executor::RunStatus Executor::runOnce() {
             LOGV2_DEBUG(8017802,
                         2,
                         "sending checkpointcontrolmsg",
-                        "uncheckpointedState"_attr = _uncheckpointedState,
+                        "uncheckpointedState"_attr = uncheckpointedState,
                         "changeStreamAdvanced"_attr = changeStreamAdvanced,
                         "req"_attr = _writeCheckpointCommand.load(),
                         "context"_attr = _context,
@@ -513,7 +514,7 @@ void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
-    _uncheckpointedState = false;
+    _uncheckpointedState.store(false);
 }
 
 void Executor::processFlushedCheckpoint(mongo::CheckpointDescription checkpointDescription) {
