@@ -6,6 +6,7 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
+#include "mongo/base/string_data.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -52,6 +53,10 @@ bool isBlockingWindowAwareStage(mongo::StringData name) {
     static const stdx::unordered_set<StringData> blockingWindowAwareStages{
         {kGroupStageName, kSortStageName}};
     return blockingWindowAwareStages.contains(name);
+}
+
+bool isHttpsStage(mongo::StringData name) {
+    return name == mongo::StringData(kHttpsStageName);
 }
 
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,
@@ -232,30 +237,28 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
         }
     }
 
-    if (auto externalAPI = internalStreamMeta.getExternalAPI(); externalAPI) {
-        newStreamMeta.setNestedField(
-            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
-                                     << StreamMetaExternalAPI::kUrlFieldName)
-                          .ss.str()),
-            Value(externalAPI->getUrl()));
+    if (auto httpsMeta = internalStreamMeta.getHttps(); httpsMeta) {
+        newStreamMeta.setNestedField(FieldPath((str::stream() << StreamMeta::kHttpsFieldName << "."
+                                                              << StreamMetaHttps::kUrlFieldName)
+                                                   .ss.str()),
+                                     Value(httpsMeta->getUrl()));
+
+        newStreamMeta.setNestedField(FieldPath((str::stream() << StreamMeta::kHttpsFieldName << "."
+                                                              << StreamMetaHttps::kMethodFieldName)
+                                                   .ss.str()),
+                                     Value(HttpMethod_serializer(httpsMeta->getMethod())));
 
         newStreamMeta.setNestedField(
-            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
-                                     << StreamMetaExternalAPI::kRequestTypeFieldName)
+            FieldPath((str::stream() << StreamMeta::kHttpsFieldName << "."
+                                     << StreamMetaHttps::kHttpStatusCodeFieldName)
                           .ss.str()),
-            Value(HttpMethod_serializer(externalAPI->getRequestType())));
+            Value(httpsMeta->getHttpStatusCode()));
 
         newStreamMeta.setNestedField(
-            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
-                                     << StreamMetaExternalAPI::kHttpStatusCodeFieldName)
+            FieldPath((str::stream() << StreamMeta::kHttpsFieldName << "."
+                                     << StreamMetaHttps::kResponseTimeMsFieldName)
                           .ss.str()),
-            Value(externalAPI->getHttpStatusCode()));
-
-        newStreamMeta.setNestedField(
-            FieldPath((str::stream() << StreamMeta::kExternalAPIFieldName << "."
-                                     << StreamMetaExternalAPI::kResponseTimeMsFieldName)
-                          .ss.str()),
-            Value(externalAPI->getResponseTimeMs()));
+            Value(httpsMeta->getResponseTimeMs()));
     }
     return newStreamMeta.freeze();
 }

@@ -160,15 +160,12 @@ const FeatureFlagDefinition FeatureFlags::kTestOnlyStringType{
     mongo::Value{std::string("string")},
     {}};
 
-const FeatureFlagDefinition FeatureFlags::kEnableExternalAPIOperator{
-    "enableExternalAPIOperator",
-    "If true, the $externalAPI operator is enabled.",
-    mongo::Value(false),
-    {}};
+const FeatureFlagDefinition FeatureFlags::kEnableHttpsOperator{
+    "enableHttpsOperator", "If true, the $https operator is enabled.", mongo::Value(false), {}};
 
-const FeatureFlagDefinition FeatureFlags::kExternalAPIRateLimitPerSecond{
-    "externalAPIRateLimitPerSecond",
-    "Specifies rate limit to be used by $externalAPI",
+const FeatureFlagDefinition FeatureFlags::kHttpsRateLimitPerSecond{
+    "httpsRateLimitPerSecond",
+    "Specifies rate limit to be used by $https",
     mongo::Value::createIntOrLong(10L * 1000)};
 
 const FeatureFlagDefinition FeatureFlags::kUseWatchToInitClusterChangestream{
@@ -235,7 +232,7 @@ mongo::Value defaultCidrDenyListValue() {
 // in defaultCidrDenyListValue.
 const FeatureFlagDefinition FeatureFlags::kCidrDenyList{
     "cidrDenyList",
-    "A list of CIDR strings that should not be addressable by the $externalAPI operator.",
+    "A list of CIDR strings that should not be addressable by the $https operator.",
     defaultCidrDenyListValue()};
 
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
@@ -252,9 +249,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
     {FeatureFlags::kSourceBufferMinPageSize.name, FeatureFlags::kSourceBufferMinPageSize},
     {FeatureFlags::kSourceBufferMaxPageSize.name, FeatureFlags::kSourceBufferMaxPageSize},
-    {FeatureFlags::kEnableExternalAPIOperator.name, FeatureFlags::kEnableExternalAPIOperator},
-    {FeatureFlags::kExternalAPIRateLimitPerSecond.name,
-     FeatureFlags::kExternalAPIRateLimitPerSecond},
+    {FeatureFlags::kEnableHttpsOperator.name, FeatureFlags::kEnableHttpsOperator},
+    {FeatureFlags::kHttpsRateLimitPerSecond.name, FeatureFlags::kHttpsRateLimitPerSecond},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
     {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},
     {FeatureFlags::kCidrDenyList.name, FeatureFlags::kCidrDenyList}};

@@ -16,7 +16,7 @@ export class TestRESTServer {
         print("Using python interpreter: " + this.python);
 
         this.web_server_py =
-            "src/mongo/db/modules/enterprise/jstests/streams/external_api/lib/rest_server.py";
+            "src/mongo/db/modules/enterprise/jstests/streams/https/lib/rest_server.py";
         this.port = allocatePort();
     }
 

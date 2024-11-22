@@ -720,9 +720,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target="external_api_operator_test",
+    target="https_operator_test",
     source=[
-        "external_api_operator_test.cpp",
+        "https_operator_test.cpp",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",

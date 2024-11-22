@@ -28,7 +28,7 @@ constexpr const char kLookUpStageName[] = "$lookup";
 constexpr const char kGroupStageName[] = "$group";
 constexpr const char kSortStageName[] = "$sort";
 constexpr const char kLimitStageName[] = "$limit";
-constexpr const char kExternalApiStageName[] = "$externalAPI";
+constexpr const char kHttpsStageName[] = "$https";
 
 constexpr char kNoDbDbName[] = "$nodb$";
 constexpr char kNoCollCollectionName[] = "$nocoll$";

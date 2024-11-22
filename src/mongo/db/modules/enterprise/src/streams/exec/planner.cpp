@@ -55,15 +55,15 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
-#include "streams/exec/document_source_external_api_stub.h"
+#include "streams/exec/document_source_https_stub.h"
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
-#include "streams/exec/external_api_operator.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/feedable_pipeline.h"
 #include "streams/exec/group_operator.h"
+#include "streams/exec/https_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
@@ -150,7 +150,7 @@ enum class StageType {
     kCount,  // This gets converted into DocumentSourceGroup and DocumentSourceProject.
     kLimit,
     kEmit,
-    kExternalAPI,
+    kHttps,
 };
 
 // Encapsulates traits of a stage.
@@ -160,8 +160,8 @@ struct StageTraits {
     bool allowedInMainPipeline{false};
     // Whether the stage is allowed in the inner pipeline of a window stage.
     bool allowedInWindowPipeline{false};
-    // Whether the stage is allowed in the inner pipeline of a externalAPI stage.
-    bool allowedInExternalApiPipeline{false};
+    // Whether the stage is allowed in the inner pipeline of a https stage.
+    bool allowedInHttpsPipeline{false};
 };
 
 mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
@@ -186,13 +186,13 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$count", {StageType::kCount, false, true, false}},
         {"$limit", {StageType::kLimit, false, true, false}},
         {"$emit", {StageType::kEmit, true, false, false}},
-        {"$externalAPI", {StageType::kExternalAPI, true, true, false}},
+        {"$https", {StageType::kHttps, true, true, false}},
     };
 
 enum class PipelineType {
     kMain,
     kWindow,
-    kExternalApi,
+    kHttps,
 };
 
 // Verifies that a stage specified in the input pipeline is a valid stage.
@@ -220,12 +220,12 @@ void enforceStageConstraints(const std::string& name, PipelineType pipelineType)
                               << " stage is not permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInWindowPipeline);
             break;
-        case PipelineType::kExternalApi:
+        case PipelineType::kHttps:
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << name
                                   << " stage is not permitted in the payload (inner pipeline) of "
-                                     "an externalAPI stage",
-                    stageInfo.allowedInExternalApiPipeline);
+                                     "an https stage",
+                    stageInfo.allowedInHttpsPipeline);
             break;
     }
 }
@@ -359,8 +359,8 @@ boost::intrusive_ptr<mongo::Expression> parseStringOrObjectExpression(
     return expression;
 }
 
-mongo::HttpClient::HttpMethod parseRequestType(HttpMethodEnum requestType) {
-    switch (requestType) {
+mongo::HttpClient::HttpMethod parseMethod(HttpMethodEnum method) {
+    switch (method) {
         case HttpMethodEnum::MethodGet:
             return mongo::HttpClient::HttpMethod::kGET;
         case HttpMethodEnum::MethodPost:
@@ -372,7 +372,7 @@ mongo::HttpClient::HttpMethod parseRequestType(HttpMethodEnum requestType) {
         case HttpMethodEnum::MethodDelete:
             return mongo::HttpClient::HttpMethod::kDELETE;
         default:
-            uasserted(ErrorCodes::StreamProcessorInvalidOptions, "Unknown requestType");
+            uasserted(ErrorCodes::StreamProcessorInvalidOptions, "Unknown method");
     }
 }
 
@@ -1456,27 +1456,25 @@ void Planner::planLimit(mongo::DocumentSource* source) {
     appendOperator(std::move(oper));
 }
 
-void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
+void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     _context->projectStreamMetaPriorToSinkStage = true;
 
     auto parsedOperatorOptions =
-        ExternalAPIOptions::parse(IDLParserContext("externalAPI"), docSource->bsonOptions());
+        HttpsOptions::parse(IDLParserContext("https"), docSource->bsonOptions());
     auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
-                          << kExternalApiStageName,
+                          << kHttpsStageName,
             _context->connections.contains(connectionNameField));
     const auto& connection = _context->connections.at(connectionNameField);
-    auto connOptions = WebAPIConnectionOptions::parse(IDLParserContext("connectionParser"),
-                                                      connection.getOptions());
+    auto connOptions = HttpsConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                     connection.getOptions());
 
-    ExternalApiOperator::Options options{
-        .requestType = parseRequestType(parsedOperatorOptions.getRequestType()),
+    HttpsOperator::Options options{
+        .method = parseMethod(parsedOperatorOptions.getMethod()),
         .url = connOptions.getUrl().toString(),
         .queryParams = parseDynamicObject(_context->expCtx, parsedOperatorOptions.getParameters()),
         .as = parsedOperatorOptions.getAs().toString(),
-        .connectionTimeoutSecs = mongo::Seconds{connOptions.getConnectionTimeoutSec()},
-        .requestTimeoutSecs = mongo::Seconds{connOptions.getRequestTimeoutSec()},
         .onError = parsedOperatorOptions.getOnError(),
     };
 
@@ -1485,12 +1483,17 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
         stages.reserve(payloadPipeline->size());
         for (auto& stageObj : *payloadPipeline) {
             std::string stageName(stageObj.firstElementFieldNameStringData());
-            enforceStageConstraints(stageName, PipelineType::kExternalApi);
+            enforceStageConstraints(stageName, PipelineType::kHttps);
             stages.emplace_back(std::move(stageObj).getOwned());
         }
 
         auto [pipeline, pipelineRewriter] = preparePipeline(std::move(stages));
         options.payloadPipeline = FeedablePipeline{std::move(pipeline)};
+    }
+
+    if (auto config = parsedOperatorOptions.getConfig(); config) {
+        options.connectionTimeoutSecs = mongo::Seconds{config->getConnectionTimeoutSec()};
+        options.requestTimeoutSecs = mongo::Seconds{config->getRequestTimeoutSec()};
     }
 
     if (const auto& headersOpt = connOptions.getHeaders(); headersOpt) {
@@ -1499,7 +1502,7 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
 
         for (auto elem : *headersOpt) {
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    "Expected header values defined in the web api connection to be a string.",
+                    "Expected header values defined in the https connection to be a string.",
                     elem.type() == mongo::BSONType::String);
             connHeaders.push_back(std::string{elem.fieldName()} + ": " + elem.String());
         }
@@ -1518,17 +1521,17 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
             parseDynamicObject(_context->expCtx, parsedOperatorOptions.getHeaders());
     }
 
-    if (const auto& urlPathOpt = parsedOperatorOptions.getUrlPath(); urlPathOpt) {
+    if (const auto& pathOpt = parsedOperatorOptions.getPath(); pathOpt) {
         std::visit(OverloadedVisitor{
                        [&](const BSONObj& bson) {
-                           options.urlPathExpr =
+                           options.pathExpr =
                                Expression::parseExpression(_context->expCtx.get(),
                                                            std::move(bson),
                                                            _context->expCtx->variablesParseState);
                        },
                        [&](const std::string& str) {
                            if (str[0] == '$') {
-                               options.urlPathExpr = ExpressionFieldPath::parse(
+                               options.pathExpr = ExpressionFieldPath::parse(
                                    _context->expCtx.get(),
                                    std::move(str),
                                    _context->expCtx->variablesParseState);
@@ -1544,10 +1547,10 @@ void Planner::planExternalApi(DocumentSourceExternalApiStub* docSource) {
                                options.url = std::move(baseUrl);
                            }
                        }},
-                   *urlPathOpt);
+                   *pathOpt);
     }
 
-    auto oper = std::make_unique<ExternalApiOperator>(_context, std::move(options));
+    auto oper = std::make_unique<HttpsOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 }
@@ -1818,21 +1821,19 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 optimizedPipeline.push_back(planLookUp(lookupSource, serialize(stage)));
                 break;
             }
-            case StageType::kExternalAPI: {
+            case StageType::kHttps: {
                 auto enabled = _context->featureFlags
                     ? _context->featureFlags
-                          ->getFeatureFlagValue(FeatureFlags::kEnableExternalAPIOperator)
+                          ->getFeatureFlagValue(FeatureFlags::kEnableHttpsOperator)
                           .getBool()
                     : boost::none;
                 uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                        "Unsupported stage: $externalAPI",
+                        "Unsupported stage: $https",
                         enabled && *enabled);
                 optimizedPipeline.push_back(serialize(stage));
-                auto externalApiSource = dynamic_cast<DocumentSourceExternalApiStub*>(stage.get());
-                tassert(9502902,
-                        "Expected stage to be an external api document source.",
-                        externalApiSource);
-                planExternalApi(externalApiSource);
+                auto httpsSource = dynamic_cast<DocumentSourceHttpsStub*>(stage.get());
+                tassert(9502902, "Expected stage to be a https document source.", httpsSource);
+                planHttps(httpsSource);
                 break;
             }
             default:
@@ -2041,7 +2042,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             if (spec[kDocumentsField].missing()) {
                 addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
             }
-        } else if (isEmitStage(stageName)) {
+        } else if (isEmitStage(stageName) || isHttpsStage(stageName)) {
             auto spec = getSpecDoc(stageName, stage);
             addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
         } else if (isMergeStage(stageName)) {

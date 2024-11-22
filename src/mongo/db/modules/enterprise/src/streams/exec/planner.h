@@ -29,7 +29,7 @@ class ExpressionContext;
 
 namespace streams {
 
-class DocumentSourceExternalApiStub;
+class DocumentSourceHttpsStub;
 class SinkOperator;
 class SourceOperator;
 struct Context;
@@ -157,8 +157,8 @@ private:
     mongo::BSONObj planLookUp(mongo::DocumentSourceLookUp* documentSource,
                               mongo::BSONObj serializedPlan);
 
-    // Plans a $externalAPI stage.
-    void planExternalApi(DocumentSourceExternalApiStub* source);
+    // Plans a $https stage.
+    void planHttps(DocumentSourceHttpsStub* source);
 
     // Helper function to prepare the pipeline before sending it to planning. This step includes
     // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the

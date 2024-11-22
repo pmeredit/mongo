@@ -154,15 +154,15 @@ structs:
                 type: int
                 optional: true
 
-    StreamMetaExternalAPI:
-        description: "The definition of the externalAPI field of stream metadata"
+    StreamMetaHttps:
+        description: "The definition of the https field of stream metadata"
         strict: false
         fields:
             url:
-                description: "The URL of the web api"
+                description: "The URL of the https request"
                 type: string
-            requestType:
-                description: "The HTTP verb used when making a request to the web api"
+            method:
+                description: "The HTTP verb used when making a request"
                 type: HttpMethod
             httpStatusCode:
                 description: "The HTTP status code returned in the response"
@@ -183,9 +183,9 @@ structs:
                 description: "window field of _stream_meta object"
                 type: StreamMetaWindow
                 optional: true
-            externalAPI:
-                description: "externalAPI field of _stream_meta object"
-                type: StreamMetaExternalAPI
+            https:
+                description: "https field of _stream_meta object"
+                type: StreamMetaHttps
                 optional: true
 
     SampleDataSourceSolarSpecObs:

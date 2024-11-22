@@ -32,7 +32,7 @@ enums:
             Atlas: "atlas"
             SampleSolar: "sample_solar"
             InMemory: "in_memory"
-            WebAPI: "web_api"
+            HTTPS: "https"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"
@@ -222,25 +222,17 @@ structs:
                 type: string
                 optional: true
 
-    WebAPIConnectionOptions:
-        description: "Web API connection options."
+    HttpsConnectionOptions:
+        description: "HTTPS connection options."
         strict: true
         fields:
             url:
-                description: "The URL of the web api."
+                description: "The URL of the connection."
                 type: string
             headers:
-                description: "The headers to send to the web api."
+                description: "The headers to send to the url."
                 type: object
                 optional: true
-            connectionTimeoutSec:
-                description: "The timeout (in seconds) for establishing an HTTP connection."
-                type: int
-                default: 30
-            requestTimeoutSec:
-                description: "The timeout (in seconds) for making an $externalApi request."
-                type: int
-                default: 60
 
     AtlasConnectionOptions:
         description: "Atlas connection options."
@@ -494,42 +486,6 @@ structs:
                 type: array<object>
                 optional: true
 
-    ExternalAPIOptions:
-        description: "$externalApi stage options."
-        strict: true
-        fields:
-            connectionName:
-                description: "Name of the web api source."
-                type: string
-            urlPath:
-                description: "The path to append onto the web api connection's url."
-                type:
-                    variant: [object, string]
-                optional: true
-            parameters:
-                description: "Query parameters used when making a request to the web api."
-                type: object
-                optional: true
-            requestType:
-                description: "The HTTP verb used when making a request to the web api."
-                type: HttpMethod
-                default: MethodGet
-            headers:
-                description: "The headers to send to the web api. Can be an expression and will be evaluated against each input document."
-                type: object
-                optional: true
-            as:
-                description: "Defines the field name for REST API responses."
-                type: string
-            onError:
-                description: "Describes how error responses from the external API are handled"
-                type: OnError
-                default: DLQ
-            payload:
-                description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent. Only supported with POST, PUT, and PATCH"
-                type: pipeline
-                optional: true
-
     ChangeStreamSourceOptions:
         description: "$source stage options for a change stream"
         strict: true
@@ -728,3 +684,62 @@ structs:
                 type: TimeseriesOptions
                 description: Sepcifies the details of the target Time Series collection
                 optional: true 
+
+    HttpsConfigOptions:
+        description: "Optional configuration options for the $https operator"
+        strict: true
+        fields:
+            connectionTimeoutSec:
+                description: "The timeout (in seconds) for establishing a HTTP connection."
+                type: int
+                default: 30
+                validator:
+                    gt: 0
+                    lt: 900
+            requestTimeoutSec:
+                description: "The timeout (in seconds) for making a request."
+                type: int
+                default: 60
+                validator:
+                    gt: 0
+                    lt: 900
+
+    HttpsOptions:
+        description: "$https stage options."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the https source."
+                type: string
+            path:
+                description: "The path to append onto the https connection's url."
+                type:
+                    variant: [object, string]
+                optional: true
+            parameters:
+                description: "Query parameters used when making a request to the https."
+                type: object
+                optional: true
+            method:
+                description: "The HTTP verb used when making a request to the https."
+                type: HttpMethod
+                default: MethodGet
+            headers:
+                description: "The headers to send to the https. Can be an expression and will be evaluated against each input document."
+                type: object
+                optional: true
+            as:
+                description: "Defines the field name for REST API responses."
+                type: string
+            onError:
+                description: "Describes how error responses from the https connection are handled"
+                type: OnError
+                default: DLQ
+            payload:
+                description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent. Only supported with POST, PUT, and PATCH"
+                type: pipeline
+                optional: true
+            config:
+                description: "Additional configuration options for the $https operator"
+                type: HttpsConfigOptions
+                optional: true

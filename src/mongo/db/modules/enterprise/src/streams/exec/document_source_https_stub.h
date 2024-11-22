@@ -18,19 +18,19 @@ namespace streams {
  * The operators handles execution and passing data through the pipeline (hence why this and other
  * document sources in this directory are "stubs").
  */
-class DocumentSourceExternalApiStub : public mongo::DocumentSource {
+class DocumentSourceHttpsStub : public mongo::DocumentSource {
 public:
-    constexpr static char kStageName[] = "$externalAPI";
+    constexpr static char kStageName[] = "$https";
 
-    DocumentSourceExternalApiStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-                                  mongo::BSONObj bsonOptions)
+    DocumentSourceHttpsStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                            mongo::BSONObj bsonOptions)
         : DocumentSource(kStageName, expCtx), _bsonOptions(bsonOptions) {}
 
     static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(
         mongo::BSONElement elem, const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx);
 
     mongo::DocumentSourceType getType() const override {
-        return mongo::DocumentSourceType::kExternalApi;
+        return mongo::DocumentSourceType::kHttps;
     }
 
     const mongo::BSONObj& bsonOptions() {

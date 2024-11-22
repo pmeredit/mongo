@@ -2,8 +2,9 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/external_api_operator.h"
+#include "streams/exec/https_operator.h"
 
+#include "streams/exec/constants.h"
 #include <algorithm>
 #include <bsoncxx/exception/exception.hpp>
 #include <bsoncxx/json.hpp>
@@ -62,8 +63,8 @@ std::string urlEncode(const std::string& str) {
     return std::string{encoded};
 }
 
-HttpMethodEnum httpMethodClientToIDLType(HttpClient::HttpMethod requestType) {
-    switch (requestType) {
+HttpMethodEnum httpMethodClientToIDLType(HttpClient::HttpMethod method) {
+    switch (method) {
         case mongo::HttpClient::HttpMethod::kGET:
             return HttpMethodEnum::MethodGet;
         case mongo::HttpClient::HttpMethod::kPOST:
@@ -75,7 +76,7 @@ HttpMethodEnum httpMethodClientToIDLType(HttpClient::HttpMethod requestType) {
         case mongo::HttpClient::HttpMethod::kDELETE:
             return HttpMethodEnum::MethodDelete;
         default:
-            tasserted(ErrorCodes::InternalError, "Unknown requestType");
+            tasserted(ErrorCodes::InternalError, "Unknown method");
     }
 }
 
@@ -87,7 +88,7 @@ std::string urlEncodeAndJoinQueryParams(const std::vector<std::string>& params) 
         size_t splitIdx = param.find('=');
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream()
-                    << "Query parameters defined in " << kExternalApiStageName
+                    << "Query parameters defined in " << kHttpsStageName
                     << " must have key-value pairs separated with a '=' character non-empty keys.",
                 splitIdx != std::string::npos && splitIdx > 0);
         std::string key = urlEncode(param.substr(0, splitIdx));
@@ -106,11 +107,11 @@ void validateQueryParam(const std::string& param) {
     std::vector<std::string> keyAndValue;
     str::splitStringDelim(param, &keyAndValue, '=');
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << "Query parameters defined in " << kExternalApiStageName
+            str::stream() << "Query parameters defined in " << kHttpsStageName
                           << " must separate the key and value with a '=' character.",
             keyAndValue.size() == 2);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << "Query parameters defined in " << kExternalApiStageName
+            str::stream() << "Query parameters defined in " << kHttpsStageName
                           << " must have a non-empty key.",
             !keyAndValue.at(0).empty());
 }
@@ -119,14 +120,14 @@ void validateQueryParam(const std::string& param) {
 
 using namespace mongo;
 
-void ExternalApiOperator::registerMetrics(MetricManager* metricManager) {
+void HttpsOperator::registerMetrics(MetricManager* metricManager) {
     _throttleDurationCounter = metricManager->registerCounter(
         "rest_operator_throttle_duration_micros",
         "Time slept by the rest operator to not exceed the rate limiter in microseconds",
         getDefaultMetricLabels(_context));
 }
 
-ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::Options options)
+HttpsOperator::HttpsOperator(Context* context, HttpsOperator::Options options)
     : Operator(context, 1, 1),
       _options(std::move(options)),
       _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
@@ -135,16 +136,16 @@ ExternalApiOperator::ExternalApiOperator(Context* context, ExternalApiOperator::
     tassert(
         9688098, str::stream() << "Insufficient libcurl version.", LIBCURL_VERSION_NUM >= 0x074e00);
 
-    _stats.connectionType = ConnectionTypeEnum::WebAPI;
+    _stats.connectionType = ConnectionTypeEnum::HTTPS;
     parseBaseUrl();
     validateOptions();
 
-    if (!_options.urlPathExpr && _options.queryParams.empty()) {
+    if (!_options.pathExpr && _options.queryParams.empty()) {
         _staticEncodedUrl = makeUrlString({}, {});
     }
 }
 
-std::vector<CIDR> ExternalApiOperator::parseCidrDenyList() {
+std::vector<CIDR> HttpsOperator::parseCidrDenyList() {
     auto denyList =
         _context->featureFlags->getFeatureFlagValue(FeatureFlags::kCidrDenyList).getVectorString();
     if (!denyList) {
@@ -163,7 +164,7 @@ std::vector<CIDR> ExternalApiOperator::parseCidrDenyList() {
     return cidrDenyList;
 }
 
-void ExternalApiOperator::initializeHTTPClient() {
+void HttpsOperator::initializeHTTPClient() {
     auto client = mongo::HttpClient::createWithFirewall(_cidrDenyList);
     client->setConnectTimeout(_options.connectionTimeoutSecs);
     client->setTimeout(_options.requestTimeoutSecs);
@@ -171,19 +172,19 @@ void ExternalApiOperator::initializeHTTPClient() {
     _options.httpClient = std::move(client);
 }
 
-void ExternalApiOperator::doStart() {
+void HttpsOperator::doStart() {
     if (!_options.httpClient) {
         initializeHTTPClient();
     }
 }
 
-const ExternalApiOperator::Options& ExternalApiOperator::getOptions() {
+const HttpsOperator::Options& HttpsOperator::getOptions() {
     return _options;
 }
 
-void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
-                                      StreamDataMsg dataMsg,
-                                      boost::optional<StreamControlMsg> controlMsg) {
+void HttpsOperator::doOnDataMsg(int32_t inputIdx,
+                                StreamDataMsg dataMsg,
+                                boost::optional<StreamControlMsg> controlMsg) {
     auto outputMsgDocsSize = std::min(int(dataMsg.docs.size()), int(kDataMsgMaxDocSize));
 
     StreamDataMsg outputMsg;
@@ -238,17 +239,17 @@ void ExternalApiOperator::doOnDataMsg(int32_t inputIdx,
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 
-void ExternalApiOperator::writeToStreamMeta(StreamDocument* streamDoc,
-                                            const std::string& requestUrl,
-                                            const mongo::HttpClient::HttpReply httpResponse,
-                                            double responseTimeMs) {
-    StreamMetaExternalAPI streamMetaExternalAPI;
-    streamMetaExternalAPI.setUrl(requestUrl);
-    streamMetaExternalAPI.setRequestType(httpMethodClientToIDLType(_options.requestType));
-    streamMetaExternalAPI.setHttpStatusCode(httpResponse.code);
-    streamMetaExternalAPI.setResponseTimeMs(responseTimeMs);
+void HttpsOperator::writeToStreamMeta(StreamDocument* streamDoc,
+                                      const std::string& requestUrl,
+                                      const mongo::HttpClient::HttpReply httpResponse,
+                                      double responseTimeMs) {
+    StreamMetaHttps streamMetaHttps;
+    streamMetaHttps.setUrl(requestUrl);
+    streamMetaHttps.setMethod(httpMethodClientToIDLType(_options.method));
+    streamMetaHttps.setHttpStatusCode(httpResponse.code);
+    streamMetaHttps.setResponseTimeMs(responseTimeMs);
 
-    streamDoc->streamMeta.setExternalAPI(std::move(streamMetaExternalAPI));
+    streamDoc->streamMeta.setHttps(std::move(streamMetaHttps));
 
     if (!_context->projectStreamMetaPriorToSinkStage) {
         return;
@@ -264,9 +265,9 @@ void ExternalApiOperator::writeToStreamMeta(StreamDocument* streamDoc,
     streamDoc->doc = mutableDoc.freeze();
 }
 
-void ExternalApiOperator::writeToDLQ(StreamDocument* streamDoc,
-                                     const std::string& errorMsg,
-                                     ProcessResult& result) {
+void HttpsOperator::writeToDLQ(StreamDocument* streamDoc,
+                               const std::string& errorMsg,
+                               ProcessResult& result) {
     const std::string dlqErrorMsg = str::stream()
         << "Failed to process input document in " << getName() << " with error: " << errorMsg;
     result.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
@@ -274,13 +275,12 @@ void ExternalApiOperator::writeToDLQ(StreamDocument* streamDoc,
     result.numDlqDocs++;
 }
 
-void ExternalApiOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+void HttpsOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     // Let the control message flow to the next operator.
     sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
 }
 
-ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
-    StreamDocument* streamDoc) {
+HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* streamDoc) {
     ProcessResult processResult{};
 
     boost::optional<Document> result;
@@ -302,7 +302,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     std::string requestUrl;
     std::vector<std::string> headers;
     try {
-        requestUrl = (_options.urlPathExpr || _options.queryParams.size() > 0)
+        requestUrl = (_options.pathExpr || _options.queryParams.size() > 0)
             ? evaluateFullUrl(streamDoc->doc)
             : _staticEncodedUrl;
         headers = evaluateHeaders(inputDoc);
@@ -312,7 +312,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     }
 
     std::string rawDoc;
-    switch (_options.requestType) {
+    switch (_options.method) {
         case HttpClient::HttpMethod::kPOST:
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
@@ -356,7 +356,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
                        "context"_attr = _context,
                        "url"_attr = requestUrl);
         }
-        httpResponse = _options.httpClient->request(_options.requestType, requestUrl, data);
+        httpResponse = _options.httpClient->request(_options.method, requestUrl, data);
         tassert(9502901, "Expected HTTP response to be set", httpResponse);
 
         // readAndAdvance can fail to parse response body and throw an exception.
@@ -373,7 +373,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     } catch (const DBException& e) {
         tryLog(9604800, [&](int logID) {
             LOGV2_INFO(logID,
-                       "Error occurred while performing request in ExternalApiOperator",
+                       "Error occurred while performing request in HttpsOperator",
                        "context"_attr = _context,
                        "error"_attr = e.what());
         });
@@ -408,7 +408,7 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     } catch (const bsoncxx::exception& e) {
         tryLog(9604801, [&](int logID) {
             LOGV2_INFO(logID,
-                       "Error occured while reading response in ExternalApiOperator",
+                       "Error occured while reading response in HttpsOperator",
                        "context"_attr = _context,
                        "error"_attr = e.what());
         });
@@ -443,10 +443,10 @@ ExternalApiOperator::ProcessResult ExternalApiOperator::processStreamDoc(
     return processResult;
 }
 
-std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
+std::string HttpsOperator::evaluateFullUrl(const mongo::Document& doc) {
     std::vector<std::string> queryParams;
     std::string path;
-    if (_options.urlPathExpr) {
+    if (_options.pathExpr) {
         path = evaluatePath(doc);
     }
 
@@ -457,17 +457,17 @@ std::string ExternalApiOperator::evaluateFullUrl(const mongo::Document& doc) {
     return makeUrlString(std::move(path), std::move(queryParams));
 }
 
-std::string ExternalApiOperator::evaluatePath(const mongo::Document& doc) {
-    Value pathValue = _options.urlPathExpr->evaluate(doc, &_context->expCtx->variables);
+std::string HttpsOperator::evaluatePath(const mongo::Document& doc) {
+    Value pathValue = _options.pathExpr->evaluate(doc, &_context->expCtx->variables);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             fmt::format("Expected {}.{} to evaluate to a string.",
-                        kExternalApiStageName,
-                        ExternalAPIOptions::kUrlPathFieldName),
+                        kHttpsStageName,
+                        HttpsOptions::kPathFieldName),
             pathValue.getType() == mongo::BSONType::String);
     return pathValue.getString();
 }
 
-std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Document& doc) {
+std::vector<std::string> HttpsOperator::evaluateHeaders(const mongo::Document& doc) {
     std::vector<std::string> headers{};
     headers.reserve(_options.operatorHeaders.size() + _options.connectionHeaders.size());
     for (const auto& header : _options.connectionHeaders) {
@@ -483,8 +483,8 @@ std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Docum
                     auto headerVal = expr->evaluate(doc, &_context->expCtx->variables);
                     uassert(ErrorCodes::StreamProcessorInvalidOptions,
                             fmt::format("Expected {}.{} values to evaluate to a string.",
-                                        kExternalApiStageName,
-                                        ExternalAPIOptions::kHeadersFieldName),
+                                        kHttpsStageName,
+                                        HttpsOptions::kHeadersFieldName),
                             headerVal.getType() == mongo::BSONType::String);
                     headers.emplace_back(getHeaderStr(kv.first, headerVal.getString()));
                 }},
@@ -493,7 +493,7 @@ std::vector<std::string> ExternalApiOperator::evaluateHeaders(const mongo::Docum
     return headers;
 }
 
-std::vector<std::string> ExternalApiOperator::evaluateQueryParams(const mongo::Document& doc) {
+std::vector<std::string> HttpsOperator::evaluateQueryParams(const mongo::Document& doc) {
     std::vector<std::string> keyValues;
     if (_options.queryParams.empty()) {
         return keyValues;
@@ -512,8 +512,8 @@ std::vector<std::string> ExternalApiOperator::evaluateQueryParams(const mongo::D
                     uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
                             fmt::format("Expected {}.{} values to evaluate as a number, "
                                         "string, or boolean.",
-                                        kExternalApiStageName,
-                                        ExternalAPIOptions::kParametersFieldName),
+                                        kHttpsStageName,
+                                        HttpsOptions::kParametersFieldName),
                             paramVal.getType() == mongo::BSONType::String ||
                                 paramVal.getType() == mongo::BSONType::Bool || paramVal.numeric());
 
@@ -531,14 +531,14 @@ std::vector<std::string> ExternalApiOperator::evaluateQueryParams(const mongo::D
     return keyValues;
 }
 
-mongo::Document ExternalApiOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
-                                                                 mongo::Value apiResponse) {
+mongo::Document HttpsOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
+                                                           mongo::Value apiResponse) {
     MutableDocument output(std::move(inputDoc));
     output.setNestedField(_options.as, std::move(apiResponse));
     return output.freeze();
 }
 
-void ExternalApiOperator::tryLog(int id, std::function<void(int logID)> logFn) {
+void HttpsOperator::tryLog(int id, std::function<void(int logID)> logFn) {
     if (!_logIDToRateLimiter.contains(id)) {
         _logIDToRateLimiter[id] = std::make_unique<RateLimiter>(kTryLogRate, 1, &_options.timer);
     }
@@ -550,7 +550,7 @@ void ExternalApiOperator::tryLog(int id, std::function<void(int logID)> logFn) {
     logFn(id);
 }
 
-void ExternalApiOperator::parseBaseUrl() {
+void HttpsOperator::parseBaseUrl() {
     char *scheme{nullptr}, *user{nullptr}, *password{nullptr}, *host{nullptr}, *port{nullptr},
         *path{nullptr}, *query{nullptr}, *fragment{nullptr};
     auto handle = curl_url();
@@ -645,8 +645,8 @@ void ExternalApiOperator::parseBaseUrl() {
     _baseUrlComponents = out;
 }
 
-std::string ExternalApiOperator::makeUrlString(std::string additionalPath,
-                                               std::vector<std::string> additionalQueryParams) {
+std::string HttpsOperator::makeUrlString(std::string additionalPath,
+                                         std::vector<std::string> additionalQueryParams) {
     CURLU* handle = curl_url();
     ScopeGuard guard([&] { curl_url_cleanup(handle); });
 
@@ -713,11 +713,11 @@ std::string ExternalApiOperator::makeUrlString(std::string additionalPath,
     return std::string{out};
 }
 
-void ExternalApiOperator::validateOptions() {
+void HttpsOperator::validateOptions() {
     bool baseUrlHasQuery = _baseUrlComponents.queryParams.size() > 0;
     bool baseUrlHasFragment = !_baseUrlComponents.fragment.empty();
 
-    bool pathOptDefined = _options.urlPathExpr != nullptr;
+    bool pathOptDefined = _options.pathExpr != nullptr;
     bool queryOptDefined = !_options.queryParams.empty();
 
     // These validations generally prevent users from making the operator interpolate parts of
@@ -728,19 +728,18 @@ void ExternalApiOperator::validateOptions() {
             fmt::format("The url defined in {}.connection.url contains a fragment that can "
                         "conflict with a query "
                         "or url path in the operator definition.",
-                        kExternalApiStageName),
+                        kHttpsStageName),
             !(baseUrlHasFragment && (pathOptDefined || queryOptDefined)));
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             fmt::format("The url defined in {}.connection.url contains query parameters that can "
                         "conflict with a "
                         "url path in the operator definition.",
-                        kExternalApiStageName),
+                        kHttpsStageName),
             !(baseUrlHasQuery && pathOptDefined));
 
     if (!mongo::getTestCommandsEnabled()) {
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                fmt::format("The url defined in {}.connection.url must use https",
-                            kExternalApiStageName),
+                fmt::format("The url defined in {}.connection.url must use https", kHttpsStageName),
                 _baseUrlComponents.scheme == kHttpsScheme);
     }
 
@@ -749,17 +748,17 @@ void ExternalApiOperator::validateOptions() {
         auto key = headerValue.substr(0, headerEndIdx);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 fmt::format("Keys defined in {}.connection.headers must not be empty.",
-                            kExternalApiStageName),
+                            kHttpsStageName),
                 !key.empty());
     }
     for (const auto& headers : _options.operatorHeaders) {
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                fmt::format("Keys defined in {}.headers must not be empty.", kExternalApiStageName),
+                fmt::format("Keys defined in {}.headers must not be empty.", kHttpsStageName),
                 !headers.first.empty());
     }
 }
 
-std::string ExternalApiOperator::joinPaths(const std::string& basePath, const std::string& path) {
+std::string HttpsOperator::joinPaths(const std::string& basePath, const std::string& path) {
     auto isEmpty = [](const std::string& s) { return s.empty() || s == "/"; };
     // removes preceding and trailing slashes
     auto cleanSlashes = [isEmpty](const std::string& s) {
@@ -801,8 +800,7 @@ std::string ExternalApiOperator::joinPaths(const std::string& basePath, const st
 
 int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
     tassert(9503701, "Feature flags should be set", featureFlags);
-    auto val =
-        featureFlags->getFeatureFlagValue(FeatureFlags::kExternalAPIRateLimitPerSecond).getInt();
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kHttpsRateLimitPerSecond).getInt();
 
     return *val;
 }

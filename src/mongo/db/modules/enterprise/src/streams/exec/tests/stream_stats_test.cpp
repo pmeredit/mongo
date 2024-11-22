@@ -7,7 +7,7 @@
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
-#include "streams/exec/external_api_operator.h"
+#include "streams/exec/https_operator.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/test_utils.h"
 
@@ -105,7 +105,7 @@ TEST(StatsTest, ComputeStreamSummaryStatsTest) {
                  .watermark = 1,
              },
              {
-                 .operatorName = ExternalApiOperator::kName.toString(),
+                 .operatorName = HttpsOperator::kName.toString(),
                  .numInputBytes = 16,
                  .numOutputBytes = 32,
                  .numDlqDocs = 1,

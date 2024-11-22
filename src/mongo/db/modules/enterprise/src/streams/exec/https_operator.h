@@ -33,28 +33,28 @@ namespace streams {
 using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo::Expression>>;
 
 /**
- * ExternalApiOperator is an operator that allows users to make requests to a configured
- * external api in response to input data.
+ * HttpsOperator is an operator that allows users to make requests to a configured
+ * destination in response to input data.
  *
- * This operator requires a WebAPI connection and will make a request to that connection and set
+ * This operator requires a HTTPS connection and will make a request to that connection and set
  * the response to the user-configured 'as' field before sending the document  to the next
  * operator.
  */
-class ExternalApiOperator : public Operator {
+class HttpsOperator : public Operator {
 public:
-    static constexpr StringData kName = "ExternalApiOperator";
+    static constexpr StringData kName = "HttpsOperator";
     static constexpr StringData kHttpsScheme = "https";
 
     struct Options {
         std::unique_ptr<mongo::HttpClient> httpClient{};
 
         // Http method used to make request.
-        mongo::HttpClient::HttpMethod requestType{mongo::HttpClient::HttpMethod::kGET};
+        mongo::HttpClient::HttpMethod method{mongo::HttpClient::HttpMethod::kGET};
         // URL used to make an HTTP request with.
         std::string url;
         // Optional url path that is evaluated per document and appended to the url defined in
         // the connection.
-        boost::intrusive_ptr<mongo::Expression> urlPathExpr{nullptr};
+        boost::intrusive_ptr<mongo::Expression> pathExpr{nullptr};
 
         // Defined in the connection.
         std::vector<std::string> connectionHeaders;
@@ -68,7 +68,7 @@ public:
         // The payloadPipeline is to run against the dataMsg docs passed into the operator.
         boost::optional<FeedablePipeline> payloadPipeline;
         // Represents the timeout for establishing a connection to the
-        // external api.
+        // HTTPS destination.
         mongo::Seconds connectionTimeoutSecs{30};
         // Represents the timeout for making a request and receiving a response.
         mongo::Seconds requestTimeoutSecs{60};
@@ -93,7 +93,7 @@ public:
         std::string fragment;
     };
 
-    ExternalApiOperator(Context* context, Options options);
+    HttpsOperator(Context* context, Options options);
 
     const Options& getOptions();
 
@@ -116,7 +116,7 @@ protected:
 
 
 private:
-    friend class ExternalApiOperatorTest;
+    friend class HttpsOperatorTest;
 
     static constexpr double kTryLogRate{1.0 / 60};
 
@@ -133,7 +133,7 @@ private:
 
     // evaluateFullUrl accepts an input document and applies a mongo expression using that
     // document
-    // to create the urlPath to be appended to the connection uri. It will also call
+    // to create the path to be appended to the connection uri. It will also call
     // evaluateQueryParams and tack on the query parameters to the end of the URL.
     std::string evaluateFullUrl(const mongo::Document& doc);
 
@@ -186,7 +186,7 @@ private:
     // passed into the operator are valid. Throws a user error if not valid.
     void validateOptions();
 
-    ExternalApiOperator::Options _options;
+    HttpsOperator::Options _options;
 
     int64_t _rateLimitPerSec;
     RateLimiter _rateLimiter;

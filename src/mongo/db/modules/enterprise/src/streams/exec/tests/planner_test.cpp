@@ -38,7 +38,7 @@
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
-#include "streams/exec/external_api_operator.h"
+#include "streams/exec/https_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
@@ -78,32 +78,32 @@ public:
         atlasConn.setOptions(atlasConnOptions.toBSON());
         atlasConn.setType(ConnectionTypeEnum::Atlas);
 
-        Connection webApiConn{};
-        webApiConn.setName("webapi1");
-        WebAPIConnectionOptions webApiConnOptions{"https://mongodb.com"};
-        webApiConnOptions.setHeaders(BSON("webApiHeader"
-                                          << "foobar"));
-        webApiConn.setOptions(webApiConnOptions.toBSON());
-        webApiConn.setType(ConnectionTypeEnum::WebAPI);
+        Connection httpsConn{};
+        httpsConn.setName("https1");
+        HttpsConnectionOptions httpsConnOptions{"https://mongodb.com"};
+        httpsConnOptions.setHeaders(BSON("httpsHeader"
+                                         << "foobar"));
+        httpsConn.setOptions(httpsConnOptions.toBSON());
+        httpsConn.setType(ConnectionTypeEnum::HTTPS);
 
-        Connection webApiConnWithQuery{};
-        webApiConnWithQuery.setName("webapi2");
-        WebAPIConnectionOptions webApiConnOptionsWithQuery{"https://mongodb.com/foo?foo=bar"};
-        webApiConnWithQuery.setOptions(webApiConnOptionsWithQuery.toBSON());
-        webApiConnWithQuery.setType(ConnectionTypeEnum::WebAPI);
+        Connection httpsConnWithQuery{};
+        httpsConnWithQuery.setName("https2");
+        HttpsConnectionOptions httpsConnOptionsWithQuery{"https://mongodb.com/foo?foo=bar"};
+        httpsConnWithQuery.setOptions(httpsConnOptionsWithQuery.toBSON());
+        httpsConnWithQuery.setType(ConnectionTypeEnum::HTTPS);
 
-        Connection webApiConnWithFragment{};
-        webApiConnWithFragment.setName("webapi3");
-        WebAPIConnectionOptions webApiConnOptionsWithFragment{
+        Connection httpsConnWithFragment{};
+        httpsConnWithFragment.setName("https3");
+        HttpsConnectionOptions httpsConnOptionsWithFragment{
             "https://mongodb.com/foo?foo=bar#heading"};
-        webApiConnWithFragment.setOptions(webApiConnOptionsWithFragment.toBSON());
-        webApiConnWithFragment.setType(ConnectionTypeEnum::WebAPI);
+        httpsConnWithFragment.setOptions(httpsConnOptionsWithFragment.toBSON());
+        httpsConnWithFragment.setType(ConnectionTypeEnum::HTTPS);
 
         _context->connections = {
             {atlasConn.getName().toString(), atlasConn},
-            {webApiConn.getName().toString(), webApiConn},
-            {webApiConnWithQuery.getName().toString(), webApiConnWithQuery},
-            {webApiConnWithFragment.getName().toString(), webApiConnWithFragment},
+            {httpsConn.getName().toString(), httpsConn},
+            {httpsConnWithQuery.getName().toString(), httpsConnWithQuery},
+            {httpsConnWithFragment.getName().toString(), httpsConnWithFragment},
         };
 
         auto inMemoryConnection = testInMemoryConnectionRegistry();
@@ -1658,7 +1658,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         // Setup the context.
         auto context = get<0>(getTestContext(nullptr));
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-        featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
+        featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
         StreamProcessorFeatureFlags spFeatureFlags{
             featureFlagsMap,
             std::chrono::time_point<std::chrono::system_clock>{
@@ -1668,11 +1668,11 @@ TEST_F(PlannerTest, ExecutionPlan) {
         KafkaConnectionOptions options1{"localhost:9092"};
         options1.setIsTestKafka(true);
         AtlasConnectionOptions options2{"mongodb://localhost:270"};
-        WebAPIConnectionOptions options3{"https://localhost:12345"};
+        HttpsConnectionOptions options3{"https://localhost:12345"};
         context->connections = stdx::unordered_map<std::string, Connection>{
             {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
             {"atlas1", Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()}},
-            {"webapi1", Connection{"webapi1", ConnectionTypeEnum::WebAPI, options3.toBSON()}}};
+            {"https1", Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()}}};
 
         Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
@@ -2369,8 +2369,8 @@ TEST_F(PlannerTest, ExecutionPlan) {
         },
 
         {
-            $externalAPI: {
-              connectionName: "webapi1",
+            $https: {
+              connectionName: "https1",
               as: "foo"
             }
         },
@@ -2384,7 +2384,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-              {"ChangeStreamConsumerOperator", "ExternalApiOperator", "MergeOperator"});
+              {"ChangeStreamConsumerOperator", "HttpsOperator", "MergeOperator"});
 #endif
 }
 
@@ -2527,34 +2527,34 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
 #if LIBCURL_VERSION_NUM >= 0x074e00
 
 /**
-Parse a pipeline containing $externalAPI in it. Verify that it fails when not supplied the correct
+Parse a pipeline containing $https in it. Verify that it fails when not supplied the correct
 feature flag.
 */
-TEST_F(PlannerTest, ExternalAPIFailsWithoutFeatureFlag) {
+TEST_F(PlannerTest, HttpsFailsWithoutFeatureFlag) {
     std::string pipeline = R"(
 [
-    { $externalAPI: {} }
+    { $https: {} }
 ]
     )";
 
     ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
                                 DBException,
                                 ErrorCodes::StreamProcessorInvalidOptions,
-                                "StreamProcessorInvalidOptions: Unsupported stage: $externalAPI");
+                                "StreamProcessorInvalidOptions: Unsupported stage: $https");
 }
 
 /**
-Parse a pipeline containing $externalAPI in it. Verify that it still fails when the feature flag is
+Parse a pipeline containing $https in it. Verify that it still fails when the feature flag is
 defined but set to false.
 */
-TEST_F(PlannerTest, ExternalAPIWithFalseFeatureFlag) {
+TEST_F(PlannerTest, HttpsWithFalseFeatureFlag) {
     std::string pipeline = R"(
 [
-    { $externalAPI: {} }
+    { $https: {} }
 ]
     )";
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(false);
+    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(false);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{
@@ -2564,17 +2564,17 @@ TEST_F(PlannerTest, ExternalAPIWithFalseFeatureFlag) {
     ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
                                 DBException,
                                 ErrorCodes::StreamProcessorInvalidOptions,
-                                "StreamProcessorInvalidOptions: Unsupported stage: $externalAPI");
+                                "StreamProcessorInvalidOptions: Unsupported stage: $https");
 }
 
 /**
-Parse a pipeline containing $externalAPI in it, the expected feature flag, but missing required
+Parse a pipeline containing $https in it, the expected feature flag, but missing required
 arguments.
 */
-TEST_F(PlannerTest, ExternalAPIWithMissingRequiredArgs) {
+TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
+    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{
@@ -2598,14 +2598,14 @@ TEST_F(PlannerTest, ExternalAPIWithMissingRequiredArgs) {
             addSourceSinkAndParse(parsePipeline(R"(
     [
         {
-            $externalAPI: {
+            $https: {
                 as: "response"
             }
         }
     ])")),
             DBException,
             mongo::ErrorCodes::StreamProcessorInvalidOptions,
-            "IDLFailedToParse: BSON field 'externalAPI.connectionName' is "
+            "IDLFailedToParse: BSON field 'https.connectionName' is "
             "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
                                               // reason.
     }
@@ -2615,7 +2615,7 @@ TEST_F(PlannerTest, ExternalAPIWithMissingRequiredArgs) {
         ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(parsePipeline(R"(
     [
         {
-            $externalAPI: {
+            $https: {
                 connectionName: "unseenbeforelegendaryconnectionname",
                 as: "response"
             }
@@ -2624,7 +2624,7 @@ TEST_F(PlannerTest, ExternalAPIWithMissingRequiredArgs) {
                                     DBException,
                                     mongo::ErrorCodes::StreamProcessorInvalidOptions,
                                     "StreamProcessorInvalidOptions: Unknown connectionName "
-                                    "'unseenbeforelegendaryconnectionname' in $externalAPI");
+                                    "'unseenbeforelegendaryconnectionname' in $https");
     }
 
     {
@@ -2633,27 +2633,27 @@ TEST_F(PlannerTest, ExternalAPIWithMissingRequiredArgs) {
             addSourceSinkAndParse(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1"
+            $https: {
+                connectionName: "https1"
             }
         }
     ])")),
             DBException,
             mongo::ErrorCodes::StreamProcessorInvalidOptions,
-            "IDLFailedToParse: BSON field 'externalAPI.as' is "
+            "IDLFailedToParse: BSON field 'https.as' is "
             "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
                                               // reason.
     }
 }
 
 /**
-Parse a pipeline containing $externalAPI in it. Verify that it does not fail when not supplied
+Parse a pipeline containing $https in it. Verify that it does not fail when not supplied
 the expected feature flag.
 */
-TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
+TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableExternalAPIOperator.name] = mongo::Value(true);
+    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{
@@ -2670,16 +2670,16 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
         _context->connections = prevConnections;
     });
 
-    auto planExternalApiTest = [&](const std::vector<BSONObj>& spec,
-                                   streams::ExternalApiOperator::Options expectedOpts,
-                                   Document inputDoc) {
+    auto planHttpsTest = [&](const std::vector<BSONObj>& spec,
+                             streams::HttpsOperator::Options expectedOpts,
+                             Document inputDoc) {
         auto dag = addSourceSinkAndParse(spec);
         auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
 
-        auto actualOper = dynamic_cast<ExternalApiOperator*>(dag->operators().at(1).get());
+        auto actualOper = dynamic_cast<HttpsOperator*>(dag->operators().at(1).get());
 
-        ASSERT_EQ(actualOper->getOptions().requestType, expectedOpts.requestType);
+        ASSERT_EQ(actualOper->getOptions().method, expectedOpts.method);
         ASSERT_EQ(actualOper->getOptions().url, expectedOpts.url);
         ASSERT_EQ(actualOper->getOptions().connectionHeaders, expectedOpts.connectionHeaders);
         ASSERT_EQ(actualOper->getOptions().as, expectedOpts.as);
@@ -2699,8 +2699,8 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
                 strOrExpr);
         };
 
-        ASSERT_EQ(evaluateStringOrExpression(actualOper->getOptions().urlPathExpr),
-                  evaluateStringOrExpression(expectedOpts.urlPathExpr));
+        ASSERT_EQ(evaluateStringOrExpression(actualOper->getOptions().pathExpr),
+                  evaluateStringOrExpression(expectedOpts.pathExpr));
 
         ASSERT_EQ(actualOper->getOptions().operatorHeaders.size(),
                   expectedOpts.operatorHeaders.size());
@@ -2727,93 +2727,92 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
     };
 
     {
-        // invalid requestType
-        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+        // invalid method
+        ASSERT_THROWS_CODE_AND_WHAT(planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
+            $https: {
+                connectionName: "https1",
                 as: "response",
-                requestType: "FOO"
+                method: "FOO"
             }
         }
     ])"),
-                                                        {},
-                                                        {}),
+                                                  {},
+                                                  {}),
                                     DBException,
                                     ErrorCodes::StreamProcessorInvalidOptions,
                                     "BadValue: Enumeration value 'FOO' for field "
-                                    "'externalAPI.requestType' is not a valid value.");
+                                    "'https.method' is not a valid value.");
     }
 
     {
         // invalid headers
-        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+        ASSERT_THROWS_CODE_AND_WHAT(planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
+            $https: {
+                connectionName: "https1",
                 as: "response",
                 headers: "$invalidType"
             }
         }
     ])"),
-                                                        {},
-                                                        {}),
+                                                  {},
+                                                  {}),
                                     DBException,
                                     ErrorCodes::StreamProcessorInvalidOptions,
-                                    "TypeMismatch: BSON field 'externalAPI.headers' is the wrong "
+                                    "TypeMismatch: BSON field 'https.headers' is the wrong "
                                     "type 'string', expected type 'object'");
     }
 
     {
         // invalid parameters
-        ASSERT_THROWS_CODE_AND_WHAT(
-            planExternalApiTest(parsePipeline(R"(
+        ASSERT_THROWS_CODE_AND_WHAT(planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
+            $https: {
+                connectionName: "https1",
                 as: "response",
                 parameters: "$invalidType"
             }
         }
     ])"),
-                                {},
-                                {}),
-            DBException,
-            ErrorCodes::StreamProcessorInvalidOptions,
-            "TypeMismatch: BSON field 'externalAPI.parameters' is the wrong "
-            "type 'string', expected type 'object'");
+                                                  {},
+                                                  {}),
+                                    DBException,
+                                    ErrorCodes::StreamProcessorInvalidOptions,
+                                    "TypeMismatch: BSON field 'https.parameters' is the wrong "
+                                    "type 'string', expected type 'object'");
     }
 
     {
         // unknown field
         ASSERT_THROWS_CODE_AND_WHAT(
-            planExternalApiTest(parsePipeline(R"(
+            planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
+            $https: {
+                connectionName: "https1",
                 as: "response",
                 randomField: "foo"
             }
         }
     ])"),
-                                {},
-                                {}),
+                          {},
+                          {}),
             DBException,
             ErrorCodes::StreamProcessorInvalidOptions,
-            "IDLUnknownField: BSON field 'externalAPI.randomField' is an unknown field.");
+            "IDLUnknownField: BSON field 'https.randomField' is an unknown field.");
     }
 
     {
         // invalid type in params dynamic object
-        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+        ASSERT_THROWS_CODE_AND_WHAT(planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
+            $https: {
+                connectionName: "https1",
                 as: "response",
                 parameters: {
                     foo: undefined
@@ -2821,8 +2820,8 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             }
         }
     ])"),
-                                                        {},
-                                                        {}),
+                                                  {},
+                                                  {}),
                                     DBException,
                                     ErrorCodes::StreamProcessorInvalidOptions,
                                     "StreamProcessorInvalidOptions: Unexpected value type for "
@@ -2832,11 +2831,11 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
     {
         // non string field in headers
         ASSERT_THROWS_CODE_AND_WHAT(
-            planExternalApiTest(parsePipeline(R"(
+            planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
+            $https: {
+                connectionName: "https1",
                 as: "response",
                 headers: {
                     foo: 10
@@ -2844,8 +2843,8 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             }
         }
     ])"),
-                                {},
-                                {}),
+                          {},
+                          {}),
             DBException,
             ErrorCodes::StreamProcessorInvalidOptions,
             "StreamProcessorInvalidOptions: Headers defined in the pipeline operator can only "
@@ -2854,33 +2853,33 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
 
     {
         // trying to append path when queries exist
-        ASSERT_THROWS_CODE_AND_WHAT(planExternalApiTest(parsePipeline(R"(
+        ASSERT_THROWS_CODE_AND_WHAT(planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi2",
+            $https: {
+                connectionName: "https2",
                 as: "response",
-                urlPath: "$foo"
+                path: "$foo"
             }
         }
     ])"),
-                                                        {},
-                                                        {}),
+                                                  {},
+                                                  {}),
                                     DBException,
                                     ErrorCodes::StreamProcessorInvalidOptions,
                                     "StreamProcessorInvalidOptions: The url defined in "
-                                    "$externalAPI.connection.url contains query parameters that "
+                                    "$https.connection.url contains query parameters that "
                                     "can conflict with a url path in the operator definition.");
     }
 
     {
         // trying to append query params when fragment exists
         ASSERT_THROWS_CODE_AND_WHAT(
-            planExternalApiTest(parsePipeline(R"(
+            planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi3",
+            $https: {
+                connectionName: "https3",
                 as: "response",
                 parameters: {
                     foo: "bar"
@@ -2888,11 +2887,11 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             }
         }
     ])"),
-                                {},
-                                {}),
+                          {},
+                          {}),
             DBException,
             ErrorCodes::StreamProcessorInvalidOptions,
-            "StreamProcessorInvalidOptions: The url defined in $externalAPI.connection.url "
+            "StreamProcessorInvalidOptions: The url defined in $https.connection.url "
             "contains a fragment that can conflict with a query or url path in the operator "
             "definition.");
     }
@@ -2918,14 +2917,14 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             std::make_pair("skip", "10"),
         };
 
-        planExternalApiTest(parsePipeline(R"(
+        planHttpsTest(parsePipeline(R"(
     [
         {
-            $externalAPI: {
-                connectionName: "webapi1",
-                urlPath: "$bar",
+            $https: {
+                connectionName: "https1",
+                path: "$bar",
                 as: "response",
-                requestType: "POST",
+                method: "POST",
                 headers: {
                     Accept: "text/html",
                     foo: "$bar"
@@ -2948,18 +2947,17 @@ TEST_F(PlannerTest, ExternalAPIWithTrueFeatureFlag) {
             }
         }
     ])"),
-                            {
-                                .requestType = mongo::HttpClient::HttpMethod::kPOST,
-                                .url = "https://mongodb.com",
-                                .urlPathExpr = barExpr,
-                                .connectionHeaders =
-                                    std::vector<std::string>{"webApiHeader: foobar"},
-                                .queryParams = expectedParameters,
-                                .operatorHeaders = expectedHeaders,
-                                .as = "response",
-                            },
-                            Document{BSON("bar"
-                                          << "baz")});
+                      {
+                          .method = mongo::HttpClient::HttpMethod::kPOST,
+                          .url = "https://mongodb.com",
+                          .pathExpr = barExpr,
+                          .connectionHeaders = std::vector<std::string>{"httpsHeader: foobar"},
+                          .queryParams = expectedParameters,
+                          .operatorHeaders = expectedHeaders,
+                          .as = "response",
+                      },
+                      Document{BSON("bar"
+                                    << "baz")});
     }
 }
 
