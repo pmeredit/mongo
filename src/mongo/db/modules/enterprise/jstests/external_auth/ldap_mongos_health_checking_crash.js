@@ -17,6 +17,9 @@ const ACTIVE_FAULT_DURATION_SECS = 1;
 // Crashed mongos will remain holding its socket as a zombie for some time.
 TestData.ignoreUnterminatedProcesses = true;
 TestData.ignoreChildProcessErrorCode = true;
+// Because this test intentionally crashes the server, we instruct the
+// the shell to clean up after us and remove the core dump.
+TestData.cleanUpCoreDumpsFromExpectedCrash = true;
 
 let st = new ShardingTest({
     shards: 1,
