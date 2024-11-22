@@ -1466,4 +1466,45 @@ TEST_F(StreamManagerTest, ParseOnlyMode_CollectionlessLookup) {
     ASSERT_EQUALS("__noopSink", parseConnections->at(1).getName());
 }
 
+TEST_F(StreamManagerTest, StartDuringShutdown) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData(kTestTenantId1));
+    request.setName(StringData("name1"));
+    request.setProcessorId(StringData("name1"));
+    request.setCorrelationId(StringData("userRequest1"));
+    request.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
+
+    streamManager->shutdown();
+    ASSERT_THROWS_CODE(streamManager->startStreamProcessor(request),
+                       AssertionException,
+                       ErrorCodes::StreamProcessorWorkerShuttingDown);
+}
+
+TEST_F(StreamManagerTest, StopDuringShutdown) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData(kTestTenantId1));
+    request.setName(StringData("name1"));
+    request.setProcessorId(StringData("name1"));
+    request.setCorrelationId(StringData("userRequest1"));
+    request.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
+
+    streamManager->shutdown();
+    ASSERT_THROWS_CODE(
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, "name1", StopReason::ExternalStopRequest),
+        AssertionException,
+        ErrorCodes::StreamProcessorWorkerShuttingDown);
+}
 }  // namespace streams

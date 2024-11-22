@@ -519,6 +519,15 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
         [this, tenantId, name, processorId]() -> boost::optional<mongo::Status> {
         stdx::lock_guard<stdx::mutex> lk(_mutex);
 
+        if (_shutdown) {
+            static constexpr char reason[] = "start cannot be called during shutdown";
+            LOGV2_INFO(9620101,
+                       reason,
+                       "streamProcessorName"_attr = name,
+                       "streamProcessorId"_attr = processorId);
+            return Status{ErrorCodes::StreamProcessorWorkerShuttingDown, std::string{reason}};
+        }
+
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
         if (!processorInfo) {
             static constexpr char reason[] = "stream processor disappeared during start";
@@ -1141,6 +1150,14 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
         stdx::lock_guard<stdx::mutex> lk(_mutex);
 
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
+        if (!processorInfo && _shutdown) {
+            static constexpr char reason[] = "stop cannot be called during shutdown";
+            LOGV2_INFO(9620102,
+                       reason,
+                       "streamProcessorName"_attr = name,
+                       "streamProcessorId"_attr = processorId);
+            return Status{ErrorCodes::StreamProcessorWorkerShuttingDown, std::string{reason}};
+        }
         if (!processorInfo) {
             static constexpr char reason[] =
                 "Stream processor disappeared while waiting for it to stop";
@@ -1183,11 +1200,17 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
         stdx::lock_guard<stdx::mutex> lk(_mutex);
         auto tenantInfo = _tenantProcessors.find(tenantId);
         if (tenantInfo == _tenantProcessors.end()) {
+            uassert(ErrorCodes::StreamProcessorWorkerShuttingDown,
+                    str::stream() << "stop cannot be called during shutdown",
+                    !_shutdown);
             uasserted(ErrorCodes::StreamProcessorDoesNotExist,
                       str::stream() << "stream processor does not exist: " << name);
         }
 
         auto it = tenantInfo->second->processors.find(name);
+        uassert(ErrorCodes::StreamProcessorWorkerShuttingDown,
+                str::stream() << "stop cannot be called during shutdown",
+                !_shutdown || it != tenantInfo->second->processors.end());
         uassert(ErrorCodes::StreamProcessorDoesNotExist,
                 str::stream() << "stream processor does not exist: " << name,
                 it != tenantInfo->second->processors.end());
@@ -1222,6 +1245,9 @@ void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCom
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
     auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
+    uassert(ErrorCodes::StreamProcessorWorkerShuttingDown,
+            str::stream() << "stop cannot be called during shutdown",
+            processorInfo || !_shutdown);
     uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "Stream processor does not exist: " << name,
             processorInfo);
