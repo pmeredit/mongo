@@ -17,6 +17,7 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
+#include "mongo/db/tenant_id.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/stdx/unordered_map.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -323,7 +324,18 @@ public:
     void checkRoutingInfoEpochOrThrow(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
                                       const mongo::NamespaceString&,
                                       mongo::ChunkVersion) const override {
-        uasserted(76971, "Unexpected check of routing table");
+        MONGO_UNREACHABLE_TASSERT(9525803);
+    }
+
+    std::vector<mongo::DatabaseName> getAllDatabases(
+        mongo::OperationContext* opCtx, boost::optional<mongo::TenantId> tenantId) override {
+        MONGO_UNREACHABLE_TASSERT(9525804);
+    }
+
+    std::vector<mongo::BSONObj> runListCollections(mongo::OperationContext* opCtx,
+                                                   const mongo::DatabaseName& db,
+                                                   bool addPrimaryShard) override {
+        MONGO_UNIMPLEMENTED;
     }
 
     DocumentKeyResolutionMetadata ensureFieldsUniqueOrResolveDocumentKey(
