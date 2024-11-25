@@ -120,6 +120,11 @@ function runTest({
         }, "waiting for expected output in collection", waitTimeMs);
         jsTestLog(output);
         assert(resultsEq(expectedOutput, output, true /* verbose */, allFieldsToSkip));
+        output.forEach((out, i) => {
+            const responseTimeMs = out['_stream_meta']['https']['responseTimeMs'];
+            assert(responseTimeMs >= 0);
+            jsTestLog(`RESPONSE TIME MS: ${responseTimeMs}`);
+        });
     }
     if (expectedDlq.length > 0) {
         // Validate we see the expected results in the DLQ collection.
@@ -482,6 +487,7 @@ const testCases = [
                 "response.headers": 1,
                 "response.query": 1,
                 "response.body": 1,
+                "_stream_meta.https": 1,
             }
         }],
         expectedOutput: [{
@@ -518,7 +524,7 @@ const testCases = [
         inputDocs: [{foo: "/echo/evaluatedPath"}],
         expectedRequests:
             [{method: "GET", path: "/echo/evaluatedPath", headers: basicHeaders, query: {}, body: ""}],
-        outputQuery: [{$project: {fullDocument: 1, response: 1}}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
         expectedOutput: [{
             fullDocument: {foo: "/echo/evaluatedPath"},
             response: {method: "GET", path: "/echo/evaluatedPath", headers: basicHeaders, query: {}, body:
@@ -535,7 +541,7 @@ const testCases = [
         inputDocs: [{foo: "bar"}],
         expectedRequests:
             [{method: "GET", path: "/echo/trailingSlash", headers: basicHeaders, query: {}, body: ""}],
-        outputQuery: [{$project: {fullDocument: 1, response: 1}}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
         expectedOutput: [{
             fullDocument: {foo: "bar"},
             response: {method: "GET", path: "/echo/trailingSlash", headers: basicHeaders, query: {}, body:

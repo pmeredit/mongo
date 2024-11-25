@@ -113,6 +113,15 @@ public:
         auto httpStatusCode = actualStreamMetaHttpsBson["httpStatusCode"];
         ASSERT_TRUE(httpStatusCode.ok());
         ASSERT_EQ(httpStatusCode.Int(), expectedStreamMetaHttps.getHttpStatusCode());
+
+        auto responseTimeMs = actualStreamMetaHttpsBson["responseTimeMs"];
+        ASSERT_TRUE(responseTimeMs.ok());
+        auto responseTimeMsDiff =
+            expectedStreamMetaHttps.getResponseTimeMs() - responseTimeMs.Int();
+        if (responseTimeMsDiff < 0) {
+            responseTimeMsDiff *= -1;
+        }
+        ASSERT_LESS_THAN_OR_EQUALS(responseTimeMsDiff, 50);
     }
 
     void tryLog(int id, std::function<void(int logID)> logFn) {
@@ -226,7 +235,9 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [&] {
                 std::string uri = "http://localhost:10000";
                 // Set up mock http client.
-                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                std::unique_ptr<StubbableMockHttpClient> mockHttpClient =
+                    std::make_unique<StubbableMockHttpClient>(
+                        boost::make_optional<std::function<void()>>([]() { sleep(1); }));
                 mockHttpClient->expect(
                     MockHttpClient::Request{
                         HttpClient::HttpMethod::kGET,
@@ -272,6 +283,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                     expectedStreamMetaHttps.setUrl(StringData{"http://localhost:10000"});
                     expectedStreamMetaHttps.setMethod(HttpMethodEnum::MethodGet);
                     expectedStreamMetaHttps.setHttpStatusCode(200);
+                    expectedStreamMetaHttps.setResponseTimeMs(1000);
                     assertStreamMetaHttps(expectedStreamMetaHttps,
                                           doc[*_context->streamMetaFieldName].Obj()["https"].Obj());
                 }

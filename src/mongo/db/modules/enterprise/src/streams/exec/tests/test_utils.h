@@ -5,6 +5,7 @@
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/util/net/http_client_mock.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -155,6 +156,30 @@ private:
         _intGauges;
     mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, CallbackGauge*>>
         _callbackGauges;
+};
+
+// StubbableMockHttpClient composes MockHttpClient in order to add custom functionality to
+// request(). This allows us to add a custom request behavior while still utilizing the mock http
+// client behavior.
+class StubbableMockHttpClient : public mongo::HttpClient {
+public:
+    void allowInsecureHTTP(bool allow) final {
+        _mockClient->allowInsecureHTTP(allow);
+    }
+
+    void setHeaders(const std::vector<std::string>& headers) final {}
+
+    StubbableMockHttpClient(boost::optional<std::function<void()>> stubFn);
+
+    void expect(mongo::MockHttpClient::Request request, mongo::MockHttpClient::Response response);
+
+    HttpClient::HttpReply request(HttpMethod method,
+                                  mongo::StringData url,
+                                  mongo::ConstDataRange data) const final;
+
+private:
+    std::unique_ptr<mongo::MockHttpClient> _mockClient;
+    boost::optional<std::function<void()>> _stubFn;
 };
 
 }  // namespace streams

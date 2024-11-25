@@ -6,6 +6,7 @@
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/concurrent_memory_aggregator.h"
+#include "mongo/util/net/http_client_mock.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/operator_dag.h"
@@ -171,6 +172,24 @@ std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue) {
         queue.pop_front();
     }
     return result;
+}
+
+StubbableMockHttpClient::StubbableMockHttpClient(boost::optional<std::function<void()>> stubFn)
+    : _mockClient{std::make_unique<MockHttpClient>()}, _stubFn{stubFn} {}
+
+void StubbableMockHttpClient::expect(mongo::MockHttpClient::Request request,
+                                     mongo::MockHttpClient::Response response) {
+    _mockClient->expect(request, response);
+}
+
+HttpClient::HttpReply StubbableMockHttpClient::request(HttpMethod method,
+                                                       mongo::StringData url,
+                                                       mongo::ConstDataRange data) const {
+    if (_stubFn.has_value()) {
+        (*_stubFn)();
+    }
+
+    return _mockClient->request(method, url, data);
 }
 
 };  // namespace streams

@@ -11,6 +11,7 @@ env.Library(
         "in_memory_checkpoint_storage.cpp",
     ],
     LIBDEPS=[
+        "$BUILD_DIR/mongo/util/net/mock_http_client",
         "../streams_operators",
     ],
     LIBDEPS_PRIVATE=[
