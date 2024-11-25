@@ -397,7 +397,7 @@ import {
             $project: {
                 value: {
                     $range:
-                        [{$multiply: ["$i", 1000000]}, {$multiply: [{$add: ["$i", 1]}, 1000000]}]
+                        [{$multiply: ["$i", 1000000]}, {$multiply: [{$add: ["$i", 1]}, 1900000]}]
                 }
             }
         },
