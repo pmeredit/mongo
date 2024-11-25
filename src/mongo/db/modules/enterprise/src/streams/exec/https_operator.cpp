@@ -31,6 +31,7 @@
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/overloaded_visitor.h"
 #include "mongo/util/str.h"
+#include "mongo/util/text.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/feature_flag.h"
@@ -269,7 +270,7 @@ void HttpsOperator::writeToDLQ(StreamDocument* streamDoc,
                                const std::string& errorMsg,
                                ProcessResult& result) {
     const std::string dlqErrorMsg = str::stream()
-        << "Failed to process input document in " << getName() << " with error: " << errorMsg;
+        << "Failed to process input document in " << kHttpsStageName << " with error: " << errorMsg;
     result.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
         _context->streamMetaFieldName, std::move(*streamDoc), doGetName(), std::move(dlqErrorMsg)));
     result.numDlqDocs++;
@@ -345,6 +346,29 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             9503700, "Expected a zero throttle delay", _rateLimiter.consume() == Microseconds(0));
     }
 
+    std::function<bool(const std::string, const std::exception&)> onErrorHandleException =
+        [&](const std::string& msgPrefix, const std::exception& e) {
+            switch (_options.onError) {
+                case mongo::OnErrorEnum::DLQ: {
+                    writeToDLQ(streamDoc,
+                               fmt::format(
+                                   "{} in {} with error: {}", msgPrefix, kHttpsStageName, e.what()),
+                               processResult);
+                    return true;
+                }
+                case mongo::OnErrorEnum::Ignore: {
+                    return false;
+                }
+                case mongo::OnErrorEnum::Fail: {
+                    throw;
+                }
+                default: {
+                    tasserted(9683601, "Invalid onError option set");
+                    break;
+                }
+            }
+        };
+
     double responseTimeMs{0};
     StringData rawResponse;
     try {
@@ -377,68 +401,98 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
                        "context"_attr = _context,
                        "error"_attr = e.what());
         });
-
-        switch (_options.onError) {
-            case mongo::OnErrorEnum::DLQ: {
-                writeToDLQ(streamDoc, e.what(), processResult);
-                return processResult;
-            }
-            case mongo::OnErrorEnum::Ignore: {
-                break;
-            }
-            case mongo::OnErrorEnum::Fail: {
-                throw;
-            }
-            default: {
-                tasserted(9503300, "Invalid onError option set");
-                break;
-            }
+        if (onErrorHandleException("Request failure", e)) {
+            return processResult;
         }
     }
 
-    mongo::BSONObj apiResponse;
-    try {
-        if (rawResponse.size()) {
-            // TODO(SERVER-96836): Determine the response body format via the content-type
-            // header and add support for plaintext responses
-            auto responseView =
-                bsoncxx::stdx::string_view{std::move(rawResponse.data()), rawResponse.size()};
-            apiResponse = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-        }
-    } catch (const bsoncxx::exception& e) {
-        tryLog(9604801, [&](int logID) {
-            LOGV2_INFO(logID,
-                       "Error occured while reading response in HttpsOperator",
-                       "context"_attr = _context,
-                       "error"_attr = e.what());
-        });
-
-        switch (_options.onError) {
-            case mongo::OnErrorEnum::DLQ: {
-                writeToDLQ(streamDoc,
-                           str::stream() << "Failed to parse response body in " << getName()
-                                         << " with error: " << e.what(),
-                           processResult);
+    mongo::Value responseAsValue;
+    if (rawResponse.size()) {
+        boost::optional<std::string> contentType;
+        try {
+            auto rawHeaders = httpResponse->header.getCursor().readAndAdvance<StringData>();
+            if (!rawHeaders.empty()) {
+                contentType = parseContentTypeFromHeaders(rawHeaders);
+            }
+        } catch (const DBException& e) {
+            tryLog(9683600, [&](int logID) {
+                LOGV2_INFO(logID,
+                           "Error occured while reading response headers in HttpsOperator",
+                           "context"_attr = _context,
+                           "error"_attr = e.what());
+            });
+            if (onErrorHandleException("Failed to parse response content-type header", e)) {
                 return processResult;
             }
-            case mongo::OnErrorEnum::Ignore: {
-                break;
+        }
+
+        if (contentType && *contentType == kTextPlain) {
+            responseAsValue = Value(rawResponse.toString());
+        } else if ((contentType && *contentType == kApplicationJson) || !contentType) {
+            try {
+                auto responseView =
+                    bsoncxx::stdx::string_view{std::move(rawResponse.data()), rawResponse.size()};
+                auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+                responseAsValue = Value(std::move(responseAsBson));
+            } catch (const bsoncxx::exception& e) {
+                tryLog(9604801, [&](int logID) {
+                    LOGV2_INFO(logID,
+                               "Error occured while reading response in HttpsOperator",
+                               "context"_attr = _context,
+                               "error"_attr = e.what());
+                });
+                if (onErrorHandleException("Failed to parse response body", e)) {
+                    return processResult;
+                }
             }
-            case mongo::OnErrorEnum::Fail: {
-                throw;
-            }
-            default: {
-                tasserted(9503301, "Invalid onError option set");
-                break;
+        } else {
+            tryLog(9683603, [&](int logID) {
+                LOGV2_INFO(logID,
+                           "Unsupported response content-type",
+                           "context"_attr = _context,
+                           "content_type"_attr = contentType);
+            });
+            switch (_options.onError) {
+                case mongo::OnErrorEnum::DLQ: {
+                    writeToDLQ(streamDoc,
+                               fmt::format("Unsupported response content-type ({}) in {} only {} "
+                                           "and {} are supported",
+                                           *contentType,
+                                           kHttpsStageName,
+                                           kApplicationJson,
+                                           kTextPlain),
+                               processResult);
+                    return processResult;
+                }
+                case mongo::OnErrorEnum::Ignore: {
+                    break;
+                }
+                case mongo::OnErrorEnum::Fail: {
+                    uasserted(9683604,
+                              fmt::format("Unsupported response content-type ({}) in {} only {} "
+                                          "and {} are supported",
+                                          *contentType,
+                                          kHttpsStageName,
+                                          kApplicationJson,
+                                          kTextPlain));
+                }
+                default: {
+                    tasserted(9503303, "Invalid onError option set");
+                    break;
+                }
             }
         }
     }
 
     writeToStreamMeta(streamDoc, requestUrl, std::move(*httpResponse), responseTimeMs);
-    auto joinedDoc = makeDocumentWithAPIResponse(inputDoc, Value(std::move(apiResponse)));
-    processResult.dataMsgBytes = joinedDoc.getApproximateSize();
+    if (!responseAsValue.missing()) {
+        auto joinedDoc = makeDocumentWithAPIResponse(inputDoc, std::move(responseAsValue));
+        processResult.dataMsgBytes = joinedDoc.getApproximateSize();
+        streamDoc->doc = std::move(joinedDoc);
+    } else {
+        processResult.dataMsgBytes = streamDoc->doc.getApproximateSize();
+    }
     processResult.addDocToOutputMsg = true;
-    streamDoc->doc = std::move(joinedDoc);
 
     return processResult;
 }
@@ -529,6 +583,25 @@ std::vector<std::string> HttpsOperator::evaluateQueryParams(const mongo::Documen
     }
 
     return keyValues;
+}
+
+boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringData rawHeaders) {
+    auto headerTokens = StringSplitter::split(rawHeaders.data(), "\r\n");
+    for (const auto& headerToken : headerTokens) {
+        auto keyAndValue = StringSplitter::split(headerToken, ": ");
+        if (keyAndValue.size() != 2) {
+            // There is network related data before the actual headers skip this.
+            continue;
+        }
+        std::transform(
+            keyAndValue[0].begin(), keyAndValue[0].end(), keyAndValue[0].begin(), ::tolower);
+        if (keyAndValue[0] == "content-type") {
+            transform(
+                keyAndValue[1].begin(), keyAndValue[1].end(), keyAndValue[1].begin(), ::tolower);
+            return keyAndValue[1];
+        }
+    }
+    return boost::none;
 }
 
 mongo::Document HttpsOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,

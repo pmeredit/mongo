@@ -137,6 +137,10 @@ public:
         return oper->makeUrlString(path, queryParams);
     }
 
+    boost::optional<std::string> parseContentTypeFromHeaders(StringData rawHeaders) {
+        return HttpsOperator::parseContentTypeFromHeaders(rawHeaders);
+    }
+
 protected:
     std::unique_ptr<Context> _context;
     std::unique_ptr<Executor> _executor;
@@ -602,6 +606,51 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                 ASSERT_EQ(stats.numOutputBytes, 38);
             },
         },
+        {
+            "should handle being returned a text/plain response",
+            [&] {
+                std::string uri = "http://localhost:10000/";
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri,
+                    },
+                    MockHttpClient::Response{
+                        .code = 200,
+                        // mock client does not include carriage return like HTTP headers expect
+                        .header = std::vector<std::string>{"content-type: text/plain\r"},
+                        .body = "simple text response"});
+
+                return HttpsOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .method = HttpClient::HttpMethod::kGET,
+                    .url = uri,
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson("{foo: \"bar\"}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].valueStringData();
+                    ASSERT_EQ(response, "simple text response");
+                }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 20);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
+        },
     };
 
     for (const auto& tc : tests) {
@@ -901,7 +950,7 @@ TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
                     auto dlqMsgs = dlq->getMessages();
                     ASSERT_EQ(1, dlqMsgs.size());
                     ASSERT_EQ(
-                        "Failed to process input document in HttpsOperator with error: "
+                        "Failed to process input document in $https with error: "
                         "Expected "
                         "$https.parameters values to evaluate as a number, "
                         "string, or boolean.",
@@ -911,7 +960,7 @@ TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
                 [](OperatorStats stats) {
                     ASSERT_EQ(stats.numInputBytes, 0);
                     ASSERT_EQ(stats.numOutputBytes, 0);
-                    ASSERT_EQ(stats.numDlqBytes, 296);
+                    ASSERT_EQ(stats.numDlqBytes, 289);
                     ASSERT_EQ(stats.numDlqDocs, 1);
                 });
         }
@@ -943,7 +992,7 @@ TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
                 auto dlqMsgs = dlq->getMessages();
                 ASSERT_EQ(1, dlqMsgs.size());
                 ASSERT_EQ(
-                    "Failed to process input document in HttpsOperator with error: Query "
+                    "Failed to process input document in $https with error: Query "
                     "parameters defined in $https must have key-value pairs separated with a "
                     "'=' character non-empty keys.",
                     dlqMsgs.front()["errInfo"]["reason"].String());
@@ -952,7 +1001,7 @@ TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 0);
                 ASSERT_EQ(stats.numOutputBytes, 0);
-                ASSERT_EQ(stats.numDlqBytes, 325);
+                ASSERT_EQ(stats.numDlqBytes, 318);
                 ASSERT_EQ(stats.numDlqDocs, 1);
             });
     }
@@ -1037,7 +1086,7 @@ TEST_F(HttpsOperatorTest, GetWithBadHeaders) {
                     auto dlqMsgs = dlq->getMessages();
                     ASSERT_EQ(1, dlqMsgs.size());
                     ASSERT_EQ(
-                        "Failed to process input document in HttpsOperator with error: "
+                        "Failed to process input document in $https with error: "
                         "Expected "
                         "$https.headers values to evaluate to a string.",
                         dlqMsgs.front()["errInfo"]["reason"].String());
@@ -1046,7 +1095,7 @@ TEST_F(HttpsOperatorTest, GetWithBadHeaders) {
                 [](OperatorStats stats) {
                     ASSERT_EQ(stats.numInputBytes, 0);
                     ASSERT_EQ(stats.numOutputBytes, 0);
-                    ASSERT_EQ(stats.numDlqBytes, 273);
+                    ASSERT_EQ(stats.numDlqBytes, 266);
                     ASSERT_EQ(stats.numDlqDocs, 1);
                 });
         }
@@ -1118,7 +1167,8 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponseByDefault) {
             for (auto dlqMsgsCopy{dlqMsgs}; !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
                 auto msg = dlqMsgsCopy.front();
                 ASSERT_EQ(msg["errInfo"]["reason"].String(),
-                          "Failed to process input document in HttpsOperator with error: " +
+                          "Failed to process input document in $https with error: Request "
+                          "failure in $https with error: " +
                               expectedErrResponseErrMsg(statusCode, responseBody));
             }
         },
@@ -1177,8 +1227,8 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponse) {
             for (auto dlqMsgsCopy{dlqMsgs}; !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
                 auto msg = dlqMsgsCopy.front();
                 ASSERT_EQ(msg["errInfo"]["reason"].String(),
-                          "Failed to process input document in HttpsOperator with "
-                          "error: " +
+                          "Failed to process input document in $https with "
+                          "error: Request failure in $https with error: " +
                               expectedErrResponseErrMsg(statusCode, responseBody));
             }
         },
@@ -1323,10 +1373,10 @@ TEST_F(HttpsOperatorTest, ShouldFailOnNon2XXStatus) {
 
                             auto dlqMsgs = dlq->getMessages();
                             auto dlqDoc = std::move(dlqMsgs.front());
-                            ASSERT_EQ(
-                                dlqDoc["errInfo"]["reason"].String(),
-                                "Failed to process input document in HttpsOperator with error: " +
-                                    expectedErrResponseErrMsg(httpStatusCode, responseBody));
+                            ASSERT_EQ(dlqDoc["errInfo"]["reason"].String(),
+                                      "Failed to process input document in $https with "
+                                      "error: Request failure in $https with error: " +
+                                          expectedErrResponseErrMsg(httpStatusCode, responseBody));
                         });
     }
 }
@@ -1363,8 +1413,8 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnUnsupportedResponseFormatByDefault) {
 
             auto dlqDoc = std::move(dlqMsgsCopy.front());
             ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
-                                   "Failed to process input document in HttpsOperator with error: "
-                                   "Failed to parse response body in HttpsOperator with error:");
+                                   "Failed to process input document in $https with error: "
+                                   "Failed to parse response body in $https with error:");
         },
         [&dlqMsgs](OperatorStats stats) {
             ASSERT_EQ(stats.numInputBytes, 19);
@@ -1407,8 +1457,8 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnUnsupportedResponseFormat) {
 
             auto dlqDoc = std::move(dlqMsgsCopy.front());
             ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
-                                   "Failed to process input document in HttpsOperator with error: "
-                                   "Failed to parse response body in HttpsOperator with error:");
+                                   "Failed to process input document in $https with error: "
+                                   "Failed to parse response body in $https with error:");
         },
         [&dlqMsgs](OperatorStats stats) {
             ASSERT_EQ(stats.numInputBytes, 19);
@@ -1418,7 +1468,37 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnUnsupportedResponseFormat) {
         });
 }
 
-TEST_F(HttpsOperatorTest, ShouldFailOnUnsupportedResponseFormat) {
+TEST_F(HttpsOperatorTest, ShouldFailOnUnsupportedResponseFormatInHeader) {
+    StringData uri{"http://localhost:10000/"};
+    // Set up mock http client.
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kGET,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200,
+                                 .header =
+                                     std::vector<std::string>{"content-type: application/xml\r"},
+                                 .body = "<info>im xml</info>"});
+
+    HttpsOperator::Options options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .method = HttpClient::HttpMethod::kGET,
+        .url = uri.toString(),
+        .as = "response",
+        .onError = mongo::OnErrorEnum::Fail,
+    };
+
+    setupDag(std::move(options));
+
+    ASSERT_THROWS(
+        testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+                        [](auto _) {}),
+        DBException);
+}
+
+TEST_F(HttpsOperatorTest, ShouldFailOnUnsupportedResponseFormatInBody) {
     StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
@@ -1478,8 +1558,7 @@ TEST_F(HttpsOperatorTest, ShouldIgnoreUnsupportedResponseFormat) {
 
             auto streamDoc = msg.dataMsg->docs[0];
             auto docBSON = streamDoc.doc.toBson();
-            auto response = docBSON["response"].Obj();
-            ASSERT_TRUE(response.isEmpty());
+            ASSERT_TRUE(docBSON["response"].eoo());
 
             StreamMetaHttps expectedStreamMetaHttps;
             expectedStreamMetaHttps.setUrl(uri);
@@ -1527,8 +1606,7 @@ TEST_F(HttpsOperatorTest, ShouldSupportEmptyPayload) {
 
                         auto streamDoc = msg.dataMsg->docs[0];
                         auto docBSON = streamDoc.doc.toBson();
-                        auto response = docBSON["response"].Obj();
-                        ASSERT_TRUE(response.isEmpty());
+                        ASSERT_TRUE(docBSON["response"].eoo());
 
                         StreamMetaHttps expectedStreamMetaHttps;
                         expectedStreamMetaHttps.setUrl(uri);
@@ -1621,8 +1699,13 @@ TEST_F(HttpsOperatorTest, ShouldLogDifferentIDWithinAMinute) {
     ASSERT_EQ(count, 8);
 }
 
-// TODO(SERVER-95032): Add failure case test where we DLQ a a document once we can use the planner
-// to create the pipeline
+TEST_F(HttpsOperatorTest, ParseResponseHeadersTest) {
+    std::string rawHeaders = "DataToIgnore\r\nContent-Type: application/json\r\n\r\n";
+
+    auto result = parseContentTypeFromHeaders(rawHeaders);
+    ASSERT_TRUE(result);
+    ASSERT_EQ(*result, "application/json");
+}
 
 
 // This block validates libcurl parsing + url building behavior.

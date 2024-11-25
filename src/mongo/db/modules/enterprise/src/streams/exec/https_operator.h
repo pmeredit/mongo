@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "mongo/base/string_data.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/logv2/log_attr.h"
@@ -44,6 +45,8 @@ class HttpsOperator : public Operator {
 public:
     static constexpr StringData kName = "HttpsOperator";
     static constexpr StringData kHttpsScheme = "https";
+    static constexpr StringData kApplicationJson = "application/json";
+    static constexpr StringData kTextPlain = "text/plain";
 
     struct Options {
         std::unique_ptr<mongo::HttpClient> httpClient{};
@@ -148,6 +151,9 @@ private:
     // evaluateQueryParams accepts an input document and applies a mongo expression using that
     // document to create a query string.
     std::vector<std::string> evaluateQueryParams(const mongo::Document& doc);
+
+    // parseContentTypeFromHeaders will extract the content-type value if present
+    static boost::optional<std::string> parseContentTypeFromHeaders(StringData rawHeaders);
 
     // makeDocumentWithAPIResponse sets the api response as a value in the input document using
     // a user-configured key.

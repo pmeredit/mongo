@@ -100,10 +100,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._write_request_to_disk(parsed_path, received_request)
 
         self.send_response(response_code)
+        self.send_header("Content-Type", "text/plain")
         self.end_headers()
-        response = io.BytesIO()
-        response.write("A_VALID_PLAINTEXT_RESPONSE".encode())
-        self.wfile.write(response.getvalue())
+        self.wfile.write("A_VALID_PLAINTEXT_RESPONSE".encode("utf-8"))
 
     def _echo_handle(self, parsed_path):
         received_request = self._extract_received_request(parsed_path)

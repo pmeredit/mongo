@@ -302,7 +302,6 @@ const testCases = [
                 method: "GET",
                 httpStatusCode: 404,
             }},
-            response: {},
         }],
     },
     {
@@ -439,35 +438,56 @@ const testCases = [
                 "response.body.fullDocument": 1,
                 "_stream_meta.https": 1,
             }
-    }],
-    expectedRequests: [],
-    inputDocs: [{foo: "DynamicValue"}],
-    expectedOutput: [{
-            fullDocument: {foo: "DynamicValue"},
+        }],
+        expectedRequests: [],
+        inputDocs: [{foo: "DynamicValue"}],
+        expectedOutput: [{
+                fullDocument: {foo: "DynamicValue"},
+                _stream_meta: {https: {
+                    url: restServerUrl + "/foo%28bar%29?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
+                    method: "GET",
+                    httpStatusCode: 200,
+                }},
+                response: {
+                    method: "GET",
+                    path: "/foo%28bar%29",
+                    query: {
+                        "StrParam": ["StaticParameterValue"],
+                        "DoubleParam": ["1.100000000002"],
+                        "FieldPathExprParam": ["DynamicValue"],
+                        "ObjectExprParam": ["6.2"],
+                        "BoolParam": ["true"],
+                        "Search%Param": ["https://user:password@my.domain.net:1234/foo/bar/baz?name=hero&name=sandwich&name=grinder#heading1"]
+                    },
+                    headers: {
+                        ...basicHeaders,
+                        "FieldPathHeader": "DynamicValue",
+                        "StrHeader" : "foo",
+                    }
+                }
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "get request that receives a plain text response",
+        spName: "plainTextResponse",
+        httpsOptions:
+            {connectionName: httpsName, path: "/plaintext/plainTextResponse", method: "GET", as:
+            'response'},
+        inputDocs: [{a: 1}],
+        expectedRequests:
+            [{method: "GET", path: "/plaintext/plainTextResponse", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            fullDocument: {a: 1},
             _stream_meta: {https: {
-                url: restServerUrl + "/foo%28bar%29?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
+                url: restServerUrl + "/plaintext/plainTextResponse",
                 method: "GET",
                 httpStatusCode: 200,
             }},
-            response: {
-                method: "GET",
-                path: "/foo%28bar%29",
-                query: {
-                    "StrParam": ["StaticParameterValue"],
-                    "DoubleParam": ["1.100000000002"],
-                    "FieldPathExprParam": ["DynamicValue"],
-                    "ObjectExprParam": ["6.2"],
-                    "BoolParam": ["true"],
-                    "Search%Param": ["https://user:password@my.domain.net:1234/foo/bar/baz?name=hero&name=sandwich&name=grinder#heading1"]
-                },
-                headers: {
-                    ...basicHeaders,
-                    "FieldPathHeader": "DynamicValue",
-                    "StrHeader" : "foo",
-                }
-            }
-    }],
-    allowAllTraffic: true,
+            response: "A_VALID_PLAINTEXT_RESPONSE",
+        }],
+        allowAllTraffic: true,
     },
     {
         description: "post request with inner pipeline should send a payload and save response to the as field",
