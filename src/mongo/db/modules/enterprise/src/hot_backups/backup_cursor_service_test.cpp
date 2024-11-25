@@ -4,6 +4,8 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/optional/optional.hpp>
+#include <cstddef>
+#include <random>
 #include <string>
 // IWYU pragma: no_include "cxxabi.h"
 
@@ -132,6 +134,33 @@ public:
         storageEngine->setStableTimestamp(timestamp);
     }
 
+    void populateData(OperationContext* opCtx,
+                      const NamespaceString& nss,
+                      repl::StorageInterfaceImpl& storage,
+                      int iteration) {
+        constexpr int kMinLen = 0.25 * 1024 * 1024;  // 0.25MB.
+        constexpr int kMaxLen = 1 * 1024 * 1024;     // 1MB.
+
+        auto generateData = [&kMinLen, &kMaxLen]() {
+            std::random_device rd;
+            unsigned int num = rd();
+            int len = num % (kMaxLen - kMinLen) + kMinLen;
+            std::vector<int> buf(len);
+
+            for (int i = 0; i < len; ++i) {
+                buf[i] = num % 256;
+            }
+            return buf;
+        };
+        for (auto i = 0; i < 25; i++) {
+            ASSERT_OK(storage.insertDocument(
+                opCtx,
+                nss,
+                {BSON("_id" << (i * iteration) << "x" << generateData()), Timestamp(20, 20)},
+                0));
+        }
+    }
+
     BackupCursorState openBackupCursor(StorageEngine::BackupOptions backupOptions = {}) {
         return backupCursorService->openBackupCursor(opCtx.get(), backupOptions);
     }
@@ -154,15 +183,17 @@ public:
         return batch.front();
     };
 
-    // Verify the format of the backup cursor fields.
+    /**
+     *  Verify the format of the backup cursor fields.
+     */
     void validateBackupCursorFields(const BackupBlock& doc) {
         auto filename = getFileName(doc.filePath());
         auto ns = doc.ns();
         auto uuid = doc.uuid();
         auto required = doc.isRequired();
 
-        // If a file is unchanged in a subsequent incremental backup, a single block's offset and
-        // length will remain at zero.
+        // If a file is unchanged in a subsequent incremental backup, a single block's offset
+        // and length will remain at zero.
         if (doc.length() != 0 && doc.offset() != 0) {
 
             // If the fileSize is the same as the length, then WT is asking us to take a full
@@ -225,7 +256,9 @@ public:
         ASSERT(ns);
     }
 
-    // Verify the format of fields in the document.
+    /**
+     * Verify the format of fields in the document.
+     */
     void validateDocumentFields(StorageEngine::StreamingCursor& cursor,
                                 mongo::BackupCursorState&& state,
                                 bool incremental) {
@@ -241,7 +274,6 @@ public:
         // These fields only exist if we are doing incremental backup.
         ASSERT_EQ(metadataBSON.getBoolField("incrementalBackup"), incremental);
         ASSERT_EQ(metadataBSON.hasField("thisBackupName"), incremental);
-        ASSERT_EQ(metadataBSON.hasField("srcBackupName"), incremental);
 
         ASSERT(!metadataBSON.hasField("filename"));
         ASSERT(!metadataBSON.hasField("fileSize"));
@@ -255,6 +287,40 @@ public:
             validateBackupCursorFields(doc.value());
         }
         ASSERT(numSeen > 0);
+    }
+
+    /**
+     *  Verify the backup files are in ascending order according to their offset.
+     */
+    void validateDocumentOrder(StorageEngine::StreamingCursor& cursor) {
+        std::set<std::string> seenFiles;
+        std::string lastSeenFile;
+        auto lastSeenOffset = 0;
+
+        while (auto doc = getNext(cursor)) {
+            auto filename = getFileName(doc.value().filePath());
+
+            if (lastSeenFile.empty()) {
+                // First file.
+                lastSeenFile = filename;
+                lastSeenOffset = doc.value().offset();
+            } else if (lastSeenFile != filename) {
+                // New file.
+                seenFiles.emplace(lastSeenFile);
+                lastSeenFile = filename;
+                lastSeenOffset = doc.value().offset();
+            } else {
+                // Same file. Checks blocks within a batch are ordered properly and that the offset
+                // is ascending.
+                ASSERT_GT(doc.value().offset(), lastSeenOffset);
+                lastSeenOffset = doc.value().offset();
+            }
+
+            // If we're copying a new file, check we haven't copied the file before. If we have
+            // copied the file before, then the batch pre-fetch has caused blocks of different files
+            // to be given out of order. Checks ordering at the boundaries between batches.
+            ASSERT_FALSE(seenFiles.contains(filename));
+        }
     }
 
 private:
@@ -517,7 +583,6 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormat) {
 
     auto backupCursorState =
         openBackupCursor({.incrementalBackup = true, .thisBackupName = std::string("a")});
-    auto cursor = backupCursorState.streamingCursor.get();
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 
     // Insert documents to create changes which the incremental backup will make us copy.
@@ -526,15 +591,13 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormat) {
         ASSERT_OK(
             storage->insertDocument(opCtx.get(), kNss, {BSON("_id" << i), Timestamp(20, 20)}, 0));
     }
-
     storageEngine->checkpoint();
 
     // Check the validity of incremental backup fields.
     backupCursorState = openBackupCursor({.incrementalBackup = true,
                                           .thisBackupName = std::string("b"),
                                           .srcBackupName = std::string("a")});
-    cursor = backupCursorState.streamingCursor.get();
-
+    auto cursor = backupCursorState.streamingCursor.get();
     validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/true);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
@@ -545,11 +608,10 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormatTimeSeries) {
 
     CollectionOptions options;
     options.timeseries = TimeseriesOptions(/*timeField=*/"time");
-    [[maybe_unused]] auto uuid = createCollection(opCtx.get(), kTs, createCollectionTs);
+    createCollection(opCtx.get(), kTs, createCollectionTs, options);
 
     auto backupCursorState =
         openBackupCursor({.incrementalBackup = true, .thisBackupName = std::string("a")});
-    auto cursor = backupCursorState.streamingCursor.get();
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 
     // Insert documents to create changes which the incremental backup will make us copy.
@@ -558,13 +620,51 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormatTimeSeries) {
         ASSERT_OK(storage->insertDocument(
             opCtx.get(), kTs, {BSON("_id" << i << "time" << Date_t::now()), Timestamp(30, 30)}, 0));
     }
+
     // Check the validity of incremental backup fields.
     backupCursorState = openBackupCursor({.incrementalBackup = true,
                                           .thisBackupName = std::string("b"),
                                           .srcBackupName = std::string("a")});
-    cursor = backupCursorState.streamingCursor.get();
-
+    auto cursor = backupCursorState.streamingCursor.get();
     validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/true);
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+}
+
+TEST_F(BackupCursorServiceTest, BackupCursorOutOfOrder) {
+    // Testing backup blocks are returned in the same ascending file offset order as WT returns
+    // them.
+    auto storage = std::make_unique<repl::StorageInterfaceImpl>();
+    createCollection(opCtx.get(), kNss, createCollectionTs);
+
+    // Add initial data and checkpoint
+    size_t iteration = 1;
+    shard_role_details::getRecoveryUnit(opCtx.get())->clearCommitTimestamp();
+    populateData(opCtx.get(), kNss, *storage, iteration);
+    storageEngine->checkpoint();
+
+    // Backup
+    auto backupCursorState = openBackupCursor({
+        .incrementalBackup = true,
+        .blockSizeMB = 1,
+        .thisBackupName = std::string("a"),
+    });
+
+    // Add more data and checkpoint
+    populateData(opCtx.get(), kNss, *storage, ++iteration);
+    storageEngine->checkpoint();
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+
+    // Backup again
+    backupCursorState = openBackupCursor({
+        .incrementalBackup = true,
+        .blockSizeMB = 1,
+        .thisBackupName = std::string("b"),
+        .srcBackupName = std::string("a"),
+    });
+
+    // Validate backup files are in ascending offset order.
+    auto cursor = backupCursorState.streamingCursor.get();
+    validateDocumentOrder(*cursor);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
