@@ -234,7 +234,9 @@ public:
     attachCursorSourceToPipelineForLocalRead(
         mongo::Pipeline* pipeline,
         boost::optional<const mongo::AggregateCommandRequest&> aggRequest = boost::none,
-        bool shouldUseCollectionDefaultCollator = false) override {
+        bool shouldUseCollectionDefaultCollator = false,
+        mongo::ExecShardFilterPolicy shardFilterPolicy =
+            mongo::AutomaticShardFiltering{}) override {
         MONGO_UNREACHABLE;
     }
 
