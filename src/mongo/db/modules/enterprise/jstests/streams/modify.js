@@ -133,10 +133,12 @@ function testRunner({
     }
     assert(resultsEq(expectedOutput, output, true /* verbose */, ["_id"] /* fieldsToSkip */));
     // Validate we see the expected results in the DLQ collection.
-    assert(resultsEq(expectedDlqAfterModify,
-                     test.dlqColl.aggregate([{$replaceRoot: {newRoot: "$doc"}}]).toArray(),
-                     true /* verbose */,
-                     ["_id"] /* fieldsToSkip */));
+    assert.soon(() => {
+        return resultsEq(expectedDlqAfterModify,
+                         test.dlqColl.aggregate([{$replaceRoot: {newRoot: "$doc"}}]).toArray(),
+                         true /* verbose */,
+                         ["_id"] /* fieldsToSkip */);
+    }, "waiting for expected DLQ output", waitTimeMs);
 
     // Validate the summary stats contain input, output, and DLQ counts for all
     // versions of the stream processor.
