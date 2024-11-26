@@ -383,7 +383,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // token has wrong bindata length
     assert.commandFailedWithCode(
         edb.runCommand({"cleanupStructuredEncryptionData": collName, cleanupTokens: badTokens3}),
-        9616300);
+        6373501);
 });
 
 jsTestLog("Test cleanup with wrong cleanup tokens");
