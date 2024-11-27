@@ -214,6 +214,11 @@ void Executor::stop(StopReason stopReason) {
     _shutdown = true;
     _stopReason = stopReason;
     _stopDeadline = Date_t::now() + _options.stopTimeout;
+    LOGV2_INFO(9764600,
+               "executor received stop signal",
+               "context"_attr = _context,
+               "stopDeadline"_attr = _stopDeadline,
+               "stopReason"_attr = _stopReason);
 }
 
 std::vector<OperatorStats> Executor::getOperatorStats() {

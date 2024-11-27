@@ -266,6 +266,9 @@ function startStreamProcessor(pipeline,
     stopThread.start();
     sp[spName].start({featureFlags: {}}, /* assertWorked */ false);
     stopThread.join();
+
+    assert.commandWorked(db.adminCommand(
+        {'configureFailPoint': 'changestreamSourceSleepBeforeConnect', 'mode': 'off'}));
 }());
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

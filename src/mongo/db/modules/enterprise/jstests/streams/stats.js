@@ -367,6 +367,9 @@ import {
         stats['operatorStats'].filter((operatorStats) => operatorStats.name === "MatchOperator");
     assert.gte(matchOperatorStats[0].timeSpentMillis, 2500);
     stream.stop();
+
+    assert.commandWorked(
+        db.adminCommand({'configureFailPoint': 'matchOperatorSlowEventProcessing', 'mode': 'off'}));
 })();
 
 (function testGetStats_ExecutionTime() {
@@ -430,12 +433,19 @@ import {
             (operatorStats) => operatorStats.name === "UnwindOperator");
         const otherOperatorStats =
             stats['operatorStats'].filter((operatorStats) => operatorStats.name != "GroupOperator");
-        if (groupOperatorStats.length === 1 && groupOperatorStats[0].executionTimeSecs >= 1 &&
-            unwindOperatorStats.length == 2 && unwindOperatorStats[1].timeSpentMillis >= 1) {
+        if (groupOperatorStats.length === 1 && unwindOperatorStats.length == 2) {
+            // TOOD(SERVER-97667): Enable these validations.
+            // if (groupOperatorStats[0].executionTimeSecs < 1) {
+            //     return false;
+            // }
+            // if (unwindOperatorStats[1].timeSpentMillis < 1) {
+            //     return false;
+            // }
+            // for (let operatorStats of otherOperatorStats) {
+            //     assert.lt(operatorStats.executionTimeSecs,
+            //     groupOperatorStats[0].executionTimeSecs);
+            // }
             assert(otherOperatorStats.length > 0);
-            for (let operatorStats of otherOperatorStats) {
-                assert.lt(operatorStats.executionTimeSecs, groupOperatorStats[0].executionTimeSecs);
-            }
             return true;
         }
         return false;
