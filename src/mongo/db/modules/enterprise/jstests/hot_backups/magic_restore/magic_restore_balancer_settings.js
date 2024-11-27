@@ -187,6 +187,7 @@ const excludedCollections = [
     "system.version",
     "shards",
     "actionlog",
+    "changelog",
     "clusterParameters",
     "rangeDeletions",
     "mongos",
