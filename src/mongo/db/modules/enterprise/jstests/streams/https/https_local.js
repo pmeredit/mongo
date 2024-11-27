@@ -21,7 +21,7 @@ import {
 function runTest({
     spName,
     dbConnectionName,
-    httpsOptions,
+    stage,
     inputDocs,
     expectedRequests = [],
     outputQuery,
@@ -30,6 +30,7 @@ function runTest({
     fieldsToSkip = [],
     featureFlags = {},
     expectedStatus = "running",
+    sourceOptions = {},
 }) {
     const waitTimeMs = 30000;
     const dbName = "https_test";
@@ -48,10 +49,11 @@ function runTest({
                 connectionName: dbConnectionName,
                 db: dbName,
                 coll: inputCollName,
-                config: {startAtOperationTime: db.hello().$clusterTime.clusterTime}
+                config: {startAtOperationTime: db.hello().$clusterTime.clusterTime},
+                ...sourceOptions
             }
         },
-        {$https: httpsOptions},
+        stage,
         {
             $merge: {
                 into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName},
@@ -120,7 +122,10 @@ function runTest({
         }, "waiting for expected output in collection", waitTimeMs);
         jsTestLog(output);
         assert(resultsEq(expectedOutput, output, true /* verbose */, allFieldsToSkip));
-        output.forEach((out, i) => {
+        output.forEach((out) => {
+            if (out['_stream_meta'] === undefined) {
+                return;
+            }
             const responseTimeMs = out['_stream_meta']['https']['responseTimeMs'];
             assert(responseTimeMs >= 0);
             jsTestLog(`RESPONSE TIME MS: ${responseTimeMs}`);
@@ -207,9 +212,9 @@ const testCases = [
     {
         description: "get request should be made without query or body and should and save response to the as field",
         spName: "tc1",
-        httpsOptions:
-            {connectionName: httpsName, path: "/echo/tc1", method: "GET", as:
-            'response'},
+        stage: {
+            $https: {connectionName: httpsName, path: "/echo/tc1", method: "GET", as: "response"}
+        },
         inputDocs: [{a: 1}],
         expectedRequests:
             [{method: "GET", path: "/echo/tc1", headers: basicHeaders, query: {}, body: ""}],
@@ -229,9 +234,9 @@ const testCases = [
     {
         description: "post request with additional headers should be made with body and should send a payload and save response to the as field",
         spName: "tc2",
-        httpsOptions:
-            {connectionName: httpsName, path: "/echo/tc2", method: "POST", as:
-            'response.inner'},
+        stage: {
+            $https: {connectionName: httpsName, path: "/echo/tc2", method: "POST", as: "response.inner"},
+        },
         inputDocs: [{a: 1}],
         outputQuery: [{
             $project: {
@@ -260,8 +265,9 @@ const testCases = [
     {
         description: "error responses should prompt DLQ messages to be made by default",
         spName: "tcOnErrorDefault",
-        httpsOptions:
-            {connectionName: httpsName, path: "/notfound/tcOnErrorDefault", method: "GET", as: 'response'},
+        stage: {
+            $https: {connectionName: httpsName, path: "/notfound/tcOnErrorDefault", method: "GET", as: "response"},
+        },
         inputDocs: [{a: 1}],
         allowAllTraffic: true,
         expectedDlq: [{a: 1}],
@@ -269,17 +275,18 @@ const testCases = [
     {
         description: "error responses should prompt DLQ messages to be made when configured to do so",
         spName: "tcOnErrorDLQ",
-        httpsOptions:
-            {connectionName: httpsName, path: "/notfound/tcOnErrorDLQ", method: "GET", as: 'response', onError: "dlq"},
+        stage: {
+            $https: {connectionName: httpsName, path: "/notfound/tcOnErrorDLQ", method: "GET", as: "response", onError: "dlq"},
+        },
         inputDocs: [{a: 1}],
         expectedDlq: [{a: 1}],
     },
     {
         description: "error responses should put SP in error state when configured to do so",
         spName: "tcOnErrorFail",
-        httpsOptions:
-            {connectionName: httpsName, path: "/notfound/tcOnErrorFail", method: "GET", as:
-            'response', onError: "fail"},
+        stage: {
+            $https: {connectionName: httpsName, path: "/notfound/tcOnErrorFail", method: "GET", as: "response", onError: "fail"},
+        },
         inputDocs: [{a: 1}],
         allowAllTraffic: true,
         expectedStatus: "error",
@@ -287,9 +294,15 @@ const testCases = [
     {
         description: "error responses should be ignored when configured to do so",
         spName: "tcOnErrorIgnore",
-        httpsOptions:
-            {connectionName: httpsName, path: "/notfound/tcOnErrorIgnore", method: "GET", as:
-            'response', onError: "ignore"},
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/notfound/tcOnErrorIgnore",
+                method: "GET",
+                as: "response",
+                onError: "ignore"
+            },
+        },
         inputDocs: [{a: 1}],
         allowAllTraffic: true,
         expectedRequests:
@@ -307,14 +320,16 @@ const testCases = [
     {
         description: "put request with added headers should work",
         spName: "tc3",
-        httpsOptions: {
-            connectionName: httpsName,
-            path: "/echo/tc3",
-            method: "PUT",
-            as: 'response',
-            headers: {
-                "FieldPathHeader": "$fullDocument.foo",
-                "StrHeader": "foo"
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/echo/tc3",
+                method: "PUT",
+                as: "response",
+                headers: {
+                    "FieldPathHeader": "$fullDocument.foo",
+                    "StrHeader": "foo"
+                },
             },
         },
         inputDocs: [{a: 1, foo: "DynamicValue"}],
@@ -350,21 +365,23 @@ const testCases = [
     {
         description: "put request with added query parameter should work",
         spName: "tc4",
-        httpsOptions: {
-            connectionName: httpsName,
-            path: "/echo/tc4",
-            method: "PATCH",
-            as: 'response',
-            parameters: {
-                "StrParam": "StaticParameterValue",
-                "DoubleParam": 1.100000000002,
-                "FieldPathExprParam": "$fullDocument.foo",
-                "ObjectExprParam": {
-                    "$sum": [1.2, 2, 3]
-                },
-                "BoolParam": true,
-                "SearchParam": "\"%!:+-.@/foobar baz\""
-            }
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/echo/tc4",
+                method: "PATCH",
+                as: "response",
+                parameters: {
+                    "StrParam": "StaticParameterValue",
+                    "DoubleParam": 1.100000000002,
+                    "FieldPathExprParam": "$fullDocument.foo",
+                    "ObjectExprParam": {
+                        "$sum": [1.2, 2, 3]
+                    },
+                    "BoolParam": true,
+                    "SearchParam": "\"%!:+-.@/foobar baz\""
+                }
+            },
         },
         inputDocs: [{a: 1, foo: "DynamicValue"}],
         outputQuery: [{
@@ -408,25 +425,27 @@ const testCases = [
     {
         description: "get request with valid params and headers",
         spName: "paramsAndHeadersAreValid",
-        httpsOptions: {            
-            connectionName: httpsName,
-            as: 'response',
-            path: "/foo(bar)",
-            method: "GET",
-            headers: {
-                "FieldPathHeader": "$fullDocument.foo",
-                "StrHeader": "foo"
-            },
-            parameters: {
-                "StrParam": "StaticParameterValue",
-                "DoubleParam": 1.100000000002,
-                "FieldPathExprParam": "$fullDocument.foo",
-                "ObjectExprParam": {
-                    "$sum": [1.2, 2, 3]
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                as: "response",
+                path: "/foo(bar)",
+                method: "GET",
+                headers: {
+                    "FieldPathHeader": "$fullDocument.foo",
+                    "StrHeader": "foo"
                 },
-                "BoolParam": true,
-                "Search%Param": "https://user:password@my.domain.net:1234/foo/bar/baz?name=hero&name=sandwich&name=grinder#heading1"
-            }
+                parameters: {
+                    "StrParam": "StaticParameterValue",
+                    "DoubleParam": 1.100000000002,
+                    "FieldPathExprParam": "$fullDocument.foo",
+                    "ObjectExprParam": {
+                        "$sum": [1.2, 2, 3]
+                    },
+                    "BoolParam": true,
+                    "Search%Param": "https://user:password@my.domain.net:1234/foo/bar/baz?name=hero&name=sandwich&name=grinder#heading1"
+                }
+            },
         },
         outputQuery: [{
             $project: {
@@ -471,9 +490,11 @@ const testCases = [
     {
         description: "get request that receives a plain text response",
         spName: "plainTextResponse",
-        httpsOptions:
-            {connectionName: httpsName, path: "/plaintext/plainTextResponse", method: "GET", as:
-            'response'},
+        stage: {
+            $https:
+                {connectionName: httpsName, path: "/plaintext/plainTextResponse", method: "GET", as:
+                "response"},
+            },
         inputDocs: [{a: 1}],
         expectedRequests:
             [{method: "GET", path: "/plaintext/plainTextResponse", headers: basicHeaders, query: {}, body: ""}],
@@ -492,9 +513,19 @@ const testCases = [
     {
         description: "post request with inner pipeline should send a payload and save response to the as field",
         spName: "payloadPipeline",
-        httpsOptions:
-            {connectionName: httpsName, path: "/echo/payloadPipeline", method: "POST", as:
-            'response', payload: [{$replaceRoot: { newRoot: "$fullDocument.payloadToSend" } }, { $addFields: { sum: { $sum: "$randomArray" }}}, { $project: { success: 1, sum: 1 }} ]},
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/echo/payloadPipeline",
+                method: "POST",
+                as: "response",
+                payload: [
+                    { $replaceRoot: { newRoot: "$fullDocument.payloadToSend" } },
+                    { $addFields: { sum: { $sum: "$randomArray" }}},
+                    { $project: { success: 1, sum: 1 }}
+                ]
+            },
+        },
         inputDocs: [{payloadToSend: {success: "yes I worked", shouldBeExcludeFromRequest: true, randomArray: [1,2,3]}}],
         expectedRequests:
             [{method: "POST", path: "/echo/payloadPipeline", headers: {...basicHeaders,
@@ -512,17 +543,32 @@ const testCases = [
         }],
         expectedOutput: [{
             fullDocument: {payloadToSend: {success: "yes I worked", shouldBeExcludeFromRequest: true, randomArray: [1,2,3]}},
-            response: {method: "POST", path: "/echo/payloadPipeline", headers: {...basicHeaders,
-            "Content-Length" : "34", "Content-Type": "application/json"}, query: {},
-            body: {success: "yes I worked", sum: 6}}
+            response: {
+                method: "POST",
+                path: "/echo/payloadPipeline",
+                headers: {
+                    ...basicHeaders,
+                    "Content-Length" : "34",
+                    "Content-Type": "application/json"
+                },
+                query: {},
+                body: {success: "yes I worked", sum: 6},
+            },
+            _stream_meta: {https: {
+                url: restServerUrl + "/echo/payloadPipeline",
+                method: "POST",
+                httpStatusCode: 200,
+            }}
         }],
         allowAllTraffic: true,
     },
     {
         description: "http client should block request and send it to the dlq based on override feature flag",
         spName: "tcFirewallBlockedRequestFF",
-        httpsOptions:
-            {connectionName: httpsName, path: "/echo/tcFirewallBlockedRequestFF", method: "GET", as: 'response'},
+        stage: {
+            $https:
+                {connectionName: httpsName, path: "/echo/tcFirewallBlockedRequestFF", method: "GET", as: "response"},
+        },
         inputDocs: [{a: 1}],
         expectedDlq: [{a: 1}],
         cidrDenyList: ["127.0.0.1/32"]
@@ -530,59 +576,184 @@ const testCases = [
     {
         description: "http client should block request and send it to the dlq based on default feature flag",
         spName: "tcFirewallBlockedRequestDefault",
-        httpsOptions:
-            {connectionName: httpsName, path: "/echo/tcFirewallBlockedRequestDefault", method: "GET", as: 'response'},
+        stage: {
+            $https:
+                {connectionName: httpsName, path: "/echo/tcFirewallBlockedRequestDefault", method: "GET", as: "response"},
+        },
         inputDocs: [{a: 1}],
         expectedDlq: [{a: 1}],
     },
     {
         description: "GET with path to evaluate should make a successful request",
         spName: "evaluatedPath",
-        httpsOptions:
-            {connectionName: httpsName, path: "$fullDocument.foo", method: "GET", as:
-            'response'},
+        stage: {
+            $https: {connectionName: httpsName, path: "$fullDocument.foo", method: "GET", as: "response"},
+        },
         inputDocs: [{foo: "/echo/evaluatedPath"}],
         expectedRequests:
             [{method: "GET", path: "/echo/evaluatedPath", headers: basicHeaders, query: {}, body: ""}],
         outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
         expectedOutput: [{
             fullDocument: {foo: "/echo/evaluatedPath"},
-            response: {method: "GET", path: "/echo/evaluatedPath", headers: basicHeaders, query: {}, body:
-            ""}
+            response: {
+                method: "GET",
+                path: "/echo/evaluatedPath",
+                headers: basicHeaders,
+                query: {},
+                body: ""
+            },
+            _stream_meta: {
+                https: {
+                    url: restServerUrl + "/echo/evaluatedPath",
+                    method: "GET",
+                    httpStatusCode: 200,
+                }
+            }
         }],
         allowAllTraffic: true,
     },
     {
         description: "GET with trailing slash should make request",
         spName: "trailingSlash",
-        httpsOptions:
-            {connectionName: httpsNameWithTrailingSlash, method: "GET", path: "/echo/trailingSlash/", as:
-            'response'},
+        stage: {
+            $https: {connectionName: httpsNameWithTrailingSlash, method: "GET", path: "/echo/trailingSlash/", as: "response"},
+        },
         inputDocs: [{foo: "bar"}],
         expectedRequests:
             [{method: "GET", path: "/echo/trailingSlash", headers: basicHeaders, query: {}, body: ""}],
         outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
         expectedOutput: [{
             fullDocument: {foo: "bar"},
-            response: {method: "GET", path: "/echo/trailingSlash", headers: basicHeaders, query: {}, body:
-            ""}
+            response: {
+                method: "GET",
+                path: "/echo/trailingSlash",
+                headers: basicHeaders,
+                query: {},
+                body: ""
+            },
+            _stream_meta: {
+                https: {
+                    url: restServerUrl + "/echo/trailingSlash",
+                    method: "GET",
+                    httpStatusCode: 200,
+                }
+            }
         }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should make POST request inside of tumbling window",
+        spName: "postInTumblingWindow",
+        sourceOptions: {
+            timeField: {$dateFromString: {"dateString": "$fullDocument.payload.timestamp"}},
+        },
+        stage: {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                pipeline: [
+                    {
+                        $https: {
+                            connectionName: httpsName,
+                            method: "POST",
+                            path: "/echo/postInTumblingWindow",
+                            as: "response",
+                            payload: [
+                                { $replaceRoot: { newRoot: "$fullDocument.payload" } },
+                                { $addFields: { value2: "newValue" }},
+                            ],
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: "$response.body.id",
+                            sum: {$sum: "$response.body.value"}
+                        }
+                    }
+                ]
+            }
+        },
+        inputDocs: [
+            {payload: {timestamp: "2023-03-03T20:42:30.000Z", id: 0, value: 0}},
+            {payload: {timestamp: "2023-03-03T20:42:31.000Z", id: 1, value: 1}},
+            {payload: {timestamp: "2023-03-03T20:42:32.000Z", id: 2, value: 2}},
+            {payload: {timestamp: "2023-03-03T20:42:33.100Z", id: 3, value: 3}}, // force the [32, 33) window to close.
+        ],
+        outputQuery: [{$project: {_id: 1, sum: 1}}],
+        expectedOutput: [
+            { sum: 0 },
+            { sum: 1 },
+            { sum: 2 },
+        ],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should make POST request inside of hopping window",
+        spName: "postInHoppingWindow",
+        sourceOptions: {
+            timeField: {$dateFromString: {"dateString": "$fullDocument.payload.timestamp"}},
+        },
+        stage: {
+            $hoppingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                hopSize: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                pipeline: [
+                    {
+                        $https: {
+                            connectionName: httpsName,
+                            method: "POST",
+                            path: "/echo/postInHoppingWindow",
+                            as: "response",
+                            payload: [
+                                { $replaceRoot: { newRoot: "$fullDocument.payload" } },
+                                { $addFields: { value2: "newValue" }},
+                            ],
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: "$response.body.id",
+                            sum: {$sum: "$response.body.value"}
+                        }
+                    }
+                ]
+            }
+        },
+        inputDocs: [
+            { payload: { timestamp: "2023-03-03T20:42:30.000Z", id: 0, value: 0 } },
+            { payload: { timestamp: "2023-03-03T20:42:32.000Z", id: 1, value: 1 } },
+            { payload: { timestamp: "2023-03-03T20:42:34.000Z", id: 2, value: 2 } },
+            { payload: { timestamp: "2023-03-03T20:42:36.000Z", id: 3, value: 3 } }, 
+            { payload: { timestamp: "2023-03-03T20:42:38.000Z", id: 4, value: 4 } },
+            { payload: { timestamp: "2023-03-03T20:42:44.100Z", id: 5, value: 5 } }, // force the [38, 39) window to close.
+        ],
+        outputQuery: [{$project: {_id: 1, sum: 1}}],
+        expectedOutput: [
+            { _id: 0, sum: 0 },
+            { _id: 1, sum: 1 },
+            { _id: 2, sum: 2 },
+            { _id: 3, sum: 3 },
+            { _id: 4, sum: 4 },
+        ],
         allowAllTraffic: true,
     },
 ];
 
-for (const tc of testCases) {
-    tc.dbConnectionName = dbConnectionName;
-    tc.featureFlags = {enableHttpsOperator: true};
-    if (tc.allowAllTraffic) {
-        tc.featureFlags.cidrDenyList = [];
+try {
+    for (const tc of testCases) {
+        tc.dbConnectionName = dbConnectionName;
+        tc.featureFlags = {enableHttpsOperator: true};
+        if (tc.allowAllTraffic) {
+            tc.featureFlags.cidrDenyList = [];
+        }
+        if (tc.cidrDenyList) {
+            tc.featureFlags.cidrDenyList = tc.cidrDenyList;
+        }
+        jsTestLog(`Running: ${tojson(tc)}`);
+        runTest({...tc});
     }
-    if (tc.cidrDenyList) {
-        tc.featureFlags.cidrDenyList = tc.cidrDenyList;
-    }
-    jsTestLog(`Running: ${tojson(tc)}`);
-    runTest({...tc});
+} finally {
+    restServer.cleanTempFiles();
+    restServer.stop();
 }
-
-restServer.cleanTempFiles();
-restServer.stop();
