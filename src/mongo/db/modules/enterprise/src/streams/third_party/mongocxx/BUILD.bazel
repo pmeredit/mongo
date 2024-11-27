@@ -101,6 +101,7 @@ mongo_cc_library(
         "-lsasl2",
     ],
     local_defines = MONGOCXX_LOCAL_DEFINES,
+    no_undefined_ref_DO_NOT_USE = False,
     target_compatible_with = MONGOCXX_TARGET_COMPATIBILITY,
     deps = [
         "//src/third_party/icu4c-57.1/source:icu_i18n",

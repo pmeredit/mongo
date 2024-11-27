@@ -99,6 +99,7 @@ mongo_cc_library(
         "checkpoint_data_gen",
         "exec_internal_gen",
     ],
+    no_undefined_ref_DO_NOT_USE = False,
     deps = [
         "//src/mongo:base",
         "//src/mongo/client:clientdriver_minimal",
@@ -111,6 +112,7 @@ mongo_cc_library(
     srcs = [
         "stages_gen",
     ],
+    no_undefined_ref_DO_NOT_USE = False,
     deps = [
         "//src/mongo:base",
         "//src/mongo/client:clientdriver_minimal",
