@@ -23,6 +23,8 @@ namespace {
 
 using test::FaultManagerTest;
 
+// Only covers negative test cases that don't rely on an actual, live LDAP server.
+// See ldap_mongos_health_checking.js for positive test cases via an integration test.
 class LdapHealthObserverTest : public FaultManagerTest {
 public:
     void setUp() override {
@@ -30,7 +32,7 @@ public:
         bumpUpLogging();
         resetManager();
 
-        setStandardParams();
+        setStandardParamsWithBadLdapServer();
         resetLdapManager();
         resetManager(std::make_unique<FaultManagerConfig>());
 
@@ -76,23 +78,18 @@ public:
         return FaultManagerTest::observer<LdapHealthObserver>(FaultFacetType::kLdap);
     }
 
-    void setStandardParams() {
+    void setStandardParamsWithBadLdapServer() {
         if (!globalLDAPParams) {
             globalLDAPParams = new LDAPOptions();
         }
         globalLDAPParams->serverHosts = {
-            LDAPHost(LDAPHost::Type::kDefault, "ldaptest.10gen.cc", false)};
+            LDAPHost(LDAPHost::Type::kDefault, "badhost.10gen.cc", false)};
         globalLDAPParams->bindMethod = LDAPBindType::kSimple;
         globalLDAPParams->bindUser = "cn=ldapz_admin,ou=Users,dc=10gen,dc=cc";
         globalLDAPParams->bindPassword = "Secret123";
         globalLDAPParams->transportSecurity = LDAPTransportSecurityType::kNone;
         globalLDAPParams->userAcquisitionQueryTemplate = "{USER}?memberOf";
         globalLDAPParams->connectionTimeout = Milliseconds(10000);
-    }
-
-    void addBadLdapServer() {
-        globalLDAPParams->serverHosts.push_back(
-            LDAPHost(LDAPHost::Type::kDefault, "badhost.10gen.cc", false));
     }
 };
 
@@ -113,36 +110,7 @@ TEST_F(LdapHealthObserverTest, SmokeCheckIsSuccess) {
     }
 }
 
-TEST_F(LdapHealthObserverTest, FullPeriodicCheck) {
-    LdapHealthObserver::CheckResult result = observer().checkImpl(checkContext());
-    ASSERT_TRUE(result.dnsResolution);
-    ASSERT_TRUE(result.failures.empty()) << result.failures[0];
-    // Smoke check was made.
-    ASSERT_TRUE(result.smokeCheck);
-    ASSERT_EQ(1, result.hostsTestedBySmokeCheck);
-    ASSERT_TRUE(result.checkPassed());
-    ASSERT_EQ(0.0, result.severity);
-}
-
-TEST_F(LdapHealthObserverTest, OneServerDNSLookupFailed) {
-    addBadLdapServer();
-    resetLdapManager();
-
-    LdapHealthObserver::CheckResult result = observer().checkImpl(checkContext());
-    ASSERT_FALSE(result.dnsResolution);
-    ASSERT_FALSE(result.failures.empty());
-    // This bool flag is set only if at least one server passed smoke check.
-    ASSERT_TRUE(result.smokeCheck);
-    ASSERT_TRUE(result.hostsTestedBySmokeCheck >= 1);
-    ASSERT_TRUE(result.checkPassed());
-    // Here severity is > 0 but it doesn't matter, status wins.
-}
-
 TEST_F(LdapHealthObserverTest, NoGoodServersConfigured) {
-    globalLDAPParams->serverHosts.clear();
-    addBadLdapServer();
-    resetLdapManager();
-
     LdapHealthObserver::CheckResult result = observer().checkImpl(checkContext());
     ASSERT_FALSE(result.dnsResolution);
     // No servers to run smoke check on.
@@ -165,21 +133,6 @@ TEST_F(LdapHealthObserverTest, SmokeCheckPassedOnEmptyConfig) {
     // Completely empty `serverHosts` makes it healthy - we
     // assume no Ldap was configured.
     ASSERT_TRUE(result.checkPassed());
-}
-
-TEST_F(LdapHealthObserverTest, SmokeCheckFailedOnBadConfig) {
-    globalLDAPParams->bindUser = "malformed";
-    resetLdapManager();
-    LdapHealthObserver::CheckResult result = observer().checkImpl(checkContext());
-    ASSERT_TRUE(result.dnsResolution);
-
-    // Smoke check fails on malformed bind user.
-    ASSERT_FALSE(result.failures.empty());
-    ASSERT_FALSE(result.smokeCheck);
-    ASSERT_EQ(1, result.hostsTestedBySmokeCheck);
-    // Malformed servers list is a failure.
-    ASSERT_FALSE(result.checkPassed());
-    ASSERT_GT(result.severity, 0.0);
 }
 
 }  // namespace
