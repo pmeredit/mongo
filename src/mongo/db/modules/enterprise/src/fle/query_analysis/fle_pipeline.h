@@ -46,7 +46,7 @@ public:
         invariant(typeid(*loneSource) == typeid(DocumentSourceSingleDocumentTransformation));
         bob->appendElements(static_cast<DocumentSourceSingleDocumentTransformation*>(loneSource)
                                 ->getTransformer()
-                                .serializeTransformation(boost::none)
+                                .serializeTransformation()
                                 .toBson());
     }
 
