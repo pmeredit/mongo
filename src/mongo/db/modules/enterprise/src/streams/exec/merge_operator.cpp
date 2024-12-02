@@ -118,13 +118,19 @@ void MergeOperator::validateConnection() {
             mongoProcessInterface->testConnection(outputNs);
 
             if (_options.onFieldPaths) {
-                // If the $merge.on field is specified, validate that the on fields have unique
-                // indexes.
-                auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
-                    _options.mergeExpCtx,
-                    _options.onFieldPaths,
-                    /*targetCollectionPlacementVersion*/ boost::none,
-                    outputNs);
+                MongoDBProcessInterface::DocumentKeyResolutionMetadata result;
+                try {
+                    // If the $merge.on field is specified, validate that the on fields have unique
+                    // indexes.
+                    result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+                        _options.mergeExpCtx,
+                        _options.onFieldPaths,
+                        /*targetCollectionPlacementVersion*/ boost::none,
+                        outputNs);
+                } catch (DBException& e) {
+                    e.addContext("Error occured while validating $merge.on");
+                    throw;
+                }
                 _literalMergeOnFieldPaths = std::move(std::get<0>(result));
             }
         };

@@ -689,6 +689,9 @@ const kMaxDynamicTargets = 1000;
         assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
         jsTestLog(result);
         assert.eq(result.errorLabels[0], "StreamProcessorUserError");
+        assert.eq(
+            result.errmsg,
+            "Error occured while validating $merge.on :: caused by :: Cannot find index to verify that join fields will be unique");
     };
 
     good(null /* setup */, {
