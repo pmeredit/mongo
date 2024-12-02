@@ -26,6 +26,7 @@ constexpr auto kJsonSchema = "jsonSchema"_sd;
 constexpr auto kIsRemoteSchema = "isRemoteSchema"_sd;
 
 constexpr auto kEncryptionInformation = "encryptionInformation"_sd;
+constexpr auto kCsfleEncryptionSchemas = "csfleEncryptionSchemas"_sd;
 
 /**
  * Takes a value and recursively walks the object. Reports the full paths and values at all leaf
@@ -61,38 +62,46 @@ struct PlaceHolderResult {
 enum class EncryptionSchemaType { kRemote, kLocal };
 
 struct QueryAnalysisParams {
-    QueryAnalysisParams(const BSONObj& jsonSchema,
-                        const EncryptionSchemaType schemaType,
-                        BSONObj strippedObj)
-        : schema(FLE1Params{jsonSchema, schemaType}), strippedObj(std::move(strippedObj)) {}
-
-    QueryAnalysisParams(const BSONObj& encryptionInfo, BSONObj strippedObj)
-        : schema(FLE2Params{encryptionInfo}), strippedObj(std::move(strippedObj)) {}
-
     struct FLE1Params {
+        FLE1Params(const BSONObj& schema, EncryptionSchemaType type)
+            : jsonSchema(schema), schemaType(type) {}
         BSONObj jsonSchema;
         EncryptionSchemaType schemaType;
     };
-    struct FLE2Params {
-        BSONObj encryptedFieldsConfig;
-    };
+
+    using FLE1SchemaMap = std::map<NamespaceString, FLE1Params>;
+    using FLE2SchemaMap = std::map<NamespaceString, BSONObj>;
+
+    QueryAnalysisParams(const NamespaceString& ns,
+                        const BSONObj& jsonSchema,
+                        bool isRemoteSchema,
+                        BSONObj strippedObj);
+
+    QueryAnalysisParams(const NamespaceString& ns,
+                        const BSONObj& schemas,
+                        BSONObj strippedObj,
+                        FleVersion fleVersion,
+                        bool isMultiSchema);
 
     FleVersion fleVersion() const {
         return visit(OverloadedVisitor{
-                         [](const FLE1Params&) { return FleVersion::kFle1; },
-                         [](const FLE2Params&) { return FleVersion::kFle2; },
+                         [](const FLE1SchemaMap&) { return FleVersion::kFle1; },
+                         [](const FLE2SchemaMap&) { return FleVersion::kFle2; },
                      },
                      schema);
     }
 
-    std::variant<FLE1Params, FLE2Params> schema;
-
+    std::variant<FLE1SchemaMap, FLE2SchemaMap> schema;
 
     /**
      * Command object without the encryption-related fields.
      */
     BSONObj strippedObj;
 };
+
+QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,
+                                            const NamespaceString& ns,
+                                            bool parseMultiSchema);
 
 /**
  * Serialize a placeholder result to BSON.
