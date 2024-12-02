@@ -1700,11 +1700,13 @@ TEST_F(HttpsOperatorTest, ShouldLogDifferentIDWithinAMinute) {
 }
 
 TEST_F(HttpsOperatorTest, ParseResponseHeadersTest) {
-    std::string rawHeaders = "DataToIgnore\r\nContent-Type: application/json\r\n\r\n";
-
-    auto result = parseContentTypeFromHeaders(rawHeaders);
-    ASSERT_TRUE(result);
-    ASSERT_EQ(*result, "application/json");
+    for (const auto& rawHeaders : std::vector<std::string>{
+             "DataToIgnore\r\nContent-Type: application/json\r\n\r\n",
+             "DataToIgnore\r\ncontent-type: Application/JSON; charset=utf-8\r\n\r\n"}) {
+        auto result = parseContentTypeFromHeaders(rawHeaders);
+        ASSERT_TRUE(result);
+        ASSERT_EQ(*result, "application/json");
+    }
 }
 
 

@@ -596,9 +596,10 @@ boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringDa
         std::transform(
             keyAndValue[0].begin(), keyAndValue[0].end(), keyAndValue[0].begin(), ::tolower);
         if (keyAndValue[0] == "content-type") {
+            auto contentType = StringSplitter::split(keyAndValue[1], ";");
             transform(
-                keyAndValue[1].begin(), keyAndValue[1].end(), keyAndValue[1].begin(), ::tolower);
-            return keyAndValue[1];
+                contentType[0].begin(), contentType[0].end(), contentType[0].begin(), ::tolower);
+            return contentType[0];
         }
     }
     return boost::none;
