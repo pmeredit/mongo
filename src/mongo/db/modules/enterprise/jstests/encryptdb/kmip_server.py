@@ -334,8 +334,18 @@ def main():
     logger.info("Running kmip server with python located at: {}".format(sys.executable))
 
     parser = argparse.ArgumentParser(description="KMIP mock server.")
-    parser.add_argument("kmipPort", type=int, nargs="?", default=6666, help="KMIP server port")
+    parser.add_argument("--kmipPort", type=int, nargs="?", default=6666, help="KMIP server port")
     parser.add_argument("--version", type=str, default="1.2", help="KMIP version")
+
+    parser.add_argument(
+        "--certFile",
+        type=str,
+        default="jstests/libs/trusted-server.pem",
+        help="KMIP responder cert",
+    )
+    parser.add_argument(
+        "--caFile", type=str, default="jstests/libs/trusted-ca.pem", help="KMIP responder ca file"
+    )
 
     args = parser.parse_args()
     patch_server(args.version)
@@ -344,9 +354,9 @@ def main():
         server = KmipServer(
             hostname="127.0.0.1",
             port=args.kmipPort,
-            key_path="jstests/libs/trusted-server.pem",
-            certificate_path="jstests/libs/trusted-server.pem",
-            ca_path="jstests/libs/trusted-ca.pem",
+            key_path=args.certFile,
+            certificate_path=args.certFile,
+            ca_path=args.caFile,
             config_path=None,
             policy_path=dbdirname,
             log_path=dbdirname + "/log",

@@ -24,7 +24,8 @@ import {
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 const kmipServerPort = "1337";
 
-const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", kmipServerPort);
+const kmipServerPid =
+    _startMongoProgram("python", testDir + "kmip_server.py", "--kmipPort", kmipServerPort);
 // Assert here that PyKMIP is compatible with the default Python version
 assert(checkProgram(kmipServerPid));
 // wait for PyKMIP, a KMIP server framework, to start

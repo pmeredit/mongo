@@ -20,13 +20,19 @@ export const platformSupportsGCM = !(isOSX || isWindowsSchannel);
 export const kmipPyPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 
 // Starts a PyKMIP server on the given port and returns the UID.
-export function startPyKMIPServer(port, useLegacyProtocol = false) {
+export function startPyKMIPServer(port, useLegacyProtocol = false, certFile = null, caFile = null) {
     clearRawMongoProgramOutput();
-    const kmipServerPid = _startMongoProgram(getPython3Binary(),
-                                             kmipPyPath + "kmip_server.py",
-                                             "--version",
-                                             useLegacyProtocol ? "1.0" : "1.2",
-                                             port);
+    const kmipServerPid =
+        _startMongoProgram(getPython3Binary(),
+                           kmipPyPath + "kmip_server.py",
+                           "--version",
+                           useLegacyProtocol ? "1.0" : "1.2",
+                           "--kmipPort",
+                           port,
+                           "--certFile",
+                           certFile ? certFile : "jstests/libs/trusted-server.pem",
+                           "--caFile",
+                           caFile ? caFile : "jstests/libs/trusted-ca.pem");
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for the PyKMIP server to be ready
