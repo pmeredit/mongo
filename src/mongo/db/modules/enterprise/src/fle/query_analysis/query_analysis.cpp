@@ -69,112 +69,48 @@ std::string typeSetToString(const MatcherTypeSet& typeSet) {
     return sb.str();
 }
 
-BSONObj extractEncryptionInformationSchemas(const NamespaceString ns,
-                                            FleVersion& fleVersion,
-                                            const BSONElement& e,
-                                            const EncryptionInformation& encryptionInfo,
-                                            BSONObjBuilder& stripped) {
-    auto schemaSpec = encryptionInfo.getSchema().getOwned();
+void getEncryptInformation(const NamespaceString ns,
+                           boost::optional<BSONObj>& encryptInfo,
+                           FleVersion& fleVersion,
+                           const BSONElement& e,
+                           const EncryptionInformation& encryptionInfo,
+                           BSONObjBuilder& stripped) {
+    auto schemaSpec = encryptionInfo.getSchema();
+
+    uassert(6327503,
+            "Exactly one namespace is supported with encryptionInformation",
+            schemaSpec.nFields() == 1);
+    uassert(6327504,
+            "Each namespace schema must be an object",
+            schemaSpec.firstElement().type() == Object);
+    // We call serializeWithoutTenantPrefix_UNSAFE here because the encryptionInformation document
+    // does not contain the tenantId. The tenantId is contained in the validated tenancy scope of
+    // the owning object.
+    uassert(6411900,
+            "Namespace in encryptionInformation: '" + schemaSpec.firstElementFieldNameStringData() +
+                "' does not match namespace given in command: '" + ns.toStringForErrorMsg() + '\'',
+            schemaSpec.firstElementFieldNameStringData() ==
+                ns.serializeWithoutTenantPrefix_UNSAFE());
+
+    encryptInfo = schemaSpec.firstElement().Obj().getOwned();
     fleVersion = FleVersion::kFle2;
+
     // Unlike FLE 1, 'encryptionInformation' should be retained in the command BSON as it
     // will be forwarded to the server.
     stripped.append(e);
-    return schemaSpec;
-}
-
-template <typename T>
-std::map<NamespaceString, T> extractSchemaMap(const NamespaceString& ns,
-                                              const BSONObj& schemas,
-                                              std::function<T(const BSONObj&)> func) {
-    std::map<NamespaceString, T> schemaMap;
-    for (const auto& elem : schemas) {
-        uassert(6327504, "Each namespace schema must be an object", elem.type() == Object);
-        schemaMap.emplace(
-            std::piecewise_construct,
-            std::forward_as_tuple(NamespaceStringUtil::deserialize(
-                boost::none, elem.fieldNameStringData(), SerializationContext::stateDefault())),
-            std::forward_as_tuple(func(elem.Obj())));
-    }
-    uassert(9686712,
-            "Namespace in encryption schemas: does not match namespace given in command: '" +
-                ns.toStringForErrorMsg() + '\'',
-            schemaMap.count(ns));
-    return schemaMap;
-}
-
-EncryptionSchemaType isRemoteSchemaToEncryptionSchemaType(bool isRemoteSchema) {
-    return isRemoteSchema ? EncryptionSchemaType::kRemote : EncryptionSchemaType::kLocal;
-}
-
-}  // namespace
-
-QueryAnalysisParams::QueryAnalysisParams(const NamespaceString& ns,
-                                         const BSONObj& jsonSchema,
-                                         bool isRemoteSchema,
-                                         BSONObj strippedObj)
-    : schema(FLE1SchemaMap()), strippedObj(std::move(strippedObj)) {
-    uassert(9686704, "NamespaceString containing tenant id is not supported", !ns.tenantId());
-    auto& schemaMap = std::get<FLE1SchemaMap>(schema);
-    schemaMap.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(ns),
-        std::forward_as_tuple(jsonSchema, isRemoteSchemaToEncryptionSchemaType(isRemoteSchema)));
-}
-
-QueryAnalysisParams::QueryAnalysisParams(const NamespaceString& ns,
-                                         const BSONObj& schemas,
-                                         BSONObj strippedObj,
-                                         FleVersion fleVersion,
-                                         bool isMultiSchema)
-    : schema(), strippedObj(std::move(strippedObj)) {
-    if (fleVersion == FleVersion::kFle1) {
-        schema = extractSchemaMap<FLE1Params>(ns, schemas, [](const BSONObj& obj) {
-            // EncryptionSchemaCSFLE::jsonSchema is already an owned BSONObj.
-            auto schemaSpec =
-                EncryptionSchemaCSFLE::parse(IDLParserContext("EncryptionSchemaCSFLE"), obj);
-            return FLE1Params{schemaSpec.getJsonSchema(),
-                              isRemoteSchemaToEncryptionSchemaType(schemaSpec.getIsRemoteSchema())};
-        });
-    } else {
-        // We were parsing a single schema command, assert we have a single schema.
-        if (!isMultiSchema) {
-            uassert(6327503,
-                    "Exactly one namespace is supported with encryptionInformation",
-                    schemas.nFields() == 1);
-
-            // We call serializeWithoutTenantPrefix_UNSAFE here because the encryptionInformation
-            // document does not contain the tenantId. The tenantId is contained in the validated
-            // tenancy scope of
-            // the owning object.
-            uassert(6411900,
-                    "Namespace in encryptionInformation: '" +
-                        schemas.firstElementFieldNameStringData() +
-                        "' does not match namespace given in command: '" +
-                        ns.toStringForErrorMsg() + '\'',
-                    schemas.firstElementFieldNameStringData() ==
-                        ns.serializeWithoutTenantPrefix_UNSAFE());
-        }
-        // EncryptionInformation::schemas is already an owned BSONObj.
-        schema = extractSchemaMap<BSONObj>(
-            ns, schemas, [](const BSONObj& obj) { return obj.getOwned(); });
-    }
 }
 
 /**
- * Extracts and returns the 'QueryAnalysisPArams' in the command 'obj' by parsing the 'jsonSchema'
- * field (FLE 1), 'encryptionInformation' field (FLE 2) or 'csfleEncryptionSchemas' (CSFLE
- * SchemaMap)
+ * Extracts and returns the 'QueryAnalysisParams' in the command 'obj' by parsing the 'jsonSchema'
+ * field (FLE 1) or 'encryptionInformation' field (FLE 2).
  *
  * Throws an AssertionException if a required parameter is missing or if conflicting parameters are
  * given.
  */
-QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,
-                                            const NamespaceString& ns,
-                                            bool parseMultiSchema) {
+QueryAnalysisParams extractCryptdParameters(const BSONObj& obj, const NamespaceString ns) {
     boost::optional<BSONObj> jsonSchema;
+    boost::optional<BSONObj> encryptInfo;
     boost::optional<bool> isRemoteSchema;
-    boost::optional<BSONObj> csfleEncryptionSchemas;
-    boost::optional<BSONObj> encryptionInformationSchemas;
     FleVersion fleVersion = FleVersion::kFle1;
     BSONObjBuilder stripped;
     for (auto& e : obj) {
@@ -186,10 +122,9 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,
             isRemoteSchema = e.Bool();
         } else if (e.fieldNameStringData() == kEncryptionInformation) {
             uassert(6327501, "encryptionInformation must be an object", e.type() == Object);
-            auto encryptionInformation =
+            auto encryptionInfo =
                 EncryptionInformation::parse(IDLParserContext("EncryptInformation"), e.Obj());
-            encryptionInformationSchemas = extractEncryptionInformationSchemas(
-                ns, fleVersion, e, encryptionInformation, stripped);
+            getEncryptInformation(ns, encryptInfo, fleVersion, e, encryptionInfo, stripped);
         } else if (e.fieldNameStringData() == "nsInfo") {
             // BulkWrite puts EncryptInformation below nsInfo.
             NamespaceInfoEntry nsInfoEntry = bulk_write_common::getFLENamespaceInfoEntry(obj);
@@ -197,77 +132,36 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,
                     "BulkWrite with Queryable Encryption expects NamespaceInfoEntry to contain "
                     "encryptionInformation",
                     nsInfoEntry.getEncryptionInformation().has_value());
-            encryptionInformationSchemas = extractEncryptionInformationSchemas(
-                ns, fleVersion, e, nsInfoEntry.getEncryptionInformation().value(), stripped);
-        } else if (e.fieldNameStringData() == kCsfleEncryptionSchemas) {
-            uassert(9686713,
-                    "csfleEncryptionSchemas is only supported for aggregate command.",
-                    parseMultiSchema);
-            uassert(9686702, "csfleEncryptionSchemas must be an object", e.type() == Object);
-            csfleEncryptionSchemas = e.Obj();
-            fleVersion = FleVersion::kFle1;
+            getEncryptInformation(ns,
+                                  encryptInfo,
+                                  fleVersion,
+                                  e,
+                                  nsInfoEntry.getEncryptionInformation().value(),
+                                  stripped);
         } else {
             stripped.append(e);
         }
     }
 
-    if (parseMultiSchema) {
-        // We need to keep the parsing code for legacy style json schema/remote schema for
-        // backwards compatibility.
-        uassert(9686705,
-                "Must specify either jsonSchema, csfleEncryptionSchemas or encryptionInformation",
-                csfleEncryptionSchemas || encryptionInformationSchemas || jsonSchema);
-
-        if (jsonSchema) {
-            uassert(9686706, "isRemoteSchema is a required command field", isRemoteSchema);
-            uassert(9686707,
-                    "Cannot specify both jsonSchema and csfleEncryptionSchemas",
-                    !csfleEncryptionSchemas);
-            uassert(9686708,
-                    "Cannot specify both jsonSchema and encryptionInformation",
-                    !encryptionInformationSchemas);
-            return QueryAnalysisParams(ns, *jsonSchema, *isRemoteSchema, stripped.obj());
-        }
-
-        uassert(9686709,
-                "Cannot specify both isRemoteSchema and "
-                "encryptionInformation/csfleEncryptionSchemas",
-                !isRemoteSchema);
-
-        uassert(9686710,
-                "Cannot specify both encryptionInformation and csfleEncryptionSchemas",
-                (csfleEncryptionSchemas && !encryptionInformationSchemas) ||
-                    (!csfleEncryptionSchemas && encryptionInformationSchemas));
-        return csfleEncryptionSchemas
-            ? QueryAnalysisParams(
-                  ns, *csfleEncryptionSchemas, stripped.obj(), fleVersion, parseMultiSchema)
-            : QueryAnalysisParams(
-                  ns, *encryptionInformationSchemas, stripped.obj(), fleVersion, parseMultiSchema);
-    }
-
-    uassert(51073,
-            "jsonSchema or encryptionInformation is required",
-            jsonSchema || encryptionInformationSchemas);
+    uassert(51073, "jsonSchema or encryptionInformation is required", jsonSchema || encryptInfo);
     uassert(31104,
             "isRemoteSchema is a required command field",
             isRemoteSchema || fleVersion == FleVersion::kFle2);
 
     uassert(6327500,
             "Cannot specify both jsonSchema and encryptionInformation",
-            (jsonSchema && !encryptionInformationSchemas) ||
-                (!jsonSchema && encryptionInformationSchemas));
+            (jsonSchema && !encryptInfo) || (!jsonSchema && encryptInfo));
     uassert(6327502,
             "Cannot specify both isRemoteSchema and encryptionInformation",
-            (isRemoteSchema && !encryptionInformationSchemas) ||
-                (!isRemoteSchema && encryptionInformationSchemas));
+            (isRemoteSchema && !encryptInfo) || (!isRemoteSchema && encryptInfo));
 
     return fleVersion == FleVersion::kFle2
-        ? QueryAnalysisParams(
-              ns, *encryptionInformationSchemas, stripped.obj(), fleVersion, parseMultiSchema)
-        : QueryAnalysisParams(ns, *jsonSchema, *isRemoteSchema, stripped.obj());
+        ? QueryAnalysisParams(*encryptInfo, stripped.obj())
+        : QueryAnalysisParams(*jsonSchema,
+                              *isRemoteSchema ? EncryptionSchemaType::kRemote
+                                              : EncryptionSchemaType::kLocal,
+                              stripped.obj());
 }
-
-namespace {
 
 /**
  * If 'collation' is boost::none, returns nullptr. Otherwise, uses the collator factory
@@ -575,44 +469,11 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
             bob.obj()};
 }
 
-template <typename T>
-bool schemaMayContainEncryptedNode(const T& schema) {
-    static_assert(std::is_same_v<T, EncryptionSchemaMap> ||
-                  std::is_same_v<T, std::unique_ptr<EncryptionSchemaTreeNode>>);
-    if constexpr (std::is_same_v<T, EncryptionSchemaMap>) {
-        bool hasEncryptedSchema{false};
-        // Return true if any of the encryption schemas may contain an encrypted node.
-        for (const auto& nsAndSchema : schema) {
-            invariant(nsAndSchema.second);
-            hasEncryptedSchema |= nsAndSchema.second->mayContainEncryptedNode();
-        }
-        return hasEncryptedSchema;
-    } else {
-        invariant(schema);
-        return schema->mayContainEncryptedNode();
-    }
-}
-
-template <typename T>
-FLEPipeline createFLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline, T&& schema) {
-    static_assert(std::is_same_v<T, EncryptionSchemaMap> ||
-                  std::is_same_v<T, std::unique_ptr<EncryptionSchemaTreeNode>>);
-    if constexpr (std::is_same_v<T, EncryptionSchemaMap>) {
-        // TODO SERVER-97100: Adapt this code once FLEPipeline accommodates schemaMap. For now,
-        // provide single schema in map.
-        auto iter = schema.begin();
-        invariant(iter != schema.end());
-        return FLEPipeline{std::move(pipeline), *(iter->second)};
-    } else {
-        return FLEPipeline{std::move(pipeline), *schema};
-    }
-}
-
-template <typename T>
-PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                              const DatabaseName& dbName,
-                                              const BSONObj& cmdObj,
-                                              T schema) {
+PlaceHolderResult addPlaceHoldersForAggregate(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const DatabaseName& dbName,
+    const BSONObj& cmdObj,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
 
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(
@@ -635,12 +496,10 @@ PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<Express
         return resolvedNamespaces;
     }());
 
-    const auto schemaMayBeEncrypted = schemaMayContainEncryptedNode(schema);
     // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings,
     // then update the AggregateCommandRequest with the new pipeline if there were any replaced
     // fields.
-    auto flePipe =
-        createFLEPipeline(Pipeline::parse(request.getPipeline(), expCtx), std::move(schema));
+    FLEPipeline flePipe{Pipeline::parse(request.getPipeline(), expCtx), *schemaTree.get()};
 
     // Serialize the translated command by manually appending each field that was present in the
     // original command, replacing the pipeline with the translated version containing
@@ -655,7 +514,10 @@ PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<Express
         }
     }
 
-    return {flePipe.hasEncryptedPlaceholders, schemaMayBeEncrypted, nullptr, bob.obj()};
+    return {flePipe.hasEncryptedPlaceholders,
+            schemaTree->mayContainEncryptedNode(),
+            nullptr,
+            bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -1056,36 +918,33 @@ void processWriteOpCommand(OperationContext* opCtx,
                            BSONObjBuilder* builder,
                            WriteOpProcessFunction func,
                            const NamespaceString ns) {
-    auto cryptdParams = extractCryptdParameters(request.body, ns, false /* parseMultiSchema*/);
+    auto cryptdParams = extractCryptdParameters(request.body, ns);
     auto newRequest = makeHybrid(request, cryptdParams.strippedObj);
 
     // Parse the JSON Schema to an encryption schema tree.
-    auto schemaTree =
-        EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(cryptdParams);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
     PlaceHolderResult placeholder = func(opCtx, newRequest, std::move(schemaTree));
 
     serializePlaceholderResult(placeholder, builder);
 }
 
-template <typename T>
 using QueryProcessFunction =
     PlaceHolderResult(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                       const DatabaseName& dbName,
                       const BSONObj& cmdObj,
-                      T schemaTree);
+                      std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
-template <typename T>
 void processQueryCommand(OperationContext* opCtx,
                          const DatabaseName& dbName,
                          const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
-                         QueryProcessFunction<T> func,
+                         QueryProcessFunction func,
                          const NamespaceString ns) {
-    auto cryptdParams = extractCryptdParameters(
-        cmdObj, ns, std::is_same_v<T, EncryptionSchemaMap> /*parseMultiSchema*/);
+    auto cryptdParams = extractCryptdParameters(cmdObj, ns);
+
     // Parse the JSON Schema to an encryption schema tree.
-    auto schema = EncryptionSchemaTreeNode::parse<T>(cryptdParams);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
     auto collator = extractCollator(opCtx, cmdObj);
     auto expCtx = ExpressionContextBuilder{}
@@ -1101,7 +960,7 @@ void processQueryCommand(OperationContext* opCtx,
             : SerializationContext::stateCommandRequest());
 
     PlaceHolderResult placeholder =
-        func(expCtx, dbName, cryptdParams.strippedObj, std::move(schema));
+        func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));
     auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
 
     // A new camel-case name of the FindAndModify command needs to be used
@@ -1229,13 +1088,11 @@ PlaceHolderResult addPlaceholdersForCommandWithValidator(
         auto cmdWithValidatorSchema =
             cmdObj.addField(BSON("jsonSchema" << validator->firstElement()).firstElement())
                 .addField(BSON("isRemoteSchema" << false).firstElement());
+
         auto cryptdParams = extractCryptdParameters(
             cmdWithValidatorSchema,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbName, cmdObj)},
-            false /*parseMultiSchema*/);
-        auto schemaTreeFromValidator =
-            EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(
-                cryptdParams);
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbName, cmdObj)});
+        auto schemaTreeFromValidator = EncryptionSchemaTreeNode::parse(cryptdParams);
 
         uassert(6491101,
                 "validator with $jsonSchema must be identical to FLE 1 jsonSchema parameter.",
@@ -1398,18 +1255,7 @@ void processAggregateCommand(OperationContext* opCtx,
                              const BSONObj& cmdObj,
                              BSONObjBuilder* builder,
                              const NamespaceString ns) {
-    // (Ignore FCV check): Query Analysis does not run in the server, so it can't be FCV gated.
-    if (feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabledAndIgnoreFCVUnsafe()) {
-        processQueryCommand(
-            opCtx, dbName, cmdObj, builder, addPlaceHoldersForAggregate<EncryptionSchemaMap>, ns);
-    } else {
-        processQueryCommand(opCtx,
-                            dbName,
-                            cmdObj,
-                            builder,
-                            addPlaceHoldersForAggregate<std::unique_ptr<EncryptionSchemaTreeNode>>,
-                            ns);
-    }
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForAggregate, ns);
 }
 
 void processDistinctCommand(OperationContext* opCtx,

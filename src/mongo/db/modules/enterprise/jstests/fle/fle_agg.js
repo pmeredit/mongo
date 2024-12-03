@@ -214,23 +214,21 @@ command = buildAggregate(
 assert.commandFailedWithCode(testDB.runCommand(command), 51204);
 
 // Test that all collection-less aggregations result in a failure.
-// TODO SERVER-91167: Update expected error messages to no longer accept 6411900 once feature flag
-// for multiple encryption schemas is enabled by default.
 command = buildCollectionlessAggregate([{$changeStream: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), [31011, 6411900, 9686712]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31011, 6411900]);
 command = buildCollectionlessAggregate([{$listLocalSessions: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900, 9686712]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 command = buildCollectionlessAggregate([{$listLocalSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900, 9686712]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 command = buildCollectionlessAggregate([{$listSessions: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900, 9686712]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 command = buildCollectionlessAggregate([{$listSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900, 9686712]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 
 // CurrentOp must be run against admin db.
 assert.commandFailedWithCode(
     testDB.getSiblingDB("admin").runCommand(buildCollectionlessAggregate([{$currentOp: {}}])),
-    [31011, 6411900, 9686712]);
+    [31011, 6411900]);
 
 // Invalid pipelines correctly fail to parse.
 assert.commandFailedWithCode(testDB.runCommand(buildAggregate([{$unknownStage: {}}], {})), 40324);

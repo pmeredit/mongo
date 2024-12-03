@@ -576,6 +576,19 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     return _parse(schema, kAllEncryptAllowed, true, metadataChain, schemaType);
 }
 
+std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
+    const QueryAnalysisParams& params) {
+    return visit(OverloadedVisitor{
+                     [](const QueryAnalysisParams::FLE1Params& params) {
+                         return parse(params.jsonSchema, params.schemaType);
+                     },
+                     [](const QueryAnalysisParams::FLE2Params& params) {
+                         return parseEncryptedFieldConfig(params.encryptedFieldsConfig);
+                     },
+                 },
+                 params.schema);
+}
+
 std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForPathComponent(
     StringData name) const {
     std::vector<EncryptionSchemaTreeNode*> matchingChildren;
@@ -849,70 +862,5 @@ bool EncryptionSchemaTreeNode::operator==(const EncryptionSchemaTreeNode& other)
         return false;
     }
     return true;
-}
-
-/**
- * Invokes either the JSON Schema or EncryptedFieldConfig parser depending on the values within
- * 'params'.
- */
-template <>
-EncryptionSchemaMap EncryptionSchemaTreeNode::parse<EncryptionSchemaMap>(
-    const QueryAnalysisParams& params) {
-    return visit(
-        OverloadedVisitor{
-            [](const QueryAnalysisParams::FLE1SchemaMap& schema) {
-                EncryptionSchemaMap schemaMap;
-
-                for (const auto& nsAndSchema : schema) {
-                    auto encryptionSchemaNodePtr =
-                        parse(nsAndSchema.second.jsonSchema, nsAndSchema.second.schemaType);
-
-                    schemaMap.emplace(std::piecewise_construct,
-                                      std::forward_as_tuple(nsAndSchema.first),
-                                      std::forward_as_tuple(std::move(encryptionSchemaNodePtr)));
-                }
-                return schemaMap;
-            },
-            [](const QueryAnalysisParams::FLE2SchemaMap& schema) {
-                EncryptionSchemaMap schemaMap;
-
-                for (const auto& nsAndEncryptInfo : schema) {
-                    schemaMap.emplace(
-                        std::piecewise_construct,
-                        std::forward_as_tuple(nsAndEncryptInfo.first),
-                        std::forward_as_tuple(parseEncryptedFieldConfig(nsAndEncryptInfo.second)));
-                }
-                return schemaMap;
-            }},
-        params.schema);
-}
-
-/**
- * Invokes either the JSON Schema or EncryptedFieldConfig parser depending on the values within
- * 'params'. It is imperative that QueryAnalysisParams that were parsed as multi schema are not
- * parsed into a single schema through this function.
- */
-template <>
-std::unique_ptr<EncryptionSchemaTreeNode>
-EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(
-    const QueryAnalysisParams& params) {
-    return visit(
-        OverloadedVisitor{[](const QueryAnalysisParams::FLE1SchemaMap& schema) {
-                              tassert(9686715,
-                                      "Parsing single schema from map that has multiple schema "
-                                      "is not supported.",
-                                      schema.size() == 1);
-                              auto iter = schema.begin();
-                              return parse(iter->second.jsonSchema, iter->second.schemaType);
-                          },
-                          [](const QueryAnalysisParams::FLE2SchemaMap& schema) {
-                              tassert(9686716,
-                                      "Parsing single schema from map that has multiple schema "
-                                      "is not supported.",
-                                      schema.size() == 1);
-                              auto iter = schema.begin();
-                              return parseEncryptedFieldConfig(iter->second);
-                          }},
-        params.schema);
 }
 }  // namespace mongo

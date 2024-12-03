@@ -39,16 +39,6 @@ struct clonable_traits<EncryptionSchemaTreeNode> {
 };
 
 /**
- * EncryptionSchemaMap requires that the NamespaceString used as the key does not contain a
- * TenantId. NamespaceStrings for an encryption schema map are parsed from the original BSON
- * command, from either "csfleEncryptionSchemas" or "csfleEncryptionInformation", both of which do
- * not contain TenantIds. Furthermore, TenantIds are applied by a proxy once a request is sent to
- * the server, so we don't expect a NamespaceString in a command object received by Query Analysis
- * to contain a TenantId either.
- */
-using EncryptionSchemaMap = std::map<NamespaceString, std::unique_ptr<EncryptionSchemaTreeNode>>;
-
-/**
  * A class that represents a node in an encryption schema tree.
  *
  * The children of this node are accessed via a string map, where the key used in the map represents
@@ -151,16 +141,10 @@ public:
 
     /**
      * Invokes either the JSON Schema or EncryptedFieldConfig parser depending on the values within
-     * 'params'. This function is templated on the return type, either an EncryptionSchemaMap (i.e
-     * Agg command), or a single std::unique_ptr<EncryptionSchemaTreeNode>. It is imperative that
-     * QueryAnalysisParams that were parsed as multi schema are not parsed into a single schema
-     * through this function.
+     * 'params'.
      */
-    template <typename T>
-    static T parse(const QueryAnalysisParams& params) {
-        MONGO_UNREACHABLE;
-        return T();
-    }
+    static std::unique_ptr<EncryptionSchemaTreeNode> parse(const QueryAnalysisParams& params);
+
     /**
      * Converts a JSON schema, represented as BSON, into an encryption schema tree. Returns a
      * pointer to the root of the tree or throws an exception if either the schema is invalid or is
@@ -562,23 +546,5 @@ public:
 private:
     std::vector<std::reference_wrapper<ExpressionConstant>> _literals;
 };
-
-/**
- * Invokes either the JSON Schema or EncryptedFieldConfig parser depending on the values within
- * 'params'.
- */
-template <>
-EncryptionSchemaMap EncryptionSchemaTreeNode::parse<EncryptionSchemaMap>(
-    const QueryAnalysisParams& params);
-
-/**
- * Invokes either the JSON Schema or EncryptedFieldConfig parser depending on the values within
- * 'params'. It is imperative that QueryAnalysisParams that were parsed as multi schema are not
- * parsed into a single schema through this function.
- */
-template <>
-std::unique_ptr<EncryptionSchemaTreeNode>
-EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(
-    const QueryAnalysisParams& params);
 
 }  // namespace mongo

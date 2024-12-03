@@ -36,7 +36,6 @@ protected:
     BSONObj limitsBackingBSON;
     BSONElement kMaxDouble;
     BSONElement kMinDouble;
-    const NamespaceString ns = NamespaceString::createNamespaceString_forTest("testdb.testcoll");
 
     // Key UUID to be used in encryption placeholders.
     UUID kDefaultUUID() {
@@ -51,24 +50,13 @@ protected:
         return uassertStatusOK(UUID::parse("09234567-89ab-cdef-edcb-a98765432101"));
     }
 
-    query_analysis::QueryAnalysisParams createQueryAnalysisParamsFromFields(
-        const BSONObj& fields, BSONObj strippedCmd) const {
-        return query_analysis::QueryAnalysisParams(
-            ns,
-            BSON(ns.serializeWithoutTenantPrefix_UNSAFE() << fields),
-            strippedCmd,
-            FleVersion::kFle2,
-            false);
-    }
-
     BSONObj markMatchExpression(const BSONObj& fields, const BSONObj& matchExpression) {
         auto cmd = BSON("find"
                         << "coll"
                         << "filter" << matchExpression);
+        auto params = query_analysis::QueryAnalysisParams(fields, cmd);
 
-        auto params = createQueryAnalysisParamsFromFields(fields, cmd);
-        auto schemaTree =
-            EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
+        auto schemaTree = EncryptionSchemaTreeNode::parse(params);
         auto parsedMatch = uassertStatusOK(
             MatchExpressionParser::parse(matchExpression,
                                          getExpCtx(),
@@ -115,10 +103,10 @@ protected:
     auto markAggExpressionForRange(boost::intrusive_ptr<Expression> expressionPtr,
                                    bool expressionIsCompared,
                                    aggregate_expression_intender::Intention expectedIntention) {
+
         // The command for the params is not relevant for this test.
-        auto params = createQueryAnalysisParamsFromFields(kAllFields, BSONObj());
-        auto schemaTree =
-            EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
+        auto params = query_analysis::QueryAnalysisParams(kAllFields, BSONObj());
+        auto schemaTree = EncryptionSchemaTreeNode::parse(params);
         auto intention = aggregate_expression_intender::markRange(getExpCtxRaw(),
                                                                   *schemaTree,
                                                                   expressionPtr,
@@ -149,6 +137,7 @@ protected:
         const BSONObj& unparsedExpr,
         bool expressionIsCompared,
         aggregate_expression_intender::Intention expectedIntention) {
+
         return markAggExpressionForRange(
                    std::move(unparsedExpr), expressionIsCompared, expectedIntention)
             ->serialize();
@@ -236,9 +225,9 @@ protected:
         auto cmd = BSON("find"
                         << "coll"
                         << "filter" << BSONObj());
-        auto params = createQueryAnalysisParamsFromFields(fields, cmd);
-        auto schemaTree =
-            EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
+        auto params = query_analysis::QueryAnalysisParams(fields, cmd);
+
+        auto schemaTree = EncryptionSchemaTreeNode::parse(params);
         auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef(field));
         auto tempObj = BSON("" << value);
         return buildEncryptPlaceholder(tempObj.firstElement(),
@@ -253,8 +242,9 @@ protected:
         auto cmd = BSON("find"
                         << "coll"
                         << "filter" << BSONObj());
-        auto params = createQueryAnalysisParamsFromFields(fields, cmd);
-        return EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
+        auto params = query_analysis::QueryAnalysisParams(fields, cmd);
+
+        return EncryptionSchemaTreeNode::parse(params);
     }
 
     FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt) {

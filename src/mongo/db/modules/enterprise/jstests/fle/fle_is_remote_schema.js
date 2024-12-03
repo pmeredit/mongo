@@ -31,14 +31,6 @@ const schemaWithCryptdSupportedKeywords = {
 };
 
 function testIsRemoteSchemaFlag(command) {
-    // The aggregate command has a different parsing code path with its own error codes.
-    // We can't check the value of the feature flag featureFlagLookupEncryptionSchemasFLE within
-    // this test execution, because MongoCryptd does not support the "getParameter" command. As a
-    // workaround, we provide a list of expected errors to accommodate for both the legacy
-    // parse code for agg and the new parse code path. Once we the flag is enabled by default, we
-    // can update these tests to only accept the new error code for an agg command.
-    const isAggCommand = command.hasOwnProperty("aggregate");
-
     command.jsonSchema = schemaWithCryptdUnsupportedKeywords;
 
     // Verify that the command fails if 'isRemoteSchema' is of type other than boolean.
@@ -63,9 +55,7 @@ function testIsRemoteSchemaFlag(command) {
 
     // Verify that the 'isRemoteSchema' field is required.
     delete command.isRemoteSchema;
-    // TODO SERVER-59284: Update test to only accept 9686706 error code for aggCommand.
-    assert.commandFailedWithCode(testDb.runCommand(command),
-                                 isAggCommand ? [9686706, 31104] : 31104);
+    assert.commandFailedWithCode(testDb.runCommand(command), 31104);
 
     // Verify that when 'isRemoteSchema' is true, we don't return encryption placeholders when
     // schema doesn't have encrypt fields.
