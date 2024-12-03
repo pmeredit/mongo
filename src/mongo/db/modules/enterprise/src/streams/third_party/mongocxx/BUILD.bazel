@@ -212,7 +212,10 @@ mongo_cc_library(
         "**/*.def",
         "**/*.defs",
     ]),
-    copts = MONGOCXX_COPTS,
+    copts = MONGOCXX_COPTS + [
+        "-Wno-pessimizing-move",
+        "-Wno-uninitialized",
+    ],
     local_defines = MONGOCXX_LOCAL_DEFINES,
     target_compatible_with = MONGOCXX_TARGET_COMPATIBILITY,
     deps = [
