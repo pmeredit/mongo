@@ -24,6 +24,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/md5.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -42,6 +43,27 @@ const NamespaceString kLocal =
 const NamespaceString kNss = NamespaceString::createNamespaceString_forTest("db", "collection");
 const NamespaceString kTs =
     NamespaceString::createNamespaceString_forTest("timeseries-test", "collection");
+
+std::string md5sumFile(const std::string& filename) {
+    std::stringstream ss;
+    FILE* f = fopen(filename.c_str(), "rb");
+    uassert(9705700, str::stream() << "couldn't open file " << filename, f);
+    ON_BLOCK_EXIT([&] { fclose(f); });
+
+    md5digest d;
+    md5_state_t st;
+    md5_init_state(&st);
+
+    enum { BUFLEN = 4 * 1024 };
+    char buffer[BUFLEN];
+    int bytes_read;
+    while ((bytes_read = fread(buffer, 1, BUFLEN, f))) {
+        md5_append(&st, (const md5_byte_t*)(buffer), bytes_read);
+    }
+
+    md5_finish(&st, d);
+    return digestToString(d);
+}
 
 }  // namespace
 
@@ -163,6 +185,10 @@ public:
 
     BackupCursorState openBackupCursor(StorageEngine::BackupOptions backupOptions = {}) {
         return backupCursorService->openBackupCursor(opCtx.get(), backupOptions);
+    }
+
+    BackupCursorExtendState extendBackupCursor(const UUID& backupId, const Timestamp& extendTo) {
+        return {backupCursorService->extendBackupCursor(opCtx.get(), backupId, extendTo)};
     }
 
     std::string getFileName(const std::string& filePath) {
@@ -290,6 +316,31 @@ public:
     }
 
     /**
+     * Expect to read a new log file from 'extendBackupCursor' calls and old backup log files to
+     * remain unchanged. After extending the backupCursor, we will have an extra log file. We save
+     * the log file in 'backupLogFileCheckSums' along with the checkSum of the file to ensure that
+     * future calls to extendBackupCursor leave the logs unchanged.
+     */
+    void assertBackupCursorExtends(UUID backupId,
+                                   Timestamp extendTo,
+                                   std::map<std::string, std::string>& backupLogFileCheckSums) {
+        auto backupCursorExtendState = extendBackupCursor(backupId, extendTo);
+        const auto extendedFiles = backupCursorExtendState.filePaths;
+
+        size_t newLogFileCount = 0;
+        for (const auto& extendFile : extendedFiles) {
+            if (backupLogFileCheckSums.find(extendFile) == backupLogFileCheckSums.end()) {
+                const auto sumFile = md5sumFile(extendFile);
+                backupLogFileCheckSums[extendFile] = sumFile;
+                newLogFileCount += 1;
+            } else {
+                ASSERT_EQ(backupLogFileCheckSums[extendFile], md5sumFile(extendFile));
+            }
+        }
+        ASSERT(newLogFileCount > 0);
+    }
+
+    /**
      *  Verify the backup files are in ascending order according to their offset.
      */
     void validateDocumentOrder(StorageEngine::StreamingCursor& cursor) {
@@ -310,15 +361,16 @@ public:
                 lastSeenFile = filename;
                 lastSeenOffset = doc.value().offset();
             } else {
-                // Same file. Checks blocks within a batch are ordered properly and that the offset
-                // is ascending.
+                // Same file. Checks blocks within a batch are ordered properly and that the
+                // offset is ascending.
                 ASSERT_GT(doc.value().offset(), lastSeenOffset);
                 lastSeenOffset = doc.value().offset();
             }
 
             // If we're copying a new file, check we haven't copied the file before. If we have
-            // copied the file before, then the batch pre-fetch has caused blocks of different files
-            // to be given out of order. Checks ordering at the boundaries between batches.
+            // copied the file before, then the batch pre-fetch has caused blocks of different
+            // files to be given out of order. Checks ordering at the boundaries between
+            // batches.
             ASSERT_FALSE(seenFiles.contains(filename));
         }
     }
@@ -511,7 +563,6 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckWTDirectoryForIndexes) {
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
-
 TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectories) {
     // NS and UUID check on a full backup with both directoryperdb and directoryForIndexes
     wiredTigerGlobalOptions.directoryForIndexes = true;
@@ -526,7 +577,6 @@ TEST_F(BackupCursorServiceTest, NsUUIDCheckDirectories) {
     validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/false);
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
-
 
 TEST_F(BackupCursorServiceTest, FullBackupCursorFormat) {
     // Testing non-incremental backup document format
@@ -627,6 +677,29 @@ TEST_F(BackupCursorServiceTest, IncBackupCursorFormatTimeSeries) {
                                           .srcBackupName = std::string("a")});
     auto cursor = backupCursorState.streamingCursor.get();
     validateDocumentFields(*cursor, std::move(backupCursorState), /*incremental=*/true);
+    backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
+}
+
+TEST_F(BackupCursorServiceTest, MultipleBackupCursorExtend) {
+    // Testing 'extendBackupCursor' calls result in new log files.
+    const Timestamp createCollectionTs = Timestamp(15, 15);
+    auto storage = std::make_unique<repl::StorageInterfaceImpl>();
+
+    createCollection(opCtx.get(), kNss, createCollectionTs);
+    auto backupCursorState =
+        openBackupCursor({.incrementalBackup = true, .thisBackupName = std::string("a")});
+    auto backupId = backupCursorState.backupId;
+
+    // We insert new documents and call 'extendBackupCursor' multiple times and expect to read
+    // an extra log file from the cursor and leave the older log files unchanged.
+    std::map<std::string, std::string> backupLogFileCheckSums = {};
+    shard_role_details::getRecoveryUnit(opCtx.get())->clearCommitTimestamp();
+    for (auto i = 20; i < 25; i++) {
+        ASSERT_OK(
+            storage->insertDocument(opCtx.get(), kNss, {BSON("_id" << i), Timestamp(i, i)}, 0));
+        assertBackupCursorExtends(backupId, Timestamp(i, i), backupLogFileCheckSums);
+    }
+
     backupCursorService->closeBackupCursor(opCtx.get(), backupCursorService->getBackupId());
 }
 
