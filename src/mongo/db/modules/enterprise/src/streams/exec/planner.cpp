@@ -1076,8 +1076,21 @@ void Planner::planEmitSink(const BSONObj& spec) {
     appendOperator(std::move(sinkOperator));
 }
 
+void Planner::planWindowCommon() {
+    // Validate there is only one window in the pipeline.
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Only one window stage is allowed in a pipeline.",
+            !_hasWindow);
+    _hasWindow = true;
+
+    if (_context->restoredCheckpointInfo) {
+        _needsWindowReplay = _options.isModifiedProcessor &&
+            hasWindow(_context->restoredCheckpointInfo->userPipeline);
+    }
+}
+
 BSONObj Planner::planTumblingWindow(DocumentSource* source) {
-    verifyOneWindowStage();
+    planWindowCommon();
     auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
     invariant(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -1165,7 +1178,7 @@ mongo::BSONObj Planner::serializedWindowStage(const std::string& stageName,
 }
 
 BSONObj Planner::planHoppingWindow(DocumentSource* source) {
-    verifyOneWindowStage();
+    planWindowCommon();
     auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -1250,7 +1263,7 @@ void Planner::prependDummyLimitOperator(mongo::Pipeline* pipeline) {
 }
 
 BSONObj Planner::planSessionWindow(DocumentSource* source) {
-    verifyOneWindowStage();
+    planWindowCommon();
     auto windowSource = dynamic_cast<DocumentSourceSessionWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -1986,6 +1999,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     options.pipeline = std::move(_pipeline);
     options.timestampExtractor = std::move(_timestampExtractor);
     options.eventDeserializer = std::move(_eventDeserializer);
+    options.needsWindowReplay = _needsWindowReplay;
     auto dag = make_unique<OperatorDag>(std::move(options), std::move(_operators));
 
     // Validate the operator IDs in the dag.
@@ -2113,13 +2127,6 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
     return connectionNames;
 }
 
-void Planner::verifyOneWindowStage() {
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Only one window stage is allowed in a pipeline.",
-            !_hasWindow);
-    _hasWindow = true;
-}
-
 void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserPipeline,
                                      const std::vector<mongo::BSONObj>& newUserPipeline) {
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
@@ -2133,29 +2140,79 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
             "resumeFromCheckpoint must be false to modify a stream processor's $source stage",
             SimpleBSONObjComparator::kInstance.evaluate(oldSourceSpec == newSourceSpec));
 
-    auto hasWindow = [](const std::vector<BSONObj>& pipeline) {
+    struct WindowInfo {
+        StringData stageName;
+        BSONObj stageBson;
+    };
+    auto getWindowStageName =
+        [](const std::vector<mongo::BSONObj>& pipeline) -> boost::optional<WindowInfo> {
         for (const auto& stage : pipeline) {
             if (isWindowStage(stage.firstElementFieldNameStringData())) {
-                return true;
+                return WindowInfo{stage.firstElementFieldNameStringData(), stage};
             }
         }
-        return false;
+        return boost::none;
     };
-    bool oldHasWindow = hasWindow(oldUserPipeline);
-    bool newHasWindow = hasWindow(newUserPipeline);
-    if (oldHasWindow && newHasWindow) {
-        // TODO(SERVER-94179): Remove this restriction. Change this to validate the
-        // window type and boundary has not changed. Also, we need to validate
-        // the source offsets still exist.
-        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
-                  "resumeFromCheckpoint must be false to modify a stream processor with a window");
-    }
-    if (!oldHasWindow && newHasWindow) {
+    auto validateMatchingTumblingWindows = [](const BSONObj& oldStage, const BSONObj& newStage) {
+        IDLParserContext ctx("$tumblingWindow");
+        auto l = TumblingWindowOptions::parse(ctx, oldStage.firstElement().Obj());
+        auto r = TumblingWindowOptions::parse(ctx, newStage.firstElement().Obj());
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to change a window stage's interval",
+                SimpleBSONObjComparator::kInstance.evaluate(l.getInterval().toBSON() ==
+                                                            r.getInterval().toBSON()));
+        return std::make_pair(l.getPipeline(), r.getPipeline());
+    };
+    auto validateMatchingHoppingWindows = [](const BSONObj& oldStage, const BSONObj& newStage) {
+        IDLParserContext ctx("$hoppingWindow");
+        auto l = HoppingWindowOptions::parse(ctx, oldStage.firstElement().Obj());
+        auto r = HoppingWindowOptions::parse(ctx, newStage.firstElement().Obj());
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to change a window stage's interval",
+                SimpleBSONObjComparator::kInstance.evaluate(l.getInterval().toBSON() ==
+                                                            r.getInterval().toBSON()));
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to change a window stage's hopSize",
+                SimpleBSONObjComparator::kInstance.evaluate(l.getHopSize().toBSON() ==
+                                                            r.getHopSize().toBSON()));
+        return std::make_pair(l.getPipeline(), r.getPipeline());
+    };
+
+    auto oldWindow = getWindowStageName(oldUserPipeline);
+    auto newWindow = getWindowStageName(newUserPipeline);
+
+    if (oldWindow && newWindow) {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to change a stream processor's window type",
+                oldWindow->stageName == newWindow->stageName);
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to modify a processor with a window that is "
+                "not a tumbling or hopping window",
+                newWindow->stageName == kTumblingWindowStageName ||
+                    newWindow->stageName == kHoppingWindowStageName);
+        std::vector<BSONObj> oldInnerPipeline, newInnerPipeline;
+        if (newWindow->stageName == kTumblingWindowStageName) {
+            std::tie(oldInnerPipeline, newInnerPipeline) =
+                validateMatchingTumblingWindows(oldWindow->stageBson, newWindow->stageBson);
+        } else {
+            std::tie(oldInnerPipeline, newInnerPipeline) =
+                validateMatchingHoppingWindows(oldWindow->stageBson, newWindow->stageBson);
+        }
+
+        bool oldHasHttps =
+            hasHttpsStageBeforeWindow(oldUserPipeline) || hasHttpsStage(oldInnerPipeline);
+        bool newHasHttps =
+            hasHttpsStageBeforeWindow(newUserPipeline) || hasHttpsStage(newInnerPipeline);
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                fmt::format("resumeFromCheckpoint must be false to modify a processor with an "
+                            "{} stage in or before a window stage",
+                            kHttpsStageName),
+                !(oldHasHttps && newHasHttps));
+    } else if (!oldWindow && newWindow) {
         // TODO(SERVER-95185): Support adding a window stage with resumeFromCheckpoint=true.
         uasserted(ErrorCodes::StreamProcessorInvalidOptions,
                   "resumeFromCheckpoint must be false to add a window to a stream processor");
-    }
-    if (oldHasWindow && !newHasWindow) {
+    } else if (oldWindow && !newWindow) {
         uasserted(ErrorCodes::StreamProcessorInvalidOptions,
                   "resumeFromCheckpoint must be false to remove a window from a stream processor");
     }

@@ -2,7 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/checkpoint/restorer.h"
+#include "streams/exec/checkpoint/checkpoint_restorer.h"
 
 #include <chrono>
 #include <fcntl.h>
@@ -22,6 +22,7 @@
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace std::chrono_literals;
@@ -31,10 +32,12 @@ namespace streams {
 
 using fspath = std::filesystem::path;
 
-Restorer::OpRestorer::OpRestorer(OperatorId opId_, OpStateRanges ranges_, Restorer* restorer_)
+CheckpointRestorer::OpRestorer::OpRestorer(OperatorId opId_,
+                                           OpStateRanges ranges_,
+                                           CheckpointRestorer* restorer_)
     : opId{opId_}, ranges{std::move(ranges_)}, restorer{restorer_} {}
 
-bool Restorer::OpRestorer::hasMore() {
+bool CheckpointRestorer::OpRestorer::hasMore() {
     if (currRange >= ranges.size()) {
         return false;
     }
@@ -55,7 +58,7 @@ bool Restorer::OpRestorer::hasMore() {
     return hasMore();
 }
 
-void Restorer::OpRestorer::hydrateCurrentRange() {
+void CheckpointRestorer::OpRestorer::hydrateCurrentRange() {
     int fileIdx = ranges[currRange].stateFileIdx;
     size_t rangeLen = ranges[currRange].len();
     const std::string& fileBuf = restorer->getStateFile(fileIdx);
@@ -65,7 +68,7 @@ void Restorer::OpRestorer::hydrateCurrentRange() {
     bufReader = std::make_unique<BufReader>(&fileBuf[ranges[currRange].begin], rangeLen);
 }
 
-boost::optional<mongo::Document> Restorer::OpRestorer::getNextRecord() {
+boost::optional<mongo::Document> CheckpointRestorer::OpRestorer::getNextRecord() {
     if (!hasMore()) {
         return boost::none;
     }
@@ -74,7 +77,7 @@ boost::optional<mongo::Document> Restorer::OpRestorer::getNextRecord() {
     return std::move(doc);
 }
 
-const std::string& Restorer::getStateFile(int fileIdx) {
+const std::string& CheckpointRestorer::getStateFile(int fileIdx) {
     if (_cachedStateFile) {
         if (_cachedStateFile->first != fileIdx) {
             _cachedStateFile = boost::none;
@@ -87,7 +90,7 @@ const std::string& Restorer::getStateFile(int fileIdx) {
     return _cachedStateFile->second;
 }
 
-void Restorer::readStateFile(int fileIdx) {
+void CheckpointRestorer::readStateFile(int fileIdx) {
     fspath stateFile = getStateFilePath(restoreRootDir(), fileIdx, ".sz");
 
     // Read file into a buffer
@@ -99,7 +102,7 @@ void Restorer::readStateFile(int fileIdx) {
                       "Caught exception from readFile",
                       "file"_attr = stateFile.native(),
                       "msg"_attr = msg.what(),
-                      "context"_attr = _context);
+                      "context"_attr = getContext());
         tasserted(7863434, msg.what());
     }
 
@@ -123,11 +126,11 @@ void Restorer::readStateFile(int fileIdx) {
     _cachedStateFile = std::make_pair(fileIdx, std::move(uncompressedFile));
 }
 
-void Restorer::markOperatorDone(OperatorId opId) {
+void CheckpointRestorer::markOperatorDone(OperatorId opId) {
     _currOpRestorer = boost::none;
 }
 
-boost::optional<mongo::Document> Restorer::getNextRecord(OperatorId opId) {
+boost::optional<mongo::Document> CheckpointRestorer::getNextRecord(OperatorId opId) {
     if (_currOpRestorer) {
         tassert(
             7863422,

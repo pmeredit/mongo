@@ -12,22 +12,29 @@
 #include <future>
 #include <regex>
 #include <snappy.h>
+#include <vector>
 
+#include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/checkpoint/checkpoint_restorer.h"
 #include "streams/exec/checkpoint/file_util.h"
 #include "streams/exec/checkpoint/manifest_builder.h"
+#include "streams/exec/checkpoint/replay_checkpoint_restorer.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 
@@ -53,6 +60,10 @@ boost::optional<int> getStateFileIdxFromName(const std::string& fname) {
     } else {
         return boost::none;
     }
+}
+
+bool isSourceOperatorId(OperatorId opId) {
+    return opId == 0;
 }
 
 }  // namespace
@@ -121,6 +132,10 @@ void LocalDiskCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::Doc
             std::make_unique<BufBuilder>(_opts.maxStateFileSizeHint * 2);
     }
 
+    if (isSourceOperatorId(opId)) {
+        setLastCreatedCheckpointSourceState(doc.toBson());
+    }
+
     // We will know the length of the serialized doc only after serializing it
     size_t beforeLen = _activeCheckpointSave->stateFileBuf->len();
     doc.serializeForSorter(*_activeCheckpointSave->stateFileBuf);
@@ -142,6 +157,57 @@ void LocalDiskCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::Doc
     if ((size_t)_activeCheckpointSave->currStateFileOffset >= _opts.maxStateFileSizeHint) {
         writeActiveStateFileToDisk();
     }
+}
+
+// This function is called for the source operator to save the source state for replay in case of
+// edit stream processor.
+void LocalDiskCheckpointStorage::setLastCreatedCheckpointSourceState(BSONObj state) {
+    tassert(ErrorCodes::InternalError, "Missing Checkpoint Id", _lastCreatedCheckpointId);
+    ReplaySourceState sourceState;
+    sourceState.setCheckpointId(*_lastCreatedCheckpointId);
+    sourceState.setSourceState(std::move(state));
+    _lastCheckpointSourceState = std::move(sourceState);
+}
+
+boost::optional<CheckpointId> LocalDiskCheckpointStorage::doOnWindowOpen() {
+    tassert(ErrorCodes::InternalError,
+            "Missing source state for the last created checkpoint",
+            _lastCheckpointSourceState);
+
+    CheckpointId chkId = (*_lastCheckpointSourceState).getCheckpointId();
+    auto [itr, res] = _replayCheckpointSourceStates.emplace(
+        std::make_pair(chkId, std::make_pair(*_lastCheckpointSourceState, 1)));
+
+    if (!res) {
+        // Source state entry for the checkpoint Id already exist, increment the counter.
+        itr->second.second++;
+    }
+    return chkId;
+}
+
+void LocalDiskCheckpointStorage::doOnWindowRestore(CheckpointId checkpointId) {
+    auto itr = _replayCheckpointSourceStates.find(checkpointId);
+
+    tassert(ErrorCodes::InternalError,
+            fmt::format("Missing replay checkpoint source state for the checkpoint Id {}",
+                        checkpointId),
+            itr != _replayCheckpointSourceStates.end());
+
+    itr->second.second++;
+}
+
+void LocalDiskCheckpointStorage::doOnWindowClose(CheckpointId checkpointId) {
+    auto itr = _replayCheckpointSourceStates.find(checkpointId);
+    tassert(ErrorCodes::InternalError,
+            "Missing souerce state for the checkpoint Id",
+            itr != _replayCheckpointSourceStates.end() && itr->second.second > 0);
+    if (--itr->second.second == 0) {
+        _replayCheckpointSourceStates.erase(itr);
+    }
+}
+
+void LocalDiskCheckpointStorage::doAddMinWindowStartTime(int64_t minWindowStartTime) {
+    _activeCheckpointSave->minWindowStartTime = minWindowStartTime;
 }
 
 void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
@@ -231,6 +297,24 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     for (const auto& [opId, stats] : _activeCheckpointSave->stats) {
         operatorStats.push_back(stats);
     }
+
+    // Add the replay source states for all the open windows to the current checkpoint.
+    std::vector<ReplaySourceState> sourceStates;
+    for (const auto& sourceState : _replayCheckpointSourceStates) {
+        sourceStates.push_back(sourceState.second.first);
+    }
+
+    if (!sourceStates.empty()) {
+        // If there is an open window, we expect the minWindowStartTime to be set.
+        tassert(ErrorCodes::InternalError,
+                "Missing minWindowStartTime for the current checkpoint Id",
+                _activeCheckpointSave->minWindowStartTime);
+        WindowReplayInfo info;
+        info.setSourceStates(std::move(sourceStates));
+        info.setMinWindowStartTime(*_activeCheckpointSave->minWindowStartTime);
+        metadata.setWindowReplayInfo(std::move(info));
+    }
+
     auto summaryStats = computeStreamSummaryStats(operatorStats);
     if (_context->restoredCheckpointInfo) {
         tassert(ErrorCodes::InternalError,
@@ -414,6 +498,30 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
 
     _restoredManifestInfo->version = manifest.getVersion();
 
+    auto windowReplayInfo = manifest.getMetadata().getWindowReplayInfo();
+    if (windowReplayInfo) {
+        tassert(ErrorCodes::InternalError,
+                "Invalid checkpoint metadata version with windowReplayInfo.",
+                _restoredManifestInfo->version > ManifestBuilder::kVersionWithNoWindowReplayInfo);
+        _restoredManifestInfo->minWindowStartTime = windowReplayInfo->getMinWindowStartTime();
+
+        // Restore the replay source states from the checkpoint.
+        auto windowReplaySourceStates = windowReplayInfo->getSourceStates();
+        for (auto& state : windowReplaySourceStates) {
+            auto sourceState = ReplaySourceState::parseOwned(
+                IDLParserContext("LocalDiskCheckpointStorage::populateManifestInfo"),
+                state.toBSON());
+
+            auto res = _replayCheckpointSourceStates
+                           .emplace(std::make_pair(sourceState.getCheckpointId(),
+                                                   std::make_pair(sourceState, 0)))
+                           .second;
+            tassert(ErrorCodes::InternalError,
+                    "Found duplicate replay checkpoint source state entries in manifest",
+                    res);
+        }
+    }
+
     _restoredManifestInfo->metadata = CheckpointMetadata::parseOwned(
         IDLParserContext("LocalDiskCheckpointStorage::populateManifestInfo"),
         manifest.getMetadata().toBSON());
@@ -446,17 +554,12 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
           lastCheckpointSizeBytes,
           writeDurationMs,
           metadata,
-          version] = *_restoredManifestInfo;
+          version,
+          _] = *_restoredManifestInfo;
     // Most of the time, we will be restoring from the last committed checkpoint, so using the size
     // of the checkpoint being restored as the lastCheckpointSizeBytes should be fine
     _lastCheckpointCommitTs = lastCheckpointCommitTs;
     _lastCheckpointSizeBytes = lastCheckpointSizeBytes;
-    _activeRestorer = std::make_unique<Restorer>(chkId,
-                                                 _context,
-                                                 std::move(opsRangeMap),
-                                                 std::move(fileChecksums),
-                                                 _opts.restoreRootDir,
-                                                 std::move(stats));
 
     LOGV2_INFO(7863452,
                "Checkpoint restore started",
@@ -490,8 +593,8 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
         info.userPipeline.push_back(stage.getOwned());
     }
     CheckpointDescription details;
-    details.setFilepath(_activeRestorer->restoreRootDir().string());
-    details.setId(_activeRestorer->getCheckpointId());
+    details.setFilepath(_opts.restoreRootDir.string());
+    details.setId(chkId);
     details.setCheckpointSizeBytes(_lastCheckpointSizeBytes);
     details.setCheckpointTimestamp(_lastCheckpointCommitTs);
     details.setWriteDurationMs(Milliseconds{writeDurationMs});
@@ -513,6 +616,50 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
     }
 
     return info;
+}
+
+void LocalDiskCheckpointStorage::doCreateCheckpointRestorer(CheckpointId chkId,
+                                                            bool replayRestorer) {
+    invariant(!_activeRestorer);
+    invariant(_restoredManifestInfo);
+
+    if (replayRestorer && !_replayCheckpointSourceStates.empty()) {
+        auto itr = _replayCheckpointSourceStates.begin();
+        _lastCheckpointSourceState = std::move(itr->second.first);
+        _lastCreatedCheckpointId = _lastCheckpointSourceState->getCheckpointId();
+        LOGV2_INFO(7863991,
+                   "Restoring from a Replay Checkpoint",
+                   "context"_attr = _context,
+                   "CheckpointId"_attr = itr->first);
+
+        // Update the restore checkpoint Id with the replay checkpoint Id
+        _context->restoreCheckpointId = _lastCheckpointSourceState->getCheckpointId();
+
+        tassert(ErrorCodes::InternalError,
+                "Missing min window start time in the manifest",
+                _restoredManifestInfo->minWindowStartTime);
+        _context->restoredCheckpointInfo->minWindowStartTime =
+            *_restoredManifestInfo->minWindowStartTime;
+
+        _activeRestorer = std::make_unique<ReplayCheckpointRestorer>(
+            *_context->restoreCheckpointId,
+            _context,
+            (*_lastCheckpointSourceState).getSourceState(),
+            _opts.restoreRootDir,
+            std::move((*_restoredManifestInfo).stats));
+
+        // Cleanup the rest of replay checkpoint source states.
+        _replayCheckpointSourceStates.clear();
+    } else {
+        _lastCreatedCheckpointId = chkId;
+        _activeRestorer =
+            std::make_unique<CheckpointRestorer>(chkId,
+                                                 _context,
+                                                 std::move((*_restoredManifestInfo).opsRangeMap),
+                                                 std::move((*_restoredManifestInfo).fileChecksums),
+                                                 _opts.restoreRootDir,
+                                                 std::move((*_restoredManifestInfo).stats));
+    }
 }
 
 std::unique_ptr<CheckpointStorage::ReaderHandle> LocalDiskCheckpointStorage::doCreateStateReader(
@@ -559,7 +706,27 @@ boost::optional<mongo::Document> LocalDiskCheckpointStorage::doGetNextRecord(Rea
     CheckpointId chkId = reader->getCheckpointId();
     OperatorId opId = reader->getOperatorId();
     invariant(_activeRestorer && _activeRestorer->getCheckpointId() == chkId);
-    return _activeRestorer->getNextRecord(opId);
+
+    auto nextRecord = _activeRestorer->getNextRecord(opId);
+
+    // Restore the window replay source state from the checkpoint.
+    if (isSourceOperatorId(opId)) {
+        tassert(ErrorCodes::InternalError,
+                fmt::format("Missing $source state for the CheckpointId {}", chkId),
+                nextRecord);
+        if (_lastCheckpointSourceState) {
+            // This can happen in case of restoring from a replay checkpoint.
+            // _lastCheckpointSourceState is populated as part of activeRestorer creation.
+            tassert(ErrorCodes::InternalError,
+                    "Replay source state match failed",
+                    SimpleBSONObjComparator::kInstance.evaluate(
+                        nextRecord->toBson() == _lastCheckpointSourceState->getSourceState()));
+        } else {
+            setLastCreatedCheckpointSourceState(nextRecord->toBson());
+        }
+    }
+
+    return nextRecord;
 }
 
 void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,

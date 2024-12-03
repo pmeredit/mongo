@@ -17,8 +17,9 @@ using namespace mongo;
 namespace streams {
 
 const int ManifestBuilder::kVersionWithNoExecutionPlan = 1;
-const int ManifestBuilder::kVersion = 4;
+const int ManifestBuilder::kVersion = 5;
 const int ManifestBuilder::kVersionWithNoSummaryStats = 3;
+const int ManifestBuilder::kVersionWithNoWindowReplayInfo = 4;
 const int ManifestBuilder::kMinAllowedVersion = 1;
 
 void ManifestBuilder::addOpRecord(OperatorId opId, int fileIdx, off_t begOffset, size_t recLen) {

@@ -19,9 +19,13 @@ class BSONObjBuilder;
 
 namespace streams {
 
+// TODO(SERVER-97571): Move these planner specific utilities to a separate file.
 bool isSourceStage(mongo::StringData name);
 bool isSinkStage(mongo::StringData name);
 bool isWindowStage(mongo::StringData name);
+bool hasWindow(const std::vector<mongo::BSONObj>& pipeline);
+bool hasHttpsStage(const std::vector<mongo::BSONObj>& pipeline);
+bool hasHttpsStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline);
 bool isLookUpStage(mongo::StringData name);
 bool isEmitStage(mongo::StringData name);
 bool isMergeStage(mongo::StringData name);

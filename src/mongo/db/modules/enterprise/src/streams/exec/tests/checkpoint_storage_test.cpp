@@ -78,6 +78,7 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
     auto startingMetrics = getMetrics(executor, processorId);
     // Validate there is no latest checkpointId.
     ASSERT(!storage->getLatestCommittedCheckpointId());
+    ASSERT(!storage->getLastCreatedCheckpointId());
     // Validate non-existent checkpoint are ignored in onCheckpointFlushed.
     storage->onCheckpointFlushed(CheckpointId{0});
     ASSERT(storage->getFlushedCheckpoints().empty());
@@ -86,6 +87,8 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
     ASSERT_EQ(startingMetrics.numOngoing + 1, getMetrics(executor, processorId).numOngoing);
     // Validate there is still no latest committed checkpoint.
     ASSERT(!storage->getLatestCommittedCheckpointId());
+    ASSERT(storage->getLastCreatedCheckpointId() &&
+           (id == *(storage->getLastCreatedCheckpointId())));
     // Commit and validate readLatest returns it.
     std::vector<OperatorStats> dummyStats{OperatorStats{"", 2, id / 2, 4, 5, 1, 10},
                                           OperatorStats{"", 2, id / 2, 4, 5, 1, 11}};
@@ -107,6 +110,8 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
     auto lastId = id;
     for (int i = 0; i < 100; ++i) {
         auto id = storage->startCheckpoint();
+        ASSERT(storage->getLastCreatedCheckpointId() &&
+               (id == *(storage->getLastCreatedCheckpointId())));
 
         std::vector<OperatorStats> restoreCheckpointStats;
         restoreCheckpointStats.reserve(context->restoredCheckpointInfo->operatorInfo->size());
@@ -188,6 +193,8 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
             context.get(), Executor::Options{.metricManager = std::make_unique<MetricManager>()});
         auto storage = makeStorage(context.get(), *executor);
         auto id = storage->startCheckpoint();
+        ASSERT(storage->getLastCreatedCheckpointId() &&
+               (id == *(storage->getLastCreatedCheckpointId())));
         stdx::unordered_map<OperatorId, std::vector<BSONObj>> expectedState;
         std::vector<OperatorStats> stats;
         for (OperatorId operatorId = 0; size_t(operatorId) < numOperators; ++operatorId) {

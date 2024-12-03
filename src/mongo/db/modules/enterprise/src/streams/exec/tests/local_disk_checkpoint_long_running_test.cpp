@@ -126,7 +126,7 @@ bool oneCheckpointRestore(CheckpointStorage* chkpt,
             LocalDiskCheckpointStorage::Options{.writeRootDir = writeDir, .restoreRootDir = dir},
             ctxt);
         restoreStorage->startCheckpointRestore(chkId);
-
+        restoreStorage->createCheckpointRestorer(chkId, false);
         for (auto& written : opStates) {
             OperatorId opId = written.first;
             auto reader = restoreStorage->createStateReader(chkId, opId);

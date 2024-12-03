@@ -556,9 +556,6 @@ const testCases = [
                 }
             }
         ],
-        validateShouldSucceed: false,
-        expectedValidateError:
-            "resumeFromCheckpoint must be false to modify a stream processor with a window"
     },
     {
         originalPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
@@ -650,6 +647,23 @@ const testCases = [
             {a: 1},
         ],
     },
+    {
+        originalPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(2)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        validateShouldSucceed: false,
+        expectedValidateError:
+            "resumeFromCheckpoint must be false to change a window stage's interval"
+    }
 ];
 
 // Note: for local dev, change testCases to testCases.slice(-1) if you just want to run the last

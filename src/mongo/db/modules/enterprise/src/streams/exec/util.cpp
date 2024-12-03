@@ -31,6 +31,42 @@ bool isWindowStage(mongo::StringData name) {
         name == kSessionWindowStageName;
 }
 
+bool hasWindow(const std::vector<BSONObj>& pipeline) {
+    for (const auto& stage : pipeline) {
+        if (isWindowStage(stage.firstElementFieldNameStringData())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasHttpsStage(const std::vector<mongo::BSONObj>& pipeline) {
+    for (const auto& stage : pipeline) {
+        if (isHttpsStage(stage.firstElementFieldNameStringData())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasHttpsStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline) {
+    boost::optional<size_t> httpsStageIdx;
+    boost::optional<size_t> windowStageIdx;
+    for (size_t idx = 0; idx < pipeline.size(); ++idx) {
+        const auto& stage = pipeline[idx];
+        auto name = stage.firstElementFieldNameStringData();
+        if (isWindowStage(name)) {
+            windowStageIdx = idx;
+        } else if (isHttpsStage(name)) {
+            httpsStageIdx = idx;
+        }
+    }
+    if (!httpsStageIdx || !windowStageIdx) {
+        return false;
+    }
+    return *httpsStageIdx < *windowStageIdx;
+}
+
 bool isLookUpStage(mongo::StringData name) {
     return name == mongo::StringData(kLookUpStageName);
 }

@@ -10,8 +10,10 @@
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint/manifest_builder.h"
 #include "streams/exec/checkpoint/restorer.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/context.h"
+#include "streams/exec/message.h"
 #include "streams/util/units.h"
 
 namespace streams {
@@ -53,6 +55,8 @@ public:
         std::filesystem::path directory;
         // An ordered map of the operator stats for this checkpoint.
         std::map<OperatorId, OperatorStats> stats;
+        // The minimum window start time in this checkpoint.
+        boost::optional<int64_t> minWindowStartTime;
     };
 
     LocalDiskCheckpointStorage(Options cfg, Context* ctxt);
@@ -95,6 +99,8 @@ private:
         mongo::CheckpointMetadata metadata;
         // The checkpoint data version.
         int version{0};
+        // The minimum window start time set in the manifest.
+        boost::optional<int64_t> minWindowStartTime;
     };
 
     // The next group of methods implement the CheckpointStorage interface
@@ -106,6 +112,8 @@ private:
     // the writeRootDir under which the SP is saving new checkpoint data
     RestoredCheckpointInfo doStartCheckpointRestore(CheckpointId chkId) override;
 
+    void doCreateCheckpointRestorer(CheckpointId chkId, bool replayRestorer) override;
+
     void doMarkCheckpointRestored(CheckpointId chkId) override;
     std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) override;
     std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) override;
@@ -114,6 +122,10 @@ private:
     // serialized-appended at the end of this BufBuilder. The manifest is updated to track the
     // operator ranges.
     void doAppendRecord(WriterHandle* writer, mongo::Document doc) override;
+    boost::optional<CheckpointId> doOnWindowOpen() override;
+    void doOnWindowRestore(CheckpointId checkpointId) override;
+    void doOnWindowClose(CheckpointId checkpointId) override;
+    void doAddMinWindowStartTime(int64_t minWindowStartTime) override;
     boost::optional<mongo::Document> doGetNextRecord(ReaderHandle* reader) override;
     void doCloseStateReader(ReaderHandle* reader) override;
     void doCloseStateWriter(WriterHandle* writer) override;
@@ -168,6 +180,10 @@ private:
     // assume v1
     bool validateManifest(const mongo::Manifest& manifest) const;
 
+    // Add the source state for the _lastCreatedCheckpointId to the list of replay checkpoint source
+    // states.
+    void setLastCreatedCheckpointSourceState(mongo::BSONObj state);
+
     Options _opts;
     std::string _tenantId;
     std::string _streamName;
@@ -180,7 +196,12 @@ private:
     std::unique_ptr<Restorer> _activeRestorer;
     // Tracks the last checkpointId created.
     boost::optional<CheckpointId> _lastCreatedCheckpointId;
+    // Tracks the ReplaySourceState for the _lastCreatedCheckpointId.
+    boost::optional<mongo::ReplaySourceState> _lastCheckpointSourceState;
     boost::optional<ManifestInfo> _restoredManifestInfo;
+    // Maintains the checkpointId's and their corresponding SourceState for all the open windows.
+    std::map<CheckpointId, std::pair<mongo::ReplaySourceState, int64_t>>
+        _replayCheckpointSourceStates;
 };
 
 }  // namespace streams

@@ -98,6 +98,9 @@ protected:
         int64_t minEventTimestampMs{std::numeric_limits<int64_t>::max()};
         // The highest observed timestamp of events in this window.
         int64_t maxEventTimestampMs{-1};
+        // The Checkpoint Id created prior to this Window was opened.
+        // Use this checkpointId's source state to replay the entire window.
+        boost::optional<CheckpointId> replayCheckpointId;
 
         int64_t getWindowID() {
             return *streamMetaTemplate.getWindow()->getWindowID();
@@ -173,10 +176,11 @@ private:
     std::unique_ptr<Window> makeWindow(mongo::StreamMeta streamMetaTemplate);
 
     // Add a new window or get an existing window.
-    Window* addOrGetWindow(int64_t windowStartTimestampMs,
-                           int64_t windowEndTimestampMs,
-                           boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
-
+    // Returns a pair of Window and isNewWindow - true for a new window, false otherwise
+    std::pair<Window*, bool> addOrGetWindow(
+        int64_t windowStartTimestampMs,
+        int64_t windowEndTimestampMs,
+        boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
     // Add a new window or get an existing window.
     Window* addOrGetSessionWindow(mongo::Value const& partition,
                                   int64_t minTimestampMs,
@@ -242,6 +246,9 @@ private:
     int64_t _maxSentWatermarkMs{0};
     // Windows before this start time are already closed.
     int64_t _minWindowStartTime{0};
+    // If set, windows before this start time were already closed by a past version of the
+    // processor.
+    boost::optional<int64_t> _afterModifyMinWindowStartTime;
     // The max watermark received from the input, minus allowedLateness.
     int64_t _maxReceivedWatermarkMs{-1};
     // Set when a kIdle message is received from the source.

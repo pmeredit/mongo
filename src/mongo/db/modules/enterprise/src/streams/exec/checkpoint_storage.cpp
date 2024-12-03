@@ -74,6 +74,10 @@ RestoredCheckpointInfo CheckpointStorage::startCheckpointRestore(CheckpointId ch
     return doStartCheckpointRestore(chkId);
 }
 
+void CheckpointStorage::createCheckpointRestorer(CheckpointId chkId, bool replayRestorer) {
+    doCreateCheckpointRestorer(chkId, replayRestorer);
+}
+
 Milliseconds CheckpointStorage::checkpointRestored(CheckpointId chkId) {
     doMarkCheckpointRestored(chkId);
     _lastCheckpointRestoreDoneTs = mongo::Date_t::now();

@@ -38,6 +38,7 @@ public:
         std::vector<mongo::BSONObj> optimizedPipeline;
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
         std::unique_ptr<EventDeserializer> eventDeserializer;
+        bool needsWindowReplay{false};
     };
 
     OperatorDag(Options options, OperatorContainer operators)
@@ -80,6 +81,10 @@ public:
 
     OperatorContainer moveOperators() {
         return std::move(_operators);
+    }
+
+    bool needsWindowReplay() {
+        return _options.needsWindowReplay;
     }
 
 private:

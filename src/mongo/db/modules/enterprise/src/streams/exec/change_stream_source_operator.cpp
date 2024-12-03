@@ -584,7 +584,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     for (auto& changeEvent : changeEvents) {
         size_t inputBytes = changeEvent.objsize();
         totalNumInputBytes += inputBytes;
-
         if (auto streamDoc = processChangeEvent(std::move(changeEvent)); streamDoc) {
             dataMsg.docs.push_back(std::move(*streamDoc));
         } else {

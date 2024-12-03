@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <boost/none.hpp>
+#include <boost/optional/optional.hpp>
 #include <chrono>
 #include <exception>
 #include <filesystem>
@@ -128,14 +129,23 @@ public:
         return _props;
     }
 
-    CheckpointControlMsg checkpointAndRun() {
+    void runOnce() {
+        _props.executor->runOnce();
+    }
+
+    CheckpointControlMsg takeCheckpoint() {
         // Create a checkpoint and send it through the operator dag.
         auto checkpointControlMsg = _props.checkpointCoordinator->getCheckpointControlMsgIfReady(
             CheckpointCoordinator::CheckpointRequest{.writeCheckpointCommand =
                                                          WriteCheckpointCommand::kForce});
         _props.executor->sendCheckpointControlMsg(*checkpointControlMsg);
-        _props.executor->runOnce();
         return *checkpointControlMsg;
+    }
+
+    CheckpointControlMsg checkpointAndRun() {
+        auto checkpointControlMsg = takeCheckpoint();
+        runOnce();
+        return checkpointControlMsg;
     }
 
     // Write a checkpoint, restore the operators from it, then call runOnce.
@@ -232,18 +242,32 @@ public:
         return checkpoints[0];
     }
 
+    boost::optional<CheckpointId> getLastCreatedCheckpointId() {
+        auto localStorage =
+            dynamic_cast<LocalDiskCheckpointStorage*>(props().context->checkpointStorage.get());
+        return localStorage->_lastCreatedCheckpointId;
+    }
+
+    boost::optional<mongo::ReplaySourceState> getReplayCheckpointSourceState() {
+        auto localStorage =
+            dynamic_cast<LocalDiskCheckpointStorage*>(props().context->checkpointStorage.get());
+        return localStorage->_lastCheckpointSourceState;
+    }
+
     bool isCheckpointCommitted(CheckpointId id) {
         return std::filesystem::exists(std::filesystem::path(_props.checkpointWriteDir) /
                                        std::to_string(id) / "MANIFEST");
     }
 
     void startCheckpointRestore(CheckpointId checkpointId) {
+        cleanupReplayCheckpointSourceStates();
         props().context->executionPlan = {};
         auto localDisk =
             dynamic_cast<LocalDiskCheckpointStorage*>(props().context->checkpointStorage.get());
         localDisk->_opts.restoreRootDir = props().checkpointWriteDir / std::to_string(checkpointId);
         localDisk->populateManifestInfo(localDisk->_opts.restoreRootDir / "MANIFEST");
         props().context->restoredCheckpointInfo = localDisk->startCheckpointRestore(checkpointId);
+        localDisk->createCheckpointRestorer(checkpointId, false);
         props().context->restoreCheckpointId = checkpointId;
         props().context->executionPlan = props().context->restoredCheckpointInfo->executionPlan;
     }
@@ -252,11 +276,25 @@ public:
         auto reader =
             _props.context->checkpointStorage->createStateReader(checkpointId, operatorId);
         auto result = _props.context->checkpointStorage->getNextRecord(reader.get());
-        ASSERT_FALSE(_props.context->checkpointStorage->getNextRecord(reader.get()));
         if (result) {
             return result->toBson();
         }
         return boost::none;
+    }
+
+    std::map<CheckpointId, std::pair<mongo::ReplaySourceState, int64_t>>
+    getReplayCheckpointSourceStates() {
+        auto localStorage =
+            dynamic_cast<LocalDiskCheckpointStorage*>(props().context->checkpointStorage.get());
+        return localStorage->_replayCheckpointSourceStates;
+    }
+
+    void cleanupReplayCheckpointSourceStates() {
+        auto localStorage =
+            dynamic_cast<LocalDiskCheckpointStorage*>(props().context->checkpointStorage.get());
+        localStorage->_lastCreatedCheckpointId.reset();
+        localStorage->_lastCheckpointSourceState.reset();
+        localStorage->_replayCheckpointSourceStates.clear();
     }
 
     void init() {
@@ -373,6 +411,8 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline(bool useNewStorage) {
         auto checkpointId = workload.getLatestCommittedCheckpointId();
         ASSERT(checkpointId);
         ASSERT_NE(lastId, *checkpointId);
+        ASSERT(workload.getLastCreatedCheckpointId() &&
+               (*workload.getLastCreatedCheckpointId()) == *checkpointId);
         lastId = *checkpointId;
 
         workload.startCheckpointRestore(*checkpointId);
@@ -572,6 +612,8 @@ void CheckpointTest::Test_AlwaysCheckpoint_EmptyPipeline_MultiPartition(bool use
         // Verify the valid committed checkpointId in checkpoint storage.
         auto checkpointId = workload.getLatestCommittedCheckpointId();
         ASSERT(checkpointId);
+        ASSERT(workload.getLastCreatedCheckpointId() &&
+               (*workload.getLastCreatedCheckpointId()) == *checkpointId);
 
         workload.startCheckpointRestore(*checkpointId);
 
@@ -986,6 +1028,10 @@ TEST_F(CheckpointTest, CheckpointStats) {
         auto [checkpointMsg, checkpointOpInfo] = workload.checkpointRestoreAndRun();
 
         // Verify the valid committed checkpointId in checkpoint storage.
+        auto latestCommitedCheckpointId = workload.getLatestCommittedCheckpointId();
+        ASSERT(latestCommitedCheckpointId);
+        ASSERT(workload.getLastCreatedCheckpointId() &&
+               (*workload.getLastCreatedCheckpointId()) == *latestCommitedCheckpointId);
         auto checkpointId = checkpointMsg.id;
         ASSERT_NE(lastId, checkpointId);
         lastId = checkpointId;
@@ -1153,4 +1199,144 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
     ASSERT(workload.isCheckpointCommitted(checkpointIds[3]));
 }
 
+// This test does some basic validation of the replay checkpoint source states maintained in the
+// local storage for edit stream processor.
+TEST_F(CheckpointTest, ReplayCheckpointSourceStates) {
+    std::vector<BSONObj> input = {
+        fromjson(R"({"val": 12, "timestamp": "2024-10-10T00:00:58.000000"})"),
+        fromjson(R"({"val": 13, "timestamp": "2024-10-10T00:01:01.000000"})"),
+        fromjson(R"({"val": 14, "timestamp": "2024-10-10T00:01:06.000000"})"),
+        fromjson(R"({"val": 15, "timestamp": "2024-10-10T00:01:26.000000"})")};
+    CheckpointTestWorkload workload(R"([
+        {
+            $hoppingWindow: {
+                interval: { size: 20, unit: "second" },
+                allowedLateness: { size: 0, unit: "second" },
+                hopSize: { size: 5, unit: "second" },
+                pipeline: [
+                    {
+                        $group: {_id: null, id: { $sum: "$val" }}
+                    }
+                ]
+            }
+        }
+    ])",
+                                    input,
+                                    _serviceContext);
+
+    std::vector<CheckpointId> checkpointIds;
+    CheckpointControlMsg checkpointMsg;
+    std::map<CheckpointId, std::pair<mongo::ReplaySourceState, int64_t>> replaySourceStates;
+    boost::optional<CheckpointId> lastCreatedCheckpointId;
+
+    auto validate = [&]() {
+        lastCreatedCheckpointId = workload.getLastCreatedCheckpointId();
+        ASSERT(lastCreatedCheckpointId && (checkpointMsg.id == *lastCreatedCheckpointId));
+        checkpointIds.push_back(checkpointMsg.id);
+        replaySourceStates = workload.getReplayCheckpointSourceStates();
+
+        ASSERT(replaySourceStates.size() == checkpointIds.size());
+
+        auto replayCheckpointSourceState = workload.getReplayCheckpointSourceState();
+        ASSERT(replayCheckpointSourceState);
+        ASSERT(replaySourceStates.rbegin()->first == *lastCreatedCheckpointId &&
+               replaySourceStates.rbegin()->first == checkpointMsg.id);
+        ASSERT_BSONOBJ_EQ(replaySourceStates.rbegin()->second.first.getSourceState(),
+                          (*replayCheckpointSourceState).getSourceState());
+
+        int64_t windowCount = 0;
+        auto itr = replaySourceStates.begin();
+        for (size_t i = 0; i < checkpointIds.size(); i++, itr++) {
+            ASSERT(checkpointIds[i] == itr->first);
+            windowCount += itr->second.second;
+        }
+        ASSERT(itr == replaySourceStates.end());
+        ASSERT_EQ(windowCount, 4);
+    };
+
+    checkpointMsg = workload.checkpointAndRun();
+    validate();
+
+    // Take a new checkpoint and process the next document, that will close one window and opens a
+    // new window. The new window will have the new checkpoint's Id to save the source state.
+    checkpointMsg = workload.checkpointAndRun();
+    validate();
+
+    // The last checkpoint contains the older version of _replayCheckpointSourceStates in local
+    // storage. Let's take another checkpoint to store the latest version of
+    // _replayCheckpointSourceStates, before restarting.
+    checkpointMsg = workload.takeCheckpoint();
+    lastCreatedCheckpointId = workload.getLastCreatedCheckpointId();
+    ASSERT(lastCreatedCheckpointId && (checkpointMsg.id == *lastCreatedCheckpointId));
+
+    // Cleanup the map.
+    auto oldReplaySourceStates = replaySourceStates;
+
+    // Restore from the last checkpoint.
+    workload.restore(checkpointMsg.id);
+    replaySourceStates = workload.getReplayCheckpointSourceStates();
+    ASSERT(replaySourceStates.size() == checkpointIds.size() &&
+           replaySourceStates.size() == oldReplaySourceStates.size());
+    auto itr = replaySourceStates.begin();
+    auto oldItr = oldReplaySourceStates.begin();
+    for (size_t i = 0; i < checkpointIds.size(); i++, itr++, oldItr++) {
+        ASSERT_BSONOBJ_EQ(itr->second.first.getSourceState(),
+                          oldItr->second.first.getSourceState());
+        ASSERT(itr->second.first.getCheckpointId() == oldItr->second.first.getCheckpointId());
+        ASSERT(checkpointIds[i] == itr->first && itr->first == oldItr->first);
+        ASSERT(itr->second.second == oldItr->second.second);
+    }
+    ASSERT(itr == replaySourceStates.end());
+
+    // Process the next document, that will close an old window and create a new one.
+    // The new window should use the last created checkpoint for replay.
+    workload.runOnce();
+    validate();
+
+    // Cleanup all the old window states and the corresponding replay checkpoint states.
+    checkpointMsg = workload.checkpointAndRun();
+    checkpointIds.clear();
+    validate();
+}
+
+TEST_F(CheckpointTest, ReplayCheckpointSourceStates_Cleanup) {
+    std::vector<BSONObj> input = {
+        fromjson(R"({"val": 12, "timestamp": "2024-10-10T00:00:58.000000"})"),
+        fromjson(R"({"val": 13, "timestamp": "2024-10-10T00:01:18.000000"})"),
+    };
+    CheckpointTestWorkload workload(R"([
+        {
+            $hoppingWindow: {
+                interval: { size: 20, unit: "second" },
+                allowedLateness: { size: 0, unit: "second" },
+                hopSize: { size: 5, unit: "second" },
+                pipeline: [
+                    {
+                        $group: {_id: null, id: { $sum: "$val" }}
+                    }
+                ]
+            }
+        }
+    ])",
+                                    input,
+                                    _serviceContext);
+
+    CheckpointControlMsg checkpointMsg = workload.checkpointAndRun();
+    auto replaySourceStates = workload.getReplayCheckpointSourceStates();
+    ASSERT(replaySourceStates.size() == 1);
+    ASSERT(replaySourceStates.begin()->first == checkpointMsg.id);
+    auto replayCheckpointSourceState = workload.getReplayCheckpointSourceState();
+    ASSERT(replayCheckpointSourceState);
+    ASSERT_BSONOBJ_EQ(replaySourceStates.begin()->second.first.getSourceState(),
+                      (*replayCheckpointSourceState).getSourceState());
+
+    checkpointMsg = workload.checkpointAndRun();
+    replaySourceStates = workload.getReplayCheckpointSourceStates();
+    ASSERT(replaySourceStates.size() == 1);
+    ASSERT(replaySourceStates.begin()->first == checkpointMsg.id);
+    replayCheckpointSourceState = workload.getReplayCheckpointSourceState();
+    ASSERT(replayCheckpointSourceState);
+    ASSERT_BSONOBJ_EQ(replaySourceStates.begin()->second.first.getSourceState(),
+                      (*replayCheckpointSourceState).getSourceState());
+}
 }  // namespace streams

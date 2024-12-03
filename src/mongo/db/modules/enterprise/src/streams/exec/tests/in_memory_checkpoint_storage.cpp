@@ -2,7 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
+#include "mongo/bson/simple_bsonobj_comparator.h"
+#include "mongo/util/assert_util_core.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/message.h"
 #include "streams/exec/stats_utils.h"
 
 namespace streams {
@@ -13,6 +16,7 @@ CheckpointId InMemoryCheckpointStorage::doStartCheckpoint() {
     CheckpointId id{_nextCheckpointId++};
     invariant(!_checkpoints.contains(id));
     _checkpoints.emplace(id, Checkpoint{});
+    _lastCreatedCheckpointId = id;
     return id;
 }
 
@@ -114,10 +118,64 @@ void InMemoryCheckpointStorage::doCloseStateWriter(WriterHandle* writer) {
 void InMemoryCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::Document record) {
     invariant(_writer && writer->getCheckpointId() == _writer->checkpointId &&
               writer->getOperatorId() == _writer->operatorId);
+
+    if (writer->getOperatorId() == 0 /* $source */) {
+        mongo::ReplaySourceState sourceState;
+        sourceState.setCheckpointId(writer->getCheckpointId());
+        sourceState.setSourceState(record.toBson());
+        setLastCreatedCheckpointSourceState(sourceState);
+    }
+
     _checkpoints[writer->getCheckpointId()].operatorState[writer->getOperatorId()].push_back(
         record.getOwned());
     _currentMemoryBytes += record.getCurrentApproximateSize();
     _maxMemoryUsageBytes->set(std::max(_maxMemoryUsageBytes->value(), (double)_currentMemoryBytes));
+}
+
+void InMemoryCheckpointStorage::setLastCreatedCheckpointSourceState(
+    mongo::ReplaySourceState sourceState) {
+    invariant(_lastCreatedCheckpointId);
+    invariant(sourceState.getCheckpointId() == *_lastCreatedCheckpointId);
+    _lastCheckpointSourceState = sourceState;
+}
+
+boost::optional<CheckpointId> InMemoryCheckpointStorage::doOnWindowOpen() {
+    if (!_lastCreatedCheckpointId) {
+        // Handle the case of in-memory source.
+        invariant(_checkpoints.empty());
+        return boost::none;
+    }
+    invariant(_lastCreatedCheckpointId);
+    invariant(_lastCheckpointSourceState);
+
+    auto [itr, res] = _replayCheckpointSourceStates.emplace(
+        std::make_pair(*_lastCreatedCheckpointId, std::make_pair(*_lastCheckpointSourceState, 1)));
+
+    if (!res) {
+        // Source state entry for the checkpoint Id already exist, increment the counter.
+        invariant(SimpleBSONObjComparator::kInstance.evaluate(
+            itr->second.first.toBSON() == (*_lastCheckpointSourceState).toBSON()));
+        itr->second.second++;
+    }
+    return _lastCreatedCheckpointId;
+}
+
+void InMemoryCheckpointStorage::doOnWindowRestore(CheckpointId checkpointId) {
+    auto itr = _replayCheckpointSourceStates.find(checkpointId);
+    invariant(itr != _replayCheckpointSourceStates.end());
+    itr->second.second++;
+}
+
+void InMemoryCheckpointStorage::doOnWindowClose(CheckpointId checkpointId) {
+    auto itr = _replayCheckpointSourceStates.find(checkpointId);
+    invariant(itr != _replayCheckpointSourceStates.end() && itr->second.second > 0);
+    if (--itr->second.second == 0) {
+        _replayCheckpointSourceStates.erase(itr);
+    }
+}
+
+void InMemoryCheckpointStorage::doAddMinWindowStartTime(int64_t minWindowStartTime) {
+    _minWindowStartTime = minWindowStartTime;
 }
 
 boost::optional<mongo::Document> InMemoryCheckpointStorage::doGetNextRecord(ReaderHandle* reader) {

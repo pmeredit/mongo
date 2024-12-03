@@ -54,6 +54,8 @@ public:
         // Set to true when validating an modify request when the user specifies
         // resumeFromCheckpoint=true.
         bool shouldValidateModifyRequest{false};
+        // Set to true when planning a modified processor.
+        bool isModifiedProcessor{false};
     };
 
     Planner(Context* context, Options options);
@@ -134,6 +136,8 @@ private:
     mongo::BSONObj planTumblingWindow(mongo::DocumentSource* source);
     mongo::BSONObj planHoppingWindow(mongo::DocumentSource* source);
     mongo::BSONObj planSessionWindow(mongo::DocumentSource* source);
+    // Utility method used by the different window planning methods.
+    void planWindowCommon();
 
     // Utility methods that are used to create dummy operators for session windows.
     void prependDummyLimitOperator(mongo::Pipeline* pipeline);
@@ -174,9 +178,6 @@ private:
     // Helper function of plan() that does all the work.
     std::unique_ptr<OperatorDag> planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
 
-    // Helper function that throws an error if hasWindow has already been set, and sets it if not.
-    void verifyOneWindowStage();
-
     // Used to validate a pipeline modify with resumeFromCheckpoint=true. Throws an exception if
     // the modify is not valid.
     void validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserPipeline,
@@ -199,6 +200,8 @@ private:
     OperatorDag::OperatorContainer _operators;
     // Tracks the next OperatorId to assign to an Operator in the plan.
     OperatorId _nextOperatorId{0};
+    // Set to true for modified processors that need windows to be replayed.
+    bool _needsWindowReplay{false};
 };
 
 };  // namespace streams

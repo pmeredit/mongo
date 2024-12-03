@@ -14,6 +14,8 @@ namespace streams {
 
 using namespace mongo;
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 namespace {
 
 constexpr StringData kMissedWindowsFieldName = "missedWindowStartTimes"_sd;
@@ -24,6 +26,11 @@ void WindowAwareOperator::doStart() {
     if (_context->restoreCheckpointId) {
         restoreState(*_context->restoreCheckpointId);
     }
+    LOGV2_INFO(9531601,
+               "WindowAwareOperator started",
+               "context"_attr = _context,
+               "name"_attr = getName(),
+               "minWindowStartTime"_attr = Date_t::fromMillisSinceEpoch(_minWindowStartTime));
 }
 
 void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
@@ -219,12 +226,15 @@ void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
                                               bool projectStreamMeta) {
     invariant(!streamDocs.empty());
     const auto& firstStreamMeta = streamDocs.front().streamMeta;
-    auto window = addOrGetWindow(
+    auto [window, isNew] = addOrGetWindow(
         windowStartTime,
         windowEndTime,
         firstStreamMeta.getSource() ? firstStreamMeta.getSource()->getType() : boost::none);
     if (!window->status.isOK()) {
         return;
+    }
+    if (getOptions().windowAssigner && _context->checkpointStorage && isNew) {
+        window->replayCheckpointId = _context->checkpointStorage->onWindowOpen();
     }
 
     if (projectStreamMeta) {
@@ -246,7 +256,7 @@ void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
 }
 
 // Add a new window or get an existing window.
-WindowAwareOperator::Window* WindowAwareOperator::addOrGetWindow(
+std::pair<WindowAwareOperator::Window*, bool> WindowAwareOperator::addOrGetWindow(
     int64_t windowStartTime,
     int64_t windowEndTime,
     boost::optional<StreamMetaSourceTypeEnum> sourceType) {
@@ -263,10 +273,10 @@ WindowAwareOperator::Window* WindowAwareOperator::addOrGetWindow(
         auto window = makeWindow(std::move(streamMetaTemplate));
         auto result = _windows.emplace(windowStartTime, std::move(window));
         invariant(result.second);
-        return result.first->second.get();
+        return {result.first->second.get(), true};
     }
 
-    return _windows[windowStartTime].get();
+    return {_windows[windowStartTime].get(), false};
 }
 
 // Called when a window is closed. Sends the window output to the next operator.
@@ -283,7 +293,6 @@ void WindowAwareOperator::closeWindow(Window* window) {
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return;
     }
-
     doCloseWindow(window);
 }
 
@@ -299,8 +308,12 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
     // First, write the minimum window start time.
     WindowOperatorCheckpointRecord minWindowStartTimeRecord;
     minWindowStartTimeRecord.setMinWindowStartTime(_minWindowStartTime);
+    minWindowStartTimeRecord.setAfterModifyMinWindowStartTime(_afterModifyMinWindowStartTime);
+
     _context->checkpointStorage->appendRecord(writer.get(),
                                               Document{minWindowStartTimeRecord.toBSON()});
+
+    _context->checkpointStorage->addMinWindowStartTime(_minWindowStartTime);
 
     // Write the state of all the open windows.
     for (auto& [windowStartTime, window] : _windows) {
@@ -312,6 +325,7 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
             window->streamMetaTemplate.getSource()->getType()) {
             windowStart.setSourceType(window->streamMetaTemplate.getSource()->getType());
         }
+        windowStart.setReplayCheckpointId(window->replayCheckpointId);
         WindowOperatorCheckpointRecord startRecord;
         startRecord.setWindowStart(std::move(windowStart));
         _context->checkpointStorage->appendRecord(writer.get(),
@@ -332,11 +346,24 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
 
 void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
     tassert(8279703, "Expected the new checkpoint storage to be set.", _context->checkpointStorage);
+
+    if (_context->restoredCheckpointInfo && _context->restoredCheckpointInfo->minWindowStartTime) {
+        // We enter this block when restoring after a modify operation.
+        _minWindowStartTime = *_context->restoredCheckpointInfo->minWindowStartTime;
+        _afterModifyMinWindowStartTime = _minWindowStartTime;
+        return;
+    }
+
     auto reader = _context->checkpointStorage->createStateReader(checkpointId, _operatorId);
     IDLParserContext parserContext("WindowAwareOperatorCheckpointRestore");
 
     // Restore the minumum window start time.
     boost::optional<Document> record = _context->checkpointStorage->getNextRecord(reader.get());
+    if (!record) {
+        // In case of a modify request, there is no need to recover the window state.
+        // The document are replayed from the $source with the modified pipeline.
+        return;
+    }
     tassert(8318300, "Expected record", record);
     auto minWindowStartTime =
         record->getField(WindowOperatorCheckpointRecord::kMinWindowStartTimeFieldName);
@@ -344,6 +371,15 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
             "Expected minWindowStartTime record",
             minWindowStartTime.getType() == BSONType::NumberLong);
     _minWindowStartTime = minWindowStartTime.getLong();
+
+    auto afterModifyMinWindowStartTime =
+        record->getField(WindowOperatorCheckpointRecord::kAfterModifyMinWindowStartTimeFieldName);
+    if (!afterModifyMinWindowStartTime.missing()) {
+        tassert(8318305,
+                "Expected afterModifyMinWindowStartTimeFieldName to be long",
+                afterModifyMinWindowStartTime.getType() == BSONType::NumberLong);
+        _afterModifyMinWindowStartTime = afterModifyMinWindowStartTime.getLong();
+    }
 
     // Restore all the open windows.
     while (boost::optional<Document> record =
@@ -371,9 +407,19 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
             sourceTypeEnum = StreamMetaSourceType_parse(parserContext, sourceType.getString());
         }
 
-        tassert(
-            8279700, "Window should not already exist", !_windows.contains(startTime.getLong()));
-        auto window = addOrGetWindow(startTime.getLong(), endTime.getLong(), sourceTypeEnum);
+        auto [window, isNew] =
+            addOrGetWindow(startTime.getLong(), endTime.getLong(), sourceTypeEnum);
+        tassert(8279700, "Window should not already exist", isNew);
+
+        auto replayCheckpointId =
+            windowStartDoc[WindowOperatorStartRecord::kReplayCheckpointIdFieldName];
+        if (!replayCheckpointId.missing()) {
+            tassert(8289711,
+                    "Expected replayCheckpointId field of type long",
+                    replayCheckpointId.getType() == BSONType::NumberLong);
+            window->replayCheckpointId = replayCheckpointId.getLong();
+            _context->checkpointStorage->onWindowRestore(*window->replayCheckpointId);
+        }
 
         // Restore all this window's state.
         auto nextRecord = _context->checkpointStorage->getNextRecord(reader.get());
@@ -470,6 +516,12 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         if (options.windowAssigner->shouldCloseWindow(windowStartTime, inputWatermarkTime)) {
             // Send the results for this window.
             closeWindow(windowIt->second.get());
+            if (windowIt->second->replayCheckpointId) {
+                tassert(9531600,
+                        "Found replayCheckpointId, expected to be the window assigner",
+                        getOptions().windowAssigner);
+                _context->checkpointStorage->onWindowClose(*(windowIt->second->replayCheckpointId));
+            }
             windowIt = _windows.erase(windowIt);
             if (options.sendWindowSignals) {
                 // Send a windowCloseSignal message downstream.
@@ -510,6 +562,12 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
 
 void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
                                                 int64_t minEligibleStartTime) {
+    if (_afterModifyMinWindowStartTime && minEligibleStartTime < *_afterModifyMinWindowStartTime) {
+        // After a pipeline modify, we might replay docs that have already been in previously
+        // closed windows. We don't want to DLQ those docs.
+        return;
+    }
+
     auto windowAssigner = getOptions().windowAssigner.get();
     tassert(8292300, "Expected to be the window assigner.", windowAssigner);
 

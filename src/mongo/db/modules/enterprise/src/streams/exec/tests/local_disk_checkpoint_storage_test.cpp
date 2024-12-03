@@ -93,14 +93,14 @@ TEST_F(LocalDiskCheckpointStorageTest, basic_round_trip) {
 
     CheckpointId chkId = chkpt->startCheckpoint();
 
-    std::vector<Document> op0State = {
+    std::vector<Document> op1State = {
         Document{
             fromjson(R"({"id": 2, "timestamp": "2023-04-10T17:02:20.062839", "operator": 0})")},
         Document{
             fromjson(R"({"id": 3, "timestamp": "2023-04-10T17:03:20.062839", "operator": 0})")},
     };
 
-    std::vector<Document> op1State = {
+    std::vector<Document> op2State = {
         Document{
             fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:20.062839", "operator": 1})")},
         Document{
@@ -110,16 +110,16 @@ TEST_F(LocalDiskCheckpointStorageTest, basic_round_trip) {
     };
 
     {
-        auto writer0 = chkpt->createStateWriter(chkId, 0);
-        for (auto& rec : op0State) {
-            chkpt->appendRecord(writer0.get(), rec);
+        auto writer1 = chkpt->createStateWriter(chkId, 1);
+        for (auto& rec : op1State) {
+            chkpt->appendRecord(writer1.get(), rec);
         }
     }
 
     {
-        auto writer1 = chkpt->createStateWriter(chkId, 1);
-        for (auto& rec : op1State) {
-            chkpt->appendRecord(writer1.get(), rec);
+        auto writer2 = chkpt->createStateWriter(chkId, 2);
+        for (auto& rec : op2State) {
+            chkpt->appendRecord(writer2.get(), rec);
         }
     }
 
@@ -140,15 +140,7 @@ TEST_F(LocalDiskCheckpointStorageTest, basic_round_trip) {
     ASSERT_TRUE(restoredChkId);
     ASSERT_EQ(chkId, *restoredChkId);
     chkpt->startCheckpointRestore(chkId);
-
-    {
-        auto reader0 = chkpt->createStateReader(chkId, 0);
-        std::vector<Document> retrievedOp0State;
-        while (boost::optional<mongo::Document> rec = chkpt->getNextRecord(reader0.get())) {
-            retrievedOp0State.push_back(rec->getOwned());
-        }
-        ASSERT_TRUE(equal(op0State, retrievedOp0State));
-    }
+    chkpt->createCheckpointRestorer(chkId, false);
 
     {
         auto reader1 = chkpt->createStateReader(chkId, 1);
@@ -157,6 +149,15 @@ TEST_F(LocalDiskCheckpointStorageTest, basic_round_trip) {
             retrievedOp1State.push_back(rec->getOwned());
         }
         ASSERT_TRUE(equal(op1State, retrievedOp1State));
+    }
+
+    {
+        auto reader2 = chkpt->createStateReader(chkId, 2);
+        std::vector<Document> retrievedOp2State;
+        while (boost::optional<mongo::Document> rec = chkpt->getNextRecord(reader2.get())) {
+            retrievedOp2State.push_back(rec->getOwned());
+        }
+        ASSERT_TRUE(equal(op2State, retrievedOp2State));
     }
 
     chkpt->checkpointRestored(chkId);
@@ -184,7 +185,7 @@ TEST_F(LocalDiskCheckpointStorageTest, many_operators) {
     CheckpointId chkId = chkpt->startCheckpoint();
 
     std::vector<std::pair<OperatorId, std::vector<BSONObj>>> opStates;
-    for (int opId : {0, 3, 4, 5, 6, 8, 10, 29, 30, 31, 32, 33, 34}) {
+    for (int opId : {1, 3, 4, 5, 6, 8, 10, 29, 30, 31, 32, 33, 34}) {
         opStates.push_back({opId, std::vector<BSONObj>{}});
         int numRecs = rand_range(1, 100);
         for (int i = 0; i < numRecs; i++) {
@@ -220,7 +221,7 @@ TEST_F(LocalDiskCheckpointStorageTest, many_operators) {
     ASSERT_TRUE(restoredChkId);
     ASSERT_EQ(chkId, *restoredChkId);
     chkpt->startCheckpointRestore(chkId);
-
+    chkpt->createCheckpointRestorer(chkId, false);
     for (auto& written : opStates) {
         OperatorId opId = written.first;
         auto reader = chkpt->createStateReader(chkId, opId);
@@ -276,7 +277,7 @@ TEST_F(LocalDiskCheckpointStorageTest, large_round_trip_multi_threads) {
                 CheckpointId chkId = chkpt->startCheckpoint();
 
                 std::vector<std::pair<OperatorId, std::vector<BSONObj>>> opStates;
-                std::vector<int> opIds{0, 1, 2};
+                std::vector<int> opIds{1, 2, 3};
                 std::vector<int> opRecs{10, 3, 5};
                 for (size_t i = 0; i < opIds.size(); i++) {
                     int opId = opIds[i];
@@ -317,6 +318,7 @@ TEST_F(LocalDiskCheckpointStorageTest, large_round_trip_multi_threads) {
                 ASSERT_TRUE(restoredChkId);
                 ASSERT_EQ(chkId, *restoredChkId);
                 chkpt->startCheckpointRestore(chkId);
+                chkpt->createCheckpointRestorer(chkId, false);
 
                 for (auto& written : opStates) {
                     OperatorId opId = written.first;

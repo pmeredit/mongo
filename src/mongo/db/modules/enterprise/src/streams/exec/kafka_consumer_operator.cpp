@@ -1341,6 +1341,7 @@ void KafkaConsumerOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg co
 void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& controlMsg) {
     tassert(8155003, "Expecting checkpointMsg", controlMsg.checkpointMsg);
     tassert(8155004, "_consumers is empty", !_consumers.empty());
+    CheckpointId checkpointId = controlMsg.checkpointMsg->id;
     std::vector<KafkaPartitionCheckpointState> partitions;
     partitions.reserve(_consumers.size());
     for (const ConsumerInfo& consumerInfo : _consumers) {
@@ -1372,10 +1373,9 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
                "KafkaConsumerOperator adding state to checkpoint",
                "state"_attr = state.toBSON(),
                "context"_attr = _context,
-               "checkpointId"_attr = controlMsg.checkpointMsg->id);
+               "checkpointId"_attr = checkpointId);
     tassert(8155006, "checkpointStorage is uninitialized", _context->checkpointStorage);
-    auto writer =
-        _context->checkpointStorage->createStateWriter(controlMsg.checkpointMsg->id, _operatorId);
+    auto writer = _context->checkpointStorage->createStateWriter(checkpointId, _operatorId);
     _context->checkpointStorage->appendRecord(writer.get(), Document{state.toBSON()});
 }
 

@@ -55,6 +55,7 @@ public:
     static const int kVersion;
     static const int kMinAllowedVersion;
     static const int kVersionWithNoSummaryStats;
+    static const int kVersionWithNoWindowReplayInfo;
 
     ManifestBuilder(CheckpointId checkpointId,
                     Context* context,

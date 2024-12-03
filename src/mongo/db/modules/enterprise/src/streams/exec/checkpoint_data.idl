@@ -89,6 +89,28 @@ structs:
                 type: WatermarkState
                 optional: true
 
+    ReplaySourceState:
+        description: "Checkpoint state of the $source operator"
+        strict: false
+        fields:
+            checkpointId:
+                description: Checkpoint Id of the source state
+                type: safeInt64
+            sourceState:
+                description: Either Kafka $source state or Change stream $source state
+                type: object
+
+    WindowReplayInfo:
+        description: "Checkpoint state of the $source operator"
+        strict: false
+        fields:
+            sourceStates:
+                description: Replay checkpoint source states for open windows
+                type: array<ReplaySourceState>
+            minWindowStartTime:
+                description: The minimum window start time, i.e. the min window we will compute when starting from this checkpoint.
+                type: safeInt64
+
     OperatorState:
         description: The serialized state of a single operator in a checkpoint.
         strict: false
@@ -135,6 +157,11 @@ structs:
                 cpp_name: sourceType
                 optional: true
                 description: Source type used in the StreamMeta template for the window.
+            3:
+                type: safeInt64
+                cpp_name: replayCheckpointId
+                optional: true
+                description: The replay checkpopint Id for this window.
 
     WindowOperatorEndRecord:
         description: The WindowAwareOperator base class writes this document to mark the end of a window of data.
@@ -211,6 +238,11 @@ structs:
                              accumulators state
                 cpp_name: groupRecord
                 optional: true
+            7:
+                type: safeInt64
+                description: The minimum allowed window start time after a modify. Prior versions of the stream processor closed windows before this time.
+                cpp_name: afterModifyMinWindowStartTime
+                optional: true
 
     # The following types are required by the manifest file format in the LocalDiskCheckpointStorage implementation
     # TODO(SERVER-83755) Consider generating all types in mongo::streams namespace
@@ -270,6 +302,9 @@ structs:
                 optional: true
             summaryStats:
                 type: CheckpointSummaryStats
+                optional: true
+            windowReplayInfo:
+                type: WindowReplayInfo
                 optional: true
 
     CheckpointFileRange:

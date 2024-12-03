@@ -976,13 +976,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
                 bool resumeFromCheckpointAfterModify =
                     request.getOptions().getResumeFromCheckpointAfterModify();
-                if (isValidateOnlyRequest(request) || !resumeFromCheckpointAfterModify) {
-                    // Mark the checkpoint as restored. For validateOnly and
-                    // resumeFromCheckpointAfterModify=false requests, we won't use the restore
-                    // checkpoint any further, i.e. operators won't restore their state from it.
-                    processorInfo->context->checkpointStorage->checkpointRestored(
-                        *processorInfo->context->restoreCheckpointId);
-                }
                 if (!resumeFromCheckpointAfterModify) {
                     // If resumeFromCheckpoint is false, unset the restoreCheckpointId so
                     // operators don't restore from their state in the restore checkpoint.
@@ -994,6 +987,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     Planner::Options plannerOptions;
     bool planUserPipeline = executionPlan.empty();
+    plannerOptions.isModifiedProcessor = isModifyRequest;
     if (planUserPipeline) {
         // Plan the OperatorDag using a user supplied pipeline.
         plannerOptions.planningUserPipeline = true;
@@ -1015,6 +1009,12 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
 
     if (checkpointEnabled) {
+        if (processorInfo->context->restoreCheckpointId && !isValidateOnlyRequest(request)) {
+            processorInfo->context->checkpointStorage->createCheckpointRestorer(
+                *processorInfo->context->restoreCheckpointId,
+                processorInfo->operatorDag->needsWindowReplay());
+        }
+
         auto isCheckpointSuportedForSource =
             isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
         if (processorInfo->context->restoreCheckpointId) {

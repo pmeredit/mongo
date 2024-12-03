@@ -26,6 +26,8 @@ struct RestoredCheckpointInfo {
     boost::optional<std::vector<mongo::CheckpointOperatorInfo>> operatorInfo;
     // The optimized execution plan in the restore checkpoint.
     std::vector<mongo::BSONObj> executionPlan;
+    // Min window start time from the Replay checkpoint after modify
+    boost::optional<int64_t> minWindowStartTime;
 };
 
 }  // namespace streams

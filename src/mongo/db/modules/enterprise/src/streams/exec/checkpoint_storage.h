@@ -96,6 +96,11 @@ public:
     // Start a checkpoint restore for the specified checkpoint ID.
     RestoredCheckpointInfo startCheckpointRestore(CheckpointId chkId);
 
+    // Create a checkpoint restorer for the specified checkpoint ID.
+    // The restorer is used by the operators to restore their state from the checkpoint.
+    // replayRestorer is set to true only in the case of modify with windowed pipeline.
+    void createCheckpointRestorer(CheckpointId chkId, bool replayRestorer);
+
     // Mark the checkpoint restore as complete. Returns the restore duration in milliseconds.
     // TODO(SERVER-82127): Once Executor kicks off restore, just have Executor compute the restore
     // time.
@@ -119,6 +124,30 @@ public:
     // Add a Document of state to an operator's checkpoint state.
     virtual void appendRecord(WriterHandle* writer, mongo::Document record) {
         return doAppendRecord(writer, std::move(record));
+    }
+
+    // Saves the Checkpoint Id and its corresponding Source State.
+    // Returns the checkpoint Id of the last created checkpoint (for replay).
+    // Called by the WindowAware operator when a new window is opened.
+    boost::optional<CheckpointId> onWindowOpen() {
+        return doOnWindowOpen();
+    }
+
+    // Restores the replay source states for a given checkpoint Id.
+    // Called by the WindowAware operator as part of state restore.
+    void onWindowRestore(CheckpointId checkpointId) {
+        return doOnWindowRestore(checkpointId);
+    }
+    // Removes the Checkpoint Id and its corresponding Source State from the checkpoint storage.
+    // Called by the WindowAware operator when a window is closed.
+    void onWindowClose(CheckpointId checkpointId) {
+        doOnWindowClose(checkpointId);
+    }
+
+    // Add the minWindowStart time to checkpoint storage, which is stored in the checkpoint
+    // metadata.
+    void addMinWindowStartTime(int64_t minWindowStartTime) {
+        doAddMinWindowStartTime(minWindowStartTime);
     }
 
     // Read the next Document of state from an operator's checkpoint state.
@@ -187,10 +216,15 @@ private:
     virtual CheckpointId doStartCheckpoint() = 0;
     virtual void doCommitCheckpoint(CheckpointId chkId) = 0;
     virtual RestoredCheckpointInfo doStartCheckpointRestore(CheckpointId chkId) = 0;
+    virtual void doCreateCheckpointRestorer(CheckpointId chkId, bool replayRestorer) = 0;
     virtual void doMarkCheckpointRestored(CheckpointId chkId) = 0;
     virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
     virtual std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) = 0;
     virtual void doAppendRecord(WriterHandle* writer, mongo::Document record) = 0;
+    virtual boost::optional<CheckpointId> doOnWindowOpen() = 0;
+    virtual void doOnWindowRestore(CheckpointId checkpointId) = 0;
+    virtual void doOnWindowClose(CheckpointId checkpointId) = 0;
+    virtual void doAddMinWindowStartTime(int64_t minWindowStartTime) = 0;
     virtual boost::optional<mongo::Document> doGetNextRecord(ReaderHandle* reader) = 0;
     virtual void doCloseStateReader(ReaderHandle* reader) = 0;
     virtual void doCloseStateWriter(WriterHandle* writer) = 0;

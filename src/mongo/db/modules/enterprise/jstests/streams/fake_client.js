@@ -53,7 +53,9 @@ export class StreamProcessor {
     start(options, assertWorked = true, pipelineVersion = undefined) {
         this._startOptions = options;
         this._pipelineVersion = pipelineVersion;
-        const result = this._db.runCommand(this.makeStartCmd(options));
+        const cmd = this.makeStartCmd(options);
+        jsTestLog(`Starting processor ${tojson(cmd)}`);
+        const result = this._db.runCommand(cmd);
         if (assertWorked) {
             assert.commandWorked(result);
         }
