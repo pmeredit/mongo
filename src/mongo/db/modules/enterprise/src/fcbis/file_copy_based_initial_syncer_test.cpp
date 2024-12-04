@@ -999,6 +999,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, CallbackIsCalledIfExecutorIsShutdownAfter
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     ASSERT_TRUE(fileCopyBasedInitialSyncer->isActive());
     getExecutor().shutdown();
+    _mock->runUntilIdle();
     ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQUALS(ErrorCodes::ShutdownInProgress, _lastApplied);
