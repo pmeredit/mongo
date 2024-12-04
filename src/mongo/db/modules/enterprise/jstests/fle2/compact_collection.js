@@ -281,7 +281,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // token has wrong bindata length
     assert.commandFailedWithCode(
         edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: badTokens3}),
-        6373501);
+        9616300);
 });
 
 jsTestLog("Test compact with wrong compaction tokens");
