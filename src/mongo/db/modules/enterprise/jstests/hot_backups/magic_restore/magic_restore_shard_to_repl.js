@@ -68,6 +68,7 @@ function runTest(insertHigherTermOplogEntry) {
     [-151, -51, 51, 151].forEach(
         val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
     assert.eq(db.getCollection(coll).find().toArray().length, 8);
+    st.awaitReplicationOnShards();
 
     shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
         magicRestoreTest.rst.nodes.forEach((node) => {
