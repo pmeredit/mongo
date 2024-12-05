@@ -17,8 +17,16 @@ namespace mongo {
  */
 class FLEPipeline {
 public:
+    using EncryptionSchemaTreeNodePtr = clonable_ptr<EncryptionSchemaTreeNode>;
+    using CloneableEncryptionSchemaMap = std::map<NamespaceString, EncryptionSchemaTreeNodePtr>;
+
+    // Constructor to be used only by commands that don't expect multiple schemas (i.e Find).
     FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
                 const EncryptionSchemaTreeNode& schema);
+
+    // Constructor to be used by commands which use multiple schemas (i.e Aggregate).
+    FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
+                EncryptionSchemaMap&& schemaMap);
 
     /**
      * Returns the schema of the document flowing *out* of the pipeline.
@@ -58,12 +66,17 @@ public:
     bool hasEncryptedPlaceholders{false};
 
 private:
+    // Note, pipeline is an r-value reference here to accommodate the call site at the single schema
+    // constructor, which uses the pipeline to obtain the namespace string in order to create the
+    // CloneableEncryptionSchemaMap.
+    FLEPipeline(CloneableEncryptionSchemaMap initialStageContents,
+                std::unique_ptr<Pipeline, PipelineDeleter>&& pipeline);
     // Owned pipeline which may be modified if there are any constants that are marked for
     // encryption.
     std::unique_ptr<Pipeline, PipelineDeleter> _parsedPipeline;
 
     // Schema of the document flowing out of the pipeline, not associated with any Stage.
-    clonable_ptr<EncryptionSchemaTreeNode> _finalSchema;
+    EncryptionSchemaTreeNodePtr _finalSchema;
 };
 
 }  // namespace mongo

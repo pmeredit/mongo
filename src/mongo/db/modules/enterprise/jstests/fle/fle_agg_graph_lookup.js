@@ -236,6 +236,8 @@ assert.commandFailedWithCode(
     31133);
 
 // Test that not self-graphlookup fails.
+// TODO SERVER-59284: Change expected error code to only be 9710000 after feature flag is enabled by
+// default.
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
         aggregate: coll.getName(),
         pipeline: [{
@@ -248,7 +250,7 @@ assert.commandFailedWithCode(testDB.runCommand(Object.assign({
             }
         }],
         cursor: {}}, generateSchema({}, coll.getFullName()))),
-                                 51204);
+                                 [51204, 9710000]);
 
 // Test that self-graphlookup when 'connectFromField' has an encrypted child fails.
 assert.commandFailedWithCode(

@@ -599,12 +599,9 @@ FLEPipeline createFLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipelin
     static_assert(std::is_same_v<T, EncryptionSchemaMap> ||
                   std::is_same_v<T, std::unique_ptr<EncryptionSchemaTreeNode>>);
     if constexpr (std::is_same_v<T, EncryptionSchemaMap>) {
-        // TODO SERVER-97100: Adapt this code once FLEPipeline accommodates schemaMap. For now,
-        // provide single schema in map.
-        auto iter = schema.begin();
-        invariant(iter != schema.end());
-        return FLEPipeline{std::move(pipeline), *(iter->second)};
+        return FLEPipeline{std::move(pipeline), std::move(schema)};
     } else {
+        invariant(schema);
         return FLEPipeline{std::move(pipeline), *schema};
     }
 }
@@ -622,19 +619,28 @@ PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<Express
         boost::none,
         expCtx->getSerializationContext());
 
+    const LiteParsedPipeline liteParsedPipeline(request);
+    const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
+
     // Add the populated list of involved namespaces to the expression context, needed at parse
     // time by stages such as $lookup and $out.
     expCtx->setNamespaceString(request.getNamespace());
     expCtx->setResolvedNamespaces([&]() {
-        const LiteParsedPipeline liteParsedPipeline(request);
-        const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
-
         StringMap<ResolvedNamespace> resolvedNamespaces;
         for (auto&& involvedNs : pipelineInvolvedNamespaces) {
             resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
         }
         return resolvedNamespaces;
     }());
+
+    // Ensure we have a schema for every namespace used in the pipeline.
+    if constexpr (std::is_same_v<T, EncryptionSchemaMap>) {
+        for (auto&& involvedNs : pipelineInvolvedNamespaces) {
+            uassert(9710000,
+                    "Missing encryption schema for namespace: " + involvedNs.toStringForErrorMsg(),
+                    schema.count(involvedNs));
+        }
+    }
 
     const auto schemaMayBeEncrypted = schemaMayContainEncryptedNode(schema);
     // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings,

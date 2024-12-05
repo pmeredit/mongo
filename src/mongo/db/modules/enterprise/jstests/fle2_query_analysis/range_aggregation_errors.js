@@ -133,12 +133,14 @@ const cases = [
         ],
         [31011]
     ],
+    // TODO SERVER-59284: Change expected error code to only be 9710000 after feature flag is
+    // enabled by default.
     [
         [
             {$match: {age: {$gt: NumberInt(10)}}},
             {$unionWith: {coll: "other", pipeline: [{$match: {age: {$lt: NumberInt(2)}}}]}}
         ],
-        [51204]
+        [51204, 9710000]
     ]
 ];
 

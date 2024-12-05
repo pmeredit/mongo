@@ -865,10 +865,28 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceVectorSearch,
                                       propagateSchemaNoop,
                                       analyzeStageNoop);
 
+FLEPipeline::CloneableEncryptionSchemaMap convertToCloneableMap(EncryptionSchemaMap&& schemaMap) {
+    FLEPipeline::CloneableEncryptionSchemaMap cloneableSchemaMap;
+    // Moving values out of the extracted node is okay here, because we know the extractedNode
+    // will not outlive this scope, which guarantees that the moved-from values will not be used
+    // after they have been moved. Performing moves here will save is a potential NamespaceString
+    // copy, and the deep copy (clone) of the EncryptionSchemaTreeNode.
+    while (schemaMap.begin() != schemaMap.end()) {
+        auto extractedNode = schemaMap.extract(schemaMap.begin());
+        invariant(extractedNode);
+        auto&& movedKey = std::move(extractedNode.key());
+        auto&& movedVal = std::move(extractedNode.mapped());
+
+        cloneableSchemaMap.emplace(std::piecewise_construct,
+                                   std::forward_as_tuple(std::move(movedKey)),
+                                   std::forward_as_tuple(std::move(movedVal)));
+    }
+    return cloneableSchemaMap;
+}
 }  // namespace
 
-FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
-                         const EncryptionSchemaTreeNode& schema)
+FLEPipeline::FLEPipeline(CloneableEncryptionSchemaMap initialStageContents,
+                         std::unique_ptr<Pipeline, PipelineDeleter>&& pipeline)
     : _parsedPipeline{std::move(pipeline)} {
     // Method for propagating a schema from one stage to the next by dynamically dispatching based
     // on the runtime-type of 'source'. The 'prevSchema' represents the schema of the document
@@ -887,15 +905,17 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
     // cannot reference other collections.
     auto referencedCollections = _parsedPipeline->getInvolvedCollections();
     referencedCollections.insert(_parsedPipeline->getContext()->getNamespaceString());
-    uassert(51204,
-            "Pipeline over an encrypted collection cannot reference additional collections.",
-            referencedCollections.size() == 1);
+
+    // (Ignore FCV check): Query Analysis does not run in the server, so it can't be FCV gated.
+    if (!feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabledAndIgnoreFCVUnsafe()) {
+        uassert(51204,
+                "Pipeline over an encrypted collection cannot reference additional collections.",
+                referencedCollections.size() == 1);
+    }
 
     auto [metadataTree, finalSchema] =
-        pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
-            {{_parsedPipeline->getContext()->getNamespaceString(), schema.clone()}},
-            *_parsedPipeline.get(),
-            propagateSchemaFunction);
+        pipeline_metadata_tree::makeTree<EncryptionSchemaTreeNodePtr>(
+            initialStageContents, *_parsedPipeline.get(), propagateSchemaFunction);
 
     _finalSchema = std::move(finalSchema);
 
@@ -915,8 +935,20 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
         return stageAnalyzerMap[typeid(*source)](this, stage, source);
     };
 
-    pipeline_metadata_tree::zip<clonable_ptr<EncryptionSchemaTreeNode>>(
+    pipeline_metadata_tree::zip<EncryptionSchemaTreeNodePtr>(
         &metadataTree.get(), _parsedPipeline.get(), stageAnalysisFunction);
 }
+
+// Constructor for Aggregate Command.
+FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
+                         EncryptionSchemaMap&& schemaMap)
+    : FLEPipeline(convertToCloneableMap(std::move(schemaMap)), std::move(pipeline)) {}
+
+// Constructor for other usages of FlePipeline.
+FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
+                         const EncryptionSchemaTreeNode& schema)
+    : FLEPipeline({{pipeline->getContext()->getNamespaceString(), schema.clone()}},
+                  std::move(pipeline)) {}
+
 
 }  // namespace mongo
