@@ -157,6 +157,22 @@ BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMe
     return objBuilder;
 }
 
+BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                    const StreamMeta& streamMeta,
+                                    const Document& doc,
+                                    const std::string& operatorName,
+                                    boost::optional<std::string> error) {
+    BSONObjBuilder objBuilder =
+        toDeadLetterQueueMsg(streamMetaFieldName, streamMeta, operatorName, std::move(error));
+    const int64_t maxDlqFullDocumentSizeBytes = BSONObjMaxUserSize / 2;
+    if (doc.getApproximateSize() <= maxDlqFullDocumentSizeBytes) {
+        objBuilder.append("doc", doc.toBson());
+    } else {
+        objBuilder.append("doc", "full document too large to emit");
+    }
+    return objBuilder;
+}
+
 NamespaceString getNamespaceString(const std::string& dbStr, const std::string& collStr) {
     return NamespaceStringUtil::deserialize(
         DatabaseNameUtil::deserialize(/*tenantId=*/boost::none, dbStr, SerializationContext()),

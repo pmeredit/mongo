@@ -581,7 +581,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             },
             std::vector<StreamDocument>{
                 Document{fromjson(
-                    "{'fullDocument':{ 'payload': {'include': 'feefie', 'exlude': 'fohfum'}}}")},
+                    "{'fullDocument':{ 'payload': {'include': 'feefie', 'exclude': 'fohfum'}}}")},
             },
             [](std::deque<StreamMsgUnion> messages) {
                 ASSERT_EQ(messages.size(), 1);
@@ -603,7 +603,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             },
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 13);
-                ASSERT_EQ(stats.numOutputBytes, 38);
+                ASSERT_EQ(stats.numOutputBytes, 39);
             },
         },
         {
@@ -1237,6 +1237,64 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponse) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
             ASSERT_EQ(stats.numDlqDocs, 2);
+        });
+}
+
+TEST_F(HttpsOperatorTest, ShouldDLQInnerPayloadDoc) {
+    StringData uri{"http://localhost:10000"};
+
+    auto rawPipeline = std::vector<mongo::BSONObj>{
+        fromjson(
+            R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }}, { $project: { include: 1 }})"),
+    };
+    auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
+    pipeline->optimizePipeline();
+
+    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+    mockHttpClient->expect(
+        MockHttpClient::Request{
+            HttpClient::HttpMethod::kPOST,
+            uri.toString(),
+        },
+        MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+    auto options = HttpsOperator::Options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+        .method = HttpClient::HttpMethod::kPOST,
+        .url = uri.toString(),
+        .as = "response",
+        .payloadPipeline = FeedablePipeline{std::move(pipeline)},
+    };
+
+    setupDag(std::move(options));
+
+    std::vector<StreamDocument> inputMsgs = {
+        Document{fromjson("{'fullDocument':{ 'payload': {'include': 'feefie'}}}")}};
+    std::queue<mongo::BSONObj> dlqMsgs;
+    testAgainstDocs(
+        std::move(inputMsgs),
+        [this, &dlqMsgs](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 0);
+
+            auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+            ASSERT_EQ(dlq->numMessages(), 1);
+
+            dlqMsgs = dlq->getMessages();
+            for (auto dlqMsgsCopy{dlqMsgs}; !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
+                auto dlqDoc = dlqMsgsCopy.front();
+                ASSERT_TRUE(!dlqDoc.isEmpty());
+                auto ack = dlqDoc["doc"];
+                ASSERT_TRUE(ack.ok());
+                ack = dlqDoc["doc"]["include"];
+                ASSERT_TRUE(ack.ok());
+                ASSERT_EQ(dlqDoc["doc"]["include"].String(), "feefie");
+            }
+        },
+        [this, &dlqMsgs](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 0);
+            ASSERT_EQ(stats.numOutputBytes, 20);
+            ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
+            ASSERT_EQ(stats.numDlqDocs, 1);
         });
 }
 

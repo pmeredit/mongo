@@ -183,7 +183,10 @@ private:
 
     // writeToDLQ writes StreamDocument to the DLQ with a specified error message and operator stats
     // for the given document
-    void writeToDLQ(StreamDocument* streamDoc, const std::string& errorMsg, ProcessResult& result);
+    void writeToDLQ(StreamDocument* streamDoc,
+                    const mongo::Document& payloadDoc,
+                    const std::string& errorMsg,
+                    ProcessResult& result);
 
     // tryLog will only log if the given logID hasn't been used within the last minute
     void tryLog(int id, std::function<void(int logID)> logFn);

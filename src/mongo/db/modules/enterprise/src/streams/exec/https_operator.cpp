@@ -267,12 +267,17 @@ void HttpsOperator::writeToStreamMeta(StreamDocument* streamDoc,
 }
 
 void HttpsOperator::writeToDLQ(StreamDocument* streamDoc,
+                               const mongo::Document& payloadDoc,
                                const std::string& errorMsg,
                                ProcessResult& result) {
     const std::string dlqErrorMsg = str::stream()
         << "Failed to process input document in " << kHttpsStageName << " with error: " << errorMsg;
-    result.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-        _context->streamMetaFieldName, std::move(*streamDoc), doGetName(), std::move(dlqErrorMsg)));
+    result.numDlqBytes +=
+        _context->dlq->addMessage(toDeadLetterQueueMsg(_context->streamMetaFieldName,
+                                                       streamDoc->streamMeta,
+                                                       payloadDoc,
+                                                       doGetName(),
+                                                       std::move(dlqErrorMsg)));
     result.numDlqDocs++;
 }
 
@@ -290,7 +295,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         try {
             result = _options.payloadPipeline->getNext();
         } catch (const DBException& e) {
-            writeToDLQ(streamDoc, e.what(), processResult);
+            writeToDLQ(streamDoc, streamDoc->doc, e.what(), processResult);
             return processResult;
         }
         tassert(9503400, "Expected result doc to exist", result);
@@ -308,7 +313,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             : _staticEncodedUrl;
         headers = evaluateHeaders(inputDoc);
     } catch (const DBException& e) {
-        writeToDLQ(streamDoc, e.what(), processResult);
+        writeToDLQ(streamDoc, payloadDoc, e.what(), processResult);
         return processResult;
     }
 
@@ -351,6 +356,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             switch (_options.onError) {
                 case mongo::OnErrorEnum::DLQ: {
                     writeToDLQ(streamDoc,
+                               payloadDoc,
                                fmt::format(
                                    "{} in {} with error: {}", msgPrefix, kHttpsStageName, e.what()),
                                processResult);
@@ -455,6 +461,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             switch (_options.onError) {
                 case mongo::OnErrorEnum::DLQ: {
                     writeToDLQ(streamDoc,
+                               payloadDoc,
                                fmt::format("Unsupported response content-type ({}) in {} only {} "
                                            "and {} are supported",
                                            *contentType,
