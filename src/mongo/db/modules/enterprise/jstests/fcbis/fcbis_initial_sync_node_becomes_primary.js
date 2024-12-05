@@ -37,7 +37,7 @@ const initialSyncNode = rst.add({
     }
 });
 rst.reInitiate();
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 const initialSyncNodeDb = initialSyncNode.getDB("test");
 
 assert.eq(3, initialSyncNodeDb.test.find().itcount());

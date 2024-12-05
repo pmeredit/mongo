@@ -95,5 +95,5 @@ primary.reconnect(initialSyncNode);
 hangAfterAttemptingExtendBackupCursorFailpoint.off();
 
 // The initial sync should complete successfully
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 rst.stopSet();

@@ -105,7 +105,7 @@ const initialSyncNode = rst.add({
     }
 });
 rst.reInitiate();
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 
 // Verify that we can take an incremental backup on "A", after the file copy based initial sync
 // completes.

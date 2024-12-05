@@ -49,7 +49,7 @@ function runDowngradeTest(downgradeFCV) {
     });
 
     rst.reInitiate();
-    rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+    rst.awaitSecondaryNodes(null, [initialSyncNode]);
     const initialSyncNodeDB = initialSyncNode.getDB("testDB");
 
     assert.eq(3, initialSyncNodeDB.test.find().itcount());
@@ -76,7 +76,7 @@ function runUpgradeTest() {
     const initialSyncNode =
         rst.add({'shardsvr': '', setParameter: {'initialSyncMethod': 'fileCopyBased'}});
     rst.reInitiate();
-    rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+    rst.awaitSecondaryNodes(null, [initialSyncNode]);
 
     const initialSyncNodeDB = initialSyncNode.getDB("testDB");
     assert.eq(3, initialSyncNodeDB.test.find().itcount());

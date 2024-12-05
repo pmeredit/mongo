@@ -49,7 +49,7 @@ assert.soon(() => rawMongoProgramOutput("5780600").match('Falling back to logica
             ReplSetTest.kDefaultTimeoutMS);
 
 jsTestLog("Logical initial sync should succeed");
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 checkLog.containsJson(initialSyncNode, 4853000);
 rst.awaitReplication();
 rst.awaitSecondaryNodes();

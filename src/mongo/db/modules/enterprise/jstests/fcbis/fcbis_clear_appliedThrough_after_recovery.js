@@ -56,7 +56,7 @@ assert.commandWorked(
 // Do more writes to trigger a new stable checkpoint on the primary.
 assert.commandWorked(primaryDb.test.insert([{a: 7}, {b: 8}, {c: 9}]));
 
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 
 const minValid = initialSyncNode.getCollection('local.replset.minvalid').findOne();
 assert(!minValid.hasOwnProperty('begin'), tojson(minValid));

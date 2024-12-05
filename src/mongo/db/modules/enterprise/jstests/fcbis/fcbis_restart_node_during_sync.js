@@ -78,7 +78,7 @@ rst.restart(initialSyncNode, {
     }
 });
 
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 let initialSyncNodeDB = initialSyncNode.getDB("testDB");
 assert.eq(1, initialSyncNodeDB.testColl.find().itcount());
 
@@ -122,7 +122,7 @@ rst.restart(initialSyncNode, {
     }
 });
 
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 initialSyncNodeDB = initialSyncNode.getDB("testDB");
 assert.eq(2, initialSyncNodeDB.testColl.find().itcount());
 

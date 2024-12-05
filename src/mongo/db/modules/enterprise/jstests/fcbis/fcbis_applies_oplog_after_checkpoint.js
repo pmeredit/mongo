@@ -49,7 +49,7 @@ const initialSyncNode = rst.add({
     }
 });
 rst.reInitiate();
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 
 const initialSyncNodeDb = initialSyncNode.getDB("test");
 // Fast count should be accurate because backup syncs size storer immediately before

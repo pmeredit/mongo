@@ -95,7 +95,7 @@ jsTestLog("Waiting for election to fail");
 election.join();
 
 jsTestLog("Waiting for initial sync to complete");
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 
 jsTestLog("Election should succeed now");
 assert.commandWorked(rst.nodes[1].adminCommand({replSetStepUp: 1}));

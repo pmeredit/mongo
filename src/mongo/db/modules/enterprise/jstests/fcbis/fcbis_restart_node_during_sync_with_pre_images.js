@@ -80,7 +80,7 @@ function restartAndWaitToFinishSync(initialSyncMethod, initialSyncNode, startCle
         }
     });
 
-    rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+    rst.awaitSecondaryNodes(null, [initialSyncNode]);
 }
 
 function restartAndWaitForFailpoint(

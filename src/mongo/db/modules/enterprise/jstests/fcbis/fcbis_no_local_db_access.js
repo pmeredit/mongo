@@ -49,7 +49,7 @@ assert.commandFailedWithCode(initialSyncNodeLocalDb.runCommand({find: "does_not_
                              ErrorCodes.NotPrimaryOrSecondary);
 assert.commandWorked(
     initialSyncNode.adminCommand({configureFailPoint: "fCBISHangAfterFileCloning", mode: "off"}));
-rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+rst.awaitSecondaryNodes(null, [initialSyncNode]);
 jsTestLog(
     "Ensuring we can read a local collection expected to exist after initial sync completes.");
 let res = assert.commandWorked(initialSyncNodeLocalDb.runCommand({find: "startup_log"}));

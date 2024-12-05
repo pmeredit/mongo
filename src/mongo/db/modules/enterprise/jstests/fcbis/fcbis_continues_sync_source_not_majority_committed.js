@@ -74,7 +74,7 @@ replset.waitForState(initialSyncNode, ReplSetTest.State.STARTUP_2);
 checkLog.checkContainsOnceJson(initialSyncNode, 7929800, {});
 
 // Wait for the new node to complete FCBIS and become a secondary.
-replset.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+replset.awaitSecondaryNodes(null, [initialSyncNode]);
 
 stopReplProducerFailPoint.off();
 
