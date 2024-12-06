@@ -50,6 +50,55 @@ const testCases = [
         ],
         afterModifyReplayCount: 6
     },
+    {
+        inputForOriginalPipeline: [
+            // window 2 to 3
+            {a: 4, ts: ISODate("2024-01-01T00:00:02.001Z")},
+            {a: 5, ts: ISODate("2024-01-01T00:00:02.500Z")},
+            // window 1 to 2
+            {a: 4, ts: ISODate("2024-01-01T00:00:01.001Z")},
+            {a: 5, ts: ISODate("2024-01-01T00:00:01.500Z")},
+            {a: 6, ts: ISODate("2024-01-01T00:00:01.999Z")},
+            // window 0 to 1
+            {a: 1, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 2, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 3, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 4, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 0, ts: ISODate("2024-01-01T00:00:00.000Z")},
+        ],
+        inputAfterModifyBeforeRestart: [
+            // close the windows
+            {a: 8, ts: ISODate("2024-01-02T00:00:02.001Z")},
+        ],
+        originalPipeline: [
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            {
+                $tumblingWindow: {
+                    interval: {size: NumberInt(1), unit: "second"},
+                    allowedLateness: {size: NumberInt(90), unit: "second"},
+                    pipeline: [{$group: {_id: "foo", count: {$count: {}}}}]
+                }
+            }
+        ],
+        modifiedPipeline: [
+            {$match: {"fullDocument.a": {$gte: 1}}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            {
+                $tumblingWindow: {
+                    interval: {size: NumberInt(1), unit: "second"},
+                    allowedLateness: {size: NumberInt(90), unit: "second"},
+                    pipeline: [{$group: {_id: null, count: {$count: {}}}}]
+                }
+            },
+            {$project: {_id: "$_stream_meta.window.start", count: 1}}
+        ],
+        expectedOutput: [
+            {"count": 2},
+            {"count": 3},
+            {"count": 4},
+        ],
+        afterModifyReplayCount: 9
+    },
 ];
 
 for (const testCase of testCases) {

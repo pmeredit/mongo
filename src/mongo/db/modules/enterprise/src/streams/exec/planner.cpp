@@ -2153,24 +2153,35 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
         }
         return boost::none;
     };
-    auto validateMatchingTumblingWindows = [](const BSONObj& oldStage, const BSONObj& newStage) {
+    auto validateMatchingAllowedLateness = [](const auto& l, const auto& r) {
+        constexpr auto msg =
+            "resumeFromCheckpoint must be false to change a window stage's allowedLateness";
+        uassert(ErrorCodes::StreamProcessorInvalidOptions, msg, bool(l) == bool(r));
+        if (l && r) {
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    msg,
+                    SimpleBSONObjComparator::kInstance.evaluate(l->toBSON() == r->toBSON()));
+        }
+    };
+    auto validateMatchingInterval = [](const auto& l, const auto& r) {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to change a window stage's interval",
+                SimpleBSONObjComparator::kInstance.evaluate(l.toBSON() == r.toBSON()));
+    };
+    auto validateMatchingTumblingWindows = [&](const BSONObj& oldStage, const BSONObj& newStage) {
         IDLParserContext ctx("$tumblingWindow");
         auto l = TumblingWindowOptions::parse(ctx, oldStage.firstElement().Obj());
         auto r = TumblingWindowOptions::parse(ctx, newStage.firstElement().Obj());
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "resumeFromCheckpoint must be false to change a window stage's interval",
-                SimpleBSONObjComparator::kInstance.evaluate(l.getInterval().toBSON() ==
-                                                            r.getInterval().toBSON()));
+        validateMatchingInterval(l.getInterval(), r.getInterval());
+        validateMatchingAllowedLateness(l.getAllowedLateness(), r.getAllowedLateness());
         return std::make_pair(l.getPipeline(), r.getPipeline());
     };
-    auto validateMatchingHoppingWindows = [](const BSONObj& oldStage, const BSONObj& newStage) {
+    auto validateMatchingHoppingWindows = [&](const BSONObj& oldStage, const BSONObj& newStage) {
         IDLParserContext ctx("$hoppingWindow");
         auto l = HoppingWindowOptions::parse(ctx, oldStage.firstElement().Obj());
         auto r = HoppingWindowOptions::parse(ctx, newStage.firstElement().Obj());
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "resumeFromCheckpoint must be false to change a window stage's interval",
-                SimpleBSONObjComparator::kInstance.evaluate(l.getInterval().toBSON() ==
-                                                            r.getInterval().toBSON()));
+        validateMatchingInterval(l.getInterval(), r.getInterval());
+        validateMatchingAllowedLateness(l.getAllowedLateness(), r.getAllowedLateness());
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "resumeFromCheckpoint must be false to change a window stage's hopSize",
                 SimpleBSONObjComparator::kInstance.evaluate(l.getHopSize().toBSON() ==
@@ -2198,16 +2209,6 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
             std::tie(oldInnerPipeline, newInnerPipeline) =
                 validateMatchingHoppingWindows(oldWindow->stageBson, newWindow->stageBson);
         }
-
-        bool oldHasHttps =
-            hasHttpsStageBeforeWindow(oldUserPipeline) || hasHttpsStage(oldInnerPipeline);
-        bool newHasHttps =
-            hasHttpsStageBeforeWindow(newUserPipeline) || hasHttpsStage(newInnerPipeline);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                fmt::format("resumeFromCheckpoint must be false to modify a processor with an "
-                            "{} stage in or before a window stage",
-                            kHttpsStageName),
-                !(oldHasHttps && newHasHttps));
     } else if (!oldWindow && newWindow) {
         // TODO(SERVER-95185): Support adding a window stage with resumeFromCheckpoint=true.
         uasserted(ErrorCodes::StreamProcessorInvalidOptions,

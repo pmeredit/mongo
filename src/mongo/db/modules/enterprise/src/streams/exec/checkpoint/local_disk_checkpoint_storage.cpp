@@ -174,7 +174,7 @@ boost::optional<CheckpointId> LocalDiskCheckpointStorage::doOnWindowOpen() {
             "Missing source state for the last created checkpoint",
             _lastCheckpointSourceState);
 
-    CheckpointId chkId = (*_lastCheckpointSourceState).getCheckpointId();
+    CheckpointId chkId = _lastCheckpointSourceState->getCheckpointId();
     auto [itr, res] = _replayCheckpointSourceStates.emplace(
         std::make_pair(chkId, std::make_pair(*_lastCheckpointSourceState, 1)));
 

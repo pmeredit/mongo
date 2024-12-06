@@ -241,7 +241,7 @@ structs:
             7:
                 type: safeInt64
                 description: The minimum allowed window start time after a modify. Prior versions of the stream processor closed windows before this time.
-                cpp_name: afterModifyMinWindowStartTime
+                cpp_name: replayMinWindowStartTime
                 optional: true
 
     # The following types are required by the manifest file format in the LocalDiskCheckpointStorage implementation

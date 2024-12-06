@@ -307,8 +307,12 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
 
     // First, write the minimum window start time.
     WindowOperatorCheckpointRecord minWindowStartTimeRecord;
+    LOGV2_INFO(9531606,
+               "Saving window state",
+               "minWindowStartTime"_attr = _minWindowStartTime,
+               "replayMinWindowStartTime"_attr = _replayMinWindowStartTime);
     minWindowStartTimeRecord.setMinWindowStartTime(_minWindowStartTime);
-    minWindowStartTimeRecord.setAfterModifyMinWindowStartTime(_afterModifyMinWindowStartTime);
+    minWindowStartTimeRecord.setReplayMinWindowStartTime(_replayMinWindowStartTime);
 
     _context->checkpointStorage->appendRecord(writer.get(),
                                               Document{minWindowStartTimeRecord.toBSON()});
@@ -350,7 +354,7 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
     if (_context->restoredCheckpointInfo && _context->restoredCheckpointInfo->minWindowStartTime) {
         // We enter this block when restoring after a modify operation.
         _minWindowStartTime = *_context->restoredCheckpointInfo->minWindowStartTime;
-        _afterModifyMinWindowStartTime = _minWindowStartTime;
+        _replayMinWindowStartTime = _minWindowStartTime;
         return;
     }
 
@@ -372,13 +376,13 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
             minWindowStartTime.getType() == BSONType::NumberLong);
     _minWindowStartTime = minWindowStartTime.getLong();
 
-    auto afterModifyMinWindowStartTime =
-        record->getField(WindowOperatorCheckpointRecord::kAfterModifyMinWindowStartTimeFieldName);
-    if (!afterModifyMinWindowStartTime.missing()) {
+    auto replayMinWindowStartTime =
+        record->getField(WindowOperatorCheckpointRecord::kReplayMinWindowStartTimeFieldName);
+    if (!replayMinWindowStartTime.missing()) {
         tassert(8318305,
-                "Expected afterModifyMinWindowStartTimeFieldName to be long",
-                afterModifyMinWindowStartTime.getType() == BSONType::NumberLong);
-        _afterModifyMinWindowStartTime = afterModifyMinWindowStartTime.getLong();
+                "Expected replayMinWindowStartTimeFieldName to be long",
+                replayMinWindowStartTime.getType() == BSONType::NumberLong);
+        _replayMinWindowStartTime = replayMinWindowStartTime.getLong();
     }
 
     // Restore all the open windows.
@@ -562,7 +566,7 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
 
 void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
                                                 int64_t minEligibleStartTime) {
-    if (_afterModifyMinWindowStartTime && minEligibleStartTime < *_afterModifyMinWindowStartTime) {
+    if (_replayMinWindowStartTime && minEligibleStartTime < *_replayMinWindowStartTime) {
         // After a pipeline modify, we might replay docs that have already been in previously
         // closed windows. We don't want to DLQ those docs.
         return;

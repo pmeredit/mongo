@@ -248,7 +248,7 @@ private:
     int64_t _minWindowStartTime{0};
     // If set, windows before this start time were already closed by a past version of the
     // processor.
-    boost::optional<int64_t> _afterModifyMinWindowStartTime;
+    boost::optional<int64_t> _replayMinWindowStartTime;
     // The max watermark received from the input, minus allowedLateness.
     int64_t _maxReceivedWatermarkMs{-1};
     // Set when a kIdle message is received from the source.
