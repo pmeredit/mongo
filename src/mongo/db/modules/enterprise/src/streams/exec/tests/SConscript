@@ -4,198 +4,760 @@ Import("env")
 
 env = env.Clone()
 
+env.Library(
+    target="streams_test_utils",
+    source=[
+        "test_utils.cpp",
+        "in_memory_checkpoint_storage.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/util/net/mock_http_client",
+        "../streams_operators",
+    ],
+    LIBDEPS_PRIVATE=[
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/unittest/unittest",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
+)
+
 env.CppUnitTest(
     target="kafka_consumer_operator_test",
-    source=[],
+    source=[
+        "kafka_consumer_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_util_test",
-    source=[],
+    source=[
+        "./streams_util_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="sample_data_source_operator_test",
-    source=[],
+    source=[
+        "sample_data_source_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="kafka_emit_test",
-    source=[],
+    source=[
+        "kafka_emit_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="delayed_watermark_generator_test",
-    source=[],
+    source=[
+        "delayed_watermark_generator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="document_source_feeder_test",
-    source=[],
+    source=[
+        "document_source_feeder_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/db/storage/storage_options",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="document_timestamp_extractor_test",
-    source=[],
+    source=[
+        "document_timestamp_extractor_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_exec_util",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_executor_test",
-    source=[],
+    source=[
+        "streams_executor_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="group_operator_test",
-    source=[],
+    source=[
+        "group_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 
 env.CppUnitTest(
     target="window_aware_operator_test",
-    source=[],
+    source=[
+        "window_aware_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="in_memory_source_sink_operator_test",
-    source=[],
+    source=[
+        "in_memory_source_sink_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="limit_operator_test",
-    source=[],
+    source=[
+        "limit_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="document_transformation_operator_test",
-    source=[],
+    source=[
+        "document_transformation_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/pipeline/pipeline",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/query_expressions",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_planner_test",
-    source=[],
+    source=[
+        "planner_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="watermark_combiner_test",
-    source=[],
+    source=[
+        "watermark_combiner_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="stream_stats_test",
-    source=[],
+    source=[
+        "stream_stats_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="window_operator_test",
-    source=[],
+    source=[
+        "window_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/pipeline/pipeline",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/query_expressions",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="session_window_aware_operator_test",
-    source=[],
+    source=[
+        "session_window_aware_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/pipeline/pipeline",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/query_expressions",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="lookup_operator_test",
-    source=[],
+    source=[
+        "lookup_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="merge_operator_test",
-    source=[],
+    source=[
+        "merge_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="source_buffer_manager_test",
-    source=[],
+    source=[
+        "source_buffer_manager_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_exec_util",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="sort_operator_test",
-    source=[],
+    source=[
+        "sort_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_output_sampler_test",
-    source=[],
+    source=[
+        "output_sampler_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="validate_operator_test",
-    source=[],
+    source=[
+        "validate_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_checkpoint_test",
-    source=[],
+    source=[
+        "checkpoint_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/util/periodic_runner_factory",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_checkpoint_storage_test",
-    source=[],
+    source=[
+        "checkpoint_storage_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="local_disk_checkpoint_storage_test",
-    source=[],
+    source=[
+        "local_disk_checkpoint_storage_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
-env.BazelProgram(
+env.Program(
     target="local_disk_checkpoint_long_running_test",
-    source=[],
+    source=[
+        "local_disk_checkpoint_long_running_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="collect_operator_test",
-    source=[],
+    source=[
+        "collect_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
+        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="json_event_deserializer_test",
-    source=[],
+    source=[
+        "json_event_deserializer_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_exec_util",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="mongocxx_util_test",
-    source=[],
+    source=[
+        "mongocxx_util_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="streams_memory_usage_monitor_test",
-    source=[],
+    source=[
+        "memory_usage_monitor_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="stream_processor_feature_flags_test",
-    source=[],
+    source=[
+        "stream_processor_feature_flags_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="kafka_connect_auth_callback_test",
-    source=[],
+    source=[
+        "kafka_connect_auth_callback_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "streams_test_utils",
+    ],
 )
 
 env.CppUnitTest(
     target="kafka_key_deserialization_test",
-    source=[],
+    source=[
+        "kafka_key_deserialization_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+        "streams_test_utils",
+    ],
+    SYSLIBDEPS=[
+        "sasl2",
+    ],
 )
 
 env.CppUnitTest(
     target="kafka_resolve_callback_test",
-    source=[],
+    source=[
+        "kafka_resolve_callback_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "streams_test_utils",
+    ],
 )
 
 env.CppUnitTest(
     target="https_operator_test",
-    source=[],
+    source=[
+        "https_operator_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/util/net/mock_http_client",
+        "streams_test_utils",
+    ],
 )
 
 env.CppUnitTest(
     target="dead_letter_queue_test",
-    source=[],
+    source=[
+        "dead_letter_queue_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "streams_test_utils",
+    ],
 )
 
 env.CppUnitTest(
     target="rate_limiter_test",
-    source=[],
+    source=[
+        "rate_limiter_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../streams_operators",
+    ],
 )

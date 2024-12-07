@@ -4,17 +4,67 @@ Import("env")
 
 env = env.Clone()
 
+# TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
+platform_name = "linux_" + env["TARGET_ARCH"]
+if env.ToolchainIs("clang"):
+    # This section force includes third_party/mongocxx as a clang "isystem" include.
+    # We do this to avoid the headers being scanned with clang-tidy, becuase the clang-tidy
+    # HeaderFilterRegex does not support exclusions.
+    # TODO(SERVER-76494): Remove this workaround once clang-tidy support exclusion of header paths
+    env.AppendUnique(
+        CXXFLAGS=(
+            "-isystem",
+            env.Dir("$MONGOCXX_DIR").srcnode().abspath,
+            "-isystem",
+            env.Dir(f"$MONGOCXX_DIR/platform/{platform_name}").srcnode().abspath,
+        )
+    )
+else:
+    env.Append(
+        CPPPATH=[
+            "$MONGOCXX_DIR",
+            f"$MONGOCXX_DIR/platform/{platform_name}",
+        ]
+    )
+
 env.CppUnitTest(
     target="stream_manager_test",
-    source=[],
+    source=[
+        "stream_manager_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/db/query/query_test_service_context",
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
+        "$BUILD_DIR/mongo/db/service_context_test_fixture",
+        "$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture",
+        "../../exec/tests/streams_test_utils",
+        "../streams_management",
+    ],
 )
 
 env.CppUnitTest(
     target="container_stats_utils_test",
-    source=[],
+    source=[
+        "container_stats_utils_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../../exec/tests/streams_test_utils",
+        "../streams_management",
+    ],
 )
 
 env.CppUnitTest(
     target="container_stats_test",
-    source=[],
+    source=[
+        "container_stats_test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "../../exec/tests/streams_test_utils",
+        "../streams_management",
+    ],
 )
