@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -7,4 +7,29 @@ exports_files(
         "*.h",
         "*.cpp",
     ]),
+)
+
+mongo_cc_unit_test(
+    name = "mongo_crypt_test",
+    srcs = [
+        "mongo_crypt.cpp",
+        "mongo_crypt.h",
+        "mongo_crypt_test.cpp",
+        "//src/mongo/embedded:api_common.h",
+    ],
+    has_custom_mainline = True,
+    local_defines = [
+        "MONGO_CRYPT_SUPPORT_STATIC",
+    ],
+    tags = ["mongo_unittest_second_group"],
+    target_compatible_with = select({
+        "//bazel/config:shared_archive_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/modules/enterprise/src/fle/query_analysis",
+        "//src/mongo/util:version_impl",
+    ],
 )

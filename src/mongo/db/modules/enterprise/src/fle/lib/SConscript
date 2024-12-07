@@ -67,25 +67,10 @@ if get_option("link-model") == "dynamic-sdk" and env.TargetOSIs("posix", "window
     )
 
 if get_option("link-model") != "dynamic-sdk":
-    cryptTestEnv = env.Clone()
-    cryptTestEnv.AppendUnique(
-        CPPDEFINES=[
-            "MONGO_CRYPT_SUPPORT_STATIC",
-        ]
-    )
-
-    unitTest = cryptTestEnv.CppUnitTest(
+    env.CppUnitTest(
         target="mongo_crypt_test",
-        source=[
-            "mongo_crypt.cpp",
-            "mongo_crypt_test.cpp",
-        ],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/db/auth/authmocks",
-            "$BUILD_DIR/mongo/db/service_context_test_fixture",
-            "../query_analysis/query_analysis",
-        ],
-        UNITTEST_HAS_CUSTOM_MAINLINE=True,
+        source=[],
+        LIBDEPS=[],
         AIB_COMPONENT="mongo-crypt-test",
     )
 
