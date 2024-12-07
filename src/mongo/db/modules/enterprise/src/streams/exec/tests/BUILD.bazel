@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_binary", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -7,4 +7,813 @@ exports_files(
         "*.h",
         "*.cpp",
     ]),
+)
+
+SASL_SYSDEP = select({
+    "@platforms//os:windows": [
+        "sasl2.lib",
+    ],
+    "//conditions:default": [
+        "-lsasl2",
+    ],
+})
+
+RT_SYSDEP = select({
+    "@platforms//os:linux": [
+        "-lrt",
+    ],
+    "//conditions:default": [],
+})
+
+# TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
+MONGOCXX_COPTS = [
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist",
+] + select({
+    "@platforms//cpu:x86_64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64",
+    ],
+    "@platforms//cpu:aarch64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64",
+    ],
+    "//conditions:default": [],
+})
+
+mongo_cc_library(
+    name = "streams_test_utils",
+    srcs = [
+        "in_memory_checkpoint_storage.cpp",
+        "test_utils.cpp",
+    ],
+    hdrs = [
+        "in_memory_checkpoint_storage.h",
+        "test_utils.h",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    deps = [
+        "//src/mongo/db:server_base",
+        "//src/mongo/db/matcher:parsed_match_expression_for_test",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/modules/enterprise/src/streams/third_party/mongocxx",
+        "//src/mongo/unittest",
+        "//src/mongo/util/net:mock_http_client",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "kafka_connect_auth_callback_test",
+    srcs = [
+        "kafka_connect_auth_callback_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "kafka_consumer_operator_test",
+    srcs = [
+        "kafka_consumer_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/modules/enterprise/src/streams/management:streams_management",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_util_test",
+    srcs = [
+        "streams_util_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "sample_data_source_operator_test",
+    srcs = [
+        "sample_data_source_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "kafka_emit_test",
+    srcs = [
+        "kafka_emit_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "delayed_watermark_generator_test",
+    srcs = [
+        "delayed_watermark_generator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "document_source_feeder_test",
+    srcs = [
+        "document_source_feeder_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/db/storage:storage_options",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "document_timestamp_extractor_test",
+    srcs = [
+        "document_timestamp_extractor_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_exec_util",
+        "//src/mongo/db/pipeline:aggregation_context_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_executor_test",
+    srcs = [
+        "streams_executor_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "group_operator_test",
+    srcs = [
+        "group_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "window_aware_operator_test",
+    srcs = [
+        "window_aware_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "in_memory_source_sink_operator_test",
+    srcs = [
+        "in_memory_source_sink_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "limit_operator_test",
+    srcs = [
+        "limit_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "document_transformation_operator_test",
+    srcs = [
+        "document_transformation_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:query_expressions",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/pipeline",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/db/storage/devnull:storage_devnull_core",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_planner_test",
+    srcs = [
+        "planner_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "watermark_combiner_test",
+    srcs = [
+        "watermark_combiner_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "stream_stats_test",
+    srcs = [
+        "stream_stats_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "window_operator_test",
+    srcs = [
+        "window_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:query_expressions",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/pipeline",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/db/storage/devnull:storage_devnull_core",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "session_window_aware_operator_test",
+    srcs = [
+        "session_window_aware_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:query_expressions",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/pipeline",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/db/storage/devnull:storage_devnull_core",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "lookup_operator_test",
+    srcs = [
+        "lookup_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "merge_operator_test",
+    srcs = [
+        "merge_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "source_buffer_manager_test",
+    srcs = [
+        "source_buffer_manager_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_exec_util",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "sort_operator_test",
+    srcs = [
+        "sort_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_output_sampler_test",
+    srcs = [
+        "output_sampler_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "validate_operator_test",
+    srcs = [
+        "validate_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_checkpoint_test",
+    srcs = [
+        "checkpoint_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/modules/enterprise/src/streams/management:streams_management",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/util:periodic_runner_factory",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_checkpoint_storage_test",
+    srcs = [
+        "checkpoint_storage_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "local_disk_checkpoint_storage_test",
+    srcs = [
+        "local_disk_checkpoint_storage_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_binary(
+    name = "local_disk_checkpoint_long_running_test",
+    srcs = [
+        "local_disk_checkpoint_long_running_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_all"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "collect_operator_test",
+    srcs = [
+        "collect_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "json_event_deserializer_test",
+    srcs = [
+        "json_event_deserializer_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_exec_util",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "mongocxx_util_test",
+    srcs = [
+        "mongocxx_util_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "streams_memory_usage_monitor_test",
+    srcs = [
+        "memory_usage_monitor_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "stream_processor_feature_flags_test",
+    srcs = [
+        "stream_processor_feature_flags_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "kafka_key_deserialization_test",
+    srcs = [
+        "kafka_key_deserialization_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "kafka_resolve_callback_test",
+    srcs = [
+        "kafka_resolve_callback_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "https_operator_test",
+    srcs = [
+        "https_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/util/net:mock_http_client",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "dead_letter_queue_test",
+    srcs = [
+        "dead_letter_queue_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "rate_limiter_test",
+    srcs = [
+        "rate_limiter_test.cpp",
+    ],
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/util:tick_source_mock",
+    ],
 )
