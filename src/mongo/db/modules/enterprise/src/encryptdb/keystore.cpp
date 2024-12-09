@@ -281,7 +281,7 @@ private:
         "columns=(keyid,database,rolloverID,key,initializationCount)"_sd;
 
     WTDataStore _datastore;
-    uint32_t _rolloverId;
+    AtomicWord<uint32_t> _rolloverId;
 
     // Looking up keys by name would require scanning the WT table, so we cache the ID's for
     // all the databases in the current rollover set.
@@ -316,7 +316,7 @@ public:
     }
 
     void insert(const UniqueSymmetricKey& key, boost::optional<uint32_t> rolloverId) override {
-        uint32_t rid = rolloverId.value_or(_parent->_rolloverId);
+        uint32_t rid = rolloverId.value_or(_parent->getRolloverId());
         // Make sure the key ID of the input key has a name but hasn't been assigned an ID yet
         invariant(!key->getKeyId().name().empty());
 
@@ -335,7 +335,7 @@ public:
         // to cache keys in the current rollover set, since old rollover sets have outdated name to
         // ID pairings.
         const auto& keyId = key->getKeyId();
-        if (rid == _parent->_rolloverId) {
+        if (rid == _parent->getRolloverId()) {
             bool inserted;
             {
                 stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
@@ -502,12 +502,12 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
 void KeystoreImplV1::rollOverKeys() {
     stdx::lock_guard<stdx::mutex> lk(_dbNameToKeyIdCurrentMutex);
 
-    _rolloverId++;
+    _rolloverId.fetchAndAddRelaxed(1);
     _dbNameToKeyIdCurrent.clear();
 }
 
 std::uint32_t KeystoreImplV1::getRolloverId() const {
-    return _rolloverId;
+    return _rolloverId.loadRelaxed();
 }
 
 std::unique_ptr<Keystore::Session> KeystoreImplV1::makeSession() {
