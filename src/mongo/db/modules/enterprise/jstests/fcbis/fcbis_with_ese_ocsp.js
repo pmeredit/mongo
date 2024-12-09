@@ -3,7 +3,7 @@
  * OCSP responder, and we are adding a new node to the set starting
  * with FCBIS, we can still proceed with FCBIS.
  *
- * @tags: [requires_fcv_60, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_fcv_60, requires_persistence, requires_wiredtiger, requires_updated_oscrypto]
  */
 
 import {ReplSetTest} from "jstests/libs/replsettest.js";
