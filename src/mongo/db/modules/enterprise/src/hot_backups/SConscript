@@ -4,24 +4,6 @@ Import("env")
 
 env.CppUnitTest(
     target="enterprise_hot_backups_test",
-    source=[
-        "backup_cursor_service_test.cpp",
-        "document_source_backup_cursor_test.cpp",
-        "document_source_backup_file_test.cpp",
-        "mock_backup_cursor_service_test.cpp",
-        "mock_mongo_interface_for_backup_tests.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
-        "$BUILD_DIR/mongo/db/query/query_test_service_context",
-        "$BUILD_DIR/mongo/db/repl/replmocks",
-        "$BUILD_DIR/mongo/db/repl/storage_interface_impl",
-        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
-        "$BUILD_DIR/mongo/db/storage/backup_block",
-        "$BUILD_DIR/mongo/db/storage/backup_cursor_hooks",
-        "$BUILD_DIR/mongo/db/storage/storage_options",
-        "$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core",
-        "hot_backups",
-    ],
+    source=[],
+    LIBDEPS=[],
 )

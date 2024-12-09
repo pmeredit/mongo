@@ -4,20 +4,6 @@ Import("env")
 
 env.CppUnitTest(
     target="magic_restore_test",
-    source=[
-        "magic_restore_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "$BUILD_DIR/mongo/db/repl/oplog",
-        "$BUILD_DIR/mongo/db/repl/oplog_entry",
-        "$BUILD_DIR/mongo/db/repl/replmocks",
-        "$BUILD_DIR/mongo/db/repl/storage_interface_impl",
-        "$BUILD_DIR/mongo/db/s/sharding_catalog_manager",
-        "$BUILD_DIR/mongo/db/service_context_d",
-        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
-        "$BUILD_DIR/mongo/db/shard_role",
-        "$BUILD_DIR/mongo/db/storage/storage_options",
-        "magic_restore",
-    ],
+    source=[],
+    LIBDEPS=[],
 )

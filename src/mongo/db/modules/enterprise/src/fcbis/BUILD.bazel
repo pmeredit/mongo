@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -44,5 +44,16 @@ mongo_cc_library(
         "//src/mongo/executor:scoped_task_executor",
         "//src/mongo/util:progress_meter",
         "//src/mongo/watchdog",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "initial_sync_file_mover_test",
+    srcs = [
+        "initial_sync_file_mover_test.cpp",
+    ],
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        ":file_copy_based_initial_syncer",
     ],
 )

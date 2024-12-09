@@ -40,10 +40,6 @@ env.CppUnitTest(
 
 env.CppUnitTest(
     target="initial_sync_file_mover_test",
-    source=[
-        "initial_sync_file_mover_test.cpp",
-    ],
-    LIBDEPS=[
-        "file_copy_based_initial_syncer",
-    ],
+    source=[],
+    LIBDEPS=[],
 )

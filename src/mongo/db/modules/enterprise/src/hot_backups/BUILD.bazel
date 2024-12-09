@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -71,5 +71,31 @@ mongo_cc_library(
         "hot_backups",
         "//src/mongo/db:service_context",
         "//src/mongo/db/pipeline:docs_needed_bounds_visitor",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "enterprise_hot_backups_test",
+    srcs = [
+        "backup_cursor_service_test.cpp",
+        "document_source_backup_cursor_test.cpp",
+        "document_source_backup_file_test.cpp",
+        "mock_backup_cursor_service_test.cpp",
+        "mock_mongo_interface_for_backup_tests.cpp",
+        "mock_mongo_interface_for_backup_tests.h",
+    ],
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        ":hot_backups",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/query:query_test_service_context",
+        "//src/mongo/db/repl:replmocks",
+        "//src/mongo/db/repl:storage_interface_impl",
+        "//src/mongo/db/storage:backup_block",
+        "//src/mongo/db/storage:backup_cursor_hooks",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
     ],
 )
