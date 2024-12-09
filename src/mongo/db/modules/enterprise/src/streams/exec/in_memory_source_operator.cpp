@@ -29,6 +29,7 @@ void InMemorySourceOperator::addDataMsgInner(StreamDataMsg dataMsg,
                                              boost::optional<StreamControlMsg> controlMsg) {
     StreamMsgUnion msg;
     msg.dataMsg = std::move(dataMsg);
+    msg.dataMsg->creationTimer = mongo::Timer{};
     msg.controlMsg = std::move(controlMsg);
 
     // Report current memory usage to SourceBufferManager and allocate one page of memory from it.
@@ -37,7 +38,8 @@ void InMemorySourceOperator::addDataMsgInner(StreamDataMsg dataMsg,
     uassert(ErrorCodes::InternalError,
             "Failed to allocate a page from SourceBufferManager",
             allocSuccess);
-    incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getByteSize()});
+    incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getByteSize(),
+                                   .timeSpent = msg.dataMsg->creationTimer->elapsed()});
 
     {
         stdx::unique_lock<stdx::mutex> lock(_mutex);

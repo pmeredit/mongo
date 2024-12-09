@@ -58,7 +58,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
-    StreamDataMsg dataMsg;
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     for (int i = 0; i < 5; ++i) {
         // Good doc.
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}, b: {}}}", i, i))));
@@ -113,7 +113,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
-    StreamDataMsg dataMsg;
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     for (int i = 0; i < 5; ++i) {
         // Good doc.
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{quantity: {}}}", i * 2))));
@@ -165,7 +165,7 @@ TEST_F(ValidateOperatorTest, QueryExpression) {
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
-    StreamDataMsg dataMsg;
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     for (int i = 0; i < 5; ++i) {
         int32_t a = i * 2;
         int32_t b = i * 3;

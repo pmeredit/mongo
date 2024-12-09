@@ -61,7 +61,7 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
     sink.start();
 
     for (int i = 0; i < 10; ++i) {
-        StreamDataMsg dataMsg;
+        auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
 
         source.addDataMsg(dataMsg);
@@ -94,7 +94,7 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
 TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
     InMemorySourceOperator source1(_context.get(), makeSourceOptions());
     for (int i = 0; i < 10; ++i) {
-        StreamDataMsg dataMsg;
+        auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
 
         source1.addDataMsg(dataMsg);
@@ -103,7 +103,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
 
     InMemorySourceOperator source2(_context.get(), makeSourceOptions());
     for (int i = 0; i < 10; ++i) {
-        StreamDataMsg dataMsg;
+        auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{b: {}}}", i))));
 
         source2.addDataMsg(dataMsg);
@@ -177,7 +177,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
     source.start();
     sink.start();
 
-    StreamDataMsg dataMsg;
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     dataMsg.docs.emplace_back(Document(fromjson("{timestampMs: 1693933335000, event: 'abc'}")));
     dataMsg.docs.emplace_back(Document(fromjson("{timestampMs: 1693933341000, event: 'def'}")));
     source.addDataMsg(dataMsg);

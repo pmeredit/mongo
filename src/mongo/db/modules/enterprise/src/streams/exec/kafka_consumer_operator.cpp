@@ -770,7 +770,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
     int32_t curDataMsgByteSize{0};
     auto newStreamDataMsg = [&]() {
-        StreamDataMsg dataMsg;
+        auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
         dataMsg.docs.reserve(dataMsgMaxDocSize + _options.maxNumDocsToReturn);
         curDataMsgByteSize = 0;
         return dataMsg;
@@ -932,7 +932,8 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
         incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                        .numInputBytes = numInputBytes,
-                                       .numDlqDocs = numDlqDocs});
+                                       .numDlqDocs = numDlqDocs,
+                                       .timeSpent = dataMsg.creationTimer->elapsed()});
         if (_watermarkCombiner) {
             _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().eventTimeWatermarkMs;
         }

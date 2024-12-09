@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "mongo/util/timer.h"
 #include <fmt/format.h>
 
 #include "mongo/bson/bsonobj.h"
@@ -92,7 +93,7 @@ TEST_F(LookUpOperatorTest, LocalTest) {
         inputDocs.emplace_back(fromjson(fmt::format("{{leftKey: {}}}", val)));
     }
 
-    StreamDataMsg dataMsg;
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     for (auto& inputDoc : inputDocs) {
         dataMsg.docs.emplace_back(Document(inputDoc));
     }
@@ -155,7 +156,7 @@ TEST_F(LookUpOperatorTest, LocalTestCollectionlessLookupWithDocuments) {
         inputDocs.emplace_back(fromjson(fmt::format("{{leftKey: {}}}", val)));
     }
 
-    StreamDataMsg dataMsg;
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     for (auto& inputDoc : inputDocs) {
         dataMsg.docs.emplace_back(Document(inputDoc));
     }

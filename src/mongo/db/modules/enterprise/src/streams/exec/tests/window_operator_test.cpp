@@ -183,11 +183,13 @@ public:
     };
 
     auto generateDataMsg(Date_t date, int id, BSONObj obj) {
-        return StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDoc(date, id, 1)}}};
+        return StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDoc(date, id, 1)},
+                                                       .creationTimer = mongo::Timer{}}};
     };
 
     auto generateDataMsg(Date_t date, int id) {
-        return StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDoc(date, id, 1)}}};
+        return StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDoc(date, id, 1)},
+                                                       .creationTimer = mongo::Timer{}}};
     };
 
     auto generateDataMsg(Date_t date) {
@@ -453,21 +455,23 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
 
         auto [dag, source, sink] = createDag(options);
 
-        StreamDataMsg inputs{{
-            generateDocMinutes(0, 0, 0),
-            generateDocMinutes(0, 0, 3),
-            generateDocMinutes(1, 0, 1),
-            generateDocMinutes(2, 0, 2),
-            generateDocMinutes(3, 0, 3),
-            generateDocMinutes(4, 0, 4),
-            generateDocMinutes(0, 1, 5),
-            generateDocMinutes(0, 1, 6),
-            generateDocMinutes(1, 1, 42),
-            generateDocMinutes(1, 1, 42),
-            generateDocMinutes(2, 1, 42),
-            generateDocMinutes(3, 1, 8),
-            generateDocMinutes(4, 1, 9),
-        }};
+        StreamDataMsg inputs{.docs =
+                                 {
+                                     generateDocMinutes(0, 0, 0),
+                                     generateDocMinutes(0, 0, 3),
+                                     generateDocMinutes(1, 0, 1),
+                                     generateDocMinutes(2, 0, 2),
+                                     generateDocMinutes(3, 0, 3),
+                                     generateDocMinutes(4, 0, 4),
+                                     generateDocMinutes(0, 1, 5),
+                                     generateDocMinutes(0, 1, 6),
+                                     generateDocMinutes(1, 1, 42),
+                                     generateDocMinutes(1, 1, 42),
+                                     generateDocMinutes(2, 1, 42),
+                                     generateDocMinutes(3, 1, 8),
+                                     generateDocMinutes(4, 1, 9),
+                                 },
+                             .creationTimer = mongo::Timer{}};
 
         source->addDataMsg(inputs, boost::none);
         source->runOnce();
@@ -520,20 +524,22 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
         options.pipeline = bsonVector;
         auto [dag, source, sink] = createDag(options);
 
-        StreamDataMsg inputs{{
-            generateDocMinutes(4, 0, 2),
-            generateDocMinutes(6, 0, 3),
-            generateDocMinutes(5, 0, 2),
-            generateDocMinutes(7, 1, 2),
-            generateDocMinutes(7, 1, 8),
-            generateDocMinutes(8, 1, 8),
-            generateDocMinutes(7, 1, 8),
-            generateDocMinutes(9, 1, 8),
-            generateDocMinutes(7, 1, 8),
-            generateDocMinutes(10, 1, 8),
-            generateDocMinutes(9, 1, 8),
-            generateDocMinutes(12, 1, 8),
-        }};
+        StreamDataMsg inputs{.docs =
+                                 {
+                                     generateDocMinutes(4, 0, 2),
+                                     generateDocMinutes(6, 0, 3),
+                                     generateDocMinutes(5, 0, 2),
+                                     generateDocMinutes(7, 1, 2),
+                                     generateDocMinutes(7, 1, 8),
+                                     generateDocMinutes(8, 1, 8),
+                                     generateDocMinutes(7, 1, 8),
+                                     generateDocMinutes(9, 1, 8),
+                                     generateDocMinutes(7, 1, 8),
+                                     generateDocMinutes(10, 1, 8),
+                                     generateDocMinutes(9, 1, 8),
+                                     generateDocMinutes(12, 1, 8),
+                                 },
+                             .creationTimer = mongo::Timer{}};
 
         source->addDataMsg(inputs, boost::none);
         source->runOnce();
@@ -604,20 +610,22 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
             ]
         }})"));
 
-        StreamDataMsg inputs{{
-            generateDocMs(1, 0, 1),
-            generateDocMs(2, 0, 2),
-            generateDocMs(3, 0, 3),
-            generateDocMs(4, 0, 4),
-            generateDocMs(0, 0, 5),
+        StreamDataMsg inputs{.docs =
+                                 {
+                                     generateDocMs(1, 0, 1),
+                                     generateDocMs(2, 0, 2),
+                                     generateDocMs(3, 0, 3),
+                                     generateDocMs(4, 0, 4),
+                                     generateDocMs(0, 0, 5),
 
-            generateDocMs(1, 1, 42),
-            generateDocMs(1, 1, 42),
-            generateDocMs(2, 1, 42),
-            generateDocMs(3, 1, 8),
-            generateDocMs(4, 1, 9),
-            generateDocMs(0, 1, 5),
-        }};
+                                     generateDocMs(1, 1, 42),
+                                     generateDocMs(1, 1, 42),
+                                     generateDocMs(2, 1, 42),
+                                     generateDocMs(3, 1, 8),
+                                     generateDocMs(4, 1, 9),
+                                     generateDocMs(0, 1, 5),
+                                 },
+                             .creationTimer = mongo::Timer{}};
         source->addDataMsg(inputs, boost::none);
         source->runOnce();
 
@@ -688,19 +696,21 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
         // [2, 5) -> 0, 1
         // [3, 6) -> 0, 1
         // [4, 7) -> 0, 1
-        StreamDataMsg inputs{{
-            generateDocMs(2001, 0, 3),
-            generateDocMs(2003, 0, 1),
+        StreamDataMsg inputs{.docs =
+                                 {
+                                     generateDocMs(2001, 0, 3),
+                                     generateDocMs(2003, 0, 1),
 
-            generateDocMs(2002, 1, 6),
-            generateDocMs(2030, 1, 7),
+                                     generateDocMs(2002, 1, 6),
+                                     generateDocMs(2030, 1, 7),
 
-            generateDocMs(3001, 0, 14),
-            generateDocMs(4001, 0, 15),
+                                     generateDocMs(3001, 0, 14),
+                                     generateDocMs(4001, 0, 15),
 
-            generateDocMs(3001, 1, 23),
-            generateDocMs(4900, 1, 22),
-        }};
+                                     generateDocMs(3001, 1, 23),
+                                     generateDocMs(4900, 1, 22),
+                                 },
+                             .creationTimer = mongo::Timer{}};
         source->addDataMsg(inputs, boost::none);
         source->runOnce();
 
@@ -850,12 +860,14 @@ TEST_F(WindowOperatorTest, CountStage) {
 ]
     )"));
 
-        StreamDataMsg inputs{{
-            generateDocMs(2001, 0, 3),
-            generateDocMs(2003, 0, 1),
-            generateDocMs(2002, 1, 6),
-            generateDocMs(2030, 1, 7),
-        }};
+        StreamDataMsg inputs{.docs =
+                                 {
+                                     generateDocMs(2001, 0, 3),
+                                     generateDocMs(2003, 0, 1),
+                                     generateDocMs(2002, 1, 6),
+                                     generateDocMs(2030, 1, 7),
+                                 },
+                             .creationTimer = mongo::Timer{}};
         source->addDataMsg(inputs, boost::none);
         source->runOnce();
 
@@ -923,7 +935,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
 
         StreamDocument doc{Document()};
         doc.minEventTimestampMs = 1000;
-        StreamDataMsg dataMsg{{doc}};
+        StreamDataMsg dataMsg{.docs = {doc}, .creationTimer = mongo::Timer{}};
         source->addDataMsg(std::move(dataMsg), boost::none);
         source->runOnce();
 
@@ -2385,7 +2397,8 @@ TEST_F(WindowOperatorTest, WindowMeta) {
             streamDoc.minProcessingTimeMs = date.toMillisSinceEpoch();
             streamDoc.minEventTimestampMs = date.toMillisSinceEpoch();
             streamDoc.maxEventTimestampMs = date.toMillisSinceEpoch();
-            return StreamMsgUnion{StreamDataMsg{{std::move(streamDoc)}}};
+            return StreamMsgUnion{
+                StreamDataMsg{.docs = {std::move(streamDoc)}, .creationTimer = mongo::Timer{}}};
         };
 
         auto results = commonInnerTest(
@@ -2529,11 +2542,13 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
         dag->start();
 
-        StreamDataMsg inputs{{
-            generateDocMs(1, 0, 1),
-            generateDocMs(1, 0, 2),
-            generateDocMs(1, 0, 3),
-        }};
+        StreamDataMsg inputs{.docs =
+                                 {
+                                     generateDocMs(1, 0, 1),
+                                     generateDocMs(1, 0, 2),
+                                     generateDocMs(1, 0, 3),
+                                 },
+                             .creationTimer = mongo::Timer{}};
         StreamControlMsg controlMsg{WatermarkControlMsg{
             WatermarkStatus::kActive,
             Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}};
@@ -2984,11 +2999,13 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
         dag->start();
 
         // Send input that will open three windows.
-        source->addDataMsg(StreamDataMsg{{
-            generateDocSeconds(5, 1, 1),
-            generateDocSeconds(6, 2, 1),
-            generateDocSeconds(7, 3, 1),
-        }});
+        source->addDataMsg(StreamDataMsg{.docs =
+                                             {
+                                                 generateDocSeconds(5, 1, 1),
+                                                 generateDocSeconds(6, 2, 1),
+                                                 generateDocSeconds(7, 3, 1),
+                                             },
+                                         .creationTimer = mongo::Timer{}});
         source->runOnce();
 
         Operator* windowOperator = dynamic_cast<Operator*>(dag->operators()[1].get());
@@ -3011,12 +3028,14 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
         ASSERT_EQUALS(144, stats.memoryUsageBytes);
 
         // Add three new windows, with one window receiving two unique group keys.
-        source->addDataMsg(StreamDataMsg{{
-            generateDocSeconds(11, 4, 1),
-            generateDocSeconds(12, 5, 1),
-            generateDocSeconds(12, 6, 1),
-            generateDocSeconds(13, 7, 1),
-        }});
+        source->addDataMsg(StreamDataMsg{.docs =
+                                             {
+                                                 generateDocSeconds(11, 4, 1),
+                                                 generateDocSeconds(12, 5, 1),
+                                                 generateDocSeconds(12, 6, 1),
+                                                 generateDocSeconds(13, 7, 1),
+                                             },
+                                         .creationTimer = mongo::Timer{}});
         source->runOnce();
 
         // The memory usage should go back up now that we have three new windows.
@@ -3154,21 +3173,23 @@ TEST_F(WindowOperatorTest, PartitionByWindowStart) {
             options.pipeline = bsonVector;
 
             auto [dag, source, sink] = createDag(options);
-            StreamDataMsg input{{
-                generateDocMs(1, 1, 1),
-                generateDocMs(250, 1, 2),
-                generateDocMs(500, 1, 3),
-                generateDocMs(999, 1, 4),
-                generateDocMs(1000, 1, 5),
-                generateDocMs(1999, 1, 6),
-                generateDocMs(2005, 1, 7),
-                generateDocMs(2200, 1, 8),
-                generateDocMs(4002, 1, 9),
-                generateDocMs(5006, 1, 10),
-                generateDocMs(5500, 1, 11),
-                generateDocMs(11005, 1, 12),
-                generateDocMs(11999, 1, 13),
-            }};
+            StreamDataMsg input{.docs =
+                                    {
+                                        generateDocMs(1, 1, 1),
+                                        generateDocMs(250, 1, 2),
+                                        generateDocMs(500, 1, 3),
+                                        generateDocMs(999, 1, 4),
+                                        generateDocMs(1000, 1, 5),
+                                        generateDocMs(1999, 1, 6),
+                                        generateDocMs(2005, 1, 7),
+                                        generateDocMs(2200, 1, 8),
+                                        generateDocMs(4002, 1, 9),
+                                        generateDocMs(5006, 1, 10),
+                                        generateDocMs(5500, 1, 11),
+                                        generateDocMs(11005, 1, 12),
+                                        generateDocMs(11999, 1, 13),
+                                    },
+                                .creationTimer = mongo::Timer{}};
 
             source->addDataMsg(std::move(input));
             source->runOnce();
@@ -3360,7 +3381,8 @@ TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
 
     // Open and close the [1-2) window.
     std::vector<StreamMsgUnion> input{
-        {StreamMsgUnion{.dataMsg = StreamDataMsg{{generateDocSeconds(1, 1, 1)}}},
+        {StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDocSeconds(1, 1, 1)},
+                                                 .creationTimer = mongo::Timer{}}},
          StreamMsgUnion{
              .controlMsg = StreamControlMsg{
                  .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
@@ -3426,11 +3448,13 @@ TEST_F(WindowOperatorTest, SERVER_92798) {
                 StreamControlMsg{
                     .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
                                                         .eventTimeWatermarkMs = 1000}}},
-        StreamMsgUnion{.dataMsg = StreamDataMsg{{// late
-                                                 generateDocMs(0, 1, 1),
-                                                 // on-time, but a few slide durations ahead
-                                                 // of the minWindowStartTime.
-                                                 generateDocMs(5000, 1, 1)}}},
+        StreamMsgUnion{.dataMsg = StreamDataMsg{.docs =
+                                                    {// late
+                                                     generateDocMs(0, 1, 1),
+                                                     // on-time, but a few slide durations ahead
+                                                     // of the minWindowStartTime.
+                                                     generateDocMs(5000, 1, 1)},
+                                                .creationTimer = mongo::Timer{}}},
     }};
 
     auto results = getResults(source, sink, input);

@@ -243,7 +243,6 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     for (auto& streamDoc : dataMsg.docs) {
         try {
             processStreamDoc(streamDoc);
-            incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
             numOutputDocs++;
             auto bytes = streamDoc.doc.memUsageForSorter();
             numOutputBytes += bytes;
@@ -268,7 +267,8 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     incOperatorStats({.numOutputDocs = numOutputDocs,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
-                      .numDlqBytes = numDlqBytes});
+                      .numDlqBytes = numDlqBytes,
+                      .timeSpent = dataMsg.creationTimer->elapsed()});
 }
 
 namespace {

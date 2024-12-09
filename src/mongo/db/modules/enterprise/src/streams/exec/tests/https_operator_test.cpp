@@ -70,7 +70,7 @@ public:
     void testAgainstDocs(std::vector<StreamDocument> inputDocs,
                          std::function<void(const std::deque<StreamMsgUnion>&)> testAssert) {
         // Send data message to operator and let process + flow to sink.
-        _oper->onDataMsg(0, StreamDataMsg{.docs = inputDocs});
+        _oper->onDataMsg(0, StreamDataMsg{.docs = inputDocs, .creationTimer = mongo::Timer{}});
         auto messages = _sink->getMessages();
         testAssert(messages);
     }
@@ -79,7 +79,7 @@ public:
                          std::function<void(const std::deque<StreamMsgUnion>&)> msgsAssert,
                          std::function<void(OperatorStats)> statsAssert) {
         // Send data message to operator and let process + flow to sink.
-        _oper->onDataMsg(0, StreamDataMsg{.docs = inputDocs});
+        _oper->onDataMsg(0, StreamDataMsg{.docs = inputDocs, .creationTimer = mongo::Timer{}});
         auto messages = _sink->getMessages();
         msgsAssert(messages);
         statsAssert(_oper->getStats());
@@ -232,6 +232,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 13);
                 ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -295,6 +296,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 26);
                 ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -361,6 +363,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 26);
                 ASSERT_EQ(stats.numOutputBytes, 26);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -438,6 +441,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 13);
                 ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -500,6 +504,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 13);
                 ASSERT_EQ(stats.numOutputBytes, 22);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -549,6 +554,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 13);
                 ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -604,6 +610,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 13);
                 ASSERT_EQ(stats.numOutputBytes, 39);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
         {
@@ -649,6 +656,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             [](OperatorStats stats) {
                 ASSERT_EQ(stats.numInputBytes, 20);
                 ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
     };
@@ -703,14 +711,17 @@ TEST_F(HttpsOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
     Timer timer{};
     auto start = timer.elapsed();
 
-    testAgainstDocs(docs, [&](std::deque<StreamMsgUnion> messages) {
-        ASSERT_EQ(messages.size(), 1);
-        auto msg = messages.at(0);
+    testAgainstDocs(
+        docs,
+        [&](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 1);
+            auto msg = messages.at(0);
 
-        ASSERT(msg.dataMsg);
-        ASSERT(!msg.controlMsg);
-        ASSERT_EQ(msg.dataMsg->docs.size(), docsToInsert);
-    });
+            ASSERT(msg.dataMsg);
+            ASSERT(!msg.controlMsg);
+            ASSERT_EQ(msg.dataMsg->docs.size(), docsToInsert);
+        },
+        [](OperatorStats stats) { ASSERT_GREATER_THAN(stats.timeSpent.count(), 4); });
 
     auto elapsedTime = timer.elapsed() - start;
     ASSERT_GREATER_THAN_OR_EQUALS(elapsedTime, minTestDuration);
@@ -962,6 +973,7 @@ TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
                     ASSERT_EQ(stats.numOutputBytes, 0);
                     ASSERT_EQ(stats.numDlqBytes, 289);
                     ASSERT_EQ(stats.numDlqDocs, 1);
+                    ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
                 });
         }
     }
@@ -1003,6 +1015,7 @@ TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
                 ASSERT_EQ(stats.numOutputBytes, 0);
                 ASSERT_EQ(stats.numDlqBytes, 318);
                 ASSERT_EQ(stats.numDlqDocs, 1);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             });
     }
 }
@@ -1097,6 +1110,7 @@ TEST_F(HttpsOperatorTest, GetWithBadHeaders) {
                     ASSERT_EQ(stats.numOutputBytes, 0);
                     ASSERT_EQ(stats.numDlqBytes, 266);
                     ASSERT_EQ(stats.numDlqDocs, 1);
+                    ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
                 });
         }
     }
@@ -1177,6 +1191,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponseByDefault) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
             ASSERT_EQ(stats.numDlqDocs, 2);
+            ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
         });
 }
 
@@ -1237,6 +1252,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponse) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
             ASSERT_EQ(stats.numDlqDocs, 2);
+            ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
         });
 }
 
@@ -1364,6 +1380,7 @@ TEST_F(HttpsOperatorTest, ShouldIgnoreOnErrorResponse) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, 0);
             ASSERT_EQ(stats.numDlqDocs, 0);
+            ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
         });
 }
 
@@ -1479,6 +1496,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnUnsupportedResponseFormatByDefault) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
             ASSERT_EQ(stats.numDlqDocs, 1);
+            ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
         });
 }
 
@@ -1523,6 +1541,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnUnsupportedResponseFormat) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
             ASSERT_EQ(stats.numDlqDocs, 1);
+            ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
         });
 }
 
@@ -1630,6 +1649,7 @@ TEST_F(HttpsOperatorTest, ShouldIgnoreUnsupportedResponseFormat) {
             ASSERT_EQ(stats.numOutputBytes, 0);
             ASSERT_EQ(stats.numDlqBytes, 0);
             ASSERT_EQ(stats.numDlqDocs, 0);
+            ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
         });
 }
 

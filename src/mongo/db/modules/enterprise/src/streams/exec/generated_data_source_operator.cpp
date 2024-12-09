@@ -31,7 +31,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
     bool emptyBatch = msgs.empty();
     for (auto& msg : msgs) {
         if (msg.dataMsg) {
-            StreamDataMsg dataMsg;
+            auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
             dataMsg.docs.reserve(msg.dataMsg->docs.size());
 
             int64_t numInputDocs = msg.dataMsg->docs.size();
@@ -59,7 +59,8 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
 
             incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                            .numInputBytes = numInputBytes,
-                                           .numDlqDocs = numDlqDocs});
+                                           .numDlqDocs = numDlqDocs,
+                                           .timeSpent = dataMsg.creationTimer->elapsed()});
 
             if (_watermarkGenerator) {
                 _stats.watermark = _watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;

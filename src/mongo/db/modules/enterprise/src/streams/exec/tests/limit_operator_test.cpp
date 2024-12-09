@@ -77,7 +77,7 @@ void LimitOperatorTest::testBasic(bool useNewLimit) {
 
         for (int i = 0; i < 40;) {
             for (auto msgSize : {2, 3, 5}) {
-                StreamDataMsg dataMsg;
+                auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
                 for (int j = 0; j < msgSize; ++j, ++i) {
                     StreamDocument doc{inputDocs[i]};
                     doc.minEventTimestampMs = startTime.toMillisSinceEpoch();

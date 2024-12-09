@@ -4,6 +4,7 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
+#include "mongo/util/timer.h"
 #include "streams/util/exception.h"
 #include <boost/optional/optional.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
@@ -533,6 +534,7 @@ void ChangeStreamSourceOperator::doStop() {
 }
 
 int64_t ChangeStreamSourceOperator::doRunOnce() {
+    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
     auto batch = getDocuments();
     auto& changeEvents = batch.docs;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
@@ -577,7 +579,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         return 0;
     }
 
-    StreamDataMsg dataMsg;
     int64_t totalNumInputDocs = changeEvents.size();
     int64_t totalNumInputBytes = 0;
     int64_t numDlqDocs = 0;
@@ -593,7 +594,8 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
 
     incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
                                    .numInputBytes = totalNumInputBytes,
-                                   .numDlqDocs = numDlqDocs});
+                                   .numDlqDocs = numDlqDocs,
+                                   .timeSpent = dataMsg.creationTimer->elapsed()});
 
     // Early return if we did not manage to add any change events to 'dataMsg.docs'.
     if (dataMsg.docs.empty()) {

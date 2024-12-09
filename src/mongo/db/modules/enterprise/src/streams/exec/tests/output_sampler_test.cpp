@@ -65,7 +65,7 @@ TEST_F(OutputSamplerTest, Basic) {
     std::vector<BSONObj> inputDocs;
     auto addDocsToSource = [&]() {
         for (int i = 0; i < 5; ++i) {
-            StreamDataMsg dataMsg;
+            auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
             inputDocs.push_back(fromjson(fmt::format("{{a: {}}}", i * 2)));
             dataMsg.docs.emplace_back(Document(inputDocs.back()));
             inputDocs.push_back(fromjson(fmt::format("{{a: {}}}", i * 2 + 1)));
