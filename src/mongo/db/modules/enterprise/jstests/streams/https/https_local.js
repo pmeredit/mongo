@@ -31,6 +31,7 @@ function runTest({
     featureFlags = {},
     expectedStatus = "running",
     sourceOptions = {},
+    expectedInputSize = 0,
 }) {
     const waitTimeMs = 30000;
     const dbName = "https_test";
@@ -145,6 +146,10 @@ function runTest({
         }, "waiting for expected dlq in collection", waitTimeMs);
         jsTestLog(dlqOutput);
         assert(resultsEq(expectedDlq, dlqOutput, true /* verbose */, allFieldsToSkip));
+    }
+
+    if (expectedInputSize > 0) {
+        assert(sp.stats()["inputMessageSize"] === expectedInputSize);
     }
 
     for (let i = 0; i < expectedRequests.length; i++) {
@@ -736,6 +741,38 @@ const testCases = [
             { _id: 3, sum: 3 },
             { _id: 4, sum: 4 },
         ],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should gracefully handle GET with large response payload",
+        spName: "largePayload",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                method: "GET",
+                path: "/largepayload",
+                as: "response"
+            }
+        },
+        inputDocs: [{foo: "bar"}],
+        outputQuery: [
+            {
+                $project: {
+                    // don't project the response because it's just a large blob of random data
+                    "_stream_meta.https": 1,
+                }
+            }
+        ],
+        expectedInputSize: 10445,
+        expectedOutput: [{
+            _stream_meta: {
+                 https: {
+                       url: "http://localhost:20040/largepayload",
+                       method: "GET",
+                       httpStatusCode: 200,
+                 }
+            }
+        }],
         allowAllTraffic: true,
     },
 ];

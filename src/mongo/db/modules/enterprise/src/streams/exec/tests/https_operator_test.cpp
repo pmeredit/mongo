@@ -160,7 +160,7 @@ int computeNumDlqBytes(std::queue<mongo::BSONObj> dlqMsgs) {
 
 std::string expectedErrResponseErrMsg(int statusCode, std::string body = "") {
     return fmt::format(
-        "Received error response from server. status code: {}, body: {}", statusCode, body);
+        "Received error response from destination server. Status: {}, Body: {}", statusCode, body);
 }
 
 struct HttpsOpereratorTestCase {

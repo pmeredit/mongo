@@ -388,15 +388,12 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         }
         httpResponse = _options.httpClient->request(_options.method, requestUrl, data);
         tassert(9502901, "Expected HTTP response to be set", httpResponse);
-
-        // readAndAdvance can fail to parse response body and throw an exception.
         rawResponse = httpResponse->body.getCursor().readAndAdvance<StringData>();
 
         responseTimeMs = durationCount<Milliseconds>(timer.elapsed());
         processResult.numInputBytes += rawResponse.size();
-
         uassert(ErrorCodes::OperationFailed,
-                fmt::format("Received error response from server. status code: {}, body: {}",
+                fmt::format("Received error response from destination server. Status: {}, Body: {}",
                             httpResponse->code,
                             rawResponse),
                 httpResponse->code >= 200 && httpResponse->code < 300);
@@ -413,23 +410,11 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
     }
 
     mongo::Value responseAsValue;
-    if (rawResponse.size()) {
+    if (!rawResponse.empty()) {
         boost::optional<std::string> contentType;
-        try {
-            auto rawHeaders = httpResponse->header.getCursor().readAndAdvance<StringData>();
-            if (!rawHeaders.empty()) {
-                contentType = parseContentTypeFromHeaders(rawHeaders);
-            }
-        } catch (const DBException& e) {
-            tryLog(9683600, [&](int logID) {
-                LOGV2_INFO(logID,
-                           "Error occured while reading response headers in HttpsOperator",
-                           "context"_attr = _context,
-                           "error"_attr = e.what());
-            });
-            if (onErrorHandleException("Failed to parse response content-type header", e)) {
-                return processResult;
-            }
+        auto rawHeaders = httpResponse->header.getCursor().readAndAdvance<StringData>();
+        if (!rawHeaders.empty()) {
+            contentType = parseContentTypeFromHeaders(rawHeaders);
         }
 
         if (contentType && *contentType == kTextPlain) {
@@ -458,6 +443,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
                            "context"_attr = _context,
                            "content_type"_attr = contentType);
             });
+
             switch (_options.onError) {
                 case mongo::OnErrorEnum::DLQ: {
                     writeToDLQ(streamDoc,
