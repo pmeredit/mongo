@@ -43,7 +43,6 @@ command = Object.assign({
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
 delete cmdRes.result.encryptionInformation;
-delete cmdRes.result.pipeline[0].$group.$willBeMerged;
 expectedResult = {
     aggregate: coll.getName(),
     pipeline: [
@@ -91,7 +90,6 @@ command.pipeline = [
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
 delete cmdRes.result.encryptionInformation;
-delete cmdRes.result.pipeline[0].$group.$willBeMerged;
 expectedResult = {
     aggregate: coll.getName(),
     pipeline: [
@@ -181,7 +179,6 @@ if (fle2Enabled()) {
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete cmdRes.result.lsid;
-    delete cmdRes.result.pipeline[0].$group.$willBeMerged;
     expectedResult = {
         aggregate: coll.getName(),
         pipeline: [
@@ -259,7 +256,6 @@ for (let accu of arrayAccus) {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete cmdRes.result.lsid;
     delete cmdRes.result.encryptionInformation;
-    delete cmdRes.result.pipeline[0].$group.$willBeMerged;
     assert.eq(expectedResult, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -375,7 +371,6 @@ expectedResult = {
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
 delete cmdRes.result.encryptionInformation;
-delete cmdRes.result.pipeline[0].$group.$willBeMerged;
 
 assert.eq(expectedResult, cmdRes.result, cmdRes);
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);

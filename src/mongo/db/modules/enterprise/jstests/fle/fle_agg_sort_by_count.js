@@ -58,7 +58,6 @@ if (fle2Enabled()) {
         cursor: {}
     };
     delete cmdRes.result.lsid;
-    delete cmdRes.result.pipeline[0].$group.$willBeMerged;
     assert.eq(expectedResult, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -83,7 +82,6 @@ expectedResult = {
 };
 delete cmdRes.result.lsid;
 delete cmdRes.result.encryptionInformation;
-delete cmdRes.result.pipeline[0].$group.$willBeMerged;
 assert.eq(expectedResult, cmdRes.result, cmdRes);
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);

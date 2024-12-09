@@ -41,7 +41,6 @@ function assertCommandUnchanged(
         delete command.jsonSchema;
         delete command.isRemoteSchema;
         delete cmdRes.result.lsid;
-        delete cmdRes.result.pipeline[0].$group.$willBeMerged;
         assert.eq(command, cmdRes.result, cmdRes);
         assert.eq(hasEncryptionPlaceholders, cmdRes.hasEncryptionPlaceholders, cmdRes);
         assert.eq(schemaRequiresEncryption, cmdRes.schemaRequiresEncryption, cmdRes);
