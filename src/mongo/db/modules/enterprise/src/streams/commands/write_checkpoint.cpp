@@ -6,9 +6,13 @@
 
 #include "mongo/db/commands.h"
 #include "mongo/db/server_feature_flags_gen.h"
+#include "mongo/logv2/log.h"
+#include "mongo/logv2/log_attr.h"
 #include "mongo/platform/basic.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/management/stream_manager.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
@@ -40,9 +44,19 @@ public:
         using InvocationBase::InvocationBase;
         Reply typedRun(OperationContext* opCtx) {
             const Request& requestParams = request();
-            StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            streamManager->writeCheckpoint(requestParams);
-            return Reply{};
+            try {
+                StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
+                streamManager->writeCheckpoint(requestParams);
+                return Reply{};
+            } catch (const std::exception& e) {
+                LOGV2_ERROR(9643609,
+                            "Unexpected std::exception in streams_writeCheckpoint",
+                            "streamProcessorName"_attr = requestParams.getName().toString(),
+                            "streamProcessorId"_attr = requestParams.getProcessorId(),
+                            "tenantId"_attr = requestParams.getTenantId(),
+                            "exception"_attr = e.what());
+                throw;
+            }
         }
 
     private:
