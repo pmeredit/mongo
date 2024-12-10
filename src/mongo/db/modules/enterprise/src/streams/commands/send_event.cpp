@@ -45,11 +45,11 @@ public:
                 StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
                 return streamManager->sendEvent(requestParams);
             } catch (const std::exception& e) {
-                LOGV2_ERROR(9643604,
-                            "Unexpected std::exception in streams_sendEvent",
-                            "streamProcessorId"_attr = requestParams.getProcessorId(),
-                            "tenantId"_attr = requestParams.getTenantId(),
-                            "exception"_attr = e.what());
+                LOGV2_INFO(9643604,
+                           "Exception in streams_sendEvent",
+                           "streamProcessorId"_attr = requestParams.getProcessorId(),
+                           "tenantId"_attr = requestParams.getTenantId(),
+                           "exception"_attr = e.what());
                 throw;
             }
         }

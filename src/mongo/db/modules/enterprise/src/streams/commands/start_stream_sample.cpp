@@ -52,12 +52,12 @@ public:
                 reply.setCursorId(cursorId);
                 return reply;
             } catch (const std::exception& e) {
-                LOGV2_ERROR(9643606,
-                            "Unexpected std::exception in streams_startStreamSample",
-                            "streamProcessorName"_attr = requestParams.getName().toString(),
-                            "streamProcessorId"_attr = requestParams.getProcessorId(),
-                            "tenantId"_attr = requestParams.getTenantId(),
-                            "exception"_attr = e.what());
+                LOGV2_INFO(9643606,
+                           "Exception in streams_startStreamSample",
+                           "streamProcessorName"_attr = requestParams.getName().toString(),
+                           "streamProcessorId"_attr = requestParams.getProcessorId(),
+                           "tenantId"_attr = requestParams.getTenantId(),
+                           "exception"_attr = e.what());
                 throw;
             }
         }

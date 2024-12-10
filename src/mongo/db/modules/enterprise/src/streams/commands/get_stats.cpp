@@ -47,12 +47,12 @@ public:
                 StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
                 return streamManager->getStats(requestParams);
             } catch (const std::exception& e) {
-                LOGV2_ERROR(9643602,
-                            "Unexpected std::exception in streams_getStats",
-                            "streamProcessorName"_attr = requestParams.getName().toString(),
-                            "streamProcessorId"_attr = requestParams.getProcessorId(),
-                            "tenantId"_attr = requestParams.getTenantId(),
-                            "exception"_attr = e.what());
+                LOGV2_INFO(9643602,
+                           "Exception in streams_getStats",
+                           "streamProcessorName"_attr = requestParams.getName().toString(),
+                           "streamProcessorId"_attr = requestParams.getProcessorId(),
+                           "tenantId"_attr = requestParams.getTenantId(),
+                           "exception"_attr = e.what());
                 throw;
             }
         }

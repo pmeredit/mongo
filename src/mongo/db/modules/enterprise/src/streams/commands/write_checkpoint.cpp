@@ -49,12 +49,12 @@ public:
                 streamManager->writeCheckpoint(requestParams);
                 return Reply{};
             } catch (const std::exception& e) {
-                LOGV2_ERROR(9643609,
-                            "Unexpected std::exception in streams_writeCheckpoint",
-                            "streamProcessorName"_attr = requestParams.getName().toString(),
-                            "streamProcessorId"_attr = requestParams.getProcessorId(),
-                            "tenantId"_attr = requestParams.getTenantId(),
-                            "exception"_attr = e.what());
+                LOGV2_INFO(9643609,
+                           "Exception in streams_writeCheckpoint",
+                           "streamProcessorName"_attr = requestParams.getName().toString(),
+                           "streamProcessorId"_attr = requestParams.getProcessorId(),
+                           "tenantId"_attr = requestParams.getTenantId(),
+                           "exception"_attr = e.what());
                 throw;
             }
         }
