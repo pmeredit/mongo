@@ -295,23 +295,13 @@ function runFindAndModifyTests(conn, sharded) {
         writeConcern: UNSATISFIABLE_WC
     };
 
-    function runCommandsAndCompareResults(command,
-                                          pdb,
-                                          edb,
-                                          errorCode,
-                                          lastErrorObject,
-                                          expectedOk = 1,
-                                          plainWCEMasked = false,
-                                          fleWCEMasked = false) {
+    function runCommandsAndCompareResults(
+        command, pdb, edb, errorCode, lastErrorObject, expectedOk = 1, fleWCEMasked = false) {
         let pres = assert.commandFailedWithCode(pdb.runCommand(command), errorCode);
         let eres = assert.commandFailedWithCode(edb.erunCommand(command), errorCode);
         print("Unencrypted result: " + tojson(pres));
         print("Encrypted result: " + tojson(eres));
-        if (!plainWCEMasked) {
-            checkHasWCE(pres, ErrorCodes.UnsatisfiableWriteConcern);
-        } else {
-            assert(!pres.hasOwnProperty("writeConcernError"));
-        }
+        checkHasWCE(pres, ErrorCodes.UnsatisfiableWriteConcern);
         if (!fleWCEMasked) {
             checkHasWCE(eres, ErrorCodes.UnsatisfiableWriteConcern);
         } else {
@@ -374,12 +364,9 @@ function runFindAndModifyTests(conn, sharded) {
     client.assertEncryptedCollectionCounts(collName, 5, 8, 8);
 
     print("FINDANDMODIFY: modification of immutable field with unsatisfiable WC");
-    // TODO: SERVER-80103 plain findAndModify in mongos masks the WCE with the write error,
-    // unlike in mongod where both WCE and write error are included in the reply.
     // TODO: SERVER-84081 encrypted findAndModify masks the WCE in both mongos and mongod
-    const isMongos = FixtureHelpers.isMongos(plainDb);
     runCommandsAndCompareResults(
-        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, undefined, 0, isMongos, true);
+        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, undefined, 0, true);
     client.assertEncryptedCollectionCounts(collName, 5, 8, 8);
 }
 
