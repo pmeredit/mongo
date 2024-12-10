@@ -835,10 +835,17 @@ function testAfterInvalidateWithFullDocumentOnly() {
     assert.soon(() => { return dlqColl.count() == 2; });
 
     let res = dlqColl.find({}).toArray();
-    assert.includes(res.find(doc => doc.doc.operationType == "drop").errInfo.reason,
-                    "Missing fullDocument field");
-    assert.includes(res.find(doc => doc.doc.operationType == "invalidate").errInfo.reason,
-                    "Missing fullDocument field");
+
+    const dropOperation = res.find(doc => doc.doc.operationType == "drop");
+    const invalidateOperation = res.find(doc => doc.doc.operationType == "invalidate");
+
+    if (dropOperation == null || invalidateOperation == null) {
+        jsTestLog("BF-35656: Troubleshooting a very intermittent issue");
+        jsTestLog("res = " + JSON.stringify(res));
+    }
+
+    assert.includes(dropOperation.errInfo.reason, "Missing fullDocument field");
+    assert.includes(invalidateOperation.errInfo.reason, "Missing fullDocument field");
     for (const dlqDoc of res) {
         assert.eq(dlqDoc.operatorName, "ChangeStreamConsumerOperator");
     }
