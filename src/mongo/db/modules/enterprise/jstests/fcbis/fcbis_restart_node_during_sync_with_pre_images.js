@@ -23,11 +23,11 @@ const expiredChangeStreamPreImageRemovalJobSleepSecs = 1;
 rst.startSet({setParameter: {expiredChangeStreamPreImageRemovalJobSleepSecs}});
 rst.initiate();
 
-const primary = rst.getPrimary();
-const primaryDB = primary.getDB("testDB");
+let primary = rst.getPrimary();
+let primaryDB = primary.getDB("testDB");
 const collNameA = "testCollA";
 const collNameB = "testCollB";
-const primaryCollA = assertDropAndRecreateCollection(
+let primaryCollA = assertDropAndRecreateCollection(
     primaryDB, collNameA, {changeStreamPreAndPostImages: {enabled: true}});
 const primaryCollB = assertDropAndRecreateCollection(
     primaryDB, collNameB, {changeStreamPreAndPostImages: {enabled: true}});
@@ -44,6 +44,7 @@ function waitForFailpoint(initialSyncNode, failpoint) {
             timesEntered: 1,
             maxTimeMS: kDefaultWaitForFailPointTimeout
         });
+
         return res.ok;
     });
 }
@@ -173,6 +174,22 @@ function runFCBISTest() {
     // both collections.
     rst.awaitLastStableRecoveryTimestamp();
     assert.commandWorked(primary.adminCommand({fsync: 1}));
+
+    // Restart the replica set, including the primary. This ensures the primary actually kills
+    // the backup cursor from the last FCBIS attempt.
+    // Since this is an intermediate restart, skip consistency checks to make stopSet faster.
+    jsTestLog(
+        'Restarting set to ensure primary has killed backup cursor from previous FCBIS attempt');
+    rst.stopSet(undefined /* signal */,
+                true /* forRestart */,
+                {skipCheckDBHashes: true, skipValidation: true});
+    rst.startSet({setParameter: {expiredChangeStreamPreImageRemovalJobSleepSecs}},
+                 true /* forRestart */);
+    primary = rst.getPrimary();
+    primaryDB = primary.getDB("testDB");
+    primaryCollA = primaryDB.getCollection(collNameA);
+    // Ensure data exists from before the restart.
+    assert.neq(primaryCollA.find().count(), 0);
 
     jsTestLog(
         `Restarting node cleanly to test second initial sync. Hanging intial sync after it finishes moving new files from the '.initalsync' directory to the original dbpath`);
