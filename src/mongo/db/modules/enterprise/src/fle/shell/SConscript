@@ -3,6 +3,5 @@
 Import(
     [
         "env",
-        "get_option",
     ]
 )
