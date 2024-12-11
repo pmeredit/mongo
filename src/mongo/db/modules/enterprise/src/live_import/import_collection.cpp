@@ -164,6 +164,7 @@ Status doImportCollection(OperationContext* opCtx,
                           const BSONObj& catalogEntry,
                           const BSONObj& storageMetadata,
                           bool isDryRun,
+                          bool panicOnCorruptWtMetadata,
                           bool repair) {
     WriteUnitOfWork wunit(opCtx);
 
@@ -217,9 +218,7 @@ Status doImportCollection(OperationContext* opCtx,
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     auto durableCatalog = storageEngine->getCatalog();
     auto opts = ImportOptions(uuidOption);
-    // Panic on dry run so it fails early, if it fails on the real thing we want to retry
-    // with repair
-    opts.panicOnCorruptWtMetadata = !isDryRun;
+    opts.panicOnCorruptWtMetadata = panicOnCorruptWtMetadata;
     opts.repair = repair;
 
     if (!isDryRun && hangBeforeProductionImport.shouldFail()) {
@@ -366,6 +365,9 @@ void importCollection(OperationContext* opCtx,
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "A view already exists. NS: " << nss.toStringForErrorMsg(),
                 !catalog->lookupView(opCtx, nss));
+
+        // Panic on dry run so it fails early, if it fails on the real thing we want to retry
+        // with repair
         auto status = doImportCollection(opCtx,
                                          importUUID,
                                          nss,
@@ -374,6 +376,7 @@ void importCollection(OperationContext* opCtx,
                                          catalogEntry,
                                          storageMetadata,
                                          isDryRun,
+                                         /* panicOnCorruptWtMetadata= */ isDryRun,
                                          /* repair= */ false);
         if (!status.isOK()) {
             LOGV2_ERROR(9616600, "importCollection failed", "error"_attr = status.toString());
@@ -386,6 +389,7 @@ void importCollection(OperationContext* opCtx,
                                             catalogEntry,
                                             storageMetadata,
                                             isDryRun,
+                                            /* panicOnCorruptWtMetadata= */ true,
                                             /* repair= */ true);
             }
             uassertStatusOK(status);
