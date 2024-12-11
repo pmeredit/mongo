@@ -27,6 +27,8 @@ const rst = new ReplSetTest({
             // Control the timestamp monitor to prevent the system.profile collection from being
             // dropped before a backup is taken.
             "failpoint.pauseTimestampMonitor": tojson({mode: "alwaysOn"}),
+            // Set storage logComponentVerbosity to one so we see the log id 22214.
+            logComponentVerbosity: tojson({storage: 1}),
         }
     }
 });
