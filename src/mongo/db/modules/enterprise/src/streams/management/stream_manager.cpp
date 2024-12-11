@@ -1146,7 +1146,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
     std::string name = request.getName().toString();
     auto processorId = request.getProcessorId();
     auto getExecutorStopStatus =
-        [this, tenantId, name, processorId]() -> boost::optional<mongo::Status> {
+        [this, tenantId, name, processorId, stopReason]() -> boost::optional<mongo::Status> {
         stdx::lock_guard<stdx::mutex> lk(_mutex);
 
         auto processorInfo = tryGetProcessorInfo(lk, tenantId, name);
@@ -1169,8 +1169,10 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
         }
 
         if (processorInfo->executorStatus) {
-            LOGV2_INFO(
-                75902, "Stopped stream processor", "context"_attr = processorInfo->context.get());
+            LOGV2_INFO(75902,
+                       "Stopped stream processor",
+                       "context"_attr = processorInfo->context.get(),
+                       "stopReason"_attr = stopReasonToString(stopReason));
             return processorInfo->executorStatus;
         }
         return boost::none;
