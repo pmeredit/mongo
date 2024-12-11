@@ -96,8 +96,15 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
                 case QueryTypeEnum::Range:
                     algorithm = Fle2AlgorithmInt::kRange;
                     break;
+                case QueryTypeEnum::SubstringPreview:
+                case QueryTypeEnum::SuffixPreview:
+                case QueryTypeEnum::PrefixPreview:
+                    algorithm = Fle2AlgorithmInt::kTextSearch;
+                    break;
                 default:
-                    uasserted(6316400, "Encrypted field must have query type range or equality");
+                    uasserted(6316400,
+                              "Encrypted field must have query type range, equality, "
+                              "substringPreview, suffixPreview, or prefixPreview");
             }
         }
     }
@@ -183,6 +190,8 @@ bool ResolvedEncryptionInfo::isTypeLegal(BSONType bsonType) const {
                                                return isFLE2RangeIndexedSupportedType(bsonType);
                                            case Fle2AlgorithmInt::kUnindexed:
                                                return isFLE2UnindexedSupportedType(bsonType);
+                                           case Fle2AlgorithmInt::kTextSearch:
+                                               return bsonType == BSONType::String;
                                        }
                                        MONGO_UNREACHABLE;
                                    }},
