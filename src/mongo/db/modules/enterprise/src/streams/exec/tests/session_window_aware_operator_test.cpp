@@ -142,7 +142,7 @@ public:
             }
         }
 
-        return std::move(queueToVector(sink.getMessages()));
+        return queueToVector(sink.getMessages());
     }
 
     auto testLimitMatchGroupPipeline(auto windowOptions, auto& messages) {
@@ -168,7 +168,7 @@ public:
             }
         }
 
-        return std::move(queueToVector(sink.getMessages()));
+        return queueToVector(sink.getMessages());
     }
 
     auto testLimitMatchLimitGroupPipeline(auto windowOptions, auto& messages) {
@@ -196,7 +196,7 @@ public:
             }
         }
 
-        return std::move(queueToVector(sink.getMessages()));
+        return queueToVector(sink.getMessages());
     }
 
     auto testLimitMatchSortGroupPipeline(auto windowOptions, auto& messages) {
@@ -224,7 +224,7 @@ public:
             }
         }
 
-        return std::move(queueToVector(sink.getMessages()));
+        return queueToVector(sink.getMessages());
     }
 
     void validateDocIds(auto msg, auto expectedIds, bool shouldSort = false) {
