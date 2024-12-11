@@ -8,8 +8,6 @@
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
-#include "mongo/db/pipeline/accumulator.h"
-#include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/group_processor_base.h"
 
 namespace streams {
@@ -73,8 +71,7 @@ boost::optional<Document> GroupProcessor::getNext() {
         return boost::none;
     }
 
-    Document out =
-        makeDocument(_groupsIterator->first, _groupsIterator->second, _expCtx->getNeedsMerge());
+    Document out = makeDocument(_groupsIterator->first, _groupsIterator->second);
     ++_groupsIterator;
     return out;
 }
