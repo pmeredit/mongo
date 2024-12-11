@@ -1,41 +1,11 @@
 # -*- mode: python -*-
 
 Import("env")
-Import("wiredtiger")
-
-if not wiredtiger:
-    env.FatalError("fcbis requires WiredTiger")
-
-env = env.Clone()
-env.InjectThirdParty(libraries=["wiredtiger"])
 
 env.CppUnitTest(
     target="file_copy_based_initial_syncer_test",
-    source=[
-        "backup_file_cloner_test.cpp",
-        "file_copy_based_initial_syncer_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "$BUILD_DIR/mongo/db/index_builds/index_builds_coordinator_mongod",
-        "$BUILD_DIR/mongo/db/query/client_cursor/client_cursor",
-        "$BUILD_DIR/mongo/db/repl/cloner_test_fixtures",
-        "$BUILD_DIR/mongo/db/repl/data_replicator_external_state_mock",
-        "$BUILD_DIR/mongo/db/repl/repl_server_parameters",
-        "$BUILD_DIR/mongo/db/repl/replmocks",
-        "$BUILD_DIR/mongo/db/repl/sync_source_selector_mock",
-        "$BUILD_DIR/mongo/db/repl/task_executor_mock",
-        "$BUILD_DIR/mongo/db/service_context_d_test_fixture",
-        "$BUILD_DIR/mongo/db/storage/backup_block",
-        "$BUILD_DIR/mongo/db/storage/backup_cursor_hooks",
-        "$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core",
-        "$BUILD_DIR/mongo/db/storage/storage_options",
-        "$BUILD_DIR/mongo/dbtests/mocklib",
-        "$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture",
-        "$BUILD_DIR/mongo/watchdog/watchdog_mock",
-        "file_copy_based_initial_syncer",
-    ],
+    source=[],
+    LIBDEPS=[],
 )
 
 env.CppUnitTest(

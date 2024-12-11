@@ -48,6 +48,37 @@ mongo_cc_library(
 )
 
 mongo_cc_unit_test(
+    name = "file_copy_based_initial_syncer_test",
+    srcs = [
+        "backup_file_cloner_test.cpp",
+        "file_copy_based_initial_syncer_test.cpp",
+        "//src/mongo/db/repl:replication_recovery_mock.h",
+    ],
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        ":file_copy_based_initial_syncer",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/index_builds:index_builds_coordinator_mongod",
+        "//src/mongo/db/query/client_cursor",
+        "//src/mongo/db/repl:cloner_test_fixtures",
+        "//src/mongo/db/repl:data_replicator_external_state_mock",
+        "//src/mongo/db/repl:repl_server_parameters",
+        "//src/mongo/db/repl:replmocks",
+        "//src/mongo/db/repl:sync_source_selector_mock",
+        "//src/mongo/db/repl:task_executor_mock",
+        "//src/mongo/db/storage:backup_block",
+        "//src/mongo/db/storage:backup_cursor_hooks",
+        "//src/mongo/db/storage:storage_options",
+        "//src/mongo/db/storage/devnull:storage_devnull_core",
+        "//src/mongo/dbtests:mocklib",
+        "//src/mongo/executor:thread_pool_task_executor_test_fixture",
+        "//src/mongo/watchdog:watchdog_mock",
+    ],
+)
+
+mongo_cc_unit_test(
     name = "initial_sync_file_mover_test",
     srcs = [
         "initial_sync_file_mover_test.cpp",
