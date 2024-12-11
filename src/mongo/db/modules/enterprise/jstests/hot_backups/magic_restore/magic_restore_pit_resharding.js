@@ -108,6 +108,11 @@ function runTest(insertHigherTermOplogEntry) {
         val => { assert.commandWorked(db.getCollection(coll).insert({numForPartition: val})); });
     expectedDocs = db.getCollection(coll).find().sort({numForPartition: 1}).toArray();
     assert.eq(expectedDocs.length, 8);
+    // It's possible the config server may not have any oplog entries after the backup checkpoint
+    // timestamp. In our PIT restore test helpers, we expect there to always be entries after the
+    // backup. To allow that constraint to hold and make our testing stronger, perform a no-op.
+    assert.commandWorked(
+        st.configRS.getPrimary().adminCommand({appendOplogNote: 1, data: {msg: "no-op"}}));
 
     jsTestLog("Getting backup cluster dbHashes");
     // expected DBs are admin, config and db
