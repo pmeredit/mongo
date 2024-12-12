@@ -174,7 +174,7 @@ void QueuedSinkOperator::consumeLoop() {
                 if (batchMsg.docs.size() > 0) {
                     sendBatchMsgFn();
                 }
-                continue;
+                msg = _queue.pop();
             }
             if (msg->flushSignal) {
                 if (batchMsg.docs.size() > 0) {
