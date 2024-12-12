@@ -457,8 +457,10 @@ std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
 
 // Utility which configures options common to all $source stages.
 SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsFieldName,
-                                                 DocumentTimestampExtractor* timestampExtractor) {
+                                                 DocumentTimestampExtractor* timestampExtractor,
+                                                 bool enableDataFlow) {
     SourceOperator::Options options;
+    options.enableDataFlow = enableDataFlow;
     if (tsFieldName) {
         options.timestampOutputFieldName = tsFieldName->toString();
         uassert(7756300,
@@ -519,8 +521,8 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    InMemorySourceOperator::Options internalOptions(
-        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
+    InMemorySourceOperator::Options internalOptions(getSourceOperatorOptions(
+        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
 
@@ -543,8 +545,8 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    SampleDataSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
+    SampleDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
+        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
@@ -566,8 +568,8 @@ void Planner::planDocumentsSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    DocumentsDataSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
+    DocumentsDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
+        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     internalOptions.documents = std::visit(
@@ -620,8 +622,8 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    KafkaConsumerOperator::Options internalOptions(
-        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
+    KafkaConsumerOperator::Options internalOptions(getSourceOperatorOptions(
+        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     std::visit(
@@ -763,7 +765,8 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         tsFieldName = options.getTsFieldOverride();
     }
     ChangeStreamSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()),
+        getSourceOperatorOptions(
+            std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow),
         std::move(clientOptions));
 
     if (useWatermarks) {
@@ -2209,6 +2212,11 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
             std::tie(oldInnerPipeline, newInnerPipeline) =
                 validateMatchingHoppingWindows(oldWindow->stageBson, newWindow->stageBson);
         }
+
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "resumeFromCheckpoint must be false to modify a processor that has a window "
+                "without a blocking stage",
+                hasBlockingStage(oldInnerPipeline));
     } else if (!oldWindow && newWindow) {
         // TODO(SERVER-95185): Support adding a window stage with resumeFromCheckpoint=true.
         uasserted(ErrorCodes::StreamProcessorInvalidOptions,

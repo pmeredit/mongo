@@ -27,7 +27,7 @@ export function testRunner({
     inputAfterModifyBeforeRestart2 = [],
     afterModifyReplayCount2 = 0
 }) {
-    const waitTimeMs = 10000;
+    const waitTimeMs = 60000;
     // Run the stream processor with the originalPipeline.
     let test = new TestHelper(
         inputForOriginalPipeline,

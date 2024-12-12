@@ -363,9 +363,21 @@ void ChangeStreamSourceOperator::fetchLoop() {
 
         // Establish the connection and start the changestream.
         connectToSource();
+        bool enableDataFlow = getOptions().enableDataFlow;
+        if (!enableDataFlow) {
+            // If data flow is disabled, read a single change event.
+            // This helps detect problems like ChangeStreamHistoryLost,
+            // especially while validating a modify request.
+            readSingleChangeEvent();
+        }
         {
             stdx::unique_lock lock(_mutex);
             _connectionStatus = {ConnectionStatus::kConnected};
+        }
+
+        if (!enableDataFlow) {
+            // If data flow is disabled, return.
+            return;
         }
 
         // Start reading events in a loop.

@@ -50,6 +50,8 @@ public:
         boost::optional<std::string> gwproxyKey;
         // librdkafka's queued.max.messages.kbytes setting.
         boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes;
+        // If true, data flow is enabled.
+        bool enableDataFlow{true};
     };
 
     KafkaPartitionConsumerBase(Context* context, Options options);

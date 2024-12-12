@@ -187,6 +187,11 @@ void KafkaPartitionConsumer::doStart() {
                          e.what()});
         }
 
+        if (!_options.enableDataFlow) {
+            // If data flow is disabled, don't actually read messages from the source.
+            return;
+        }
+
         // Start fetching messages.
         try {
             fetchLoop();

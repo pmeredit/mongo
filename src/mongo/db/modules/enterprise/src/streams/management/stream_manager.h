@@ -155,6 +155,8 @@ private:
         // CheckpointCoordinator for this streamProcessor.
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
         std::shared_ptr<Gauge> durationSinceLastRunOnceGauge;
+        // If true, processor will start and stop during validateOnly request.
+        bool shouldStartDuringValidate{false};
     };
 
     // Encapsulates state for a tenant.
@@ -164,6 +166,14 @@ private:
         std::string tenantId;
         // Mapping from stream processor name to StreamProcessorInfo object.
         mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> processors;
+    };
+
+    // Internal struct returned by startStreamProcessorAsync.
+    struct StartAsyncResult {
+        // Reply to the client.
+        mongo::StartStreamProcessorReply reply;
+        // If true, processor will start and stop during validateOnly request.
+        bool shouldStartDuringValidate{false};
     };
 
     enum Command { kStartCommand = 1, kStopCommand, kListCommand, kSampleCommand, kStatsCommand };
@@ -194,8 +204,7 @@ private:
 
     // Helper method of the public startStreamProcessor() method that starts the stream processor
     // in an asynchronous manner.
-    mongo::StartStreamProcessorReply startStreamProcessorAsync(
-        const mongo::StartStreamProcessorCommand& request);
+    StartAsyncResult startStreamProcessorAsync(const mongo::StartStreamProcessorCommand& request);
 
     // Helper method of the public startSample() method.
     int64_t startSample(mongo::WithLock,

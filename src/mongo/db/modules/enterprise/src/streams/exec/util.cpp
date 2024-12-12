@@ -91,6 +91,15 @@ bool isBlockingWindowAwareStage(mongo::StringData name) {
     return blockingWindowAwareStages.contains(name);
 }
 
+bool hasBlockingStage(const BSONPipeline& pipeline) {
+    for (const auto& stage : pipeline) {
+        if (isBlockingWindowAwareStage(stage.firstElementFieldNameStringData())) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool isHttpsStage(mongo::StringData name) {
     return name == mongo::StringData(kHttpsStageName);
 }

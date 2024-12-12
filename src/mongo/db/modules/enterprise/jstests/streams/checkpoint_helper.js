@@ -177,7 +177,8 @@ export class TestHelper {
                 targetSourceMergeDb = null,
                 useTimeField = true,
                 sinkType = "atlas",
-                changestreamStalenessMonitoring = false) {
+                changestreamStalenessMonitoring = false,
+                oplogSizeMB = undefined) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.sinkType = sinkType;
@@ -207,6 +208,12 @@ export class TestHelper {
         this.db = db;
         if (dbForTest != null) {
             this.db = dbForTest;
+        }
+
+        if (oplogSizeMB) {
+            jsTestLog(`Setting oplogSize to MB ${oplogSizeMB}`);
+            assert.commandWorked(db.adminCommand({replSetResizeOplog: 1, size: oplogSizeMB}));
+            assert.commandWorked(db.adminCommand({setParameter: 1, syncdelay: 5}));
         }
         this.tenantId = "jstests-tenant";
         this.outputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.outputCollName];
@@ -407,7 +414,9 @@ export class TestHelper {
             this.pipelineVersion += 1;
         }
 
-        // Validate the modify operation.
+        const outputCount = this.outputColl.count();
+
+        // Validate the modify operation, like the SPM does.
         const validateResult =
             this.startFromLatestCheckpoint(validateShouldSucceed /* assertWorked */,
                                            false /* checkpointOnStart */,
@@ -418,6 +427,8 @@ export class TestHelper {
         }
         // Stream processor should not exist after validateOnly operation.
         assert.eq([], this.list());
+        // Stream processor should not have written anything after validateOnly operation.
+        assert.eq(this.outputColl.count(), outputCount);
 
         // Start the modified stream processor.
         this.startFromLatestCheckpoint(true /* validateShouldSucceed */,

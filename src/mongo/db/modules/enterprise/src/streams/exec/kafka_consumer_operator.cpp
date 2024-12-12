@@ -1312,6 +1312,7 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.gwproxyEndpoint = _options.gwproxyEndpoint;
     options.gwproxyKey = _options.gwproxyKey;
     options.rdkafkaQueuedMaxMessagesKBytes = rdkafkaQueuedMaxMessagesKBytes;
+    options.enableDataFlow = getOptions().enableDataFlow;
 
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(_context, std::move(options));

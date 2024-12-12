@@ -506,9 +506,9 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
         return startReply;
     }
 
-    auto startReply = startStreamProcessorAsync(request);
-    if (isValidateOnlyRequest(request)) {
-        // If this is a validateOnly request, the streamProcessor is not started.
+    auto [startReply, shouldStartValidateRequest] = startStreamProcessorAsync(request);
+    if (isValidateOnlyRequest(request) && !shouldStartValidateRequest) {
+        // The streamProcessor is not started.
         return startReply;
     }
 
@@ -590,18 +590,28 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
     }
 
     tassert(9420202, "status should be set", status);
-    if (!status->isOK()) {
+    auto makeStopCommand = [&]() {
         StopStreamProcessorCommand stopCommand;
         stopCommand.setTenantId(request.getTenantId());
         stopCommand.setName(request.getName());
         stopCommand.setProcessorId(request.getProcessorId());
         stopCommand.setCorrelationId(request.getCorrelationId());
         stopCommand.setTimeout(mongo::duration_cast<Seconds>(deadline - Date_t::now()));
-        stopStreamProcessor(stopCommand, StopReason::ErrorDuringStart);
+        return stopCommand;
+    };
 
+    if (!status->isOK()) {
+        stopStreamProcessor(makeStopCommand(), StopReason::ErrorDuringStart);
         // Throw an error back to the client calling start.
         uasserted(status->code(), status->reason());
     }
+
+    if (isValidateOnlyRequest(request)) {
+        tassert(
+            9719101, "Expected shouldStartValidateRequest to be set", shouldStartValidateRequest);
+        stopStreamProcessor(makeStopCommand(), StopReason::DoneValidating);
+    }
+
     return startReply;
 }
 
@@ -620,7 +630,7 @@ void StreamManager::assertTenantIdIsValid(mongo::WithLock lk, mongo::StringData 
             !assignedTenantId || *assignedTenantId == tenantId);
 }
 
-StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
+StreamManager::StartAsyncResult StreamManager::startStreamProcessorAsync(
     const mongo::StartStreamProcessorCommand& request) {
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
@@ -669,6 +679,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
     StartStreamProcessorReply startReply;
     boost::optional<int64_t> sampleCursorId;
     mongo::Future<void> executorFuture;
+    bool shouldStartDuringValidate{false};
     {
         stdx::lock_guard<stdx::mutex> lk(_mutex);
 
@@ -724,9 +735,10 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
 
         startReply.setOptimizedPipeline(info->operatorDag->optimizedPipeline());
 
-        if (isValidateOnlyRequest(request)) {
-            // If this is a validateOnly request, return here without starting the streamProcessor.
-            return startReply;
+        if (isValidateOnlyRequest(request) && !info->shouldStartDuringValidate) {
+            // If this is a validateOnly request and we shouldn't start during validate,
+            // just return.
+            return {std::move(startReply), info->shouldStartDuringValidate};
         }
 
         // After we release the lock, no streamProcessor with the same name can be
@@ -760,6 +772,8 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
             sampleCursorId = startSample(lk, sampleRequest, processorInfo.get());
         }
 
+        shouldStartDuringValidate = processorInfo->shouldStartDuringValidate;
+
         LOGV2_INFO(
             75880, "Starting stream processor", "context"_attr = processorInfo->context.get());
         executorFuture = processorInfo->executor->start();
@@ -775,7 +789,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessorAsync(
                 onExecutorShutdown(tenantId, name, std::move(status));
             });
     startReply.setSampleCursorId(sampleCursorId);
-    return startReply;
+    return {std::move(startReply), shouldStartDuringValidate};
 }
 
 void StreamManager::createSourceBufferManager(const StreamProcessorFeatureFlags& featureFlags,
@@ -994,12 +1008,18 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         // During a customer's modify request, SPM sends a mongostream.validateOnly request with
         // a restore checkpoint. When resumeFromCheckpointAfterModify is true, we set
         // shouldValidateModifyRequest so the planner validates the modify is allowed.
-        plannerOptions.shouldValidateModifyRequest = isValidateOnlyRequest(request) &&
-            isModifyRequest && request.getOptions().getResumeFromCheckpointAfterModify();
+        plannerOptions.shouldValidateModifyRequest = isModifyRequest &&
+            isValidateOnlyRequest(request) &&
+            request.getOptions().getResumeFromCheckpointAfterModify();
     } else {
         // Plan the OperatorDag using an execution plan stored in checkpoints.
         plannerOptions.planningUserPipeline = false;
     }
+    auto enableDataFlow = request.getOptions().getEnableDataFlow();
+    if (isValidateOnlyRequest(request)) {
+        enableDataFlow = false;
+    }
+    plannerOptions.enableDataFlow = enableDataFlow;
 
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
 
@@ -1007,9 +1027,14 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->operatorDag =
         streamPlanner.plan(executionPlan.empty() ? request.getPipeline() : executionPlan);
     processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
+    if (isValidateOnlyRequest(request) && isModifyRequest) {
+        processorInfo->shouldStartDuringValidate = true;
+    }
 
     if (checkpointEnabled) {
-        if (processorInfo->context->restoreCheckpointId && !isValidateOnlyRequest(request)) {
+        bool shouldCreateRestorer = bool(processorInfo->context->restoreCheckpointId) &&
+            (!isValidateOnlyRequest(request) || processorInfo->shouldStartDuringValidate);
+        if (shouldCreateRestorer) {
             processorInfo->context->checkpointStorage->createCheckpointRestorer(
                 *processorInfo->context->restoreCheckpointId,
                 processorInfo->operatorDag->needsWindowReplay());
@@ -1059,7 +1084,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             processorInfo->checkpointCoordinator =
                 std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
                     .processorId = processorInfo->context->streamProcessorId,
-                    .enableDataFlow = request.getOptions().getEnableDataFlow(),
+                    .enableDataFlow = enableDataFlow,
                     .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
                         !processorInfo->context->restoreCheckpointId,
                     .minInterval = Seconds{minInterval},
@@ -1081,7 +1106,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     executorOptions.operatorDag = processorInfo->operatorDag.get();
     executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
     executorOptions.connectTimeout = Seconds{60};
-    executorOptions.enableDataFlow = request.getOptions().getEnableDataFlow();
+    executorOptions.enableDataFlow = enableDataFlow;
+    if (isValidateOnlyRequest(request)) {
+        tassert(9719102, "Expected enableDataFlow to be false", !executorOptions.enableDataFlow);
+    }
+
     executorOptions.metricManager = std::move(executorMetricManager);
     if (dynamic_cast<SampleDataSourceOperator*>(processorInfo->operatorDag->source())) {
         // If the customer is using a sample data source, sleep for 1 second between

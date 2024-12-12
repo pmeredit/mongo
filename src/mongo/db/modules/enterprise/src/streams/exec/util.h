@@ -20,6 +20,7 @@ class BSONObjBuilder;
 namespace streams {
 
 // TODO(SERVER-97571): Move these planner specific utilities to a separate file.
+using BSONPipeline = std::vector<mongo::BSONObj>;
 bool isSourceStage(mongo::StringData name);
 bool isSinkStage(mongo::StringData name);
 bool isWindowStage(mongo::StringData name);
@@ -31,6 +32,7 @@ bool isEmitStage(mongo::StringData name);
 bool isMergeStage(mongo::StringData name);
 bool isWindowAwareStage(mongo::StringData name);
 bool isBlockingWindowAwareStage(mongo::StringData name);
+bool hasBlockingStage(const BSONPipeline& pipeline);
 bool isHttpsStage(mongo::StringData name);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);

@@ -56,6 +56,8 @@ public:
         bool shouldValidateModifyRequest{false};
         // Set to true when planning a modified processor.
         bool isModifiedProcessor{false};
+        // Set to true if data flow will be enabled for the OperatorDag that this planner makes.
+        bool enableDataFlow{true};
     };
 
     Planner(Context* context, Options options);

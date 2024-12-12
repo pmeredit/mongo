@@ -50,7 +50,9 @@ enum class StopReason {
     // Stopping due to an error during start.
     ErrorDuringStart,
     // An external start request for a stream processor currently in a failed state.
-    ExternalStartRequestForFailedState
+    ExternalStartRequestForFailedState,
+    // This is just a validation request that has finished
+    DoneValidating
 };
 
 // Used for printing a stopReason in LOGV2 statements.

@@ -31,6 +31,8 @@ public:
         // If true, kIdle watermark messages are sent whenever 0 documents are returned
         // from the source.
         bool sendIdleMessages{false};
+        // If true, data flow is enabled.
+        bool enableDataFlow{true};
     };
 
     SourceOperator(Context* context, int32_t numOutputs);

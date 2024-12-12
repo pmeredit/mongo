@@ -11,7 +11,9 @@ import {
     TestHelper,
     uuidStr
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
-import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {listStreamProcessors} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
+const string100KB = new Array(1024 * 100).join('a');
 
 // This utility function tests the basic modify(modifiedPipeline) flow:
 // 1. Process data with the originalPipeline.
@@ -39,24 +41,29 @@ function testRunner({
     modifySourceFunc,
     resumeFromCheckpoint = true,
     expectedTotalInputMessages,
+    oplogSizeMB,
+    useTimeField = false,
+    validateFailureCode = ErrorCodes.StreamProcessorInvalidOptions,
     modifyPipelineUseEarliestStartTimestamp,
     removeCheckpointsBeforeModify,
 }) {
     const waitTimeMs = 30000;
     // Run the stream processor with the originalPipeline.
-    let test = new TestHelper(
-        inputForOriginalPipeline,
-        originalPipeline,
-        null,           /* interval */
-        "changestream", /* sourceType */
-        true,           /* useNewCheckpointing */
-        true,           /* useRestoredExecutionPlan */
-        null,           /* writeDir */
-        null,           /* restoreDir */
-        null,           /* dbForTest */
-        null,           /* targetSourceMergeDb */
-        false,          /* useTimeField */
-    );
+    let test = new TestHelper(inputForOriginalPipeline,
+                              originalPipeline,
+                              null,           /* interval */
+                              "changestream", /* sourceType */
+                              true,           /* useNewCheckpointing */
+                              true,           /* useRestoredExecutionPlan */
+                              null,           /* writeDir */
+                              null,           /* restoreDir */
+                              null,           /* dbForTest */
+                              null,           /* targetSourceMergeDb */
+                              useTimeField,
+                              undefined,
+                              undefined,
+                              oplogSizeMB);
+
     let earliestStartTimestamp;
     if (modifyPipelineUseEarliestStartTimestamp) {
         const res = test.inputColl.insertOne({a: -1});
@@ -117,6 +124,18 @@ function testRunner({
         };
     }
 
+    if (oplogSizeMB) {
+        // Wait for the oplog to be truncated.
+        test.targetSourceMergeDb.getSiblingDB("admin").runCommand(
+            {replSetResizeOplog: 1, size: oplogSizeMB});
+        const oplog = test.targetSourceMergeDb.getSiblingDB("local").oplog.rs;
+        assert.soon(function() {
+            const dataSize = oplog.dataSize();
+            // The oplog milestone system allows the oplog to grow to 110% its max size.
+            return dataSize < 1.1 * (oplogSizeMB * 1024 * 1024);
+        }, "waiting for oplog to be truncated", 5 * 60 * 1000, 5 * 1000);
+    }
+
     // Validate the modify request and, if validateShouldSucceed=true, start the modified processor.
     const validateResult = test.modifyAndStart({
         newPipeline: modifiedPipeline,
@@ -126,8 +145,11 @@ function testRunner({
         resumeFromCheckpointAfterModify: resumeFromCheckpoint
     });
     if (!validateShouldSucceed) {
-        assert.commandFailedWithCode(validateResult, ErrorCodes.StreamProcessorInvalidOptions);
-        assert.eq(validateResult.errmsg, expectedValidateError);
+        assert.commandFailedWithCode(validateResult, validateFailureCode);
+        assert(validateResult.errmsg.includes(expectedValidateError));
+        // validate the SP doesn't exist in list results
+        const results = test.list();
+        assert.eq(0, results.length);
         return;
     }
 
@@ -519,7 +541,6 @@ const testCases = [
         expectedValidateError: "StreamProcessorInvalidOptions: Unsupported stage: $foo"
     },
     {
-        // TODO(SERVER-95185): Support this.
         validateShouldSucceed: false,
         expectedValidateError:
             "resumeFromCheckpoint must be false to add a window to a stream processor",
@@ -602,7 +623,6 @@ const testCases = [
             "resumeFromCheckpoint must be false to remove a window from a stream processor"
     },
     {
-        // TODO(SERVER-94179): Support this.
         originalPipeline: [
             {$match: {"fullDocument.a": 1}},
             {$replaceRoot: {newRoot: "$fullDocument"}},
@@ -794,11 +814,61 @@ const testCases = [
         expectedTotalInputMessages: 1,
         expectedOutput: [{a: 1}],
     },
+    {
+        originalPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$match: {a: 1}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, avg: {$avg: "$a"}}}],
+            }
+        }],
+        validateShouldSucceed: false,
+        expectedValidateError:
+            "resumeFromCheckpoint must be false to modify a processor that has a window without a blocking stage"
+    },
+    {
+        originalPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, avg: {$avg: "$a"}}}],
+            }
+        }],
+        // 1GB oplog
+        oplogSizeMB: 1000,
+        // insert more than enough data to fall off the oplog
+        inputForOriginalPipeline: Array.from({length: 1.5 * 1024 * 16},
+                                             (_, i) => {
+                                                 return {
+                                                     i: i,
+                                                     str: string100KB,
+                                                     ts: ISODate("2024-01-01T00:00:00.000Z"),
+                                                 };
+                                             }),
+        validateShouldSucceed: false,
+        expectedValidateError:
+            "Resume of change stream was not possible, as the resume point may no longer be in the oplog",
+        validateFailureCode: ErrorCodes.StreamProcessorCannotResumeFromSource,
+        useTimeField: true
+    },
 ];
 
 // Note: for local dev, change testCases to testCases.slice(-1) if you just want to run the last
 // test case.
 for (const testCase of testCases) {
-    jsTestLog(`Running: ${tojson(testCase)}`);
+    jsTestLog(`Running: ${tojson({
+        originalPipeline: testCase.originalPipeline,
+        modifiedPipeline: testCase.modifiedPipeline
+    })}`);
     testRunner(testCase);
 }

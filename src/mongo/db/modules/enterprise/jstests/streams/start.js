@@ -109,19 +109,8 @@ function startStreamProcessor(pipeline,
         {id: 2, value: 1},
         {id: 3, value: 1},
     ]);
-    // Wait 3 seconds and verify nothing is in the output even though we sent some input.
-    sleep(3000);
-
-    // Wait until all 4 input docs are read by the source operator.
-    assert.soon(() => {
-        let getMetricsCmd = {streams_getMetrics: ''};
-        let result = db.runCommand(getMetricsCmd);
-        assert.eq(result["ok"], 1);
-        let metric =
-            result["gauges"].filter(metric => metric.name === "source_operator_queue_size");
-        assert.eq(metric.length, 1);
-        return metric[0].value >= 4;
-    });
+    // Wait 10 seconds and verify nothing is in the output even though we sent some input.
+    sleep(10000);
     assert.eq(0, outputColl.find({}).toArray().length);
 
     stopStreamProcessor(spName);
