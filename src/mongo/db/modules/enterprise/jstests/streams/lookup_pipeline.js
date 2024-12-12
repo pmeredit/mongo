@@ -94,7 +94,10 @@ const spName = "lookupPipelineTest";
 
 (function testImplicitlyCorrelatedPipelineWithLetAndUnwind() {
     const inputDocs = [{k: 0}, {k: 2}];
-    const foreignDocs = [{fk: 0, a: 1}, {fk: 0, a: 2}, {fk: 1}, {fk: 2, a: 3}];
+    // Use a large number of docs so that DocumentSourceRemoteDbCursor needs to send a
+    // GetMoreCommandRequest.
+    let foreignDocs = Array.from({length: 5000}, (_, i) => ({fk: 0, a: i + 1}));
+    foreignDocs = foreignDocs.concat([{fk: 1}, {fk: 2, a: 3}]);
 
     runTest({
         spName: spName,
@@ -121,13 +124,10 @@ const spName = "lookupPipelineTest";
         },
         verifyActions: () => {
             insertDocs(spName, inputDocs);
-            assert.soon(() => { return outputColl.find().itcount() == 3; }, logState(spName));
+            assert.soon(() => { return outputColl.find().itcount() == 5001; }, logState(spName));
             assert.eq(
-                [
-                    {k: 0, out: {fk: 0, a: 1, b: 10}},
-                    {k: 0, out: {fk: 0, a: 2, b: 10}},
-                    {k: 2, out: {fk: 2, a: 3, b: 12}}
-                ],
+                Array.from({length: 5000}, (_, i) => ({k: 0, out: {fk: 0, a: i + 1, b: 10}})).concat(
+                [{k: 2, out: {fk: 2, a: 3, b: 12}}]),
                 outputColl.find({}, {_id: 0, k: 1, out: 1}).toArray());
         },
     });

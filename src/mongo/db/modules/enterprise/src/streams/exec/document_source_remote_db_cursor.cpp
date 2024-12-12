@@ -49,6 +49,7 @@ DocumentSource::GetNextResult DocumentSourceRemoteDbCursor::doGetNext() {
 
         // If the current batch is exhausted, tries to get the next batch.
         GetMoreCommandRequest request(_cursorId, pExpCtx->getNamespaceString().coll().toString());
+        request.setDbName(pExpCtx->getNamespaceString().dbName());
         request.setBatchSize(kDefaultBatchSize);
         _reply = _procItf->runCommand(request);
 
