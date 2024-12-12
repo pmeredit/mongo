@@ -589,6 +589,9 @@ export class CheckPointTestHelper extends TestHelper {
             // on the first start. Subsequent attempts replay from the changestream/oplog.
             assert.commandWorked(this.inputColl.insertMany(this.input[0..endRange]));
         }
+
+        assert.soon(() => this.getCheckpointIds().length > 0,
+                    `SP failed to checkpoint at least once`);
     }
 }
 
