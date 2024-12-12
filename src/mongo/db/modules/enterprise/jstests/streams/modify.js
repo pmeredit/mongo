@@ -38,7 +38,9 @@ function testRunner({
     modifyPipelineFunc,
     modifySourceFunc,
     resumeFromCheckpoint = true,
-    expectedTotalInputMessages
+    expectedTotalInputMessages,
+    modifyPipelineUseEarliestStartTimestamp,
+    removeCheckpointsBeforeModify,
 }) {
     const waitTimeMs = 30000;
     // Run the stream processor with the originalPipeline.
@@ -55,6 +57,12 @@ function testRunner({
         null,           /* targetSourceMergeDb */
         false,          /* useTimeField */
     );
+    let earliestStartTimestamp;
+    if (modifyPipelineUseEarliestStartTimestamp) {
+        const res = test.inputColl.insertOne({a: -1});
+        earliestStartTimestamp = res.insertedId.getTimestamp();
+    }
+
     test.run();
     // Wait for all the messages to be read.
     assert.soon(
@@ -77,6 +85,17 @@ function testRunner({
     test.inputColl.insertMany(inputAfterStopBeforeModify);
     const outputBeforeModify = test.outputColl.aggregate([]).toArray();
 
+    if (removeCheckpointsBeforeModify) {
+        // Remove all checkpoints
+        test.checkpointUtil.clear();
+
+        // This works around a quirk of changestreams where if we don't advance cluster timestamp
+        // then the last inserted document, in this case inputAfterStopBeforeModify, will be
+        // included in the changestream for the modified pipeline.
+        test.targetSourceMergeDb["someCollection"].insertOne(
+            {justAdvancingTheClusterTimestamp: true});
+    }
+
     // Resume the stream processor on the new pipeline.
     jsTestLog(`Starting modified processor ${tojson(modifiedPipeline)}`);
     if (modifyPipelineFunc) {
@@ -85,6 +104,17 @@ function testRunner({
     let modifiedSource = undefined;
     if (modifySourceFunc) {
         modifiedSource = modifySourceFunc(test);
+    }
+    if (modifyPipelineUseEarliestStartTimestamp) {
+        if (modifiedSource == null) {
+            // initialize to $source stage
+            modifiedSource = test.pipeline[0]["$source"];
+        }
+
+        modifiedSource.config = {
+            ...modifiedSource.config,
+            startAtOperationTime: earliestStartTimestamp,
+        };
     }
 
     // Validate the modify request and, if validateShouldSucceed=true, start the modified processor.
@@ -106,6 +136,14 @@ function testRunner({
     if (expectedTotalInputMessages) {
         totalInputMessages = expectedTotalInputMessages;
     }
+
+    if (removeCheckpointsBeforeModify) {
+        // Clearing the checkpoints invalidates the expected stats, so the expected value will no
+        // longer line up. This may require more parameters in the future, but for now just setting
+        // the value to 0 is sufficient.
+        totalInputMessages = 0;
+    }
+
     assert.soon(() => { return totalInputMessages == test.stats()["inputMessageCount"]; });
 
     if (modifiedPipeline2) {
@@ -122,7 +160,19 @@ function testRunner({
 
     // Validate the expected output and summary stats.
     assert.soon(() => {
-        return test.stats()["outputMessageCount"] == expectedOutput.length &&
+        let expectedOutputLength = expectedOutput.length;
+        if (modifyPipelineUseEarliestStartTimestamp) {
+            expectedOutputLength += outputBeforeModify.length;
+        }
+
+        if (removeCheckpointsBeforeModify) {
+            // Clearing the checkpoints invalidates the expected stats, so the expected value will
+            // no longer line up. This may require more parameters in the future, but for now just
+            // setting the value to 0 is sufficient.
+            expectedOutputLength = 0;
+        }
+
+        return test.stats()["outputMessageCount"] == expectedOutputLength &&
             test.stats()["dlqMessageCount"] == expectedDlqAfterModify.length;
     }, "waiting for expected output", waitTimeMs);
 
@@ -148,9 +198,29 @@ function testRunner({
     if (expectedTotalInputMessages) {
         expectedInputMessages = expectedTotalInputMessages;
     }
+
+    if (removeCheckpointsBeforeModify) {
+        // Clearing the checkpoints invalidates the expected stats, so the expected value will no
+        // longer line up. This may require more parameters in the future, but for now just setting
+        // the value to 0 is sufficient.
+        expectedInputMessages = 0;
+    }
+
     assert.eq(expectedInputMessages, stats["inputMessageCount"]);
     assert.eq(expectedDlqAfterModify.length, stats["dlqMessageCount"]);
-    assert.eq(expectedOutput.length, stats["outputMessageCount"]);
+    let expectedOutputLength = expectedOutput.length;
+    if (modifyPipelineUseEarliestStartTimestamp) {
+        expectedOutputLength += outputBeforeModify.length;
+    }
+
+    if (removeCheckpointsBeforeModify) {
+        // Clearing the checkpoints invalidates the expected stats, so the expected value will no
+        // longer line up. This may require more parameters in the future, but for now just setting
+        // the value to 0 is sufficient.
+        expectedOutputLength = 0;
+    }
+
+    assert.eq(expectedOutputLength, stats["outputMessageCount"]);
 
     // Validate the per-operator stats of the processor. The per-operator
     // stats are for the events "after the modify".
@@ -663,7 +733,67 @@ const testCases = [
         validateShouldSucceed: false,
         expectedValidateError:
             "resumeFromCheckpoint must be false to change a window stage's interval"
-    }
+    },
+    {
+        originalPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(2)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        resumeFromCheckpoint: false,
+        validateShouldSucceed: true,
+    },
+    {
+        originalPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
+        modifiedPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
+        modifyPipelineUseEarliestStartTimestamp: true,
+        resumeFromCheckpoint: false,
+        inputForOriginalPipeline: [{a: 1}],
+        inputAfterStopBeforeModify: [{a: 1}],
+        expectedTotalInputMessages: 4,
+        expectedOutput: [{a: -1}, {a: 1}, {a: 1}],
+    },
+    {
+        originalPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $tumblingWindow: {
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        removeCheckpointsBeforeModify: true,
+        resumeFromCheckpoint: false,
+        validateShouldSucceed: true,
+    },
+    {
+        originalPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
+        modifiedPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
+        inputForOriginalPipeline: [{a: 1}],
+        inputAfterStopBeforeModify: [{a: 2}],
+        expectedTotalInputMessages: 2,
+        expectedOutput: [{a: 1}, {a: 2}],
+    },
+    {
+        originalPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
+        modifiedPipeline: [{$project: {a: "$fullDocument.a"}}, {$project: {_stream_meta: 0}}],
+        removeCheckpointsBeforeModify: true,
+        inputForOriginalPipeline: [{a: 1}],
+        inputAfterStopBeforeModify: [{a: 2}],
+        expectedTotalInputMessages: 1,
+        expectedOutput: [{a: 1}],
+    },
 ];
 
 // Note: for local dev, change testCases to testCases.slice(-1) if you just want to run the last
