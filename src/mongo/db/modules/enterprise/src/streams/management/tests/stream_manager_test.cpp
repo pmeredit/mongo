@@ -2,33 +2,44 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <boost/optional.hpp>
+#include <chrono>
+#include <exception>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "mongo/base/string_data.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/thread.h"
+#include "mongo/stdx/unordered_set.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/processinfo.h"
+#include "mongo/util/scopeguard.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/checkpoint/file_util.h"
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
+#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
+#include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tenant_feature_flags.h"
-#include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
 #include "streams/util/exception.h"
+#include "streams/util/metric_manager.h"
 
-#include <chrono>
-#include <exception>
-#include <filesystem>
-#include <memory>
-
+using namespace std::chrono_literals;
 namespace streams {
 
 using namespace mongo;
@@ -147,9 +158,14 @@ public:
 
     void setLastCheckpointTime(
         StreamManager::StreamProcessorInfo* info,
-        mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> time) {
+        mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
         info->checkpointCoordinator->_lastCheckpointTimestamp = time;
+    }
+
+    mongo::stdx::chrono::time_point<system_clock> getLastCheckpointTime(
+        StreamManager::StreamProcessorInfo* info) {
+        return info->checkpointCoordinator->_lastCheckpointTimestamp;
     }
 
     void setUncheckpointedState(StreamManager::StreamProcessorInfo* info,
@@ -1047,7 +1063,7 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         setLastCheckpointSize(processorInfo, 100_MiB);
         // set this to force another checkpoint
         setLastCheckpointTime(processorInfo,
-                              stdx::chrono::steady_clock::now() - stdx::chrono::hours{1});
+                              stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
         setUncheckpointedState(processorInfo, true);
         // since the last checkpoint was 100MB, after a runOnce call in the executor background
         // thread, the checkpoint interval should increase to 60 minutes.
@@ -1151,6 +1167,200 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         ]
     )",
               5 * 1000 * 60);
+}
+
+TEST_F(StreamManagerTest, Start_ShouldCorrectlyInitCheckpointCoordinatorAfterCheckpointRestore) {
+    std::string pipelineRaw = R"([
+        {
+            $source: {
+                connectionName: "testKafka",
+                topic: "t1",
+                testOnlyPartitionCount: 1
+            }
+        },
+        {
+            $emit: {
+                connectionName: "__noopSink"
+            }
+        }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    std::string spName = "testSp";
+
+    auto context = std::make_unique<Context>();
+    context->streamProcessorId = spName;
+    context->tenantId = kTestTenantId1;
+
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    StartStreamProcessorCommand createSPRequest;
+    createSPRequest.setTenantId(StringData(kTestTenantId1));
+    createSPRequest.setName(StringData(spName));
+    createSPRequest.setProcessorId(StringData(spName));
+    createSPRequest.setPipeline(parsePipelineFromBSON(pipeline));
+
+    auto checkpointWriteDir = "/tmp/stream_manager_test/checkpointdir";
+    ScopeGuard teardown([&] { std::filesystem::remove_all(checkpointWriteDir); });
+
+    CheckpointOptions checkpointOptions;
+    LocalDiskStorageOptions localDiskOptions{checkpointWriteDir};
+    checkpointOptions.setLocalDisk(LocalDiskStorageOptions{checkpointWriteDir});
+    StartOptions startOptions;
+    startOptions.setCheckpointOptions(checkpointOptions);
+    startOptions.setCheckpointOnStart(false);
+    createSPRequest.setOptions(startOptions);
+
+    createSPRequest.setConnections({{"testKafka",
+                                     mongo::ConnectionTypeEnum::Kafka,
+                                     BSON("bootstrapServers"
+                                          << "localhost:9092"
+                                          << "isTestKafka" << true)}});
+
+    streamManager->startStreamProcessor(createSPRequest);
+
+    AtomicWord<bool> stopFlushingFlag{false};
+    stdx::unordered_set<std::string> seenCheckpointPaths;
+    auto flushCheckpoint = [&] {
+        auto spCheckpointPath = checkpointWriteDir + std::string("/") +
+            std::string(kTestTenantId1) + std::string("/") + spName;
+        std::chrono::steady_clock timeoutClock;
+
+        // Wait for SP's checkpoint directory to appear
+        for (auto checkpointPathMonitorStart = timeoutClock.now();
+             !std::filesystem::exists(spCheckpointPath);) {
+            if (timeoutClock.now() - checkpointPathMonitorStart >= 1min) {
+                ASSERT_TRUE(false);
+            }
+        }
+
+        auto checkpointFlushingtart = timeoutClock.now();
+        while (timeoutClock.now() - checkpointFlushingtart < 5min) {
+            for (const auto& entry : std::filesystem::directory_iterator(spCheckpointPath)) {
+                if (!entry.is_directory() || seenCheckpointPaths.contains(entry.path().string())) {
+                    continue;
+                }
+
+                // Wait for manifest to generate
+                auto manifestPath = entry.path() + "/MANIFEST";
+                for (auto manifestMonitorStart = timeoutClock.now();
+                     !std::filesystem::exists(manifestPath);) {
+                    if (timeoutClock.now() - manifestMonitorStart > 1min) {
+                        ASSERT_TRUE(false);
+                    }
+                }
+
+                // Read manifest and extract checkpoint ID
+                auto buf = readFile(manifestPath);
+                BSONObj manifestObj{&buf[0] + 4};
+                auto manifest = mongo::Manifest::parseOwned(IDLParserContext{"Manifest"},
+                                                            manifestObj.getOwned());
+                auto checkpointId = manifest.getMetadata().getCheckpointId();
+
+                SendEventCommand cmd{kTestTenantId1, spName};
+                cmd.setCheckpointFlushedEvent(CheckpointFlushedEvent{checkpointId});
+                streamManager->sendEvent(cmd);
+
+                seenCheckpointPaths.insert(entry.path().string());
+            }
+
+            if (stopFlushingFlag.load()) {
+                return;
+            }
+        }
+    };
+
+    stdx::thread flushCheckpointThread{flushCheckpoint};
+    stopStreamProcessor(
+        streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
+    stopFlushingFlag.store(true);
+    flushCheckpointThread.join();
+
+    auto afterCheckpointCommitTs = system_clock::now();
+
+    localDiskOptions.setRestoreDirectory(
+        boost::make_optional<StringData>(*seenCheckpointPaths.begin()));
+    checkpointOptions.setLocalDisk(localDiskOptions);
+    startOptions.setCheckpointOptions(checkpointOptions);
+    createSPRequest.setOptions(startOptions);
+    createStreamProcessor(streamManager.get(), createSPRequest);
+
+    ScopeGuard stopExecutorGuard([&] {
+        onExecutorShutdown(streamManager.get(), kTestTenantId1, spName, Status::OK());
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
+    });
+
+    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
+    ASSERT_LT(getLastCheckpointTime(processorInfo), afterCheckpointCommitTs);
+}
+
+TEST_F(StreamManagerTest,
+       Start_ShouldCorrectlyInitCheckpointCoordinatorIfThereIsNoCheckpointRestore) {
+
+    std::string pipelineRaw = R"([
+        {
+            $source: {
+                connectionName: "testKafka",
+                topic: "t1",
+                testOnlyPartitionCount: 1
+            }
+        },
+        {
+            $emit: {
+                connectionName: "__noopSink"
+            }
+        }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    std::string spName = "testSp";
+
+    auto context = std::make_unique<Context>();
+    context->streamProcessorId = spName;
+    context->tenantId = kTestTenantId1;
+
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    StartStreamProcessorCommand createSPRequest;
+    createSPRequest.setTenantId(StringData(kTestTenantId1));
+    createSPRequest.setName(StringData(spName));
+    createSPRequest.setProcessorId(StringData(spName));
+    createSPRequest.setPipeline(parsePipelineFromBSON(pipeline));
+
+    auto checkpointWriteDir = "/tmp/stream_manager_test/checkpointdir";
+
+    CheckpointOptions checkpointOptions;
+    LocalDiskStorageOptions localDiskOptions{checkpointWriteDir};
+    checkpointOptions.setLocalDisk(localDiskOptions);
+    StartOptions startOptions;
+    startOptions.setCheckpointOptions(checkpointOptions);
+    startOptions.setCheckpointOnStart(false);
+    createSPRequest.setOptions(startOptions);
+
+    auto sourceConnection = mongo::Connection("testKafka",
+                                              mongo::ConnectionTypeEnum::Kafka,
+                                              BSON("bootstrapServers"
+                                                   << "localhost:9092"
+                                                   << "isTestKafka" << true));
+    createSPRequest.setConnections({sourceConnection});
+
+    auto beforeSPStartTs = system_clock::now();
+
+    createStreamProcessor(streamManager.get(), createSPRequest);
+
+    ScopeGuard stopExecutorGuard([&] {
+        onExecutorShutdown(streamManager.get(), kTestTenantId1, spName, Status::OK());
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
+    });
+
+    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
+    ASSERT_GT(getLastCheckpointTime(processorInfo), beforeSPStartTs);
 }
 
 TEST_F(StreamManagerTest, MemoryTracking) {

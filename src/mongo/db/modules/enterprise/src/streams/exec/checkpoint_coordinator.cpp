@@ -14,14 +14,13 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace mongo;
-using mongo::stdx::chrono::steady_clock;
 using namespace std::chrono_literals;
 
 namespace streams {
 
 CheckpointCoordinator::CheckpointCoordinator(Options options)
     : _options(std::move(options)),
-      _lastCheckpointTimestamp{steady_clock::now()},
+      _lastCheckpointTimestamp{_options.restoredCheckpointTimestamp.value_or(system_clock::now())},
       _interval{_options.minInterval} {
     if (_options.fixedInterval) {
         setCheckpointInterval(*_options.fixedInterval);
@@ -46,7 +45,7 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
         createCheckpoint == CreateCheckpoint::kForce);
     if (!hasRoom && createCheckpoint == CreateCheckpoint::kIfRoom) {
         auto minutesSinceLastCheckpoint = std::chrono::duration_cast<std::chrono::minutes>(
-            steady_clock::now() - _lastCheckpointTimestamp);
+            system_clock::now() - _lastCheckpointTimestamp);
         if (minutesSinceLastCheckpoint >= 120min) {
             LOGV2_WARNING(8368300,
                           "unable to take checkpoint due to max concurrent checkpoints reached",
@@ -111,7 +110,7 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     }
 
     // Else, if sufficient time has elapsed, then take a checkpoint.
-    auto now = steady_clock::now();
+    auto now = system_clock::now();
     dassert(_lastCheckpointTimestamp <= now);
     if (now - _lastCheckpointTimestamp <= _interval.toSystemDuration()) {
         return CreateCheckpoint::kNotNeeded;
@@ -122,7 +121,7 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
 
 CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
     _writtenFirstCheckpoint = true;
-    _lastCheckpointTimestamp = steady_clock::now();
+    _lastCheckpointTimestamp = system_clock::now();
     invariant(_options.storage);
     CheckpointId id = _options.storage->startCheckpoint();
     return CheckpointControlMsg{.id = std::move(id)};

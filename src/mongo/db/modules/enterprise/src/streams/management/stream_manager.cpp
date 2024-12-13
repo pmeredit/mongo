@@ -1081,19 +1081,26 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                 *processorInfo->context->featureFlags
                      ->getFeatureFlagValue(FeatureFlags::kCheckpointStateSizeToUseMaxIntervalBytes)
                      .getInt();
+
+            CheckpointCoordinator::Options checkpointCoordinatorOptions{
+                .processorId = processorInfo->context->streamProcessorId,
+                .enableDataFlow = enableDataFlow,
+                .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
+                    !processorInfo->context->restoreCheckpointId,
+                .minInterval = Seconds{minInterval},
+                .maxInterval = Seconds{maxInterval},
+                .stateSizeToUseMaxInterval = byteSizeToUseMaxInterval,
+                .fixedInterval = fixedInterval,
+                .storage = processorInfo->context->checkpointStorage.get(),
+                .checkpointController = _concurrentCheckpointController,
+            };
+            if (auto restoredCheckpointInfo = processorInfo->context->restoredCheckpointInfo) {
+                checkpointCoordinatorOptions.restoredCheckpointTimestamp =
+                    restoredCheckpointInfo.value().description.getCheckpointTimestamp();
+            }
+
             processorInfo->checkpointCoordinator =
-                std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
-                    .processorId = processorInfo->context->streamProcessorId,
-                    .enableDataFlow = enableDataFlow,
-                    .writeFirstCheckpoint = request.getOptions().getCheckpointOnStart() ||
-                        !processorInfo->context->restoreCheckpointId,
-                    .minInterval = Seconds{minInterval},
-                    .maxInterval = Seconds{maxInterval},
-                    .stateSizeToUseMaxInterval = byteSizeToUseMaxInterval,
-                    .fixedInterval = fixedInterval,
-                    .storage = processorInfo->context->checkpointStorage.get(),
-                    .checkpointController = _concurrentCheckpointController,
-                });
+                std::make_unique<CheckpointCoordinator>(std::move(checkpointCoordinatorOptions));
         } else {
             // Checkpoint is not supported for the given source, cleanup the CheckpointStorage
             // object.

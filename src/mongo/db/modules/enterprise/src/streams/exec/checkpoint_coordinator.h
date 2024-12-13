@@ -11,6 +11,8 @@
 #include "streams/exec/message.h"
 #include "streams/util/units.h"
 
+using mongo::stdx::chrono::system_clock;
+
 namespace mongo {
 class ServiceContext;
 }
@@ -49,6 +51,8 @@ public:
         // The checkpoint storage.
         CheckpointStorage* storage{nullptr};
         std::shared_ptr<ConcurrentCheckpointController> checkpointController;
+        // Commit timestamp of the restored checkpoint
+        boost::optional<mongo::stdx::chrono::time_point<system_clock>> restoredCheckpointTimestamp;
     };
 
     struct CheckpointRequest {
@@ -96,7 +100,7 @@ private:
     bool _writtenFirstCheckpoint{false};
 
     Options _options;
-    mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> _lastCheckpointTimestamp;
+    mongo::stdx::chrono::time_point<system_clock> _lastCheckpointTimestamp;
     mongo::Milliseconds _interval;
 };
 

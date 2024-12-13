@@ -52,6 +52,7 @@ namespace streams {
 
 using namespace mongo;
 using mongo::stdx::chrono::milliseconds;
+using namespace std::chrono_literals;
 
 /**
  * CheckpointTestWorkload helps run test workloads to test
@@ -362,7 +363,7 @@ public:
 
     void setLastCheckpointTime(
         CheckpointCoordinator* coordinator,
-        mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> time) {
+        mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
         coordinator->_lastCheckpointTimestamp = time;
     }
 
@@ -730,6 +731,7 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
         milliseconds checkpointInterval{0};
         bool writeFirstCheckpoint{false};
         bool enableDataFlow{true};
+        boost::optional<mongo::stdx::chrono::time_point<system_clock>> lastCheckpointTimestamp;
         std::function<void(std::shared_ptr<CheckpointCoordinator> coordinator,
                            std::shared_ptr<ConcurrentCheckpointController> CheckpointController)>
             tc;
@@ -750,7 +752,8 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
             .minInterval = Milliseconds(spec.checkpointInterval.count()),
             .maxInterval = Milliseconds(10 * spec.checkpointInterval.count()),
             .storage = storage.get(),
-            .checkpointController = context->concurrentCheckpointController});
+            .checkpointController = context->concurrentCheckpointController,
+            .restoredCheckpointTimestamp = spec.lastCheckpointTimestamp});
 
         spec.tc(coordinator, context->concurrentCheckpointController);
     };
@@ -920,6 +923,40 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
 
     runTestCase(Spec{.checkpointInterval = milliseconds{10000},
                      .tc = checkpointSkippedFromInsufficentTimeElapseTc});
+
+    auto checkpointSkippedFromInsufficientTimeElapsedSinceRestoredCheckpoint =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_FALSE(checkpointCompleted);
+        };
+    runTestCase(Spec{.checkpointInterval = 10s,
+                     .lastCheckpointTimestamp = system_clock::now() - 100ms,
+                     .tc = checkpointSkippedFromInsufficientTimeElapsedSinceRestoredCheckpoint});
+
+    auto checkpointTakenFromSufficientTimeElapsedSinceRestoredCheckpoint =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            bool checkpointCompleted = false;
+
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+
+            ASSERT_TRUE(checkpointCompleted);
+        };
+    runTestCase(Spec{.checkpointInterval = 10s,
+                     .lastCheckpointTimestamp = system_clock::now() - 15s,
+                     .tc = checkpointTakenFromSufficientTimeElapsedSinceRestoredCheckpoint});
 
     auto checkpointSkippedFromDisabledDataFlowTc =
         [&](std::shared_ptr<CheckpointCoordinator> coordinator,
