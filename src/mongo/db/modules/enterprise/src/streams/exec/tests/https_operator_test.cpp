@@ -195,7 +195,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                         HttpClient::HttpMethod::kGET,
                         uri,
                     },
-                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": ["ok"]})"});
 
                 return HttpsOperator::Options{
                     .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
@@ -219,7 +219,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
 
                     auto ack = response["ack"];
                     ASSERT_TRUE(ack.ok());
-                    ASSERT_EQ(ack.String(), "ok");
+                    ASSERT_EQ(ack.Array()[0].String(), "ok");
 
                     StreamMetaHttps expectedStreamMetaHttps;
                     expectedStreamMetaHttps.setUrl(StringData{"http://localhost:10000"});
@@ -230,7 +230,53 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                 }
             },
             [](OperatorStats stats) {
-                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numInputBytes, 15);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
+        },
+        {
+            "should make 1 basic GET request that returns an array",
+            [&] {
+                std::string uri = "http://localhost:10000/";
+                // Set up mock http client.
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri,
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"(["foo", "bar"])"});
+
+                return HttpsOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .url = uri,
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{Document{fromjson("{'foo': 'bar'}")}},
+            [this](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                auto doc = msg.dataMsg->docs[0].doc.toBson();
+                auto response = doc["response"].Array();
+                ASSERT_TRUE(!response.empty());
+                ASSERT_EQ(response[0].String(), "foo");
+                ASSERT_EQ(response[1].String(), "bar");
+
+                StreamMetaHttps expectedStreamMetaHttps;
+                expectedStreamMetaHttps.setUrl(StringData{"http://localhost:10000"});
+                expectedStreamMetaHttps.setMethod(HttpMethodEnum::MethodGet);
+                expectedStreamMetaHttps.setHttpStatusCode(200);
+                assertStreamMetaHttps(expectedStreamMetaHttps,
+                                      doc[*_context->streamMetaFieldName].Obj()["https"].Obj());
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 14);
                 ASSERT_EQ(stats.numOutputBytes, 0);
                 ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },

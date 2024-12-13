@@ -13,6 +13,8 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <curl/urlapi.h>
+#include <exception>
+#include <fmt/core.h>
 #include <memory>
 #include <string>
 
@@ -422,10 +424,19 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             responseAsValue = Value(rawResponse.toString());
         } else if ((contentType && *contentType == kApplicationJson) || !contentType) {
             try {
-                auto responseView =
-                    bsoncxx::stdx::string_view{std::move(rawResponse.data()), rawResponse.size()};
-                auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                responseAsValue = Value(std::move(responseAsBson));
+                // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
+                if (rawResponse.front() == '[') {
+                    std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse.data());
+                    auto responseView =
+                        bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
+                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+                    responseAsValue = Value(std::move(responseAsBson.firstElement()));
+                } else {
+                    auto responseView =
+                        bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
+                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+                    responseAsValue = Value(std::move(responseAsBson));
+                }
             } catch (const bsoncxx::exception& e) {
                 tryLog(9604801, [&](int logID) {
                     LOGV2_INFO(logID,
