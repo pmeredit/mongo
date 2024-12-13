@@ -395,6 +395,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
 
         responseTimeMs = durationCount<Milliseconds>(timer.elapsed());
         processResult.numInputBytes += rawResponse.size();
+
         uassert(ErrorCodes::OperationFailed,
                 fmt::format("Received error response from destination server. Status: {}, Body: {}",
                             httpResponse->code,
@@ -407,6 +408,9 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
                        "context"_attr = _context,
                        "error"_attr = e.what());
         });
+        if (httpResponse && !useOnErrorBehaviorForStatusCode(httpResponse->code)) {
+            throw;
+        }
         if (onErrorHandleException("Request failure", e)) {
             return processResult;
         }

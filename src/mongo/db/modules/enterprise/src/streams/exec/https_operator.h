@@ -195,6 +195,13 @@ private:
     // passed into the operator are valid. Throws a user error if not valid.
     void validateOptions();
 
+    // useOnErrorBehaviorForStatusCode is called to determine if we should use the onError behavior
+    // vs failing the processor.
+    bool useOnErrorBehaviorForStatusCode(std::uint16_t code) {
+        return code == 400 || code == 404 || code == 410 || code == 413 || code == 414 ||
+            code == 431;
+    };
+
     HttpsOperator::Options _options;
 
     int64_t _rateLimitPerSec;

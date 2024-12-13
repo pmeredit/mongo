@@ -1303,7 +1303,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponse) {
 }
 
 TEST_F(HttpsOperatorTest, ShouldDLQInnerPayloadDoc) {
-    StringData uri{"http://localhost:10000"};
+    StringData uri{"http://localhost:10000/"};
 
     auto rawPipeline = std::vector<mongo::BSONObj>{
         fromjson(
@@ -1318,7 +1318,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQInnerPayloadDoc) {
             HttpClient::HttpMethod::kPOST,
             uri.toString(),
         },
-        MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+        MockHttpClient::Response{.code = 404, .body = R"({"ack": "ok"})"});
 
     auto options = HttpsOperator::Options{
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
@@ -1353,7 +1353,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQInnerPayloadDoc) {
             }
         },
         [this, &dlqMsgs](OperatorStats stats) {
-            ASSERT_EQ(stats.numInputBytes, 0);
+            ASSERT_EQ(stats.numInputBytes, 13);
             ASSERT_EQ(stats.numOutputBytes, 20);
             ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
             ASSERT_EQ(stats.numDlqDocs, 1);
@@ -1430,39 +1430,43 @@ TEST_F(HttpsOperatorTest, ShouldIgnoreOnErrorResponse) {
         });
 }
 
-TEST_F(HttpsOperatorTest, FailOnError) {
-    StringData uri{"http://localhost:10000/"};
-    // Set up mock http client.
-    std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+TEST_F(HttpsOperatorTest, ShouldFailOnFailureStatusCodes) {
+    auto codes = std::vector<std::uint16_t>{199, 300, 401, 500};
 
-    std::uint16_t statusCode{400};
-    auto responseBody = tojson(BSON("ack"
-                                    << "ok"));
-    mockHttpClient->expect(
-        MockHttpClient::Request{
-            HttpClient::HttpMethod::kGET,
-            uri.toString(),
-        },
-        MockHttpClient::Response{.code = statusCode, .body = responseBody});
+    for (const auto& code : codes) {
+        LOGV2_DEBUG(9846999, 1, "Running test case", "code"_attr = code);
+        StringData uri{"http://localhost:10000/"};
+        // Set up mock http client.
+        std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
 
-    HttpsOperator::Options options{
-        .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
-        .method = HttpClient::HttpMethod::kGET,
-        .url = uri.toString(),
-        .as = "response",
-        .onError = mongo::OnErrorEnum::Fail,
-    };
+        std::uint16_t statusCode{code};
+        auto responseBody = tojson(BSON("ack"
+                                        << "ok"));
+        mockHttpClient->expect(
+            MockHttpClient::Request{
+                HttpClient::HttpMethod::kGET,
+                uri.toString(),
+            },
+            MockHttpClient::Response{.code = statusCode, .body = responseBody});
 
-    setupDag(std::move(options));
+        HttpsOperator::Options options{
+            .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+            .method = HttpClient::HttpMethod::kGET,
+            .url = uri.toString(),
+            .as = "response",
+        };
 
-    ASSERT_THROWS_WHAT(
-        testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
-                        [](auto _) {}),
-        DBException,
-        expectedErrResponseErrMsg(statusCode, responseBody));
+        setupDag(std::move(options));
+
+        ASSERT_THROWS_WHAT(
+            testAgainstDocs(std::vector<StreamDocument>{Document{fromjson("{'path': '/foobar'}")}},
+                            [](auto _) {}),
+            DBException,
+            expectedErrResponseErrMsg(statusCode, responseBody));
+    }
 }
 
-TEST_F(HttpsOperatorTest, ShouldFailOnNon2XXStatus) {
+TEST_F(HttpsOperatorTest, ShouldUseOnErrorBehaviorForStatusCodes) {
     StringData uri{"http://localhost:10000/"};
     // Set up mock http client.
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
@@ -1479,7 +1483,7 @@ TEST_F(HttpsOperatorTest, ShouldFailOnNon2XXStatus) {
 
     auto responseBody = tojson(BSON("ack"
                                     << "ok"));
-    for (uint16_t httpStatusCode : {199, 300, 400, 500}) {
+    for (uint16_t httpStatusCode : {400, 404, 410, 413, 414, 431}) {
         rawMockHttpClient->expect(
             MockHttpClient::Request{
                 HttpClient::HttpMethod::kGET,
