@@ -75,8 +75,14 @@ export function generateSchemaV1(fieldMap) {
 export function generateSchemaV2(fieldMap, namespace) {
     assert(namespace != undefined, "Missing required namespace for generateSchema()");
     let encryptionInformation = {type: 1, schema: {}};
+    addSchemaToEncryptionInformation(encryptionInformation, namespace, fieldMap);
+    return {encryptionInformation: encryptionInformation};
+}
+
+export function addSchemaToEncryptionInformation(encryptionInformation, namespace, schemaSpec) {
+    assert(namespace != undefined, "Missing required namespace for generateSchema()");
     let fields = [];
-    for (const [path, pathSpec] of Object.entries(fieldMap)) {
+    for (const [path, pathSpec] of Object.entries(schemaSpec)) {
         // If pathSpec uses FLE 2 syntax, pass it on to the final schema directly.
         if (!pathSpec.hasOwnProperty("encrypt") && pathSpec.hasOwnProperty("keyId")) {
             let encryptedField = {path: path};
@@ -107,5 +113,31 @@ export function generateSchemaV2(fieldMap, namespace) {
     }
 
     encryptionInformation["schema"][namespace] = {fields: fields};
+}
+
+export function generateSchemasFromSchemaMap(schemaMap) {
+    assert.eq(typeof schemaMap, 'object');
+    if (!fle2Enabled()) {
+        return generateSchemaV1_SchemaMap(schemaMap);
+    }
+
+    return generateSchemaV2_SchemaMap(schemaMap);
+}
+
+export function generateSchemaV1_SchemaMap(schemaMap) {
+    let csfleEncryptionSchemas = {};
+
+    for (const [namespace, schemaSpec] of Object.entries(schemaMap)) {
+        csfleEncryptionSchemas[namespace] = generateSchemaV1(schemaSpec);
+    }
+
+    return {csfleEncryptionSchemas: csfleEncryptionSchemas};
+}
+
+export function generateSchemaV2_SchemaMap(schemaMap) {
+    let encryptionInformation = {type: 1, schema: {}};
+    for (const [namespace, schemaSpec] of Object.entries(schemaMap)) {
+        addSchemaToEncryptionInformation(encryptionInformation, namespace, schemaSpec);
+    }
     return {encryptionInformation: encryptionInformation};
 }

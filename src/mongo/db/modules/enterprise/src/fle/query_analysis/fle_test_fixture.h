@@ -15,6 +15,8 @@ namespace mongo {
 
 class FLETestFixture : public AggregationContextFixture {
 protected:
+    FLETestFixture() = default;
+    explicit FLETestFixture(NamespaceString nss) : AggregationContextFixture(nss) {}
     void setUp() override;
 
     /**

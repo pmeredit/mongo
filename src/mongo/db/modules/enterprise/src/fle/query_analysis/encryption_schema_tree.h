@@ -359,6 +359,26 @@ public:
      */
     bool isFle2LeafEquivalent(const EncryptionSchemaTreeNode& other) const;
 
+    /**
+     * markEncryptedObjectArrayElements visits this node and its children, marking any encrypted
+     * nodes within the tree to indicate that they reside within an encrypted object array, making
+     * them unusable in the pipeline. The traversal down the tree stops early when we reach an
+     * EncryptionSchemaEncryptedObjectArrayNode (i.e nested array). This is because each
+     * EncryptionSchemaEncryptedObjectArrayNode is responsible for its own subtree, so an outer
+     * encrypted array can't mark nodes that belong to another encrypted array.
+     */
+    virtual void markEncryptedObjectArrayElements();
+
+    /**
+     * unwindEncryptedObjectArrayElements visits this node and its children, clearing the flag of
+     * any encrypted nodes to indicate they no longer reside within an encrypted object array. This
+     * makes the encrypted nodes usable in the pipeline. The traversal down the tree stops early
+     * when we reach an EncryptionSchemaEncryptedObjectArrayNode (i.e nested array). This is because
+     * each EncryptionSchemaEncryptedObjectArrayNode is responsible for its own subtree, so an outer
+     * encrypted array can't unwind the contents of a nested encrypted array.
+     */
+    virtual void unwindEncryptedObjectArrayElements();
+
     const FleVersion parsedFrom;
 
 private:
@@ -447,6 +467,10 @@ class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
     EncryptionSchemaNotEncryptedNode(FleVersion parsedFrom)
         : EncryptionSchemaTreeNode(parsedFrom) {}
+
+    EncryptionSchemaNotEncryptedNode(EncryptionSchemaTreeNode&& other)
+        : EncryptionSchemaTreeNode(std::move(other)) {}
+
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         return boost::none;
     }
@@ -456,10 +480,17 @@ public:
     }
 };
 
+static inline void assertRuntimeEncryptedMetadata() {
+    uasserted(31133,
+              "Cannot get metadata for path whose encryption properties are not known until "
+              "runtime.");
+}
 /**
  * Node which represents an encrypted field per the corresponding JSON Schema, or per the
  * EncryptedFieldConfig. A path is considered encrypted only if it's final component lands on this
- * node.
+ * node. EncryptedNodes may be found within an EncryptionSchemaEncryptedObjectArrayNode, in which
+ * case they are marked with the _isWithinEncryptedArray flag set to true. In this case,
+ * EncryptedNodes behave like an EncryptionSchemaStateMixedNode.
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
@@ -467,6 +498,10 @@ public:
         : EncryptionSchemaTreeNode(parsedFrom), _metadata(std::move(metadata)) {}
 
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
+        // As long as we are within an encrypted array, we can't reference this node.
+        if (_isWithinEncryptedArray) {
+            assertRuntimeEncryptedMetadata();
+        }
         return _metadata;
     }
 
@@ -474,12 +509,17 @@ public:
         return true;
     }
 
+    // If we have are within an encrypted object array, we try to mimic a mixed node.
     bool mayContainRandomlyEncryptedNode() const final {
-        return _metadata.algorithmIs(FleAlgorithmEnum::kRandom) || _metadata.isFle2Encrypted();
+        return _isWithinEncryptedArray
+            ? true
+            : (_metadata.algorithmIs(FleAlgorithmEnum::kRandom) || _metadata.isFle2Encrypted());
     }
 
     bool mayContainRangeEncryptedNode() const final {
-        return _metadata.isFle2Encrypted() && _metadata.algorithmIs(Fle2AlgorithmInt::kRange);
+        return _isWithinEncryptedArray
+            ? true
+            : (_metadata.isFle2Encrypted() && _metadata.algorithmIs(Fle2AlgorithmInt::kRange));
     }
 
     std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
@@ -490,10 +530,69 @@ public:
         return _literals;
     }
 
+    void markEncryptedObjectArrayElements() override;
+
+    void unwindEncryptedObjectArrayElements() override;
+
 private:
     const ResolvedEncryptionInfo _metadata;
 
     std::vector<std::reference_wrapper<ExpressionConstant>> _literals;
+    bool _isWithinEncryptedArray{false};
+};
+
+/**
+ * Node which represents a uniform encrypted array, where the schema of each element of the array is
+ * guaranteed to be the identical. This is required to represent the output array of a $lookup stage
+ * on an encrypted foreign collection. EncryptionSchemaEncryptedObjectArrayNode closely mimics a
+ * EncryptionSchemaStateMixedNode.
+ *
+ * When we construct an EncryptionSchemaEncryptedObjectArrayNode, we
+ * obtain the children of an existing node, and mark all the encrypted children as being within an
+ * encrypted object array, making them un-usable without an unwind of the array. An
+ * EncryptionSchemaEncryptedObjectArrayNode does not permit either marking or unwinding its children
+ * by any other encrypted object array. This prevents an outer encrypted array from incorrectly
+ * marking or unwinding nodes within an internal encrypted array for which it is not responsible.
+ */
+class EncryptionSchemaEncryptedObjectArrayNode final : public EncryptionSchemaTreeNode {
+public:
+    // Move internals out of source encryption schema tree.
+    EncryptionSchemaEncryptedObjectArrayNode(EncryptionSchemaTreeNode&& other)
+        : EncryptionSchemaTreeNode(std::move(other)) {
+        tassert(9687204,
+                "Invalid encrypted array creation source",
+                EncryptionSchemaTreeNode::mayContainEncryptedNode());
+        // Mark children to indicate they within an encrypted lookup array.
+        EncryptionSchemaTreeNode::markEncryptedObjectArrayElements();
+    }
+
+    // Mimics EncryptionSchemaStateMixedNode behavior, and throwns an exception if call
+    // getEncryptionMetadata() on it. This prevents the encrypted array from being used in
+    // operations within a pipeline.
+    boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
+        assertRuntimeEncryptedMetadata();
+        return boost::none;
+    }
+
+    // Mimics EncryptionSchemaStateMixedNode behavior.
+    bool mayContainRandomlyEncryptedNode() const final {
+        return true;
+    }
+
+    // Mimics EncryptionSchemaStateMixedNode behavior.
+    bool mayContainRangeEncryptedNode() const final {
+        return true;
+    }
+
+    std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
+        return std::make_unique<EncryptionSchemaEncryptedObjectArrayNode>(*this);
+    }
+
+    void markEncryptedObjectArrayElements() override;
+
+    void unwindEncryptedObjectArrayElements() override;
+
+    std::unique_ptr<EncryptionSchemaTreeNode> unwind();
 };
 
 /**
@@ -506,9 +605,8 @@ public:
     EncryptionSchemaStateMixedNode(FleVersion parsedFrom) : EncryptionSchemaTreeNode(parsedFrom) {}
 
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
-        uasserted(31133,
-                  "Cannot get metadata for path whose encryption properties are not known until "
-                  "runtime.");
+        assertRuntimeEncryptedMetadata();
+        return boost::none;
     }
 
     bool mayContainEncryptedNode() const final {

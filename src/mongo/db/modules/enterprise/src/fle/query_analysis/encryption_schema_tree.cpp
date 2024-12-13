@@ -660,12 +660,15 @@ const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRe
 
     auto children = getChildrenForPathComponent(path[index]);
     if (children.empty()) {
-        // If there's no path to take from the current node, then we're in one of two cases:
+        // If there's no path to take from the current node, then we're in one of three cases:
         //  * The current node is an EncryptNode. This means that the query path has an
         //    encrypted field as its prefix. No such query can ever succeed when sent to the
         //    server, so we throw in this case.
         //  * The path does not exist in the schema tree. In this case, we return boost::none to
         //    indicate that the path is not encrypted.
+        //  * The path does not exist (i.e unencrypted), but the current node is an
+        //     EncryptionSchemaEncryptedObjectArrayNode which throws an exception when
+        //     getEncryptionMetadata() is called on it.
         uassert(51102,
                 str::stream() << "Invalid operation on path '" << path.dottedField()
                               << "' which contains an encrypted path prefix.",
@@ -755,6 +758,46 @@ bool EncryptionSchemaTreeNode::mayContainRangeEncryptedNode() const {
     }
     return found;
 }
+
+void EncryptionSchemaTreeNode::markEncryptedObjectArrayElements() {
+    // If no encrypted node below us, no need to mark.
+    if (!mayContainEncryptedNode()) {
+        return;
+    }
+    for (auto&& [path, child] : _propertiesChildren) {
+        tassert(9687200, "Invalid child", child);
+        child->markEncryptedObjectArrayElements();
+    }
+
+    for (auto&& patternPropertyChild : _patternPropertiesChildren) {
+        tassert(9687201, "Invalid child", patternPropertyChild.child);
+        patternPropertyChild.child->markEncryptedObjectArrayElements();
+    }
+
+    if (_additionalPropertiesChild) {
+        _additionalPropertiesChild->markEncryptedObjectArrayElements();
+    }
+};
+
+void EncryptionSchemaTreeNode::unwindEncryptedObjectArrayElements() {
+    // If no encrypted node below us, no need to traverse.
+    if (!mayContainEncryptedNode()) {
+        return;
+    }
+    for (auto&& [path, child] : _propertiesChildren) {
+        tassert(9687202, "Invalid child", child);
+        child->unwindEncryptedObjectArrayElements();
+    }
+
+    for (auto&& patternPropertyChild : _patternPropertiesChildren) {
+        tassert(9687203, "Invalid child", patternPropertyChild.child);
+        patternPropertyChild.child->unwindEncryptedObjectArrayElements();
+    }
+
+    if (_additionalPropertiesChild) {
+        _additionalPropertiesChild->unwindEncryptedObjectArrayElements();
+    }
+};
 
 std::unique_ptr<EncryptionSchemaTreeNode>
 clonable_traits<EncryptionSchemaTreeNode>::clone_factory_type::operator()(
@@ -849,6 +892,45 @@ bool EncryptionSchemaTreeNode::operator==(const EncryptionSchemaTreeNode& other)
         return false;
     }
     return true;
+}
+
+void EncryptionSchemaEncryptedNode::markEncryptedObjectArrayElements() {
+    tassert(9687210, "Encrypted node already within an encrypted array", !_isWithinEncryptedArray);
+    // Encrypted nodes can't have any children, so no need to traverse further.
+    _isWithinEncryptedArray = true;
+};
+
+void EncryptionSchemaEncryptedNode::unwindEncryptedObjectArrayElements() {
+    tassert(9687211,
+            "Encrypted node expected to be within an encrypted array during unwind",
+            _isWithinEncryptedArray);
+
+    _isWithinEncryptedArray = false;
+    // Encrypted nodes can't have any children, so no need to traverse further.
+}
+
+void EncryptionSchemaEncryptedObjectArrayNode::markEncryptedObjectArrayElements() {
+    // Encrypted children below this encrypted object array node have already been marked by the
+    // constructor of this node. Encrypted nodes within an encrypted object array are managed
+    // exclusively by the array to which they belong,and can't be marked by another encrypted array
+    // above us.
+    return;
+}
+
+void EncryptionSchemaEncryptedObjectArrayNode::unwindEncryptedObjectArrayElements() {
+    // Encrypted nodes within an encrypted object array are managed exclusively by the array to
+    // which they belong (i.e this node), and can't be unwound by an encrypted array above us.
+    return;
+}
+
+std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaEncryptedObjectArrayNode::unwind() {
+    // Always unwind our internal children. Note, we call the base class implementation, since our
+    // implementation is a NoOp.
+    EncryptionSchemaTreeNode::unwindEncryptedObjectArrayElements();
+    // Return unencrypted node, moving our internals (i.e children) after they've been
+    // unwound.
+    return std::make_unique<EncryptionSchemaNotEncryptedNode>(
+        std::move(*static_cast<EncryptionSchemaTreeNode*>(this)));
 }
 
 /**

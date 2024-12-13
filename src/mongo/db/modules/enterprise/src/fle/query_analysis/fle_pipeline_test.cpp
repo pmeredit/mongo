@@ -42,6 +42,9 @@ const BSONObj kMultiEncryptSchema = BSON(
 
 class FLEPipelineTest : public FLETestFixture {
 public:
+    FLEPipelineTest()
+        : FLETestFixture(
+              NamespaceString::createNamespaceString_forTest(boost::none, "testdb", "coll_a")) {}
     /**
      * Given a pipeline and an input schema, returns the schema of documents flowing out of the last
      * stage of the pipeline.
@@ -53,6 +56,22 @@ public:
         _flePipe = std::make_unique<FLEPipeline>(std::move(parsedPipeline), *schema.get());
         return _flePipe->getOutputSchema();
     }
+
+    /**
+     * Given a pipeline and an input schema, returns the schema of documents flowing out of the last
+     * stage of the pipeline.
+     */
+    const EncryptionSchemaTreeNode& getSchemaForStageMultiSchema(
+        const std::vector<BSONObj>& pipeline, const NamespaceString& ns, BSONObj inputSchema) {
+        auto parsedPipeline = Pipeline::parse(pipeline, getExpCtx());
+        auto cryptdParams = query_analysis::extractCryptdParameters(inputSchema, ns, true);
+
+        auto schemaMap = EncryptionSchemaTreeNode::parse<EncryptionSchemaMap>(cryptdParams);
+        _flePipe = std::make_unique<FLEPipeline>(std::move(parsedPipeline), std::move(schemaMap));
+
+        return _flePipe->getOutputSchema();
+    }
+
 
     bool doesHavePlaceholders(const std::vector<BSONObj>& pipeline, BSONObj inputSchema) {
         auto parsedPipeline = Pipeline::parse(pipeline, getExpCtx());
@@ -593,6 +612,66 @@ TEST_F(FLEPipelineTest, ScoreFailsUnsupportedCommand) {
     ASSERT_THROWS_CODE(getSchemaForStage({scoreSpec}, kDefaultSsnSchema),
                        AssertionException,
                        ErrorCodes::CommandNotSupported);
+}
+
+TEST_F(FLEPipelineTest, PropagateSchemaForLookupCsfleEncryptionSchemas) {
+    RAIIServerParameterControllerForTest quiesceController("featureFlagLookupEncryptionSchemasFLE",
+                                                           true);
+
+    const auto cmdObj = fromjson(R"({
+               "csfleEncryptionSchemas": { 
+                    "testdb.coll_a": {
+                        "jsonSchema": { 
+                                type: "object",
+                                properties: {
+                                    a: {
+                                        encrypt: {
+                                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                        }
+                                    }
+                                }
+                        },
+                        "isRemoteSchema": false },
+                   "testdb.coll_b": {
+                        "jsonSchema": { 
+                                type: "object",
+                                properties: {
+                                    b: {
+                                        encrypt: {
+                                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                        }
+                                    }
+                                }
+                        },
+                        "isRemoteSchema": false }
+                }
+           }
+    )");
+    auto nsA = getExpCtx()->getNamespaceString();
+    auto nsB = NamespaceString::createNamespaceString_forTest("testdb.coll_b");
+    getExpCtx()->setResolvedNamespaces({{nsA.coll().toString(), {nsA, std::vector<BSONObj>{}}},
+                                        {nsB.coll().toString(), {nsB, std::vector<BSONObj>{}}}});
+
+    auto lookupSpec = fromjson(
+        "{$lookup: {from: 'coll_b', as: 'docs', localField: 'foo', foreignField: 'l_foo'}}");
+    {
+        auto& schema = getSchemaForStageMultiSchema({lookupSpec}, nsA, cmdObj);
+
+        // We should not have encryption metadata for rhs child if we did not have an unwind.
+        ASSERT_THROWS_CODE(
+            schema.getEncryptionMetadataForPath(FieldRef("docs.b")), AssertionException, 31133);
+    }
+
+    auto unwindSpec = fromjson("{$unwind: {path: '$docs'}}");
+    {
+        auto& schema = getSchemaForStageMultiSchema({lookupSpec, unwindSpec}, nsA, cmdObj);
+
+        auto metadata = schema.getEncryptionMetadataForPath(FieldRef("docs.b"));
+        ASSERT_TRUE(metadata);
+        ASSERT_FALSE(metadata->isFle2Encrypted());
+    }
 }
 
 }  // namespace

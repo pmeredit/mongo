@@ -354,75 +354,112 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
             source.getLetVariables().empty());
 
     clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
-    const auto& modifiedPaths = source.getModifiedPaths();
-    invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
-    invariant(modifiedPaths.renames.empty());
+
+    /**
+     * We always have either one or two children. For reference, see
+     * pipeline_metadata_tree::makeAdditionalChildren().
+     * 1) If we have both a local/foreign field join and a pipeline, we expect two children, where
+     *    the first child is the foreign collection's initial schema, and the second child is the
+     *    pipeline's schema.
+     * 2) If we have a local/foreign field join without a pipeline, we expect a
+     *    single child (i.e the foreign collection namespace).
+     * 3) If we have a pipeline without a local/foreign field join, we expect a single child
+     *    (i.e the sub-pipelines output schema).
+     */
+    tassert(9687205,
+            "Unexpected children size for lookup",
+            children.size() > 0 && children.size() <= 2);
+
+    // The rhs schema is always the last item in the vector.
+    const auto& rhsSchema = children.back();
+    tassert(9687206, "Invalid child in lookup schema", rhsSchema);
+
+    auto propagateRhsSchema = [&]() {
+        const auto& asPath = source.getAsField().fullPath();
+
+        if (rhsSchema->mayContainEncryptedNode()) {
+            // We create a new EncryptionSchemaEncryptedObjectArrayNode node. This makes encrypted
+            // fields within the rhs schema unreferenceable, until an unwind is applied.
+            auto clonedRhs = rhsSchema->clone();
+            newSchema->addChild(
+                FieldRef(asPath),
+                std::make_unique<EncryptionSchemaEncryptedObjectArrayNode>(std::move(*clonedRhs)));
+        } else {
+            // Mark "as" path with as unencrypted if the rhs encryption schema was not encrypted.
+            // This allows us to reference the "as" array contents in a query.
+            newSchema->addChild(
+                FieldRef(asPath),
+                std::make_unique<EncryptionSchemaNotEncryptedNode>(rhsSchema->parsedFrom));
+        }
+    };
 
     if (source.hasPipeline() || !source.hasLocalFieldForeignFieldJoin()) {
-        // Mark modified paths with unknown encryption, which ensures an exception if a field is
-        // referenced in a query. Also, we only expect a finite set of paths without renames.
-        invariant(children.size() == 1);
-        for (const auto& path : modifiedPaths.paths) {
-            if (children[0]->mayContainEncryptedNode()) {
-                newSchema->addChild(
-                    FieldRef(path),
-                    std::make_unique<EncryptionSchemaStateMixedNode>(newSchema->parsedFrom));
-            } else {
-                newSchema->addChild(
-                    FieldRef(path),
-                    std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
-            }
-        }
+        propagateRhsSchema();
     }
 
     if (source.hasLocalFieldForeignFieldJoin()) {
-        invariant(source.getLocalField() && source.getForeignField());
+        tassert(9687207,
+                "Invalid local field/foreign fields in lookup",
+                source.getLocalField() && source.getForeignField());
+        const auto& primaryExpCtx = source.getContext();
+        tassert(9687208, "Invalid context", primaryExpCtx);
+        const auto isSelfJoin = source.getFromNs() == primaryExpCtx->getNamespaceString();
 
         auto localField = source.getLocalField();
         FieldRef localRef(localField->fullPath());
-        auto localMetadata = prevSchema->getEncryptionMetadataForPath(localRef);
+        auto localMetadata = newSchema->getEncryptionMetadataForPath(localRef);
         uassert(
             51206,
             str::stream() << "'localField' '" << localField->fullPath()
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
-            localMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(localRef));
+            (isSelfJoin &&
+             (localMetadata || !newSchema->mayContainEncryptedNodeBelowPrefix(localRef))) ||
+                (!isSelfJoin && !localMetadata));
 
         auto foreignField = source.getForeignField();
         FieldRef foreignRef(foreignField->fullPath());
-        auto foreignMetadata = prevSchema->getEncryptionMetadataForPath(foreignRef);
+
+        // Foreign schema is always the first child.
+        const auto& foreignSchema = children.front();
+        tassert(9687209, "Invalid child in lookup schema", foreignSchema);
+
+        auto foreignMetadata = foreignSchema->getEncryptionMetadataForPath(foreignRef);
         uassert(
             51207,
             str::stream() << "'foreignField' '" << foreignField->fullPath()
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
-            foreignMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(foreignRef));
+            (isSelfJoin &&
+             (foreignMetadata || !rhsSchema->mayContainEncryptedNodeBelowPrefix(foreignRef))) ||
+                (!isSelfJoin && !foreignMetadata));
 
-        uassert(6331103,
-                str::stream() << "Cannot refer to encrypted field in $lookup 'localField' "
-                                 "or 'foreignField'",
-                (!localMetadata || !localMetadata->isFle2Encrypted()) &&
-                    (!foreignMetadata || !foreignMetadata->isFle2Encrypted()));
-        uassert(51210,
+        // When performing a self-join, we allow joining on encryted fields, as long as the
+        // encryption metadata is the same.
+        if (isSelfJoin) {
+            uassert(6331103,
+                    str::stream() << "Cannot refer to encrypted field in $lookup 'localField' "
+                                     "or 'foreignField'",
+                    (!localMetadata || !localMetadata->isFle2Encrypted()) &&
+                        (!foreignMetadata || !foreignMetadata->isFle2Encrypted()));
+            uassert(
+                51210,
                 str::stream() << "'localField' '" << localField->fullPath()
                               << " and 'foreignField' '" << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both unencypted or "
                                  "be encrypted with the same encryption properties.",
                 (!localMetadata && !foreignMetadata) || localMetadata == foreignMetadata);
-        uassert(51211,
-                str::stream() << "'localField' '" << localField->fullPath()
-                              << " and 'foreignField' '" << foreignField->fullPath()
-                              << "' in the $lookup aggregation stage need to be both encrypted "
-                                 "with deterministic algorithm.",
-                (!localMetadata && !foreignMetadata) ||
-                    localMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
+            uassert(51211,
+                    str::stream() << "'localField' '" << localField->fullPath()
+                                  << " and 'foreignField' '" << foreignField->fullPath()
+                                  << "' in the $lookup aggregation stage need to be both encrypted "
+                                     "with deterministic algorithm.",
+                    (!localMetadata && !foreignMetadata) ||
+                        localMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
+        }
 
         // Since a $lookup may be specified with both pipeline and local/foreignField syntax,
         // we ensure here that we only add the modified paths to 'newSchema' once.
         if (!source.hasPipeline()) {
-            for (const auto& path : modifiedPaths.paths) {
-                newSchema->addChild(
-                    FieldRef(path),
-                    std::make_unique<EncryptionSchemaStateMixedNode>(newSchema->parsedFrom));
-            }
+            propagateRhsSchema();
         }
     }
     return newSchema;
@@ -491,8 +528,25 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForUnwind(
     const DocumentSourceUnwind& source) {
 
     const auto unwindPath = source.getUnwindPath();
-    const auto unwindPathMetadata = prevSchema->getEncryptionMetadataForPath(FieldRef(unwindPath));
+    FieldRef unwindPathField(unwindPath);
 
+    if (auto* unwindPathNode = prevSchema->getNode(unwindPathField)) {
+        if (auto* encryptedArrayObjNode =
+                dynamic_cast<EncryptionSchemaEncryptedObjectArrayNode*>(unwindPathNode)) {
+            // If we have a EncryptionSchemaEncryptedObjectArrayNode, it was created by us during
+            // the propagation of a lookup stage. Since it is an internally created node during
+            // schema propagation, we don't need to worry about replacing other nodes in the
+            // patternPropertiesChildren or additionalProperties.
+            auto replacedChild =
+                prevSchema->addChild(unwindPathField, encryptedArrayObjNode->unwind());
+            // Make sure we replaced an encrypted object array node.
+            tassert(9687500, "Unexpected invalid replaced child", replacedChild);
+            tassert(9687501,
+                    "Unexpected replaced child in unwind",
+                    dynamic_cast<EncryptionSchemaEncryptedObjectArrayNode*>(replacedChild.get()));
+        }
+    }
+    const auto unwindPathMetadata = prevSchema->getEncryptionMetadataForPath(unwindPathField);
     uassert(31153,
             "$unwind is not allowed on a field which is encrypted with the randomized algorithm",
             !unwindPathMetadata ||
