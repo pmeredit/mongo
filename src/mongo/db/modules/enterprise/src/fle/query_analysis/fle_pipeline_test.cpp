@@ -605,7 +605,7 @@ TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldF
 }
 
 TEST_F(FLEPipelineTest, ScoreFailsUnsupportedCommand) {
-    RAIIServerParameterControllerForTest controller("featureFlagSearchHybridScoring", true);
+    RAIIServerParameterControllerForTest controller("featureFlagSearchHybridScoringFull", true);
 
     BSONObj scoreSpec = BSON("$score" << BSON("score"
                                               << "$myScore"));
