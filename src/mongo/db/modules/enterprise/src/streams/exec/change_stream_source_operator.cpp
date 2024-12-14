@@ -846,18 +846,23 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 void ChangeStreamSourceOperator::initFromCheckpoint() {
     invariant(_restoreCheckpointState);
     _state = *_restoreCheckpointState;
-    CHECKPOINT_RECOVERY_ASSERT(
-        *_context->restoreCheckpointId,
-        _operatorId,
-        fmt::format("state has unexpected watermark: {}", bool(_state.getWatermark())),
-        bool(_state.getWatermark()) == _options.useWatermarks);
     if (_options.useWatermarks) {
-        // All watermarks start as active when restoring from a checkpoint.
-        WatermarkControlMsg watermark{WatermarkStatus::kActive,
-                                      _state.getWatermark()->getEventTimeMs()};
-        _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
-                                                                          nullptr /* combiner */,
-                                                                          std::move(watermark));
+        if (_state.getWatermark()) {
+            // All watermarks start as active when restoring from a checkpoint.
+            WatermarkControlMsg watermark{WatermarkStatus::kActive,
+                                          _state.getWatermark()->getEventTimeMs()};
+            _watermarkGenerator =
+                std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
+                                                            nullptr /* combiner */,
+                                                            std::move(watermark));
+        } else {
+            // In case of modify stream processor, where a new window pipeline is added, the change
+            // stream source state will not have a watermark set.
+            CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                       _operatorId,
+                                       "Missing watermark in the change stream source state",
+                                       _context->isModifiedProcessor);
+        }
     }
     LOGV2_INFO(7788505,
                "Change stream $source restored",

@@ -74,6 +74,9 @@ struct Context {
     // Whether the pipeline has stream metadata dependency.
     bool projectStreamMetaPriorToSinkStage{false};
 
+    // Set to true when starting a modified stream processor.
+    bool isModifiedProcessor{false};
+
     mongo::BSONObj toBSON() const;
 
     // For non sink stages, add metadata when there is explicit dependency of metadata in the

@@ -1087,7 +1087,7 @@ void Planner::planWindowCommon() {
     _hasWindow = true;
 
     if (_context->restoredCheckpointInfo) {
-        _needsWindowReplay = _options.isModifiedProcessor &&
+        _needsWindowReplay = _context->isModifiedProcessor &&
             hasWindow(_context->restoredCheckpointInfo->userPipeline);
     }
 }
@@ -2217,10 +2217,6 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
                 "resumeFromCheckpoint must be false to modify a processor that has a window "
                 "without a blocking stage",
                 hasBlockingStage(oldInnerPipeline));
-    } else if (!oldWindow && newWindow) {
-        // TODO(SERVER-95185): Support adding a window stage with resumeFromCheckpoint=true.
-        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
-                  "resumeFromCheckpoint must be false to add a window to a stream processor");
     } else if (oldWindow && !newWindow) {
         uasserted(ErrorCodes::StreamProcessorInvalidOptions,
                   "resumeFromCheckpoint must be false to remove a window from a stream processor");

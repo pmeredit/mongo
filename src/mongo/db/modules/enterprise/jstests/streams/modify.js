@@ -541,68 +541,6 @@ const testCases = [
         expectedValidateError: "StreamProcessorInvalidOptions: Unsupported stage: $foo"
     },
     {
-        validateShouldSucceed: false,
-        expectedValidateError:
-            "resumeFromCheckpoint must be false to add a window to a stream processor",
-        originalPipeline:
-            [{$match: {"fullDocument.a": 1}}, {$replaceRoot: {newRoot: "$fullDocument"}}],
-        modifiedPipeline: [
-            {$match: {"fullDocument.a": 1}},
-            {$replaceRoot: {newRoot: "$fullDocument"}},
-            {
-                $tumblingWindow: {
-                    interval: {unit: "second", size: NumberInt(1)},
-                    pipeline: [{$group: {_id: null, count: {$count: {}}}}],
-                }
-            },
-            {$project: {start: "$_stream_meta.window.start", count: 1}}
-        ],
-        inputForOriginalPipeline: [
-            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:00.000Z")},
-            {a: 0, b: 2, ts: ISODate("2024-01-01T00:00:01.000Z")},
-            {a: 0, b: 5, ts: ISODate("2024-01-01T00:00:02.000Z")},
-        ],
-        inputAfterStopBeforeModify: [
-            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:02.000Z")},
-            {a: 1, b: 2, ts: ISODate("2024-01-01T00:00:02.000Z")},
-            {a: 0, b: 2, ts: ISODate("2024-01-01T00:00:02.000Z")},
-            // This will advance the watermark and close the 2-3 window.
-            {a: 1, b: 5, ts: ISODate("2024-01-01T00:00:10.000Z")},
-        ],
-        expectedOutput: [
-            // Before the edit.
-            {a: 1, b: 0},
-            // After the edit.
-            {start: ISODate("2024-01-01T00:00:02.000Z"), count: 3}
-        ],
-        expectedOperatorStatsAfterModify: [
-            {
-                "name": "ChangeStreamConsumerOperator",
-                "inputMessageCount": NumberLong(4),
-                "outputMessageCount": NumberLong(4),
-                "dlqMessageCount": NumberLong(0),
-            },
-            {
-                "name": "MatchOperator",
-                "inputMessageCount": NumberLong(4),
-                "outputMessageCount": NumberLong(3),
-                "dlqMessageCount": NumberLong(0),
-            },
-            {
-                "name": "GroupOperator",
-                "inputMessageCount": NumberLong(3),
-                "outputMessageCount": NumberLong(1),
-                "dlqMessageCount": NumberLong(0),
-            },
-            {
-                "name": "MergeOperator",
-                "inputMessageCount": NumberLong(1),
-                "outputMessageCount": NumberLong(1),
-                "dlqMessageCount": NumberLong(0),
-            }
-        ],
-    },
-    {
         originalPipeline: [
             {$match: {"fullDocument.a": 1}},
             {$replaceRoot: {newRoot: "$fullDocument"}},

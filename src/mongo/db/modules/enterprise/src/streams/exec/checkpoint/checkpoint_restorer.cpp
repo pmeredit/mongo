@@ -138,7 +138,12 @@ boost::optional<mongo::Document> CheckpointRestorer::getNextRecord(OperatorId op
             _currOpRestorer->opId == opId);
     } else {
         auto itr = _opRanges.find(opId);
-        uassert(7863423, fmt::format("opId - {} - not found.", opId), itr != _opRanges.end());
+        if (itr == _opRanges.end()) {
+            uassert(7863423,
+                    fmt::format("opId - {} - not found.", opId),
+                    getContext()->isModifiedProcessor);
+            return boost::none;
+        }
         _currOpRestorer.emplace(opId, itr->second, this);
     }
 

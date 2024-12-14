@@ -331,6 +331,140 @@ const testCases = [
             {a: 7, b: 12, c: 19, ts: ISODate("2024-01-01T00:00:04.600Z")}
         ],
         afterModifyReplayCount2: 1
+    },
+    {
+        inputForOriginalPipeline: [
+            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 1, b: 1, ts: ISODate("2024-01-01T00:00:01.100Z")},
+            {a: 0, b: 2, ts: ISODate("2024-01-01T00:00:01.600Z")},
+            {a: 1, b: 3, ts: ISODate("2024-01-01T00:00:02.600Z")},
+        ],
+        inputAfterStopBeforeModify: [
+            // Open Window 1
+            {a: 1, b: 4, ts: ISODate("2024-01-01T00:00:03.100Z")},
+            {a: 0, b: 5, ts: ISODate("2024-01-01T00:00:03.300Z")},
+            {a: 1, b: 6, ts: ISODate("2024-01-01T00:00:03.500Z")},
+            // Close window 1, open window 2 - count=2
+            {a: 1, b: 7, ts: ISODate("2024-01-01T00:00:04.200Z")},
+            {a: 1, b: 8, ts: ISODate("2024-01-01T00:00:04.600Z")},
+            {a: 1, b: 9, ts: ISODate("2024-01-01T00:00:04.600Z")},
+            {a: 1, b: 10, ts: ISODate("2024-01-01T00:00:04.700Z")},
+            // Close window 2, open window 3 - count=4
+            {a: 1, b: 11, ts: ISODate("2024-01-01T00:00:05.100Z")},
+        ],
+        inputAfterModifyBeforeRestart: [
+            // Window 3
+            {a: 1, b: 12, ts: ISODate("2024-01-01T00:00:05.200Z")},
+            {a: 1, b: 14, ts: ISODate("2024-01-01T00:00:05.500Z")},
+            // Close window 3, count=3
+            {a: 0, b: 15, ts: ISODate("2024-01-01T00:00:06.200Z")},
+            // Open window 4
+            {a: 1, b: 16, ts: ISODate("2024-01-01T00:00:06.500Z")},
+            // Close window 4, count=1
+            {a: 0, b: 17, ts: ISODate("2024-01-01T00:00:07.200Z")},
+        ],
+        originalPipeline: [
+            {$match: {"fullDocument.a": 1}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+        ],
+        modifiedPipeline: [
+            {$match: {"fullDocument.a": 1}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            {
+                $tumblingWindow: {
+                    interval: {size: NumberInt(1), unit: "second"},
+                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    pipeline: [{$group: {_id: null, count: {$count: {}}}}]
+                }
+            },
+            {$project: {_id: "$count", count: 1}}
+        ],
+        expectedOutput: [
+            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 1, b: 1, ts: ISODate("2024-01-01T00:00:01.100Z")},
+            {a: 1, b: 3, ts: ISODate("2024-01-01T00:00:02.600Z")},
+            {count: 2},
+            {count: 4},
+            {count: 3},
+            {count: 1},
+        ],
+    },
+    {
+        originalPipeline:
+            [{$match: {"fullDocument.a": 1}}, {$replaceRoot: {newRoot: "$fullDocument"}}],
+        modifiedPipeline: [
+            {$match: {"fullDocument.a": 1}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            {
+                $tumblingWindow: {
+                    interval: {unit: "second", size: NumberInt(1)},
+                    pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+                }
+            },
+            {$project: {start: "$_stream_meta.window.start", count: 1}}
+        ],
+        inputForOriginalPipeline: [
+            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            {a: 0, b: 2, ts: ISODate("2024-01-01T00:00:01.000Z")},
+            {a: 0, b: 5, ts: ISODate("2024-01-01T00:00:02.000Z")},
+        ],
+        inputAfterStopBeforeModify: [
+            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:02.000Z")},
+            {a: 1, b: 2, ts: ISODate("2024-01-01T00:00:02.000Z")},
+            {a: 0, b: 2, ts: ISODate("2024-01-01T00:00:02.000Z")},
+            // This will advance the watermark and close the 2-3 window.
+            {a: 1, b: 5, ts: ISODate("2024-01-01T00:00:10.000Z")},
+        ],
+        expectedOutput: [
+            // Before the edit.
+            {a: 1, b: 0, ts: ISODate("2024-01-01T00:00:00.000Z")},
+            // After the edit.
+            {start: ISODate("2024-01-01T00:00:02.000Z"), count: 2}
+        ],
+    },
+    {
+        inputForOriginalPipeline: [
+            {a: 0, b: 8, ts: ISODate("2024-01-01T00:00:01.500Z")},
+            {a: 0, b: 5, ts: ISODate("2024-01-01T00:00:01.500Z")},
+            {a: 1, b: 3, ts: ISODate("2024-01-01T00:00:01.800Z")}
+        ],
+        inputAfterCheckpoint1: [
+            {a: 0, b: 9, ts: ISODate("2024-01-01T00:00:02.000Z")},
+            {a: 1, b: 15, ts: ISODate("2024-01-01T00:00:02.000Z")}
+        ],
+        inputAfterCheckpoint2: [
+            {a: 0, b: 12, ts: ISODate("2024-01-01T00:00:03.200Z")},
+            {a: 1, b: 7, ts: ISODate("2024-01-01T00:00:03.200Z")}
+        ],
+        inputAfterStopBeforeModify: [
+            {a: 1, b: 11, ts: ISODate("2024-01-01T00:00:04.500Z")},
+            {a: 1, b: 18, ts: ISODate("2024-01-01T00:00:04.500Z")},
+        ],
+        inputAfterModifyBeforeRestart: [
+            {a: 0, b: 4, ts: ISODate("2024-01-01T00:00:04.500Z")},
+            {a: 1, b: 13, ts: ISODate("2024-01-01T00:00:05.200Z")},
+        ],
+        originalPipeline: [
+            {$match: {"fullDocument.a": 1}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+        ],
+        modifiedPipeline: [
+            {$match: {"fullDocument.a": 1}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            {
+                $tumblingWindow: {
+                    interval: {size: NumberInt(1), unit: "second"},
+                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    pipeline: [{$group: {_id: null, count: {$count: {}}}}]
+                }
+            },
+        ],
+        expectedOutput: [
+            {a: 1, b: 3, ts: ISODate("2024-01-01T00:00:01.800Z")},
+            {a: 1, b: 15, ts: ISODate("2024-01-01T00:00:02.000Z")},
+            {a: 1, b: 7, ts: ISODate("2024-01-01T00:00:03.200Z")},
+            {count: 2},
+        ],
     }
 ];
 

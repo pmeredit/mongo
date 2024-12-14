@@ -54,8 +54,6 @@ public:
         // Set to true when validating an modify request when the user specifies
         // resumeFromCheckpoint=true.
         bool shouldValidateModifyRequest{false};
-        // Set to true when planning a modified processor.
-        bool isModifiedProcessor{false};
         // Set to true if data flow will be enabled for the OperatorDag that this planner makes.
         bool enableDataFlow{true};
     };

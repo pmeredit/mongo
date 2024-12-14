@@ -515,23 +515,31 @@ void KafkaConsumerOperator::initFromCheckpoint() {
                                    _operatorId,
                                    str::stream() << "state has unexpected watermark: "
                                                  << bool(partitionState.getWatermark()),
-                                   bool(partitionState.getWatermark()) == _options.useWatermarks)
+                                   bool(partitionState.getWatermark()) == _options.useWatermarks ||
+                                       _context->isModifiedProcessor)
+
         if (_options.useWatermarks) {
             // Setup the watermark from the checkpoint.
             invariant(_watermarkCombiner);
-            // All partition watermarks start as active when restoring from a checkpoint.
-            WatermarkControlMsg watermark{WatermarkStatus::kActive,
-                                          partitionState.getWatermark()->getEventTimeMs()};
 
             boost::optional<int32_t> inputIdx = getPartitionIdx(chkptTopic, chkptPartitionId);
             CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                        _operatorId,
                                        str::stream() << "Could not get inputIdx for topic/partition"
                                                      << chkptTopic << "/" << chkptPartitionId,
-                                       inputIdx)
+                                       inputIdx);
 
-            consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                *inputIdx, _watermarkCombiner.get(), watermark);
+            if (partitionState.getWatermark()) {
+                // All partition watermarks start as active when restoring from a checkpoint.
+                WatermarkControlMsg watermark{WatermarkStatus::kActive,
+                                              partitionState.getWatermark()->getEventTimeMs()};
+                consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+                    *inputIdx, _watermarkCombiner.get(), watermark);
+            } else {
+                consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+                    *inputIdx, _watermarkCombiner.get());
+            }
+
             consumerInfo.partitionIdleTimeoutMs = _options.partitionIdleTimeoutMs;
         }
 

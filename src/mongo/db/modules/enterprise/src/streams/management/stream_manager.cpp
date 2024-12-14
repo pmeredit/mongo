@@ -888,7 +888,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     bool checkpointEnabled =
         request.getOptions().getCheckpointOptions() && !processorInfo->context->isEphemeral;
-    bool isModifyRequest = false;
     std::vector<BSONObj> executionPlan;
     if (checkpointEnabled) {
         const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
@@ -970,15 +969,16 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
             // Check if the pipelineVersion in the start request is different than the
             // pipelineVersion in the checkpoint. If so, this is an modify request.
-            isModifyRequest = processorInfo->context->restoredCheckpointInfo->pipelineVersion !=
+            processorInfo->context->isModifiedProcessor =
+                processorInfo->context->restoredCheckpointInfo->pipelineVersion !=
                 request.getPipelineVersion();
             if (isValidateOnlyRequest(request)) {
                 tassert(ErrorCodes::InternalError,
                         "validateOnly requests should only have a restore checkpoint if they "
                         "are validating a modify operation.",
-                        isModifyRequest);
+                        processorInfo->context->isModifiedProcessor);
             }
-            if (isModifyRequest) {
+            if (processorInfo->context->isModifiedProcessor) {
                 LOGV2_INFO(9417500,
                            "Resuming a stream processor after an edit",
                            "context"_attr = processorInfo->context.get());
@@ -1001,14 +1001,13 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     Planner::Options plannerOptions;
     bool planUserPipeline = executionPlan.empty();
-    plannerOptions.isModifiedProcessor = isModifyRequest;
     if (planUserPipeline) {
         // Plan the OperatorDag using a user supplied pipeline.
         plannerOptions.planningUserPipeline = true;
         // During a customer's modify request, SPM sends a mongostream.validateOnly request with
         // a restore checkpoint. When resumeFromCheckpointAfterModify is true, we set
         // shouldValidateModifyRequest so the planner validates the modify is allowed.
-        plannerOptions.shouldValidateModifyRequest = isModifyRequest &&
+        plannerOptions.shouldValidateModifyRequest = processorInfo->context->isModifiedProcessor &&
             isValidateOnlyRequest(request) &&
             request.getOptions().getResumeFromCheckpointAfterModify();
     } else {
@@ -1027,7 +1026,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->operatorDag =
         streamPlanner.plan(executionPlan.empty() ? request.getPipeline() : executionPlan);
     processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
-    if (isValidateOnlyRequest(request) && isModifyRequest) {
+    if (isValidateOnlyRequest(request) && processorInfo->context->isModifiedProcessor) {
         processorInfo->shouldStartDuringValidate = true;
     }
 
