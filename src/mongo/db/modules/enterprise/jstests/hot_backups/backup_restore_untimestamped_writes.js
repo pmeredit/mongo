@@ -53,6 +53,10 @@ assert.commandWorked(coll.insert({x: 1}));
 primary.getDB("admin").createUser(
     {user: "admin", pwd: "password", roles: [{role: "root", db: "admin"}]});
 
+// Wait for stable timestamp to advance before taking a checkpoint.
+assert.commandWorked(
+    primary.adminCommand({setDefaultRWConcern: 1, defaultWriteConcern: {w: 1, j: true}}));
+
 // Take a checkpoint.
 assert.commandWorked(db.adminCommand({fsync: 1}));
 
