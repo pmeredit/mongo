@@ -111,6 +111,19 @@ if (fle2Enabled()) {
     assert(cmdRes.result.pipeline[1].$match.newUser.$eq instanceof BinData, cmdRes);
 }
 
+// Test projecting an encrypted dotted field path. This is permitted in CSFLE but not allowed in
+// FLE2 due to limited support for encrypted fields referenced in aggregate expressions.
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$project: {"newUser": "$user.ssn"}}], cursor: {}},
+    generateSchema({'user.ssn': encryptedStringSpec()}, coll.getFullName()));
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
+}
+
 // Test that renaming an encrypted field to a new dotted field is allowed as long as the field
 // is not referenced in subsequent stages.
 command = Object.assign(

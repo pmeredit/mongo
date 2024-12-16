@@ -489,7 +489,7 @@ static inline void assertRuntimeEncryptedMetadata() {
  * Node which represents an encrypted field per the corresponding JSON Schema, or per the
  * EncryptedFieldConfig. A path is considered encrypted only if it's final component lands on this
  * node. EncryptedNodes may be found within an EncryptionSchemaEncryptedObjectArrayNode, in which
- * case they are marked with the _isWithinEncryptedArray flag set to true. In this case,
+ * case they are marked with the _isWithinEncryptedArrayContext flag set to true. In this case,
  * EncryptedNodes behave like an EncryptionSchemaStateMixedNode.
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
@@ -499,7 +499,7 @@ public:
 
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         // As long as we are within an encrypted array, we can't reference this node.
-        if (_isWithinEncryptedArray) {
+        if (_isWithinEncryptedArrayContext) {
             assertRuntimeEncryptedMetadata();
         }
         return _metadata;
@@ -511,13 +511,13 @@ public:
 
     // If we have are within an encrypted object array, we try to mimic a mixed node.
     bool mayContainRandomlyEncryptedNode() const final {
-        return _isWithinEncryptedArray
+        return _isWithinEncryptedArrayContext
             ? true
             : (_metadata.algorithmIs(FleAlgorithmEnum::kRandom) || _metadata.isFle2Encrypted());
     }
 
     bool mayContainRangeEncryptedNode() const final {
-        return _isWithinEncryptedArray
+        return _isWithinEncryptedArrayContext
             ? true
             : (_metadata.isFle2Encrypted() && _metadata.algorithmIs(Fle2AlgorithmInt::kRange));
     }
@@ -538,7 +538,15 @@ private:
     const ResolvedEncryptionInfo _metadata;
 
     std::vector<std::reference_wrapper<ExpressionConstant>> _literals;
-    bool _isWithinEncryptedArray{false};
+    /**
+     * _isWithinEncryptedArrayContext indicates whether this encrypted node should be
+     * treated as child of an encrypted object array node. This flag is initially set to true
+     * when the nodes for an encrypted object array (i.e rhs of a $lookup) are added to the
+     * encryption schema during schema propagation. As long as the flag is true, this node's
+     * encryption metadata can't be used. Note that, for FLE2, this flag remains set to true even
+     * after an encrypted array has been unwound.
+     */
+    bool _isWithinEncryptedArrayContext{false};
 };
 
 /**

@@ -895,17 +895,54 @@ bool EncryptionSchemaTreeNode::operator==(const EncryptionSchemaTreeNode& other)
 }
 
 void EncryptionSchemaEncryptedNode::markEncryptedObjectArrayElements() {
-    tassert(9687210, "Encrypted node already within an encrypted array", !_isWithinEncryptedArray);
+    /**
+     * In the CSFLE case, we allow referencing encrypted fields from a $lookup array if we unwind
+     * the array. We do this by resetting the _isWithinEncryptedArrayContext flag to false
+     * when the array is unwound. Typically, an encrypted node should only be marked in this way by
+     * its immediately enclosing encrypted object array. The tassert below enforces this condition.
+     * On the other hand, using encrypted fields after unwinding an encrypted array is not
+     * supported for FLE2. Even after a node has been unwound by its enclosing encrypted array node,
+     * the _isWithinEncryptedArrayContext is not reset to false. For FLE2, we must relax this
+     * tassert to accommodate nested lookups.
+     * Consider the pipeline: [{ $lookup: {
+     *                              from: "collB",
+     *                              as: "docs",
+     *                              localField: "foo",
+     *                              foreignField: "r_foo",
+     *                              pipeline: [
+     *                                 {$lookup: {
+     *                                     from: "collC"
+     *                                     as: "inner_docs",
+     *                                     localField: "r_foo",
+     *                                     foreignField: "l_foo"}},
+     *                                 {$unwind: {path: "$inner_docs"}}
+     *                              ]}},
+     *                          ]
+     * In this pipeline (FLE2 case) the nested lookup would unwind its array without resetting the
+     * flag on its child nodes, propagating the resulting schema to the outer lookup. The outer
+     * lookup would then mark the subtree of the rhs of the lookup (i.e the unwound nested lookup)
+     * and incorrectly assert here during schema propagation, since it would still have its flag set
+     * to true.
+     */
+    tassert(9687210,
+            "Encrypted node already within an encrypted array",
+            parsedFrom == FleVersion::kFle2 || !_isWithinEncryptedArrayContext);
     // Encrypted nodes can't have any children, so no need to traverse further.
-    _isWithinEncryptedArray = true;
+    _isWithinEncryptedArrayContext = true;
 };
 
 void EncryptionSchemaEncryptedNode::unwindEncryptedObjectArrayElements() {
     tassert(9687211,
             "Encrypted node expected to be within an encrypted array during unwind",
-            _isWithinEncryptedArray);
-
-    _isWithinEncryptedArray = false;
+            _isWithinEncryptedArrayContext);
+    // In the CSFLE case, we allow referencing encrypted fields from a $lookup array if we unwind
+    // the array. However, this is not supported for FLE2, so we don't set the
+    // _isWithinEncryptedArrayContext flag to false to prevent the field from being used. In the
+    // CSFLE case, we reset the flag, making the field usable during schema propagation and
+    // analysis.
+    if (parsedFrom != FleVersion::kFle2) {
+        _isWithinEncryptedArrayContext = false;
+    }
     // Encrypted nodes can't have any children, so no need to traverse further.
 }
 

@@ -540,8 +540,8 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForUnwind(
             auto replacedChild =
                 prevSchema->addChild(unwindPathField, encryptedArrayObjNode->unwind());
             // Make sure we replaced an encrypted object array node.
-            tassert(9687500, "Unexpected invalid replaced child", replacedChild);
-            tassert(9687501,
+            tassert(9687212, "Unexpected invalid replaced child", replacedChild);
+            tassert(9687213,
                     "Unexpected replaced child in unwind",
                     dynamic_cast<EncryptionSchemaEncryptedObjectArrayNode*>(replacedChild.get()));
         }

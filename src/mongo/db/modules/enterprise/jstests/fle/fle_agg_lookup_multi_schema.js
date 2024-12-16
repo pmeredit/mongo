@@ -83,24 +83,48 @@ const nestedLookupEncryptionSchemas = generateSchemasFromSchemaMap(schemaMapNest
 
 function runTest(test, index) {
     // Validate the test contents.
-    const expectedFail = function() {
+    const expectedResults = function() {
         assert(test.description != undefined && typeof test.description === "string",
                "Expected test decription.");
         assert(test.command != undefined && typeof test.command === "object", "Expected command.");
         assert(test.schemas != undefined && typeof test.schemas === "object", "Expected schemas.");
-        const isExpectedFail =
-            test.failCodes != undefined && Array.isArray(test.failCodes) && test.failCodes.length;
-        assert(
-            isExpectedFail ||
-                (test.hasEncryptionPlaceholders != undefined &&
-                 typeof test.hasEncryptionPlaceholders === "boolean" &&
-                 test.schemaRequiresEncryption != undefined &&
-                 typeof test.schemaRequiresEncryption === "boolean"),
-            "Expected failCodes list, or hasEncryptionPlaceholders (bool) and schemaRequiresEncryption (bool)");
+
+        let getValidatedExpectedResults = function(expectedRes) {
+            const isExpectedFail = expectedRes.failCodes != undefined &&
+                Array.isArray(expectedRes.failCodes) && expectedRes.failCodes.length;
+
+            assert(
+                isExpectedFail ||
+                    (expectedRes.hasEncryptionPlaceholders != undefined &&
+                     typeof expectedRes.hasEncryptionPlaceholders === "boolean" &&
+                     expectedRes.schemaRequiresEncryption != undefined &&
+                     typeof expectedRes.schemaRequiresEncryption === "boolean"),
+                "Expected failCodes list, or hasEncryptionPlaceholders (bool) and schemaRequiresEncryption (bool)");
+
+            if (isExpectedFail) {
+                return {expectedFail: true, failCodes: expectedRes.failCodes};
+            }
+            return {
+                expectedFail: false,
+                hasEncryptionPlaceholders: expectedRes.hasEncryptionPlaceholders,
+                schemaRequiresEncryption: expectedRes.schemaRequiresEncryption
+            };
+        };
+
+        // Get the validated expected results. If we had an expected results functor, we invoke it
+        // to get the runtime expected results which could differ between FLE1 and FLE2. Otherwise,
+        // we pass the original test fixture.
+        const expectedRes = getValidatedExpectedResults(function() {
+            if (test.runtimeExpectedResults != undefined) {
+                assert(typeof test.runtimeExpectedResults === "function");
+                return test.runtimeExpectedResults();
+            }
+            return test;
+        }());
 
         assert(test.runWithFle2 != undefined && typeof test.runWithFle2 === "boolean",
                "Expected runWithFle2 (bool)");
-        return isExpectedFail;
+        return expectedRes;
     }();
 
     jsTestLog("Running test index " + index + " : " + test.description);
@@ -114,16 +138,18 @@ function runTest(test, index) {
     }
     let command = Object.assign(test.command, test.schemas);
 
-    if (!expectedFail) {
+    if (!expectedResults.expectedFail) {
         let cmdRes = assert.commandWorked(testDB.runCommand(command));
-        assert.eq(test.hasEncryptionPlaceholders, cmdRes.hasEncryptionPlaceholders, cmdRes);
-        assert.eq(test.schemaRequiresEncryption, cmdRes.schemaRequiresEncryption, cmdRes);
+        assert.eq(
+            expectedResults.hasEncryptionPlaceholders, cmdRes.hasEncryptionPlaceholders, cmdRes);
+        assert.eq(
+            expectedResults.schemaRequiresEncryption, cmdRes.schemaRequiresEncryption, cmdRes);
 
         if (test.customTestFunc) {
             test.customTestFunc(cmdRes);
         }
     } else {
-        assert.commandFailedWithCode(testDB.runCommand(command), test.failCodes);
+        assert.commandFailedWithCode(testDB.runCommand(command), expectedResults.failCodes);
     }
     if (test.customTestTeardown) {
         test.customTestTeardown();
@@ -142,7 +168,8 @@ function runTest(test, index) {
  *  runWithFle2: boolean (required),
  *  customTestSetup: function (optional),
  *  customTestFunc: function (optional),
- *  customTestTeardown: function (optional)
+ *  customTestTeardown: function (optional),
+ *  runtimeExpectedResults: function(optional)
  *  }
  *
  * */
@@ -314,8 +341,12 @@ const testList = [
             cursor: {}
         },
         schemas: twoEncryptedCollEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[2].$match["docs.r_enc_item"].$eq instanceof BinData, cmdRes);
@@ -487,8 +518,12 @@ const testList = [
             cursor: {}
         },
         schemas: twoEncryptedCollEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes){
             assert(cmdRes.result.pipeline[0].$lookup.pipeline[0].$match["r_enc_item"].$eq instanceof BinData,
@@ -639,8 +674,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: twoEncryptedCollEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[0].$lookup.pipeline[0].$match["r_enc_item"].$eq instanceof BinData,
@@ -742,8 +781,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: nestedLookupEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             // Nested subpipeline must have encryption placeholders
@@ -791,8 +834,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: nestedLookupEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[0]
@@ -892,8 +939,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: nestedLookupEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[0].$lookup.pipeline[1].$match["r_enc_item"].$eq instanceof BinData,
@@ -927,8 +978,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: nestedLookupEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[0].$lookup.pipeline[2].$match["inner_docs.l_enc_sku"].$eq instanceof
@@ -966,8 +1021,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: nestedLookupEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[1].$lookup.pipeline[2].$match["inner_docs.l_enc_sku"].$eq instanceof
@@ -1087,8 +1146,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: nestedLookupEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(
@@ -1198,15 +1261,19 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: twoEncryptedCollEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes){
             assert(cmdRes.result.pipeline[0].$lookup.pipeline[0].$match["r_enc_item"].$eq instanceof BinData,
                 cmdRes);
             assert(cmdRes.result.pipeline[2].$match["docs.r_enc_sku"].$eq instanceof BinData, cmdRes);
         }
-    },// 46
+    },// 45
     {
         description:
             "$lookup followed by $unwind, subpipeline with encrypted fields referenced has encryption placeholders, and referencing unencrypted field in subsequent stages works.",
@@ -1229,7 +1296,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
                 cmdRes);
             assert(!(cmdRes.result.pipeline[2].$match["docs.r_foo"].$eq instanceof BinData), cmdRes);
         }
-    },// 47
+    },// 46
     {
         description:
             "$lookup without $unwind, subpipeline with encrypted fields, reference encrypted array fields fails.",
@@ -1245,7 +1312,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
         schemas: twoEncryptedCollEncryptionSchemas,
         failCodes: [31133],
         runWithFle2: true
-    },// 48
+    },// 47
     {
         description:
             "$lookup without $unwind, subpipeline with encrypted fields, reference encrypted array fails.",
@@ -1261,7 +1328,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
         schemas: twoEncryptedCollEncryptionSchemas,
         failCodes: [31133],
         runWithFle2: true
-    },// 49
+    },// 48
     {
         description:
             "$lookup without $unwind, subpipeline with encrypted fields, reference unencrypted field from encrypted array fails.",
@@ -1277,7 +1344,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
         schemas: twoEncryptedCollEncryptionSchemas,
         failCodes: [31133],
         runWithFle2: true
-    },// 50
+    },// 49
     {
         description:
             "$lookup followed by $sort and then an $unwind on the as field, subpipeline with encrypted \
@@ -1303,7 +1370,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
                 cmdRes);
             assert(!(cmdRes.result.pipeline[3].$match["docs.r_foo"].$eq instanceof BinData), cmdRes);
         }
-    },// 51
+    },// 50
     {
         description:
             "$lookup followed by $sort and then an $unwind on the as field, subpipeline with \
@@ -1331,7 +1398,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
             assert(!(cmdRes.result.pipeline[4].$match["projected_docs.r_foo"].$eq instanceof BinData),
                 cmdRes);
         }
-    },// 52
+    },// 51
     {
         description:
             "Test lookup followed by $sort, a $project, and then an $unwind on the projected as field, \
@@ -1350,8 +1417,12 @@ encrypted field in subsequent stages works, has placeholders marked.",
             cursor: {}
         },
         schemas: twoEncryptedCollEncryptionSchemas,
-        hasEncryptionPlaceholders: true,
-        schemaRequiresEncryption: true,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
         runWithFle2: true,
         customTestFunc: function(cmdRes) {
             assert(cmdRes.result.pipeline[0].$lookup.pipeline[0].$match["r_enc_item"].$eq instanceof BinData,
@@ -1359,7 +1430,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
             assert(cmdRes.result.pipeline[4].$match["projected_docs.r_enc_item"].$eq instanceof BinData,
                 cmdRes);
         }
-    },// 53
+    },// 52
     {
         description:
             "Test lookup followed by $sort, $project and then an $unwind on a field that is not the \
@@ -1380,7 +1451,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
         schemas: twoEncryptedCollEncryptionSchemas,
         failCodes: [31133],
         runWithFle2: true
-    },// 54
+    },// 53
     {
         description:
             "Test lookup followed by $sort, $project and then an $unwind on a field that is not the \
@@ -1401,7 +1472,7 @@ encrypted field in subsequent stages works, has placeholders marked.",
         schemas: twoEncryptedCollEncryptionSchemas,
         failCodes: [31133],
         runWithFle2: true
-    },// 55
+    },// 54
     {
         description:
             "Test lookup followed by $sort, $match on encrypted field in encrypted lookup array, \
@@ -1421,7 +1492,268 @@ encrypted field in subsequent stages works, has placeholders marked.",
         schemas: twoEncryptedCollEncryptionSchemas,
         failCodes: [31133],
         runWithFle2: true
-    }// 56
+    },// 55
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test projecting an encrypted array works.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$project: {"projected_docs" : "$docs"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        hasEncryptionPlaceholders: false,
+        schemaRequiresEncryption: true,
+        runWithFle2: true
+    }, // 56
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test projecting an unencrypted field from encrypted array fails.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$project: {"projected_docs" : "$docs.r_foo"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        failCodes:[31133],
+        runWithFle2: true
+    }, // 57
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test projecting an encrypted field from encrypted array fails.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$project: {"projected_docs" : "$docs.r_enc_sku"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        failCodes:[31133],
+        runWithFle2: true
+    }, // 58
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test projecting an unencrypted field from encrypted array works after an unwind.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$unwind: {path: "$docs"}},
+                {$project: {"projected_docs" : "$docs.r_foo"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        hasEncryptionPlaceholders: false,
+        schemaRequiresEncryption: true,
+        runWithFle2: true
+    }, // 59
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test projecting an encrypted field from encrypted array works after an unwind, but not for FLE2.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$unwind: {path: "$docs"}},
+                {$project: {"projected_docs" : "$docs.r_enc_sku"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [6331102, 31133]};
+            }
+            return {hasEncryptionPlaceholders: false, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true
+    }, // 60
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test project encrypted array, then unwind it, then project an unencrypted field",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$project: {"projected_docs" : "$docs"}},
+                {$unwind: {path: "$projected_docs"}},
+                {$project: {"projected_internal" : "$projected_docs.r_foo"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        hasEncryptionPlaceholders: false,
+        schemaRequiresEncryption: true,
+        runWithFle2: true
+    }, // 61
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test project encrypted array, then unwind it, then project an encrypted field (should fail for FLE2.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$project: {"projected_docs" : "$docs"}},
+                {$unwind: {path: "$projected_docs"}},
+                {$project: {"projected_internal" : "$projected_docs.r_enc_sku"}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [6331102,31133]};
+            }
+            return {hasEncryptionPlaceholders: false, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true
+    }, // 62
+    {
+        description:
+            "Local field/foreign field $lookup (both collections encrypted) without pipeline. Test project encrypted array, then unwind it, then equality match on an encrypted field (should fail for FLE2).",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [
+                {
+                    $lookup:
+                        {from: foreignColl.getName(), as: "docs", localField: "foo", foreignField: "r_foo"}
+                },
+                {$unwind: {path: "$docs"}},
+                {$match: {$expr: {$and: [{$eq: ["$docs.r_enc_sku", "banana"]}, {$eq:["$docs.r_foo", "banana"]}]}}}
+            ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true
+    }, // 63
+    {
+        description:
+            "Nested lookup has subpipeline with encrypted placeholders (with unwind). \
+             Test that nested subpipeline has encrypted placeholder, and that we can reference the \
+             encrypted field resulting from the join. Should fail for FLE2.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [{
+                    $lookup: {
+                        from: foreignColl.getName(), 
+                        as: "docs",
+                        localField: "foo",
+                        foreignField: "r_foo", 
+                        pipeline: [
+                            {
+                                $lookup: {
+                                        from: nestedForeignColl.getName(),
+                                        as: "inner_docs",
+                                        localField: "r_foo",
+                                        foreignField: "l_foo",
+                                        pipeline: [{$match: {"l_enc_item": "banana"}}]}
+                            },
+                            {$unwind: {path: "$inner_docs"}}
+                        ]
+                    }},
+            {$unwind: {path: "$docs"}},
+            {$match: {"docs.inner_docs.l_enc_sku": "apple"}}
+        ],
+            cursor: {}
+        },
+        schemas: nestedLookupEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true,
+        customTestFunc: function(cmdRes) {
+            assert(cmdRes.result.pipeline[0]
+                        .$lookup.pipeline[0]
+                        .$lookup.pipeline[0]
+                        .$match["l_enc_item"]
+                        .$eq instanceof
+                    BinData,
+                cmdRes);
+            assert(cmdRes.result.pipeline[2].$match["docs.inner_docs.l_enc_sku"].$eq instanceof BinData,
+                cmdRes);
+        }
+    }, // 64
+    {
+        description:
+            "Nested lookup has subpipeline (with unwind). Test that we can reference the \
+             encrypted field resulting from the join. Should fail for FLE2. This is a simplified \
+             pipeline for testing the relaxed tassert in EncryptionSchemaEncryptedNode::markEncryptedObjectArrayElements",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [{
+                    $lookup: {
+                        from: foreignColl.getName(), 
+                        as: "docs",
+                        localField: "foo",
+                        foreignField: "r_foo", 
+                        pipeline: [
+                            {
+                                $lookup: {
+                                        from: nestedForeignColl.getName(),
+                                        as: "inner_docs",
+                                        localField: "r_foo",
+                                        foreignField: "l_foo"}
+                            },
+                            {$unwind: {path: "$inner_docs"}}
+                        ]
+                    }},
+            {$unwind: {path: "$docs"}},
+            {$match: {"docs.inner_docs.l_enc_sku": "apple"}}
+        ],
+            cursor: {}
+        },
+        schemas: nestedLookupEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            if (fle2Enabled()) {
+                return {failCodes: [31133]};
+            }
+            return {hasEncryptionPlaceholders: true, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true,
+        customTestFunc: function(cmdRes) {
+            assert(cmdRes.result.pipeline[2].$match["docs.inner_docs.l_enc_sku"].$eq instanceof BinData,
+                cmdRes);
+        }
+    } // 65
 ];
 
 testList.forEach(runTest);
