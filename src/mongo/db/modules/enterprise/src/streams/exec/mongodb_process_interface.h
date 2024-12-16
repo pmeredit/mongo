@@ -317,12 +317,6 @@ public:
         const mongo::NamespaceString& nss,
         const std::set<mongo::FieldPath>& fieldPaths) const override;
 
-    boost::optional<mongo::DatabaseVersion> refreshAndGetDatabaseVersion(
-        const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        const mongo::DatabaseName& dbName) const override {
-        return boost::none;
-    }
-
     void checkRoutingInfoEpochOrThrow(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
                                       const mongo::NamespaceString&,
                                       mongo::ChunkVersion) const override {
