@@ -6,7 +6,11 @@
  * requires_fcv_80
  * ]
  */
-import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {
+    codeFailsInQueryAnalysisWithError,
+    EncryptedClient
+} from "jstests/fle2/libs/encrypted_client_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {kRandomAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 let dbName = 'create_collection_basic';
@@ -42,15 +46,6 @@ const mergedOptions = Object.assign({}, sampleJSONSchema, sampleEncryptedFields)
 
 let client = new EncryptedClient(db.getMongo(), dbName);
 
-const codeFailedInQueryAnalysis = (cb) => {
-    try {
-        cb();
-        return false;
-    } catch (e) {
-        return e.message.indexOf("Client Side Field Level Encryption Error") !== -1;
-    }
-};
-
 client.createBasicEncryptionCollection = function(coll, options, failure, qaFailure) {
     client.runEncryptionOperation(() => {
         if (failure != null) {
@@ -64,14 +59,14 @@ client.createBasicEncryptionCollection = function(coll, options, failure, qaFail
 assert.commandWorked(client.createEncryptionCollection("enc_fields", sampleEncryptedFields));
 client.createBasicEncryptionCollection("json_schema", sampleJSONSchema);
 
-assert(codeFailedInQueryAnalysis(
+assert(codeFailsInQueryAnalysisWithError(
     () => client.createBasicEncryptionCollection("merged", mergedOptions, 224)));
 
 // Test collmod
 const collmodPayload = Object.assign({}, {collMod: "enc_fields"}, sampleJSONSchema);
 
 client.runEncryptionOperation(() => {
-    assert(codeFailedInQueryAnalysis(() => client.getDB().runCommand(collmodPayload), 224));
+    assert(codeFailsInQueryAnalysisWithError(() => client.getDB().runCommand(collmodPayload)));
 });
 
 // Test that bsontype needs to be specified if queries is specified, and that bsontype
@@ -229,3 +224,35 @@ const encFieldsRangeTypesUnbounded = {
 };
 assert.commandWorked(
     client.createEncryptionCollection("enc_fields_rng_unbounded", encFieldsRangeTypesUnbounded));
+
+if (FeatureFlagUtil.isPresentAndDisabled(db.getMongo(), 'QETextSearchPreview')) {
+    // runs if featureFlagQETextSearchPreview is disabled
+    // TODO: SERVER-94397 remove test once feature flag is gone
+    const qtype = {
+        queryType: "substringPreview",
+        contention: NumberLong(1),
+        strMaxLength: NumberLong(2),
+        strMinQueryLength: NumberLong(2),
+        strMaxQueryLength: NumberLong(2),
+        caseSensitive: true,
+        diacriticSensitive: true,
+    };
+    const badSchema = {
+        encryptedFields: {
+            fields: [{
+                path: "ssn",
+                bsonType: "string",
+                keyId: UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+                queries: [qtype]
+            }]
+        }
+    };
+    assert.commandFailedWithCode(db.createCollection("basic_text", badSchema), 9783415);
+    qtype.queryType = "suffixPreview";
+    assert.commandFailedWithCode(db.createCollection("basic_text", badSchema), 9783416);
+    qtype.queryType = "prefixPreview";
+    assert.commandFailedWithCode(db.createCollection("basic_text", badSchema), 9783417);
+    badSchema.encryptedFields.fields[0].queries =
+        [{queryType: "equality"}, {queryType: "equality"}];
+    assert.commandFailedWithCode(db.createCollection("basic_text", badSchema), 9783414);
+}

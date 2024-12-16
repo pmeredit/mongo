@@ -1181,6 +1181,24 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 placeholder.setSparsity(sparsity);
                 return placeholder;
             }
+            case Fle2AlgorithmInt::kTextSearch: {
+                // At this point, there may be multiple query type configs, but all of them
+                // must be text search query types.
+                for (auto& qtc : metadata.fle2SupportedQueries.value()) {
+                    auto qtype = qtc.getQueryType();
+                    invariant(qtype == QueryTypeEnum::SubstringPreview ||
+                              qtype == QueryTypeEnum::SuffixPreview ||
+                              qtype == QueryTypeEnum::PrefixPreview);
+                }
+                // TODO: SERVER-97835 implement FLE2TextSearchInsertSpec
+                auto placeholder = FLE2EncryptionPlaceholder(placeholderType,
+                                                             algorithm,
+                                                             ki /*indexKeyId*/,
+                                                             ki /*userKeyId*/,
+                                                             IDLAnyType(elem),
+                                                             cm);
+                return placeholder;
+            }
             case Fle2AlgorithmInt::kEquality:
             case Fle2AlgorithmInt::kUnindexed:
                 return FLE2EncryptionPlaceholder(placeholderType,
