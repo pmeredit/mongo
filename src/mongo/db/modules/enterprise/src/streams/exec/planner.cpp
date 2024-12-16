@@ -1065,11 +1065,71 @@ void Planner::planEmitSink(const BSONObj& spec) {
 
             MongoCxxClientOptions options(atlasOptions);
             options.svcCtx = _context->opCtx->getServiceContext();
-            options.database = timeseriesOptions.getDb().toString();
-            options.collection = timeseriesOptions.getColl().toString();
+
+            const bool dynamicContentRoutingFeatureFlag =
+                *_context->featureFlags
+                     ->getFeatureFlagValue(FeatureFlags::kTimeseriesEmitDynamicContentRouting)
+                     .getBool();
+            boost::intrusive_ptr<mongo::Expression> dbExpr;
+            boost::intrusive_ptr<mongo::Expression> collExpr;
+
+            const auto& db = timeseriesOptions.getDb();
+            std::visit(
+                OverloadedVisitor{
+                    [&](const BSONObj& bson) {
+                        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                "Expression for $emit collection is not supported",
+                                dynamicContentRoutingFeatureFlag);
+                        dbExpr = Expression::parseExpression(
+                            _context->expCtx.get(), bson, _context->expCtx->variablesParseState);
+                    },
+                    [&](const std::string& str) {
+                        if (str[0] == '$') {
+                            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                    "Expression for $emit collection is not supported",
+                                    dynamicContentRoutingFeatureFlag);
+                            dbExpr = ExpressionFieldPath::parse(
+                                _context->expCtx.get(), str, _context->expCtx->variablesParseState);
+                        } else {
+                            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                    "Expected database name but got none",
+                                    !str.empty());
+                            options.database = str;
+                        }
+                    }},
+                db);
+
+            const auto& coll = timeseriesOptions.getColl();
+            std::visit(
+                OverloadedVisitor{
+                    [&](const BSONObj& bson) {
+                        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                "Expression for $emit collection is not supported",
+                                dynamicContentRoutingFeatureFlag);
+                        collExpr = Expression::parseExpression(
+                            _context->expCtx.get(), bson, _context->expCtx->variablesParseState);
+                    },
+                    [&](const std::string& str) {
+                        if (str[0] == '$') {
+                            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                    "Expression for $emit collection is not supported",
+                                    dynamicContentRoutingFeatureFlag);
+                            collExpr = ExpressionFieldPath::parse(
+                                _context->expCtx.get(), str, _context->expCtx->variablesParseState);
+                        } else {
+                            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                    "Expected collection name but got none",
+                                    !str.empty());
+                            options.collection = str;
+                        }
+                    }},
+                coll);
+
             TimeseriesEmitOperator::Options internalOptions{.clientOptions = std::move(options),
                                                             .timeseriesSinkOptions =
-                                                                std::move(timeseriesOptions)};
+                                                                std::move(timeseriesOptions),
+                                                            .dbExpr = std::move(dbExpr),
+                                                            .collExpr = std::move(collExpr)};
             sinkOperator =
                 std::make_unique<TimeseriesEmitOperator>(_context, std::move(internalOptions));
             sinkOperator->setOperatorId(_nextOperatorId++);

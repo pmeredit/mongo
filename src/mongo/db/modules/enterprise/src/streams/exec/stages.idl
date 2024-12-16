@@ -675,11 +675,13 @@ structs:
                 type: string
                 description: Name of the connection to use from the connections list.
             db:
-                type: string
-                description: database name
+                type:
+                    variant: [object, string]
+                description: The string or expression representing database name
             coll:
-                type: string
-                description: collection name
+                type:
+                    variant: [object, string]
+                description: The string or expression representing collection name
             timeseries:
                 type: TimeseriesOptions
                 description: Sepcifies the details of the target Time Series collection

@@ -209,6 +209,11 @@ const FeatureFlagDefinition FeatureFlags::kCheckpointStateSizeToUseMaxIntervalBy
     "Specifies the byte size for which to use the maximum periodic checkpoint interval",
     mongo::Value::createIntOrLong(100_MiB)};
 
+const FeatureFlagDefinition FeatureFlags::kTimeseriesEmitDynamicContentRouting{
+    "timeseriesEmitDynamicContentRouting",
+    "When set, timeseries $emit allows dynamic db and coll names for content routing",
+    mongo::Value(false)};
+
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};

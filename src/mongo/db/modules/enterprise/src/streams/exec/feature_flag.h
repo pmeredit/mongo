@@ -65,6 +65,7 @@ public:
     static const FeatureFlagDefinition kCheckpointMinIntervalSeconds;
     static const FeatureFlagDefinition kCheckpointMaxIntervalSeconds;
     static const FeatureFlagDefinition kCheckpointStateSizeToUseMaxIntervalBytes;
+    static const FeatureFlagDefinition kTimeseriesEmitDynamicContentRouting;
 };
 
 }  // namespace streams

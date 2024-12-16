@@ -4,9 +4,12 @@
 
 #pragma once
 
+#include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <string>
 
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/queued_sink_operator.h"
 
@@ -23,6 +26,8 @@ public:
     struct Options {
         MongoCxxClientOptions clientOptions;
         mongo::TimeseriesSinkOptions timeseriesSinkOptions;
+        boost::intrusive_ptr<mongo::Expression> dbExpr;
+        boost::intrusive_ptr<mongo::Expression> collExpr;
     };
 
     TimeseriesEmitOperator(Context* context, Options options);
@@ -35,6 +40,8 @@ protected:
     OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
 
     void validateConnection() override;
+
+    void processDbAndCollExpressions(const StreamDocument& streamDoc);
 
 private:
     OperatorStats processStreamDocs(StreamDataMsg dataMsg, size_t startIdx, size_t maxDocCount);

@@ -21,12 +21,13 @@ const timeseriesColl = db["timeseries_coll"];
 const dlqColl = db.dlq_coll;
 const badUri = "mongodb://badUri";
 const goodUri = 'mongodb://' + db.getMongo().host;
+const spName = 'timeseriesTest';
 
 export function startStreamProcessor(pipeline) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
-        name: 'timeseriesTest',
+        name: spName,
         processorId: 'timeseriesTest1',
         pipeline: pipeline,
         connections: [
@@ -43,7 +44,7 @@ export function startStreamProcessor(pipeline) {
 }
 
 export function getOperatorStats(operator = "") {
-    let result = getStats('timeseriesTest');
+    let result = getStats(spName);
     if (result["ok"] != 1) {
         return 0;
     }
@@ -104,7 +105,7 @@ function testEmitToTimeSeriesCollection() {
     });
     assert.eq(opStats["inputMessageCount"], 30);
     assert.eq(opStats["outputMessageCount"], 10);
-    stopStreamProcessor('timeseriesTest');
+    stopStreamProcessor(spName);
 }
 
 function testEmitToTimeSeriesMissingTimeField() {
@@ -156,7 +157,7 @@ function testEmitToTimeSeriesMissingTimeField() {
     });
     assert.eq(opStats["inputMessageCount"], 30);
     assert.eq(opStats["outputMessageCount"], 10);
-    stopStreamProcessor('timeseriesTest');
+    stopStreamProcessor(spName);
 }
 
 // test missing timeseries field in $emit
@@ -203,7 +204,7 @@ function testMissingTimeseries() {
     });
     assert.eq(opStats["inputMessageCount"], 200);
     assert.eq(opStats["outputMessageCount"], 100);
-    stopStreamProcessor('timeseriesTest');
+    stopStreamProcessor(spName);
 }
 
 function testMissingTimeseriesCollection() {
@@ -255,7 +256,7 @@ function testMissingTimeseriesCollection() {
     });
     assert.eq(opStats["inputMessageCount"], 200);
     assert.eq(opStats["outputMessageCount"], 100);
-    stopStreamProcessor('timeseriesTest');
+    stopStreamProcessor(spName);
 }
 
 function testBadUri() {
@@ -448,6 +449,135 @@ function testNoTimeFieldNoTimeSeriesCollection() {
     assert.includes(result["errmsg"], "$emit can only be used with a time series collection.");
 }
 
+function startStreamProcessorTimeseriesEmitDynamicContentRoutingFeatureFlagOn(pipeline) {
+    let startCmd = {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        name: spName,
+        processorId: 'timeseriesTest1',
+        pipeline: pipeline,
+        connections: [
+            {name: 'db1', type: 'atlas', options: {uri: goodUri}},
+            {name: 'db2', type: 'atlas', options: {uri: badUri}}
+        ],
+        options: {
+            dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()},
+            featureFlags: {timeseriesEmitDynamicContentRouting: true}
+        }
+    };
+
+    let result = db.runCommand(startCmd);
+    jsTestLog(result);
+    return result;
+}
+
+function testDynamicContentRoutingMultipleInputDocs() {
+    inputColl.drop();
+    timeseriesColl.drop();
+    dlqColl.drop();
+
+    const pipeline = [
+        // Read from input_coll collection.
+        {
+            '$source': {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': 'input_coll',
+                'timeField': {$toDate: '$ts'},
+                'config': {'fullDocument': 'required', 'fullDocumentOnly': true}
+            }
+        },
+        // emit to the timeseries_coll collection
+        {
+            $emit: {
+                connectionName: 'db1',
+                db: 'test',
+                coll: '$output_coll',
+                timeseries: {timeField: 'ts', metaField: 'metaData'}
+            }
+        }
+    ];
+    let result = startStreamProcessorTimeseriesEmitDynamicContentRoutingFeatureFlagOn(pipeline);
+    assert.eq(result["ok"], 1);
+    assert.commandWorked(db.createCollection(
+        "timeseries_coll2", {timeseries: {timeField: 'ts', metaField: 'metaData'}}));
+    const timeseriesColl2 = db["timeseries_coll2"];
+
+    inputColl.insertOne(
+        {output_coll: timeseriesColl.getName(), ts: ISODate("2021-05-18T00:00:00.000Z")});
+    inputColl.insertOne(
+        {output_coll: timeseriesColl2.getName(), ts: ISODate("2021-05-18T00:00:00.000Z")});
+
+    assert.soon(() => { return timeseriesColl.count() == 1; });
+    assert.soon(() => { return timeseriesColl2.count() == 1; });
+
+    stopStreamProcessor(spName);
+}
+
+function dynamicContentRoutingTestRunner({dbExpr, collExpr, inputDoc}) {
+    inputColl.drop();
+    timeseriesColl.drop();
+    dlqColl.drop();
+
+    const pipeline = [
+        // Read from input_coll collection.
+        {
+            '$source': {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': 'input_coll',
+                'timeField': {$toDate: '$ts'},
+                'config': {'fullDocument': 'required', 'fullDocumentOnly': true}
+            }
+        },
+        // emit to the timeseries_coll collection
+        {
+            $emit: {
+                connectionName: 'db1',
+                db: dbExpr,
+                coll: collExpr,
+                timeseries: {timeField: 'ts', metaField: 'metaData'}
+            }
+        }
+    ];
+
+    let result = startStreamProcessorTimeseriesEmitDynamicContentRoutingFeatureFlagOn(pipeline);
+    assert.eq(result["ok"], 1);
+    assert.soon(() => { return listStreamProcessors().streamProcessors.length == 1; });
+
+    inputColl.insertOne(inputDoc);
+    assert.soon(() => { return timeseriesColl.count() == 1; });
+
+    let opStats = getOperatorStats("TimeseriesEmitOperator");
+
+    assert.eq(opStats["inputMessageCount"], 1);
+
+    stopStreamProcessor(spName);
+}
+
+const testCases = [
+    {
+        dbExpr: '$bar',
+        collExpr: {$concat: ['timeseries', '$foo']},
+        inputDoc: {foo: "_coll", bar: "test", ts: ISODate("2021-05-18T00:00:00.000Z")}
+    },
+    {
+        dbExpr: 'test',
+        collExpr: {$concat: ['timeseries', '$foo']},
+        inputDoc: {foo: "_coll", ts: ISODate("2021-05-18T00:00:00.000Z")}
+    },
+    {
+        dbExpr: '$bar',
+        collExpr: timeseriesColl.getName(),
+        inputDoc: {bar: "test", ts: ISODate("2021-05-18T00:00:00.000Z")}
+    },
+];
+
+for (const testCase of testCases) {
+    jsTestLog(`Running test case ${tojson(testCase)}`);
+    dynamicContentRoutingTestRunner(testCase);
+}
+
 testEmitToTimeSeriesCollection();
 testEmitToTimeSeriesMissingTimeField();
 testMissingTimeseries();
@@ -458,6 +588,7 @@ testTimeFieldMismatch();
 testMissingTimeField();
 testNoTimeFieldNoCollection();
 testNoTimeFieldNoTimeSeriesCollection();
+testDynamicContentRoutingMultipleInputDocs();
 inputColl.drop();
 timeseriesColl.drop();
 dlqColl.drop();

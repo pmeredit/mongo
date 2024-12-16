@@ -4,6 +4,7 @@
 #include "streams/exec/timeseries_emit_operator.h"
 
 #include <boost/optional.hpp>
+#include <boost/optional/optional.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
 #include <chrono>
 #include <cstddef>
@@ -27,11 +28,9 @@
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
-#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
-#include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/util.h"
 
@@ -48,29 +47,39 @@ TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options
     _uri = makeMongocxxUri(_options.clientOptions.uri);
     _client =
         std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
-    tassert(8114510, "Expected database name but got none", _options.clientOptions.database);
-    _database =
-        std::make_unique<mongocxx::database>(_client->database(*_options.clientOptions.database));
-    tassert(8114511, "Expected collection name but got none", _options.clientOptions.collection);
+    if (!_options.dbExpr) {
+        _database = std::make_unique<mongocxx::database>(
+            _client->database(*_options.clientOptions.database));
+    }
 
     mongocxx::write_concern writeConcern;
     writeConcern.journal(true);
     writeConcern.acknowledge_level(mongocxx::write_concern::level::k_majority);
     writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
-
-    _errorPrefix = fmt::format("Time series $emit to {}.{} failed",
-                               *_options.clientOptions.database,
-                               *_options.clientOptions.collection);
+    if (_options.dbExpr || _options.collExpr) {
+        _errorPrefix = "Time series $emit failed";
+    } else {
+        _errorPrefix = fmt::format("Time series $emit to {}.{} failed",
+                                   *_options.clientOptions.database,
+                                   *_options.clientOptions.collection);
+    }
     _stats.connectionType = ConnectionTypeEnum::Atlas;
 }
 
 OperatorStats TimeseriesEmitOperator::processDataMsg(StreamDataMsg dataMsg) {
+    if (_options.collExpr || _options.dbExpr) {
+        return processStreamDocs(dataMsg, /* startIdx */ 0, /* maxDocCount */ 1);
+    }
     return processStreamDocs(dataMsg, /* startIdx */ 0, kDataMsgMaxDocSize);
 }
 
 void TimeseriesEmitOperator::validateConnection() {
+    if (_options.dbExpr || _options.collExpr) {
+        return;
+    }
     ErrorCodes::Error genericErrorCode{74452};
+    tassert(9777901, "_database should be set", _database);
 
     auto validateFunc = [this]() {
         mongocxx::collection collection;
@@ -106,7 +115,7 @@ void TimeseriesEmitOperator::validateConnection() {
                 auto opts = bsoncxx::builder::basic::document{};
                 opts.append(kvp(
                     "timeseries",
-                    toBsoncxxValue((*_options.timeseriesSinkOptions.getTimeseries()).toBSON())));
+                    toBsoncxxValue((_options.timeseriesSinkOptions.getTimeseries())->toBSON())));
                 collection =
                     _database->create_collection(*_options.clientOptions.collection, opts.view());
             }
@@ -128,6 +137,55 @@ void TimeseriesEmitOperator::validateConnection() {
     spassert(status, status.isOK());
 }
 
+void TimeseriesEmitOperator::processDbAndCollExpressions(const StreamDocument& streamDoc) {
+    // TODO(SERVER-98021): Handle collection validation with expressions.
+    if (_options.dbExpr) {
+        // TODO(SERVER-98021): handle expression failures with DLQ messages
+        Value val = _options.dbExpr->evaluate(streamDoc.doc, &_context->expCtx->variables);
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "Failed to parse database expresssion",
+                val.getType() == String);
+        std::string db = val.getString();
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "Expected database name but got none",
+                !db.empty());
+        _database = std::make_unique<mongocxx::database>(_client->database(std::move(db)));
+    }
+    std::string coll;
+    if (_options.clientOptions.collection) {
+        coll = *_options.clientOptions.collection;
+    } else {
+        tassert(9777900, "_options.collExpr should be set", _options.collExpr);
+        // TODO(SERVER-98021): handle expression failures with DLQ messages
+        Value val = _options.collExpr->evaluate(streamDoc.doc, &_context->expCtx->variables);
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "Failed to parse collection expresssion",
+                val.getType() == String);
+        std::string collName = val.getString();
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "Expected collection name but got none",
+                !collName.empty());
+        coll = collName;
+    }
+
+    // TODO(SERVER-98021): Perform collection validations and cache the mongocxx::collection in a
+    // LRU cache
+    mongocxx::collection collection;
+    auto collectionExists = _database->has_collection(coll);
+    // TODO(SERVER-98021): handle the case where the collection doesn't exist but user has not
+    // specified _options.timeseriesSinkOptions
+    if (collectionExists) {
+        collection = _database->collection(coll);
+    } else {
+        auto opts = bsoncxx::builder::basic::document{};
+        opts.append(
+            kvp("timeseries",
+                toBsoncxxValue((_options.timeseriesSinkOptions.getTimeseries())->toBSON())));
+        collection = _database->create_collection(coll, opts.view());
+    }
+    _collection = std::make_unique<mongocxx::collection>(std::move(collection));
+}
+
 OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                                                         size_t startIdx,
                                                         size_t maxDocCount) {
@@ -142,6 +200,9 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
 
     while (curIdx < dataMsg.docs.size()) {
         const auto& streamDoc = dataMsg.docs[curIdx++];
+        if (_options.collExpr || _options.dbExpr) {
+            processDbAndCollExpressions(streamDoc);
+        }
         auto docSize = streamDoc.doc.memUsageForSorter();
         // Send the document to dlq if it is larger than the size limit.
         if (docSize > maxBatchObjectSizeBytes) {
@@ -185,8 +246,8 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                               fmt::format("Error encountered in {} while writing to a Time Series "
                                           "collection: {} and db: {}",
                                           getName(),
-                                          *_options.clientOptions.collection,
-                                          *_options.clientOptions.database));
+                                          _collection->name().to_string(),
+                                          _database->name().to_string()));
                 }
                 auto elapsed = stdx::chrono::steady_clock::now() - start;
                 _writeLatencyMs->increment(
@@ -206,8 +267,8 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                 if (!writeError) {
                     LOGV2_INFO(74787,
                                "Error encountered while writing to target in timeseries $emit",
-                               "db"_attr = _options.timeseriesSinkOptions.getDb(),
-                               "coll"_attr = _options.timeseriesSinkOptions.getColl(),
+                               "db"_attr = _database->name().to_string(),
+                               "coll"_attr = _collection->name().to_string(),
                                "context"_attr = _context,
                                "exception"_attr = ex.what(),
                                "code"_attr = int(ex.code().value()));
@@ -260,6 +321,12 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
 boost::optional<TimeseriesOptions> TimeseriesEmitOperator::getTimeseriesOptionsFromDb() {
     boost::optional<TimeseriesOptions> tsOptions;
     // Create a filter on the name and type (timeseries) of the collection.
+
+    // TODO(SERVER-98021): refactor this method because as of now it assumes the database and
+    // collection are already evaluated
+    tassert(9777902,
+            "don't run this method if db or coll are expressions",
+            !_options.dbExpr && !_options.collExpr);
     auto filter = BSON("type"
                        << "timeseries"
                        << "name" << *_options.clientOptions.collection);
