@@ -29,7 +29,11 @@ function runAll() {
     const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
 
     function createWindowOp(windowOp, interval, hopSize = null, pipeline = []) {
-        let arg = {interval: interval, allowedLateness: NumberInt(0), pipeline: pipeline};
+        let arg = {
+            interval: interval,
+            allowedLateness: {size: NumberInt(0), unit: "second"},
+            pipeline: pipeline
+        };
         if (hopSize !== null && windowOp == "$hoppingWindow") {
             arg["hopSize"] = hopSize;
         }
@@ -168,7 +172,7 @@ function runAll() {
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(5), unit: "second"},
-                    allowedLateness: NumberInt(0),
+                    allowedLateness: {size: NumberInt(0), unit: "second"},
                     hopSize: {size: NumberInt(2), unit: "second"},
                     pipeline: [
                         {
@@ -451,7 +455,7 @@ function testWindowMinMaxStats() {
         {
             $hoppingWindow: {
                 interval: {size: NumberInt(5), unit: "second"},
-                allowedLateness: NumberInt(0),
+                allowedLateness: {size: NumberInt(0), unit: "second"},
                 hopSize: {size: NumberInt(1), unit: "second"},
                 pipeline: [
                     {

@@ -46,7 +46,7 @@ function documentsDataSourceWindowMerge() {
             {
                 $tumblingWindow: {
                     interval: {size: NumberInt(3), unit: "second"},
-                    allowedLateness: NumberInt(0),
+                    allowedLateness: {size: NumberInt(0), unit: "second"},
                     pipeline: [
                         {
                             $group: {
@@ -105,7 +105,7 @@ function documentsDataSourceInvalidExpr() {
             {
                 $tumblingWindow: {
                     interval: {size: NumberInt(3), unit: "second"},
-                    allowedLateness: NumberInt(0),
+                    allowedLateness: {size: NumberInt(0), unit: "second"},
                     pipeline: [
                         {
                             $group: {

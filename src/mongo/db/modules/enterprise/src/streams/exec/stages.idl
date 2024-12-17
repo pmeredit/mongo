@@ -541,13 +541,11 @@ structs:
                 optional: true
             idleTimeout:
                 description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
-                type: 
-                    variant: [StreamTimeDuration, int]
+                type: StreamTimeDuration
                 optional: true
             allowedLateness:
                 description: "Defines the allowed lateness for documents."
-                type: 
-                    variant: [StreamTimeDuration, int]
+                type: StreamTimeDuration
                 optional: true
 
     HoppingWindowOptions:
@@ -569,13 +567,11 @@ structs:
                 optional: true
             idleTimeout:
                 description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
-                type: 
-                    variant: [StreamTimeDuration, int]
+                type: StreamTimeDuration
                 optional: true
             allowedLateness:
                 description: "Defines the allowed lateness for documents."
-                type: 
-                    variant: [StreamTimeDuration, int]
+                type: StreamTimeDuration
                 optional: true
 
     SessionWindowOptions:

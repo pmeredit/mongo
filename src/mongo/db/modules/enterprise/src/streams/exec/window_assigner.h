@@ -23,14 +23,23 @@ public:
         int offsetFromUtc{0};
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
         int64_t allowedLatenessMs{0};
-        boost::optional<int64_t> idleTimeoutMs;
+
+        boost::optional<mongo::StreamTimeUnitEnum> idleTimeoutUnit;
+        boost::optional<int> idleTimeoutSize;
     };
 
     WindowAssigner(Options options)
         : _options(std::move(options)),
           _windowSizeMs(toMillis(_options.sizeUnit, _options.size)),
           _windowSlideMs(toMillis(_options.slideUnit, _options.slide)),
-          _windowOffsetMs(calculateOffsetMs(_options.offsetUnit, _options.offsetFromUtc)) {}
+          _windowOffsetMs(calculateOffsetMs(_options.offsetUnit, _options.offsetFromUtc)) {
+        if (_options.idleTimeoutUnit) {
+            tassert(8347602,
+                    "Expected idleTimeoutSize to be set if idleTimeoutUnit is set.",
+                    _options.idleTimeoutSize);
+            _idleTimeoutMs = toMillis(*_options.idleTimeoutUnit, *_options.idleTimeoutSize);
+        }
+    }
 
     virtual ~WindowAssigner() = default;
 
@@ -57,13 +66,13 @@ public:
 
     // Returns true if the idle timeout is set.
     bool hasIdleTimeout() const {
-        return bool(_options.idleTimeoutMs);
+        return bool(_idleTimeoutMs);
     }
 
     // Returns true if the idle timeout has elapsed.
     bool hasIdleTimeoutElapsed(int64_t idleDurationMs) const {
-        tassert(8347601, "Expected idleTimeout to be set", _options.idleTimeoutMs);
-        return idleDurationMs >= *_options.idleTimeoutMs;
+        tassert(8347601, "Expected idleTimeout to be set", _idleTimeoutMs);
+        return idleDurationMs >= *_idleTimeoutMs;
     }
 
 private:
@@ -74,6 +83,8 @@ private:
     const int64_t _windowSizeMs;
     const int64_t _windowSlideMs;
     const int64_t _windowOffsetMs;
+    // If set, open windows are closed if the source is idle for this time plus the window size.
+    boost::optional<int64_t> _idleTimeoutMs;
 };
 
 }  // namespace streams

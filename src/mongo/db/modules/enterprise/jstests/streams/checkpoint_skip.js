@@ -32,7 +32,7 @@ function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(15), unit: "second"},
-                allowedLateness: NumberInt(0),
+                allowedLateness: {size: NumberInt(0), unit: "second"},
                 idleTimeout: {size: NumberInt(10), unit: "second"},
                 pipeline: [{
                     $group:

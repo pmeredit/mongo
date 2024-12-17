@@ -44,7 +44,7 @@ function testLargeDocumentEmitToTimeSeries() {
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(10), unit: 'second'},
-                allowedLateness: NumberInt(0),
+                allowedLateness: {size: NumberInt(0), unit: 'second'},
                 pipeline: [
                     { $project: { docSize: 1, seed: 1, ts: 1, value: { $range: [ 0, "$docCount" ] } } },
                     { $unwind: "$value" },

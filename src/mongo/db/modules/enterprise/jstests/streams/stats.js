@@ -408,7 +408,7 @@ import {
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: 'second'},
-                allowedLateness: NumberInt(0),
+                allowedLateness: {size: NumberInt(0), unit: 'second'},
                 idleTimeout: {size: NumberInt(1), unit: "second"},
                 pipeline: [
                     {$group: {_id: null, count: {$sum: 1}}},

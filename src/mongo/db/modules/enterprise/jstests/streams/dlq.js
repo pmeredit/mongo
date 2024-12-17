@@ -95,7 +95,7 @@ const pipeline = [
     {
         $tumblingWindow: {
             interval: {size: NumberInt(10), unit: 'second'},
-            allowedLateness: NumberInt(0),
+            allowedLateness: {size: NumberInt(0), unit: 'second'},
             pipeline: [
                 // Perform $b / 0 when $b == 9. This runs into "can't $divide by zero"
                 // error when $b == 9. This should add 10 documents to the dead letter

@@ -36,7 +36,7 @@ function smokeTest() {
                         {_id: {$divide: ["$fullDocument.y", "$fullDocument.x"]}, count: {$sum: 1}}
                 }],
                 interval: {size: NumberInt(1), unit: 'second'},
-                allowedLateness: {size: NumberInt(0), unit: 'second'}
+                allowedLateness: {size: NumberInt(0), unit: 'second'},
             }
         },
         {
