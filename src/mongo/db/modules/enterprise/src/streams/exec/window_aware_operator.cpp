@@ -319,16 +319,19 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
 
     _context->checkpointStorage->addMinWindowStartTime(_minWindowStartTime);
 
-    // Write the state of all the open windows.
-    for (auto& [windowStartTime, window] : _windows) {
+    auto writeWindow = [&](Window* window) {
         // Write the window start record.
-        WindowOperatorStartRecord windowStart(
-            windowStartTime,
-            window->streamMetaTemplate.getWindow()->getEnd()->toMillisSinceEpoch());
+        WindowOperatorStartRecord windowStart(window->getStartMs(), window->getEndMs());
         if (window->streamMetaTemplate.getSource() &&
             window->streamMetaTemplate.getSource()->getType()) {
             windowStart.setSourceType(window->streamMetaTemplate.getSource()->getType());
         }
+        if (isSessionWindow()) {
+            // For session windows, add their partition and windowID.
+            windowStart.setPartition(window->getPartition());
+            windowStart.setWindowID(window->getWindowID());
+        }
+
         windowStart.setReplayCheckpointId(window->replayCheckpointId);
         WindowOperatorCheckpointRecord startRecord;
         startRecord.setWindowStart(std::move(windowStart));
@@ -336,15 +339,28 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
                                                   Document{std::move(startRecord).toBSON()});
 
         // Write the data for this window.
-        doSaveWindowState(writer.get(), window.get());
+        doSaveWindowState(writer.get(), window);
 
         // Write the window end record.
         WindowOperatorEndRecord windowEnd;
-        windowEnd.setWindowEndMarker(windowStartTime);
+        windowEnd.setWindowEndMarker(window->getStartMs());
         WindowOperatorCheckpointRecord endRecord;
         endRecord.setWindowEnd(std::move(windowEnd));
         _context->checkpointStorage->appendRecord(writer.get(),
                                                   Document{std::move(endRecord).toBSON()});
+    };
+
+    // Write the state of all the open windows.
+    if (isHoppingWindow()) {
+        for (auto& [windowStartTime, window] : _windows) {
+            writeWindow(window.get());
+        }
+    } else {
+        for (const auto& [partition, partitionWindows] : _sessionWindows) {
+            for (const auto& window : partitionWindows) {
+                writeWindow(window.get());
+            }
+        }
     }
 }
 
@@ -399,7 +415,7 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
                 "Expected startTime field of type long",
                 startTime.getType() == BSONType::NumberLong);
         auto endTime = windowStartDoc[WindowOperatorStartRecord::kEndTimeMsFieldName];
-        tassert(8289703,
+        tassert(8289709,
                 "Expected endTime field of type long",
                 endTime.getType() == BSONType::NumberLong);
         boost::optional<StreamMetaSourceTypeEnum> sourceTypeEnum;
@@ -411,14 +427,30 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
             sourceTypeEnum = StreamMetaSourceType_parse(parserContext, sourceType.getString());
         }
 
-        auto [window, isNew] =
-            addOrGetWindow(startTime.getLong(), endTime.getLong(), sourceTypeEnum);
-        tassert(8279700, "Window should not already exist", isNew);
+        Window* window{nullptr};
+        if (isHoppingWindow()) {
+            auto result = addOrGetWindow(startTime.getLong(), endTime.getLong(), sourceTypeEnum);
+            window = result.first;
+            tassert(8279700, "Window should not already exist", result.second);
+        } else {
+            auto partition = windowStartDoc[WindowOperatorStartRecord::kPartitionFieldName];
+            auto windowID = windowStartDoc[WindowOperatorStartRecord::kWindowIDFieldName];
+            tassert(8289711,
+                    "Expected windowID field of type long",
+                    windowID.getType() == BSONType::NumberLong);
+            auto result = addOrGetSessionWindow(partition,
+                                                startTime.getLong(),
+                                                endTime.getLong(),
+                                                windowID.getLong(),
+                                                sourceTypeEnum);
+            window = result.first;
+            tassert(8279705, "Window should not already exist", result.second);
+        }
 
         auto replayCheckpointId =
             windowStartDoc[WindowOperatorStartRecord::kReplayCheckpointIdFieldName];
         if (!replayCheckpointId.missing()) {
-            tassert(8289711,
+            tassert(8289719,
                     "Expected replayCheckpointId field of type long",
                     replayCheckpointId.getType() == BSONType::NumberLong);
             window->replayCheckpointId = replayCheckpointId.getLong();
@@ -624,8 +656,8 @@ void WindowAwareOperator::onControlMsgSessionWindow(int32_t inputIdx, StreamCont
     const auto& options = getOptions();
 
     if (controlMsg.checkpointMsg) {
-        // TODO(SERVER-91882): Implement this
-        MONGO_UNREACHABLE;
+        saveState(controlMsg.checkpointMsg->id);
+        sendControlMsg(0, std::move(controlMsg));
     } else if (controlMsg.watermarkMsg && options.windowAssigner) {
         // If this is the windowAssigner (the first stateful stage in the window's inner
         // pipeline), then use source watermark to find out what windows should be closed.
@@ -704,13 +736,17 @@ void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partiti
                                                      bool projectStreamMeta) {
     invariant(!streamDocs.empty());
     const auto& firstStreamMeta = streamDocs.front().streamMeta;
-    auto window = addOrGetSessionWindow(
+    auto [window, isNew] = addOrGetSessionWindow(
         partition,
         minTS,
         maxTS,
         firstStreamMeta.getWindow() ? firstStreamMeta.getWindow()->getWindowID() : boost::none,
         firstStreamMeta.getSource() ? firstStreamMeta.getSource()->getType() : boost::none);
     invariant(window);  // cannot be a null ptr
+
+    if (getOptions().windowAssigner && _context->checkpointStorage && isNew) {
+        window->replayCheckpointId = _context->checkpointStorage->onWindowOpen();
+    }
 
     if (!window->status.isOK()) {
         return;
@@ -808,7 +844,7 @@ WindowAwareOperator::Window* WindowAwareOperator::mergeSessionWindows(
     return destinationWindow;
 }
 
-WindowAwareOperator::Window* WindowAwareOperator::addOrGetSessionWindow(
+std::pair<WindowAwareOperator::Window*, bool> WindowAwareOperator::addOrGetSessionWindow(
     mongo::Value const& partition,
     int64_t minTS,
     int64_t maxTS,
@@ -819,15 +855,16 @@ WindowAwareOperator::Window* WindowAwareOperator::addOrGetSessionWindow(
     auto& partitionWindows = _sessionWindows[partition];  // we want the partition to exist anyways
 
     if (options.windowAssigner) {
-        invariant(!windowID);
         auto destinationWindow = mergeSessionWindows(partitionWindows, minTS, maxTS, sourceType);
 
         if (destinationWindow) {
-            return destinationWindow;
+            return std::make_pair(destinationWindow, false);
         }
 
-        windowID = _nextSessionWindowId;
-        ++_nextSessionWindowId;
+        if (!windowID) {
+            windowID = _nextSessionWindowId;
+            ++_nextSessionWindowId;
+        }
     } else {
         invariant(windowID);
         auto windowIt = std::find_if(partitionWindows.begin(),
@@ -836,7 +873,7 @@ WindowAwareOperator::Window* WindowAwareOperator::addOrGetSessionWindow(
                                          return window->getWindowID() == *windowID;
                                      });
         if (windowIt != partitionWindows.end()) {
-            return windowIt->get();
+            return std::make_pair(windowIt->get(), false);
         }
     }
 
@@ -865,7 +902,7 @@ WindowAwareOperator::Window* WindowAwareOperator::addOrGetSessionWindow(
 
     auto ret = window.get();
     partitionWindows.push_back(std::move(window));
-    return ret;
+    return std::make_pair(ret, true);
 }
 
 void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg controlMsg) {
@@ -899,6 +936,13 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
             if (assigner->shouldCloseWindow(window->getEndMs(), inputWatermarkTime)) {
                 // close window
                 closeWindow(window);
+
+                if (window->replayCheckpointId) {
+                    tassert(9531616,
+                            "Found replayCheckpointId, expected to be the window assigner",
+                            getOptions().windowAssigner);
+                    _context->checkpointStorage->onWindowClose(*window->replayCheckpointId);
+                }
 
                 auto windowID = window->getWindowID();
                 const auto& partition = window->getPartition();

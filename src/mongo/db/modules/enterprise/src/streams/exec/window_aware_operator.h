@@ -182,11 +182,12 @@ private:
         int64_t windowEndTimestampMs,
         boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
     // Add a new window or get an existing window.
-    Window* addOrGetSessionWindow(mongo::Value const& partition,
-                                  int64_t minTimestampMs,
-                                  int64_t maxTimestampMs,
-                                  boost::optional<int32_t> windowID,
-                                  boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
+    std::pair<Window*, bool> addOrGetSessionWindow(
+        mongo::Value const& partition,
+        int64_t minTimestampMs,
+        int64_t maxTimestampMs,
+        boost::optional<int32_t> windowID,
+        boost::optional<mongo::StreamMetaSourceTypeEnum> sourceType);
 
     Window* mergeSessionWindows(
         boost::container::small_vector<std::unique_ptr<Window>, 1>& partitionWindows,
@@ -235,6 +236,13 @@ private:
     void processSessionWindowWatermarkMsg(StreamControlMsg controlMsg);
     void processSessionWindowCloseMsg(StreamControlMsg controlMsg);
     void processSessionWindowMergeMsg(StreamControlMsg controlMsg);
+
+    bool isHoppingWindow() {
+        return !getOptions().isSessionWindow;
+    }
+    bool isSessionWindow() {
+        return getOptions().isSessionWindow;
+    }
 
     // Called when a window might have been opened or closed, to update the
     // minOpenWindowStartTime/maxOpenWindowStartTime stats.

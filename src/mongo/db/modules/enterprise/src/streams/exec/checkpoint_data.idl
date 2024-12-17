@@ -162,6 +162,18 @@ structs:
                 cpp_name: replayCheckpointId
                 optional: true
                 description: The replay checkpopint Id for this window.
+            # The partition field is only populated for session windows.
+            4:
+                type: Value
+                cpp_name: partition
+                description: "Value identifier for partition"
+                optional: true
+            # The window ID field is only populated for session windows.
+            5:
+                type: safeInt64
+                cpp_name: windowID
+                description: "Integer identifier for session window"
+                optional: true
 
     WindowOperatorEndRecord:
         description: The WindowAwareOperator base class writes this document to mark the end of a window of data.

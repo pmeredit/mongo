@@ -267,8 +267,8 @@ export class Streams {
         let name = UUID().toString();
         this[name] =
             new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
-        let startResult =
-            this[name].start({ephemeral: true, shouldStartSample: true, featureFlags: {}});
+        let startResult = this[name].start(
+            {ephemeral: true, shouldStartSample: true, featureFlags: {enableSessionWindow: true}});
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
         let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);

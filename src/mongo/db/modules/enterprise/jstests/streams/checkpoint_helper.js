@@ -4,8 +4,14 @@
  * ]
  */
 
+import {
+    resultsEq,
+} from "jstests/aggregation/extras/utils.js";
 import {Thread} from "jstests/libs/parallelTester.js";
-import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {
+    getDefaultSp,
+    Streams
+} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     waitForCount,
     waitWhenThereIsMoreData
@@ -20,6 +26,59 @@ export function removeProjections(doc) {
     delete doc._stream_meta;
     delete doc._id;
     return doc;
+}
+
+/**
+ * Helper function to test that the pipeline returns the expectedOutput for the given input.
+ * First, a test source is used.
+ * Then, a change stream source is used, and there is a checkpoint in the middle.
+ */
+export function commonTest({input, pipeline, expectedOutput, timeField = "$ts"}) {
+    // Test with a test source and no checkpoints.
+    const sp = getDefaultSp();
+    const output = sp.process([
+        {$source: {documents: input, timeField: timeField}},
+        ...pipeline,
+    ]);
+    assert(resultsEq(output, expectedOutput, true /* verbose */));
+
+    // Test with a changestream source and a checkpoint in the middle.
+    const newPipeline = [
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        ...pipeline,
+    ];
+    const test = new TestHelper(
+        input,
+        newPipeline,
+        undefined,  // interval
+        "atlas"     // sourcetype
+    );
+
+    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
+
+    // Start the processor and write part of the input.
+    test.startFromLatestCheckpoint();
+    const firstInput = input.slice(0, input.length - 1);
+    assert.commandWorked(test.inputColl.insertMany(firstInput));
+    assert.soon(
+        () => {
+            jsTestLog(test.stats());
+            return test.stats().inputMessageCount == firstInput.length;
+        },
+        `waiting for inputMessageCount of ${firstInput.length}, got ${
+            test.stats().inputMessageCount}`,
+        1000 * 10);
+    // Stop the processor and write the rest of the input.
+    test.stop();
+    assert.commandWorked(test.inputColl.insertOne(input[input.length - 1]));
+    // Start the processor from its last checkpoint.
+    test.startFromLatestCheckpoint();
+    // Validate the expected results are obtained.
+    assert.soon(() => { return test.stats().outputMessageCount == expectedOutput.length; });
+    assert(
+        resultsEq(test.outputColl.find({}).toArray(), expectedOutput, true /* verbose */, ["_id"]));
+    test.stop();
 }
 
 // Utilities to interact with the new local disk checkpoint storage.
@@ -253,6 +312,7 @@ export class TestHelper {
 
         let featureFlags = {
             useExecutionPlanFromCheckpoint: useRestoredExecutionPlan,
+            enableSessionWindow: true
         };
         if (changestreamStalenessMonitoring) {
             featureFlags.changestreamSourceStalenessMonitorPeriod = NumberInt(5);
