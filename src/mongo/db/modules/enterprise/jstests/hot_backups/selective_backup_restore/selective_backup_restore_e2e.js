@@ -175,8 +175,16 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
     clearRawMongoProgramOutput();
 
     // Restore the selective backup.
-    let selectiveBackupConn = MongoRunner.runMongod(
-        {dbpath: selectiveBackupPath, noCleanData: true, restore: "", setParameter: {logLevel: 0}});
+    let selectiveBackupConn = MongoRunner.runMongod({
+        dbpath: selectiveBackupPath,
+        noCleanData: true,
+        restore: "",
+        setParameter: {
+            logLevel: 0,
+            // For log 22251
+            logComponentVerbosity: tojson({storage: 1}),
+        }
+    });
     assert(selectiveBackupConn);
 
     // Files known to the storage engine but not the durable catalog at the recovery timestamp will
