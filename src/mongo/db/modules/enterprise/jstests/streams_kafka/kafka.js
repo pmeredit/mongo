@@ -1,8 +1,14 @@
+import {
+    resultsEq,
+} from "jstests/aggregation/extras/utils.js";
 import {findMatchingLogLine} from "jstests/libs/log.js";
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
     flushUntilStopped,
     LocalDiskCheckpointUtil,
+} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {
+    TestHelper,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
@@ -2451,6 +2457,101 @@ function bigKafka() {
     assert.eq(4128768, entry.attr.fetchMaxBytes);
 }
 
+function modifyKafkaTestRunner({
+    originalPipeline,
+    inputForOriginalPipeline = [],
+    inputAfterStopBeforeModify = [],
+    expectedOutput = [],
+    modifiedPipeline,
+    validateShouldSucceed = true,
+    resumeFromCheckpoint = true,
+    modifySourceFunc,
+    expectedValidateError,
+}) {
+    const waitTimeMs = 30000;
+    // Run the stream processor with the originalPipeline.
+    let test = new TestHelper(
+        [], /* input not passed in here because the coll gets dropped in the functions below */
+        originalPipeline,
+        null,  /* interval */
+        null,  /* sourceType */
+        true,  /* useNewCheckpointing */
+        true,  /* useRestoredExecutionPlan */
+        null,  /* writeDir */
+        null,  /* restoreDir */
+        null,  /* dbForTest */
+        null,  /* targetSourceMergeDb */
+        false, /* useTimeField */
+        false, /* kafkaIsTest */
+    );
+
+    makeSureKafkaTopicCreated(test.inputColl, test.kafkaTopic, test.kafkaConnectionName);
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
+        collName: test.inputColl.getName(),
+        topicName: test.kafkaTopic,
+        connName: test.kafkaConnectionName,
+    })));
+
+    test.run();
+    test.inputColl.insertMany(inputForOriginalPipeline);
+
+    // The extra input (+1) comes from the {a: -1} document added when making sure the topic is
+    // created
+    assert.soon(
+        () => { return test.stats()["inputMessageCount"] == inputForOriginalPipeline.length + 1; },
+        "waiting for all messages to be read",
+        waitTimeMs);
+
+    test.stop();
+
+    test.inputColl.insertMany(inputAfterStopBeforeModify);
+    const outputBeforeModify = test.outputColl.aggregate([]).toArray();
+
+    jsTestLog("before modify " + tojson(outputBeforeModify));
+
+    jsTestLog(`Starting modified processor ${tojson(modifiedPipeline)}`);
+
+    let modifiedSource = undefined;
+    if (modifySourceFunc) {
+        modifiedSource = modifySourceFunc(test);
+    }
+
+    jsTestLog(`Stats for: ${mongoToKafkaName}, ${tojson(getStats(mongoToKafkaName))}`);
+    stopStreamProcessor(mongoToKafkaName);
+
+    // Validate the modify request and, if validateShouldSucceed=true, start the modified processor.
+    const validateResult = test.modifyAndStart({
+        newPipeline: modifiedPipeline,
+        validateShouldSucceed: validateShouldSucceed,
+        modifiedSourceSpec: modifiedSource,
+        resumeFromCheckpointAfterModify: resumeFromCheckpoint
+    });
+    if (!validateShouldSucceed) {
+        assert.commandFailedWithCode(validateResult, ErrorCodes.StreamProcessorInvalidOptions);
+        assert.eq(validateResult.errmsg, expectedValidateError);
+        return;
+    }
+    assert.eq(validateResult.errmsg, undefined);
+
+    // The extra input (+1) comes from the {a: -1} document added when making sure the topic is
+    // created
+    assert.soon(() => {
+        return inputForOriginalPipeline.length + inputAfterStopBeforeModify.length + 1 ==
+            test.stats()["inputMessageCount"];
+    }, "waiting for all messages to be read", waitTimeMs);
+
+    // Validate the expected output and summary stats.
+    assert.soon(() => { return test.stats()["outputMessageCount"] == expectedOutput.length; },
+                "waiting for expected output",
+                waitTimeMs);
+
+    // Validate we see the expected results in the output collection.
+    const output = test.outputColl.aggregate([]).toArray();
+    assert(resultsEq(expectedOutput, output, true /* verbose */, ["_id"] /* fieldsToSkip */));
+
+    test.stop();
+}
+
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
@@ -2742,3 +2843,93 @@ runKafkaTest(kafka, contentBasedRouting);
 testPartitionIdleTimeout();
 
 runKafkaTest(kafka, bigKafka, 32 /* partitionCount */);
+
+const modifyKafkaTestCases = [
+    {
+        // {$match: {a: {$ne: -1}}} is used to filter out data used while ensuring the kafka topic
+        // is ready
+        originalPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        modifiedPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        inputForOriginalPipeline: [{a: 1}, {a: 2}, {a: 3}],
+        inputAfterStopBeforeModify: [{a: 4}, {a: 5}],
+        expectedOutput: [{a: 1}, {a: 2}, {a: 3}, {a: 4}, {a: 5}],
+    },
+    {
+        // {$match: {a: {$ne: -1}}} is used to filter out data used while ensuring the kafka topic
+        // is ready
+        originalPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        modifiedPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$gt: 4}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        inputForOriginalPipeline: [{a: 1}, {a: 2}, {a: 3}],
+        inputAfterStopBeforeModify: [{a: 4}, {a: 5}],
+        expectedOutput: [{a: 1}, {a: 2}, {a: 3}, {a: 5}],
+    },
+    {
+        // {$match: {a: {$ne: -1}}} is used to filter out data used while ensuring the kafka topic
+        // is ready
+        originalPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        modifiedPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        modifySourceFunc: (test) => {
+            return {
+                connectionName: test.kafkaConnectionName,
+                topic: test.kafkaTopic + "MODIFIED",
+                testOnlyPartitionCount: NumberInt(1),
+            };
+        },
+        resumeFromCheckpoint: true,
+        validateShouldSucceed: false,
+        expectedValidateError:
+            "resumeFromCheckpoint must be false to modify a stream processor's $source stage",
+    },
+    {
+        // {$match: {a: {$ne: -1}}} is used to filter out data used while ensuring the kafka topic
+        // is ready
+        originalPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        modifiedPipeline: [
+            {$project: {a: "$fullDocument.a"}},
+            {$match: {a: {$ne: -1}}},
+            {$project: {_stream_meta: 0}}
+        ],
+        inputForOriginalPipeline: [{a: 1}, {a: 2}, {a: 3}],
+        expectedOutput: [{a: 1}, {a: 2}, {a: 3}],
+        modifySourceFunc: (test) => {
+            return {
+                connectionName: test.kafkaConnectionName,
+                topic: test.kafkaTopic + "MODIFIED",
+                testOnlyPartitionCount: NumberInt(1),
+            };
+        },
+        resumeFromCheckpoint: false,
+    },
+];
+for (const testCase of modifyKafkaTestCases) {
+    jsTestLog(`Running: ${tojson(testCase)}`);
+    runKafkaTest(kafka, () => modifyKafkaTestRunner(testCase));
+}

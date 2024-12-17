@@ -46,19 +46,20 @@ function testRunner({
     validateFailureCode = ErrorCodes.StreamProcessorInvalidOptions,
     modifyPipelineUseEarliestStartTimestamp,
     removeCheckpointsBeforeModify,
+    sourceType = "changestream",
 }) {
     const waitTimeMs = 30000;
     // Run the stream processor with the originalPipeline.
     let test = new TestHelper(inputForOriginalPipeline,
                               originalPipeline,
-                              null,           /* interval */
-                              "changestream", /* sourceType */
-                              true,           /* useNewCheckpointing */
-                              true,           /* useRestoredExecutionPlan */
-                              null,           /* writeDir */
-                              null,           /* restoreDir */
-                              null,           /* dbForTest */
-                              null,           /* targetSourceMergeDb */
+                              null,       /* interval */
+                              sourceType, /* sourceType */
+                              true,       /* useNewCheckpointing */
+                              true,       /* useRestoredExecutionPlan */
+                              null,       /* writeDir */
+                              null,       /* restoreDir */
+                              null,       /* dbForTest */
+                              null,       /* targetSourceMergeDb */
                               useTimeField,
                               undefined,
                               undefined,
@@ -166,7 +167,11 @@ function testRunner({
         totalInputMessages = 0;
     }
 
-    assert.soon(() => { return totalInputMessages == test.stats()["inputMessageCount"]; });
+    // if sourceType is sample we should just return true here because the input will be
+    // inconsistent
+    assert.soon(() => {
+        return totalInputMessages == test.stats()["inputMessageCount"] || sourceType === "sample";
+    });
 
     if (modifiedPipeline2) {
         test.stop();
@@ -798,6 +803,20 @@ const testCases = [
             "Resume of change stream was not possible, as the resume point may no longer be in the oplog",
         validateFailureCode: ErrorCodes.StreamProcessorCannotResumeFromSource,
         useTimeField: true
+    },
+    {
+        // start with the solar_sample connection
+        sourceType: "sample",
+        originalPipeline: [{$match: {a: {$exists: true}}}, {$project: {_stream_meta: 0}}],
+        modifiedPipeline: [{$match: {a: {$exists: true}}}, {$project: {_stream_meta: 0}}],
+        modifySourceFunc: (test) => {
+            return {
+                connectionName: test.dbConnectionName,
+                db: test.dbName,
+                coll: test.outputCollName,
+            };
+        },
+        expectedOutput: [],
     },
 ];
 

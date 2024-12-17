@@ -13,6 +13,7 @@ import {
     Streams
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
+    TEST_TENANT_ID,
     waitForCount,
     waitWhenThereIsMoreData
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -224,20 +225,23 @@ export function flushUntilStopped(
 }
 
 export class TestHelper {
-    constructor(input,
-                middlePipeline,
-                interval = 0,
-                sourceType = "kafka",
-                useNewCheckpointing = true,
-                useRestoredExecutionPlan = true,
-                writeDir = null,
-                restoreDir = null,
-                dbForTest = null,
-                targetSourceMergeDb = null,
-                useTimeField = true,
-                sinkType = "atlas",
-                changestreamStalenessMonitoring = false,
-                oplogSizeMB = undefined) {
+    constructor(
+        input,
+        middlePipeline,
+        interval = 0,
+        sourceType = "kafka",
+        useNewCheckpointing = true,
+        useRestoredExecutionPlan = true,
+        writeDir = null,
+        restoreDir = null,
+        dbForTest = null,
+        targetSourceMergeDb = null,
+        useTimeField = true,
+        sinkType = "atlas",
+        changestreamStalenessMonitoring = false,
+        oplogSizeMB = undefined,
+        kafkaIsTest = true,
+    ) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.sinkType = sinkType;
@@ -256,7 +260,7 @@ export class TestHelper {
         }
         this.kafkaConnectionName = "kafka1";
         this.kafkaBootstrapServers = "localhost:9092";
-        this.kafkaIsTest = true;
+        this.kafkaIsTest = kafkaIsTest;
         this.kafkaTopic = "topic1";
         this.dbConnectionName = "db1";
         this.dbName = "test";
@@ -274,7 +278,7 @@ export class TestHelper {
             assert.commandWorked(db.adminCommand({replSetResizeOplog: 1, size: oplogSizeMB}));
             assert.commandWorked(db.adminCommand({setParameter: 1, syncdelay: 5}));
         }
-        this.tenantId = "jstests-tenant";
+        this.tenantId = TEST_TENANT_ID;
         this.outputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.outputCollName];
         this.outputColl.drop();
         this.inputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.inputCollName];
@@ -337,7 +341,12 @@ export class TestHelper {
                 name: '__testMemory',
                 type: 'in_memory',
                 options: {},
-            }
+            },
+            {
+                name: '__testSample',
+                type: 'sample_solar',
+                options: {},
+            },
         ];
         this.useTimeField = useTimeField;
 
@@ -367,6 +376,9 @@ export class TestHelper {
             if (this.useTimeField) {
                 sourceSpec.timeField = {$toDate: "$ts"};
             }
+            this.pipeline.push({$source: sourceSpec});
+        } else if (this.sourceType === 'sample') {
+            let sourceSpec = {connectionName: '__testSample'};
             this.pipeline.push({$source: sourceSpec});
         } else {
             let sourceSpec = {
@@ -450,8 +462,10 @@ export class TestHelper {
         validateShouldSucceed = true,
         modifyCollectionName = undefined,
         modifiedSourceSpec = undefined,
-        resumeFromCheckpointAfterModify = true
+        resumeFromCheckpointAfterModify = true,
+        sourceType = "changestream",
     }) {
+        this.sourceType = sourceType;
         if (modifyCollectionName) {
             // If specified, change the output collection name for the $merge in the pipeline.
             this.outputCollName = modifyCollectionName;
@@ -502,7 +516,10 @@ export class TestHelper {
     stop(assertWorked = true) {
         // This will flush all the checkpoints on disk that have not already
         // been flushed.
-        this.sp[this.spName].stop(assertWorked, this.checkpointUtil.flushedIds);
+        // skip checkpointing logic for the sample sourceTypes
+        this.sp[this.spName].stop(assertWorked,
+                                  this.checkpointUtil.flushedIds,
+                                  this.sourceType === "sample" /* skipCheckpoint */);
         // Update the flushedIds so we don't flush them again on a subsequent start/stop.
         this.checkpointUtil.flushedIds = this.checkpointUtil.checkpointIds;
     }

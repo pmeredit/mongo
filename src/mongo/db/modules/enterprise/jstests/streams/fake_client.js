@@ -71,9 +71,10 @@ export class StreamProcessor {
     }
 
     // Stop the streamProcessor.
-    stop(assertWorked = true, alreadyFlushedCheckpointIds = []) {
+    stop(assertWorked = true, alreadyFlushedCheckpointIds = [], skipCheckpoint = false) {
         let flushThread = null;
-        if (this._startOptions != null && this._startOptions.checkpointOptions != null) {
+        if (this._startOptions != null && this._startOptions.checkpointOptions != null &&
+            !skipCheckpoint) {
             const checkpointOptions = this._startOptions.checkpointOptions;
             const checkpointBaseDir = checkpointOptions.localDisk.writeDirectory;
             flushThread = new Thread(flushUntilStopped,
