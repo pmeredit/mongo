@@ -33,7 +33,7 @@ function sampleDataSourceWindowMerge() {
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [
                     {
                         $group: {

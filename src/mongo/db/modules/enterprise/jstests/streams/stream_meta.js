@@ -296,7 +296,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [
                     {
                         $group: {
@@ -331,7 +331,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [{$addFields: {x: "$_stream_meta.window.start"}}]
             }
         },
@@ -360,7 +360,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [{$addFields: {x: "$_stream_meta.window.start"}}, {$sort: {x: 1}}]
             }
         },
@@ -391,7 +391,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [{
                     $group: {
                         _id: "$group",
@@ -427,7 +427,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [{$sort: {s: 1}}]
             }
         },
@@ -474,7 +474,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [
                     {
                         $group: {
@@ -536,7 +536,7 @@ testStreamMeta({
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [{$sort: {x: 1}}]
             }
         },

@@ -970,8 +970,6 @@ TEST_F(WindowOperatorTest, DateRounding) {
         options.sizeUnit = timeUnit;
         options.slide = sizeInUnits;
         options.slideUnit = timeUnit;
-        options.idleTimeoutSize = boost::make_optional(false, int());
-        options.idleTimeoutUnit = boost::make_optional(false, StreamTimeUnitEnum::Millisecond);
         return std::make_unique<WindowAssigner>(options);
     };
     auto windowOp = makeWindowOp();
@@ -1114,8 +1112,6 @@ TEST_F(WindowOperatorTest, DateRounding) {
         options.sizeUnit = timeUnit;
         options.slide = hopSizeInUnits;
         options.slideUnit = hopTimeUnit;
-        options.idleTimeoutSize = boost::make_optional(false, int());
-        options.idleTimeoutUnit = boost::make_optional(false, StreamTimeUnitEnum::Millisecond);
         return std::make_unique<WindowAssigner>(options);
     };
     windowOp = makeHoppingWindowOp();

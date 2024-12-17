@@ -32,7 +32,7 @@ function testWithAtlasConn(testConfig, streams) {
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(3), unit: "hour"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
                 pipeline: [{$group: {_id: "$customerId", customerDocs: {$push: "$$ROOT"}}}]
             }
         },
