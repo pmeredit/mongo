@@ -2,7 +2,9 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "audit/audit_client_attrs.h"
+#include "audit_client_attrs.h"
+
+#include "audit/audit_manager.h"
 
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
@@ -12,48 +14,42 @@
 namespace mongo::audit {
 
 namespace {
-const auto getAuditClientAttrs =
-    OperationContext::declareDecoration<std::unique_ptr<AuditClientAttrs>>();
-
-class AuditClientObserver final : public ServiceContext::ClientObserver {
-public:
-    void onCreateClient(Client* client) final{};
-    void onDestroyClient(Client* client) final{};
-
-    void onCreateOperationContext(OperationContext* opCtx) final {
-        auto client = opCtx->getClient();
-
-        if (!client) {
-            return;
-        }
-
-        auto session = AuthorizationSession::get(client);
-
-        auto username = session->getAuthenticatedUserName();
-        auto rolenameContainer = roleNameIteratorToContainer<std::vector<RoleName>>(
-            session->getAuthenticatedRoleNames());
-
-        auto attrs =
-            std::make_unique<AuditClientAttrs>(std::move(username), std::move(rolenameContainer));
-        AuditClientAttrs::set(opCtx, std::move(attrs));
-    };
-
-    void onDestroyOperationContext(OperationContext* opCtx) final{};
-};
+const auto getAuditUserAttrs =
+    OperationContext::declareDecoration<std::unique_ptr<AuditUserAttrs>>();
 
 ServiceContext::ConstructorActionRegisterer auditClientObserverRegisterer{
-    "AuditClientObserverRegisterer", [](ServiceContext* svCtx) {
-        svCtx->registerClientObserver(std::make_unique<AuditClientObserver>());
+    "AuditClientObserverRegisterer", {"InitializeGlobalAuditManager"}, [](ServiceContext* svCtx) {
+        if (getGlobalAuditManager()->isEnabled()) {
+            svCtx->registerClientObserver(std::make_unique<AuditClientObserver>());
+        }
     }};
 
 }  // namespace
 
-AuditClientAttrs* AuditClientAttrs::get(OperationContext* opCtx) {
-    return getAuditClientAttrs(opCtx).get();
+AuditUserAttrs* AuditUserAttrs::get(OperationContext* opCtx) {
+    return getAuditUserAttrs(opCtx).get();
 }
 
-void AuditClientAttrs::set(OperationContext* opCtx, std::unique_ptr<AuditClientAttrs> attrs) {
-    getAuditClientAttrs(opCtx) = std::move(attrs);
+void AuditUserAttrs::set(OperationContext* opCtx, std::unique_ptr<AuditUserAttrs> attrs) {
+    getAuditUserAttrs(opCtx) = std::move(attrs);
+}
+
+void AuditClientObserver::onCreateOperationContext(OperationContext* opCtx) {
+    auto client = opCtx->getClient();
+
+    if (!client) {
+        return;
+    }
+
+    auto session = AuthorizationSession::get(client);
+
+    auto username = session->getAuthenticatedUserName();
+    auto rolenameContainer =
+        roleNameIteratorToContainer<std::vector<RoleName>>(session->getAuthenticatedRoleNames());
+
+    auto attrs =
+        std::make_unique<AuditUserAttrs>(std::move(username), std::move(rolenameContainer));
+    AuditUserAttrs::set(opCtx, std::move(attrs));
 }
 
 }  // namespace mongo::audit
