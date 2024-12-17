@@ -12,6 +12,7 @@
 #include "streams/util/units.h"
 
 using mongo::stdx::chrono::system_clock;
+using namespace std::chrono_literals;
 
 namespace mongo {
 class ServiceContext;
@@ -48,6 +49,8 @@ public:
         int64_t stateSizeToUseMaxInterval{100_MiB};
         // A fixed interval to use between checkpoints.
         boost::optional<mongo::Milliseconds> fixedInterval;
+        // Max allowable period between checkpoints if no data messages have been processed.
+        mongo::stdx::chrono::milliseconds maxIdleCheckpointIntervalMs{7 * 24h};
         // The checkpoint storage.
         CheckpointStorage* storage{nullptr};
         std::shared_ptr<ConcurrentCheckpointController> checkpointController;

@@ -14,7 +14,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace mongo;
-using namespace std::chrono_literals;
 
 namespace streams {
 
@@ -70,11 +69,12 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     const CheckpointRequest& req) {
     // The current logic is:
     // 1) When SP is started for the first time ever, we take a checkpoint.
-    // 2) Each time a SP is stopped, we take a checkpoint.
-    // 3) When the SP is running, we take a checkpoint based on the pipeline's inter-checkpoint
-    //    interval. This defaults to 1 hour for pipelines with a window and to 5 mins for other
-    //    pipelines. (tests can set this interval to other values)
-    // 4) A checkpoint request can be made via an "internal" RPC call (not exposed via Agent). Such
+    // 2) If an SP has been idle for longer than a configured period of time, we take a checkpoint
+    // 3) Each time a SP is stopped, we take a checkpoint.
+    // 4) When the SP is running, we check if we need to take a checkpoint based on the pipeline -
+    //    every 1 hour for pipelines with windows and every 5 mins for other pipelines. We then take
+    //    a checkpoint only if some state has changed in the SP."
+    // 5) A checkpoint request can be made viaan "internal" RPC call (not exposed via Agent). Such
     //    a request can be normal or have a "force" priority. A normal request follows the same
     //    logic as above but additionally bypasses the time based wait. i.e. if nothing has changed
     //    then it will still skip taking a checkpoint. A "force" request will cause a checkpoint to
@@ -85,6 +85,12 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     }
 
     if (_options.writeFirstCheckpoint && !writtenFirstCheckpoint()) {
+        return CreateCheckpoint::kForce;
+    }
+
+    auto now = system_clock::now();
+    dassert(_lastCheckpointTimestamp <= now);
+    if (now - _lastCheckpointTimestamp >= _options.maxIdleCheckpointIntervalMs) {
         return CreateCheckpoint::kForce;
     }
 
@@ -110,7 +116,6 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     }
 
     // Else, if sufficient time has elapsed, then take a checkpoint.
-    auto now = system_clock::now();
     dassert(_lastCheckpointTimestamp <= now);
     if (now - _lastCheckpointTimestamp <= _interval.toSystemDuration()) {
         return CreateCheckpoint::kNotNeeded;

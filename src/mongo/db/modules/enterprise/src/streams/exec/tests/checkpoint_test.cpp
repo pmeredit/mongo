@@ -728,7 +728,8 @@ typedef void (*CoordinatorTestCase)(
 
 void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
     struct Spec {
-        milliseconds checkpointInterval{0};
+        milliseconds nonIdleCheckpointInterval{0};
+        milliseconds maxIdleCheckpointInterval{2h};
         bool writeFirstCheckpoint{false};
         bool enableDataFlow{true};
         boost::optional<mongo::stdx::chrono::time_point<system_clock>> lastCheckpointTimestamp;
@@ -749,8 +750,9 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
             .processorId = "",
             .enableDataFlow = spec.enableDataFlow,
             .writeFirstCheckpoint = spec.writeFirstCheckpoint,
-            .minInterval = Milliseconds(spec.checkpointInterval.count()),
-            .maxInterval = Milliseconds(10 * spec.checkpointInterval.count()),
+            .minInterval = Milliseconds(spec.nonIdleCheckpointInterval.count()),
+            .maxInterval = Milliseconds(10 * spec.nonIdleCheckpointInterval.count()),
+            .maxIdleCheckpointIntervalMs = spec.maxIdleCheckpointInterval,
             .storage = storage.get(),
             .checkpointController = context->concurrentCheckpointController,
             .restoredCheckpointTimestamp = spec.lastCheckpointTimestamp});
@@ -921,7 +923,7 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
             ASSERT_FALSE(checkpointCompleted);
         };
 
-    runTestCase(Spec{.checkpointInterval = milliseconds{10000},
+    runTestCase(Spec{.nonIdleCheckpointInterval = milliseconds{10000},
                      .tc = checkpointSkippedFromInsufficentTimeElapseTc});
 
     auto checkpointSkippedFromInsufficientTimeElapsedSinceRestoredCheckpoint =
@@ -937,7 +939,7 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
 
             ASSERT_FALSE(checkpointCompleted);
         };
-    runTestCase(Spec{.checkpointInterval = 10s,
+    runTestCase(Spec{.nonIdleCheckpointInterval = 10s,
                      .lastCheckpointTimestamp = system_clock::now() - 100ms,
                      .tc = checkpointSkippedFromInsufficientTimeElapsedSinceRestoredCheckpoint});
 
@@ -954,7 +956,7 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
 
             ASSERT_TRUE(checkpointCompleted);
         };
-    runTestCase(Spec{.checkpointInterval = 10s,
+    runTestCase(Spec{.nonIdleCheckpointInterval = 10s,
                      .lastCheckpointTimestamp = system_clock::now() - 15s,
                      .tc = checkpointTakenFromSufficientTimeElapsedSinceRestoredCheckpoint});
 
@@ -973,6 +975,49 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
         };
 
     runTestCase(Spec{.enableDataFlow = false, .tc = checkpointSkippedFromDisabledDataFlowTc});
+
+    auto maxIdleCheckpointInterval = 10ms;
+    auto checkpointTakenAfterMaxInterval =
+        [&](std::shared_ptr<CheckpointCoordinator> coordinator,
+            std::shared_ptr<ConcurrentCheckpointController> CheckpointController) {
+            // ensure that checkpoint is blocked for workload
+            ASSERT_TRUE(CheckpointController->startNewCheckpointIfRoom(false));
+
+            bool checkpointCompleted = false;
+            if (coordinator->getCheckpointControlMsgIfReady(
+                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                CheckpointController->onCheckpointComplete();
+                checkpointCompleted = true;
+            }
+            ASSERT_FALSE(checkpointCompleted);
+
+            std::default_random_engine generator;
+            std::uniform_int_distribution distribution(1, 9);
+
+            for (int i = 0; i < 5; i++) {
+                checkpointCompleted = false;
+                auto initDelay = milliseconds(distribution(generator));
+                stdx::this_thread::sleep_for(initDelay);
+                if (coordinator->getCheckpointControlMsgIfReady(
+                        CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                    CheckpointController->onCheckpointComplete();
+                    checkpointCompleted = true;
+                }
+                ASSERT_FALSE(checkpointCompleted);
+
+                checkpointCompleted = false;
+                stdx::this_thread::sleep_for(maxIdleCheckpointInterval - initDelay);
+                if (coordinator->getCheckpointControlMsgIfReady(
+                        CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                    CheckpointController->onCheckpointComplete();
+                    checkpointCompleted = true;
+                }
+                ASSERT_TRUE(checkpointCompleted);
+            }
+        };
+
+    runTestCase(Spec{.maxIdleCheckpointInterval = maxIdleCheckpointInterval,
+                     .tc = checkpointTakenAfterMaxInterval});
 }
 
 // Test the periodic checkpoint interval for different sizes of the last checkpoint.
