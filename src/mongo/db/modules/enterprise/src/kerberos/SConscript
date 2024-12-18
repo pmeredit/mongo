@@ -1,17 +1,75 @@
 # -*- mode: python -*-
 
+import textwrap
 
 Import("env")
 
 env = env.Clone()
 
-env.BazelProgram(
+
+def CheckKRB5Features(context):
+    test_body = """
+    #include <krb5.h>
+    int main(int argc, char *argv[]) {
+        krb5_context context = nullptr;
+        krb5_keytab kt = nullptr;
+        krb5_kt_have_content(context, kt);
+        krb5_kt_client_default(context, &kt);
+        return 0;
+    }
+    """
+
+    context.Message("Checking for KRB5 Features...")
+    ret = context.TryCompile(textwrap.dedent(test_body), ".cpp")
+    context.Result(ret)
+    return ret
+
+
+krb5conf = Configure(env, custom_tests={"CheckKRB5Features": CheckKRB5Features})
+if krb5conf.CheckKRB5Features():
+    env.Append(CPPDEFINES=[("MONGO_KRB5_HAVE_FEATURES", 1)])
+
+env = krb5conf.Finish()
+
+env.Library(
+    target="kerberos_tool",
+    source=[
+        "kerberos_tool_options.cpp",
+        "kerberos_tool_options_gen.cpp",
+    ],
+    LIBDEPS_PRIVATE=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/util/net/network",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+    ],
+    SYSLIBDEPS=[
+        "krb5",
+        "gssapi_krb5",
+    ]
+    if not env.TargetOSIs("windows")
+    else [],
+)
+
+env.Program(
     target="mongokerberos",
-    source=[],
+    source=[
+        "kerberos_tool.cpp",
+    ],
     AIB_COMPONENT="mongokerberos",
     AIB_COMPONENTS_EXTRA=[
         "dist",
         "dist-test",
         "tools",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/base/secure_allocator",
+        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
+        "../util/gssapi_helpers" if not env.TargetOSIs("windows") else [],
+        "../util/report_tool",
+        "kerberos_tool",
     ],
 )

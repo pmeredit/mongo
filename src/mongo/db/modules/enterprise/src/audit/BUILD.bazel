@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_binary", "mongo_cc_library", "mongo_cc_unit_test")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -312,44 +312,5 @@ mongo_cc_unit_test(
         "//src/mongo/transport:transport_layer_mock",
         "//src/mongo/util:signal_handlers",
         "//src/mongo/util/options_parser",
-    ],
-)
-
-mongo_cc_binary(
-    name = "mongoauditdecrypt",
-    srcs = [
-        "audit_decryptor.cpp",
-        "audit_decryptor_options.cpp",
-        "audit_decryptor_options.h",
-        "audit_decryptor_options_gen",
-    ],
-    # + env.WindowsResourceFile("decryptor_tool.rc"),
-    tags = [
-        "dist_test",
-    ],
-    deps = [
-        "audit_enc_comp_manager",
-        "//src/mongo/db:log_process_details",
-        "//src/mongo/db:server_base",
-        "//src/mongo/db/concurrency:lock_manager",
-        "//src/mongo/util:signal_handlers",
-        "//src/mongo/util:version_impl",
-        "//src/mongo/util/options_parser:options_parser_init",
-    ],
-)
-
-mongo_cc_binary(
-    name = "console_test",
-    srcs = [
-        "//src/mongo/db/modules/enterprise/src/audit/logger:console_test.cpp",
-    ],
-    tags = [
-        "standalone-console-test",
-    ],
-    deps = [
-        "audit_enterprise",
-        "//src/mongo:base",
-        "//src/mongo/db:audit",
-        "//src/mongo/unittest:unittest_main",
     ],
 )

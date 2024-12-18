@@ -26,13 +26,30 @@ if not using_ubsan:
         LIBDEPS=[],
     )
 
-env.BazelProgram(
+env.Program(
     target="mongodecrypt",
-    source=[],
+    source=[
+        "decrypt_tool.cpp",
+        "decrypt_tool_options.cpp",
+        "decrypt_tool_options_gen.cpp",
+    ]
+    + env.WindowsResourceFile("decrypt_tool.rc"),
     AIB_COMPONENT="mongodecrypt",
     AIB_COMPONENTS_EXTRA=[
         "dist",
         "dist-test",
         "tools",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/crypto/symmetric_crypto",
+        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
+        "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/db/server_base",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
+        "../encryptdb/symmetric_crypto_enterprise",
+        "../kmip/kmip",
+        "key_acquisition",
     ],
 )
