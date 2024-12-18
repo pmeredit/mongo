@@ -30,3 +30,18 @@ env.BazelProgram(
     source=[],
     AIB_COMPONENT="standalone-console-test",
 )
+
+env.Benchmark(
+    target="audit_bm",
+    source=[
+        "audit_bm.cpp",
+        "audit_bm_fixture.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/db/audit",
+        "$BUILD_DIR/mongo/db/auth/authmocks",
+        "$BUILD_DIR/mongo/transport/transport_layer_mock",
+        "$BUILD_DIR/mongo/unittest/unittest",
+        "audit_enterprise",
+    ],
+)
