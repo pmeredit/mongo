@@ -41,7 +41,8 @@ function largeGroupTest(useRestoredExecutionPlan) {
             $hoppingWindow: {
                 interval: {size: NumberInt(3), unit: "hour"},
                 hopSize: {size: NumberInt(1), unit: "minute"},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
+                allowedLateness: NumberInt(0),
+                idleTimeout: NumberInt(0),
                 pipeline: [{
                     $group:
                         {_id: "$customerId", customerDocs: {$push: "$$ROOT"}, max: {$max: "$max"}}

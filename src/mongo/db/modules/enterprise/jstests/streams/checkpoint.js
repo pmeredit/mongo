@@ -502,7 +502,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                 $hoppingWindow: {
                     interval: {size: NumberInt(1), unit: "hour"},
                     hopSize: {size: NumberInt(20), unit: "minute"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     pipeline: [
                         {$sort: {"customerId": 1, "a": 1}},
                         {$group: {_id: null, results: {$push: "$$ROOT"}}}
@@ -644,7 +644,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                 {
                     $tumblingWindow: {
                         interval: {size: NumberInt(1), unit: "hour"},
-                        allowedLateness: {size: NumberInt(0), unit: "second"},
+                        allowedLateness: NumberInt(0),
                         pipeline: [
                             {$group: {_id: "$str", count: {$sum: 1}}},
                         ]
@@ -692,7 +692,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                     $hoppingWindow: {
                         interval: {size: NumberInt(1), unit: "hour"},
                         hopSize: {size: NumberInt(20), unit: "minute"},
-                        allowedLateness: {size: NumberInt(0), unit: "second"},
+                        allowedLateness: NumberInt(0),
                         pipeline: [{
                             $group: {
                                 _id: "$fullDocument.customerId",

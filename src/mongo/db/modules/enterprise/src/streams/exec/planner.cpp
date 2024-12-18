@@ -327,13 +327,25 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
     return authConfig;
 }
 
-int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
+int64_t parseAllowedLateness(
+    const boost::optional<std::variant<std::int32_t, StreamTimeDuration>>& param) {
     // From the spec, 3 seconds is the default allowed lateness.
     int64_t allowedLatenessMs = 3 * 1000;
     if (param) {
-        auto unit = param->getUnit();
-        auto size = param->getSize();
-        allowedLatenessMs = toMillis(unit, size);
+        std::visit(OverloadedVisitor{
+                       [&](const int32_t ms) {
+                           uassert(
+                               ErrorCodes::StreamProcessorInvalidOptions,
+                               "Must specify unit and size for non-zero allowed lateness values",
+                               ms == 0);
+                           allowedLatenessMs = 0;
+                       },
+                       [&](const StreamTimeDuration& streamTimeDuration) {
+                           auto unit = streamTimeDuration.getUnit();
+                           auto size = streamTimeDuration.getSize();
+                           allowedLatenessMs = toMillis(unit, size);
+                       }},
+                   *param);
     }
 
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
@@ -341,6 +353,28 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
             allowedLatenessMs <= 30 * 60 * 1000);
 
     return allowedLatenessMs;
+}
+
+boost::optional<int64_t> parseIdleTimeout(
+    const boost::optional<std::variant<int32_t, StreamTimeDuration>>& param) {
+    int64_t idleTimeoutMs = 0;
+    if (!param) {
+        return boost::none;
+    }
+    std::visit(
+        OverloadedVisitor{[&](const int32_t ms) {
+                              uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                      "Must specify unit and size for non-zero idle timeout values",
+                                      ms == 0);
+                              idleTimeoutMs = 0;
+                          },
+                          [&](const StreamTimeDuration& streamTimeDuration) {
+                              auto unit = streamTimeDuration.getUnit();
+                              auto size = streamTimeDuration.getSize();
+                              idleTimeoutMs = toMillis(unit, size);
+                          }},
+        *param);
+    return idleTimeoutMs;
 }
 
 boost::intrusive_ptr<mongo::Expression> parseStringOrObjectExpression(
@@ -1173,11 +1207,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-    const auto& idleTimeout = options.getIdleTimeout();
-    if (idleTimeout) {
-        windowingOptions.idleTimeoutSize = idleTimeout->getSize();
-        windowingOptions.idleTimeoutUnit = idleTimeout->getUnit();
-    }
+    windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
 
     _windowPlanningInfo.emplace();
     _windowPlanningInfo->stubDocumentSource = source;
@@ -1265,11 +1295,7 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-    const auto& idleTimeout = options.getIdleTimeout();
-    if (idleTimeout) {
-        windowingOptions.idleTimeoutSize = idleTimeout->getSize();
-        windowingOptions.idleTimeoutUnit = idleTimeout->getUnit();
-    }
+    windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
     // TODO: what about offset.
 
     _windowPlanningInfo.emplace();
@@ -2221,9 +2247,9 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
             "resumeFromCheckpoint must be false to change a window stage's allowedLateness";
         uassert(ErrorCodes::StreamProcessorInvalidOptions, msg, bool(l) == bool(r));
         if (l && r) {
-            uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    msg,
-                    SimpleBSONObjComparator::kInstance.evaluate(l->toBSON() == r->toBSON()));
+            int64_t lMs = parseAllowedLateness(l);
+            int64_t rMs = parseAllowedLateness(r);
+            uassert(ErrorCodes::StreamProcessorInvalidOptions, msg, lMs == rMs);
         }
     };
     auto validateMatchingInterval = [](const auto& l, const auto& r) {

@@ -81,7 +81,7 @@ const testCases = [
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(20), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     hopSize: {size: NumberInt(5), unit: "second"},
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}]
                 }
@@ -93,7 +93,7 @@ const testCases = [
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(20), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     hopSize: {size: NumberInt(5), unit: "second"},
                     pipeline: [
                         // Change the $group to a $sort.
@@ -173,7 +173,7 @@ const testCases = [
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(20), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     hopSize: {size: NumberInt(5), unit: "second"},
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}]
                 }
@@ -185,7 +185,7 @@ const testCases = [
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(20), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     hopSize: {size: NumberInt(5), unit: "second"},
                     pipeline: [
                         // Change the $group to a $sort.
@@ -226,7 +226,7 @@ const testCases = [
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(20), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     hopSize: {size: NumberInt(5), unit: "second"},
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}]
                 }
@@ -238,7 +238,7 @@ const testCases = [
             {
                 $hoppingWindow: {
                     interval: {size: NumberInt(20), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     hopSize: {size: NumberInt(5), unit: "second"},
                     pipeline: [
                         // Change the $group to a $sort.
@@ -281,7 +281,7 @@ const testCases = [
             {
                 $tumblingWindow: {
                     interval: {size: NumberInt(1), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}]
                 }
             }
@@ -292,7 +292,7 @@ const testCases = [
             {
                 $tumblingWindow: {
                     interval: {size: NumberInt(1), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     pipeline: [
                         // Change the $group to a $sort.
                         {$sort: {a: 1}}
@@ -307,7 +307,7 @@ const testCases = [
             {
                 $tumblingWindow: {
                     interval: {size: NumberInt(1), unit: "second"},
-                    allowedLateness: {size: NumberInt(0), unit: "second"},
+                    allowedLateness: NumberInt(0),
                     pipeline: [{$set: {"c": {$sum: ["$a", "$b"]}}}]
                 }
             }
