@@ -7,26 +7,12 @@ env = env.Clone()
 
 env.InjectThirdParty(libraries=["asio"])
 
-env.Program(
+env.BazelProgram(
     target="mongoauditdecrypt",
-    source=[
-        "audit_decryptor.cpp",
-        "audit_decryptor_options.cpp",
-        "audit_decryptor_options_gen.cpp",
-    ]
-    + env.WindowsResourceFile("decryptor_tool.rc"),
+    source=[],
     AIB_COMPONENT="mongoauditdecrypt",
     AIB_COMPONENTS_EXTRA=[
         "dist-test",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
-        "$BUILD_DIR/mongo/db/log_process_details",
-        "$BUILD_DIR/mongo/db/server_base",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
-        "$BUILD_DIR/mongo/util/signal_handlers",
-        "$BUILD_DIR/mongo/util/version_impl",
-        "audit_enc_comp_manager",
     ],
 )
 
@@ -39,16 +25,8 @@ env.CppUnitTest(
 # writes multi-byte sequences to console
 # to support manual testing of console stream under Windows
 # output should be visually verified under Command Prompt or Power Shell
-env.Program(
+env.BazelProgram(
     target="console_test",
-    source=[
-        "logger/console_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/audit",
-        "$BUILD_DIR/mongo/unittest/unittest_main",
-        "audit_enterprise",
-    ],
+    source=[],
     AIB_COMPONENT="standalone-console-test",
 )

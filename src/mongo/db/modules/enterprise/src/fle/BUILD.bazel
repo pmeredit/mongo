@@ -1,0 +1,39 @@
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_binary", "mongo_cc_library")
+
+package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
+
+mongo_cc_library(
+    name = "cryptd_commands",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/fle/commands:cryptd_buildinfo.cpp",
+        "//src/mongo/db/modules/enterprise/src/fle/commands:cryptd_ismaster.cpp",
+        "//src/mongo/db/modules/enterprise/src/fle/commands:cryptd_markings_commands.cpp",
+        "//src/mongo/db/modules/enterprise/src/fle/commands:cryptd_shutdown.cpp",
+    ],
+    hdrs = [
+        "//src/mongo/util:ntservice.h",
+    ],
+    deps = [
+        "//src/mongo/db:commands",
+        "//src/mongo/db:wire_version",
+        "//src/mongo/db/commands:buildinfo_common",
+        "//src/mongo/db/commands:test_commands_enabled",
+        "//src/mongo/db/modules/enterprise/src/fle/query_analysis",
+        "//src/mongo/db/query:common_query_enums_and_helpers",
+        "//src/mongo/util:version_impl",
+    ],
+)
+
+mongo_cc_binary(
+    name = "mongocryptd",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/fle/commands:cryptd_main_shim.cpp",
+    ],
+    tags = [
+        "dist_test",
+    ],
+    deps = [
+        "cryptd_commands",
+        "//src/mongo/util/cryptd:mongocryptd_core",
+    ],
+)

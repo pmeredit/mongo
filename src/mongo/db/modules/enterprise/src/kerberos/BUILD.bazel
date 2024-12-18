@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_binary", "mongo_cc_library")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -12,4 +12,58 @@ exports_files(
 idl_generator(
     name = "kerberos_tool_options_gen",
     src = "kerberos_tool_options.idl",
+)
+
+mongo_cc_library(
+    name = "kerberos_tool",
+    srcs = [
+        "kerberos_tool_options.cpp",
+        "kerberos_tool_options_gen",
+    ],
+    hdrs = [
+        "kerberos_tool_options.h",
+    ],
+    linkopts = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": [
+            "-lgssapi_krb5",
+            "-lkrb5",
+        ],
+    }),
+    local_defines = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["MONGO_KRB5_HAVE_FEATURES"],
+    }),
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/util/net:network",
+        "//src/mongo/util/options_parser:options_parser_init",
+    ],
+)
+
+mongo_cc_binary(
+    name = "mongokerberos",
+    srcs = [
+        "kerberos_tool.cpp",
+        "kerberos_tool.h",
+        "//src/mongo/db/modules/enterprise/src/util:gssapi_helpers.h",
+    ],
+    local_defines = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["MONGO_KRB5_HAVE_FEATURES"],
+    }),
+    tags = [
+        "dist_test",
+    ],
+    deps = [
+        "kerberos_tool",
+        "//src/mongo:base",
+        "//src/mongo/base:secure_allocator",
+        "//src/mongo/db/concurrency:lock_manager",
+        "//src/mongo/db/modules/enterprise/src/util:gssapi_helpers_not_windows_shim",
+        "//src/mongo/db/modules/enterprise/src/util:report_tool",
+        "//src/mongo/util:signal_handlers",
+        "//src/mongo/util:version_impl",
+        "//src/mongo/util/options_parser:options_parser_init",
+    ],
 )

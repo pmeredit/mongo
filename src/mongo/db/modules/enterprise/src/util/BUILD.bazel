@@ -30,6 +30,17 @@ mongo_cc_library(
     ],
 )
 
+# This lets you include gssapi_helpers in tests/programs
+# without having to specify to not use it on windows
+mongo_cc_library(
+    name = "gssapi_helpers_not_windows_shim",
+    srcs = [],
+    deps = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["//src/mongo/db/modules/enterprise/src/util:gssapi_helpers"],
+    }),
+)
+
 mongo_cc_library(
     name = "report_tool",
     srcs = [
