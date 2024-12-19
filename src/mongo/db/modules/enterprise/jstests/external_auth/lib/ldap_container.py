@@ -84,6 +84,10 @@ def _build_image(image_name: str) -> bool:
 
         if ret == 0:
             return True
+
+        LOGGER.warning("Build image attempt: %i failed", retry + 1)
+        retry += 1
+
     return False
 
 

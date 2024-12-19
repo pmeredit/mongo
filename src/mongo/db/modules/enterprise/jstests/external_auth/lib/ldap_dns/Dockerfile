@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y curl dnsmasq dnsutils
 
 # Per https://developers.redhat.com/blog/2020/03/24/red-hat-universal-base-images-for-docker-users#introducing_red_hat_universal_base_images
 FROM registry.access.redhat.com/ubi8/ubi:latest
-RUN dnf update -y && dnf install -y dnsmasq libatomic bind-utils
+RUN dnf update -y --nobest && dnf install -y dnsmasq libatomic bind-utils
 
 #else
 
