@@ -325,7 +325,20 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         case HttpClient::HttpMethod::kPOST:
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
-            rawDoc = tojson(payloadDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
+            try {
+                rawDoc =
+                    tojson(payloadDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
+            } catch (const DBException& e) {
+                if (e.code() != ErrorCodes::BSONObjectTooLarge) {
+                    throw;
+                }
+                writeToDLQ(streamDoc,
+                           payloadDoc,
+                           fmt::format("{}: {}", e.codeString(), e.what()),
+                           processResult);
+                return processResult;
+            }
+
             headers.emplace_back("Content-Type: application/json");
             break;
         }
@@ -333,6 +346,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             // Payload is not used by other HTTP Methods
             break;
     }
+
 
     tassert(9502900,
             "Expected http client to exist before trying to make requests.",

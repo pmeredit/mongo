@@ -941,6 +941,55 @@ TEST_F(HttpsOperatorTest, RateLimitingParametersUpdate) {
     }
 }
 
+TEST_F(HttpsOperatorTest, DocumentTooLarge) {
+    StringData uri{"http://localhost:10000/"};
+
+    auto options = HttpsOperator::Options{
+        .httpClient = std::unique_ptr<mongo::HttpClient>(std::make_unique<MockHttpClient>()),
+        .method = HttpClient::HttpMethod::kPOST,
+        .url = uri.toString(),
+        .as = "response",
+    };
+
+    setupDag(std::move(options));
+
+    const auto documentSize1MB = 1024 * 1024;
+    MutableDocument mutDoc;
+    for (int i = 0; i < 17; i++) {
+        mutDoc.addField("value" + std::to_string(i), Value{std::string(documentSize1MB, 'a' + i)});
+    }
+
+    std::vector<StreamDocument> inputMsgs = {mutDoc.freeze()};
+    std::queue<mongo::BSONObj> dlqMsgs;
+    testAgainstDocs(
+        std::move(inputMsgs),
+        [this, &dlqMsgs](std::deque<StreamMsgUnion> messages) {
+            ASSERT_EQ(messages.size(), 0);
+
+            auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+            ASSERT_EQ(dlq->numMessages(), 1);
+
+            dlqMsgs = dlq->getMessages();
+            for (auto dlqMsgsCopy{dlqMsgs}; !dlqMsgsCopy.empty(); dlqMsgsCopy.pop()) {
+                auto dlqDoc = dlqMsgsCopy.front();
+                ASSERT_TRUE(!dlqDoc.isEmpty());
+                ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
+                                       "Failed to process input document in $https with error: "
+                                       "BSONObjectTooLarge: BSONObj size: 17826025");
+                ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
+                                       " is invalid. Size must be between 0 "
+                                       "and 16793600(16MB) First element: value0:");
+                ASSERT_EQ("HttpsOperator", dlqDoc["operatorName"].String());
+            }
+        },
+        [this, &dlqMsgs](OperatorStats stats) {
+            ASSERT_EQ(stats.numInputBytes, 0);
+            ASSERT_EQ(stats.numOutputBytes, 0);
+            ASSERT_EQ(stats.numDlqBytes, computeNumDlqBytes(dlqMsgs));
+            ASSERT_EQ(stats.numDlqDocs, 1);
+        });
+}
+
 TEST_F(HttpsOperatorTest, GetWithBadQueryParams) {
     StringData uri{"http://localhost:10000"};
     auto expCtx = boost::intrusive_ptr<ExpressionContextForTest>(new ExpressionContextForTest{});
