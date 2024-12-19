@@ -915,7 +915,18 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
         for (auto& sourceDoc : sourceDocs) {
             numInputBytes += sourceDoc.messageSizeBytes;
-            invariant(!consumerInfo.maxOffset || sourceDoc.offset > *consumerInfo.maxOffset);
+
+            if (consumerInfo.maxOffset && sourceDoc.offset <= *consumerInfo.maxOffset) {
+                LOGV2_ERROR(9804601,
+                            "Expected the offset to be larger than the consumer's max offset",
+                            "context"_attr = _context,
+                            "sourceDocError"_attr = sourceDoc.error,
+                            "sourceDocOffset"_attr = sourceDoc.offset,
+                            "consumerMaxOffset"_attr = *consumerInfo.maxOffset);
+                tasserted(9804602,
+                          "Expected the offset to be larger than the consumer's max offset");
+            }
+
             consumerInfo.maxOffset = sourceDoc.offset;
             auto streamDoc =
                 processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
