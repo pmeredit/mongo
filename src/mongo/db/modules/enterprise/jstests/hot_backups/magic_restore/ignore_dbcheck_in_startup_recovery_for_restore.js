@@ -6,7 +6,7 @@
  *     requires_persistence,
  *     requires_wiredtiger,
  *     requires_replication,
- *     featureFlagSecondaryIndexChecksInDbCheck
+ *     requires_fcv_81,
  * ]
  */
 
