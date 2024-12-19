@@ -179,6 +179,7 @@ command = Object.assign({
         {
             $geoNear: {
                 near: {type: "Point", coordinates: [-73.99279, 40.719296]},
+                distanceField: "dist.calculated",
                 minDistance: 2,
                 spherical: true,
                 includeLocs: "location"
