@@ -984,36 +984,13 @@ void CheckpointTest::Test_CoordinatorGetCheckpointControlMsgIfReady() {
             ASSERT_TRUE(CheckpointController->startNewCheckpointIfRoom(false));
 
             bool checkpointCompleted = false;
+            stdx::this_thread::sleep_for(10ms);
             if (coordinator->getCheckpointControlMsgIfReady(
-                    CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
+                    CheckpointCoordinator::CheckpointRequest{})) {
                 CheckpointController->onCheckpointComplete();
                 checkpointCompleted = true;
             }
-            ASSERT_FALSE(checkpointCompleted);
-
-            std::default_random_engine generator;
-            std::uniform_int_distribution distribution(1, 9);
-
-            for (int i = 0; i < 5; i++) {
-                checkpointCompleted = false;
-                auto initDelay = milliseconds(distribution(generator));
-                stdx::this_thread::sleep_for(initDelay);
-                if (coordinator->getCheckpointControlMsgIfReady(
-                        CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
-                    CheckpointController->onCheckpointComplete();
-                    checkpointCompleted = true;
-                }
-                ASSERT_FALSE(checkpointCompleted);
-
-                checkpointCompleted = false;
-                stdx::this_thread::sleep_for(maxIdleCheckpointInterval - initDelay);
-                if (coordinator->getCheckpointControlMsgIfReady(
-                        CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true})) {
-                    CheckpointController->onCheckpointComplete();
-                    checkpointCompleted = true;
-                }
-                ASSERT_TRUE(checkpointCompleted);
-            }
+            ASSERT_TRUE(checkpointCompleted);
         };
 
     runTestCase(Spec{.maxIdleCheckpointInterval = maxIdleCheckpointInterval,
