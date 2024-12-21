@@ -8,6 +8,7 @@
  */
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {FixtureHelpers} from "jstests/libs/fixture_helpers.js";
 import {
     failAllInserts,
     getDiagnosticLogs,
@@ -72,14 +73,24 @@ function runTest(conn, restartFn) {
         restartFn();
     }
 
-    // GetMore
-    const {cursor} =
-        assert.commandWorked(client.getDB().erunCommand({find: collName, batchSize: 0}));
-    runEncryptedCommandAndCheckLog({
-        failpoint: planExecutorAlwaysFails,
-        description: "getMore",
-        command: {getMore: cursor.id, collection: collName}
-    });
+    // Avoid running these test cases on mongos, since the required failpoints do not exist there.
+    if (!FixtureHelpers.isMongos(db)) {
+        // GetMore
+        const {cursor} =
+            assert.commandWorked(client.getDB().erunCommand({find: collName, batchSize: 0}));
+        runEncryptedCommandAndCheckLog({
+            failpoint: planExecutorAlwaysFails,
+            description: "getMore",
+            command: {getMore: cursor.id, collection: collName}
+        });
+
+        // Insert
+        runEncryptedCommandAndCheckLog({
+            failpoint: failAllInserts,
+            description: "insert",
+            command: {insert: collName, documents: [query], ordered: false},
+        });
+    }
 
     // Find
     runEncryptedCommandAndCheckLog({
@@ -100,13 +111,6 @@ function runTest(conn, restartFn) {
         failpoint: queryPlannerAlwaysFails,
         description: "count",
         command: {count: collName, query: query},
-    });
-
-    // Insert
-    runEncryptedCommandAndCheckLog({
-        failpoint: failAllInserts,
-        description: "insert",
-        command: {insert: collName, documents: [query], ordered: false},
     });
 
     // Delete
@@ -163,6 +167,20 @@ function runTest(conn, restartFn) {
         // The top-level command doesn't fail when an update fails.
         errorCode: 0,
     });
+
+    // Explain
+    runEncryptedCommandAndCheckLog({
+        failpoint: queryPlannerAlwaysFails,
+        description: 'explain find',
+        command: {
+            explain: {find: collName, filter: query, limit: 1},
+        },
+    });
+    runEncryptedCommandAndCheckLog({
+        failpoint: queryPlannerAlwaysFails,
+        description: 'explain aggregate',
+        command: {aggregate: collName, pipeline: [{$match: query}, {$unwind: "$arr"}], cursor: {}},
+    });
 }
 
 jsTestLog("ReplicaSet: Testing fle2 tassert log omission");
@@ -197,5 +215,29 @@ jsTestLog("ShardingTest: Testing fle2 tassert log omission on shards");
         fixture.rs0.restart(fixture.rs0.getPrimary(), {allowedExitCode: MongoRunner.EXIT_ABRUPT});
         fixture.rs0.waitForPrimary();
     });
+    fixture.stop();
+}
+
+jsTestLog("ShardingTest: Testing fle2 tassert log omission on mongos");
+
+{
+    const fixture = new ShardingTest({shards: 1, mongos: [{useLogFiles: true}]});
+
+    const db = fixture.s.getDB(dbName);
+    db.dropDatabase();
+    const client = new EncryptedClient(db.getMongo(), dbName);
+    assert.commandWorked(client.createEncryptionCollection(collName, getEncryptedFields()));
+
+    // Shard the collection on 'b' and 'c', and run queries on fields 'a' and 'b'. This requires
+    // most of the test cases above to use shard targeting, which uses query planning as a
+    // sub-routine. Thus, mongos will hit the queryPlannerAlwaysFails failpoint.
+    const coll = db[collName];
+    assert.commandWorked(coll.createIndex({b: 1, c: 1}));
+    assert.commandWorked(
+        fixture.s.adminCommand({shardCollection: coll.getFullName(), key: {b: 1, c: 1}}));
+
+    runTest(
+        fixture.s,
+        () => fixture.restartMongos(0, fixture.s.opts, {allowedExitCode: MongoRunner.EXIT_ABRUPT}));
     fixture.stop();
 }
