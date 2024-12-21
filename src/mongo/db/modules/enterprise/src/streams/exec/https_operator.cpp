@@ -4,7 +4,6 @@
 
 #include "streams/exec/https_operator.h"
 
-#include "streams/exec/constants.h"
 #include <algorithm>
 #include <bsoncxx/exception/exception.hpp>
 #include <bsoncxx/json.hpp>
@@ -19,6 +18,7 @@
 #include <string>
 
 #include "mongo/base/error_codes.h"
+#include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
@@ -44,6 +44,7 @@
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
+#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -410,7 +411,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         responseTimeMs = durationCount<Milliseconds>(timer.elapsed());
         processResult.numInputBytes += rawResponse.size();
 
-        uassert(ErrorCodes::OperationFailed,
+        uassert(ErrorCodes::StreamProcessorHTTPSConnectionError,
                 fmt::format("Received error response from destination server. Status: {}, Body: {}",
                             httpResponse->code,
                             rawResponse),

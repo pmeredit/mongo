@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <curl/curl.h>
 #include <deque>
+#include <exception>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <functional>

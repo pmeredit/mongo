@@ -32,6 +32,7 @@ function runTest({
     expectedStatus = "running",
     sourceOptions = {},
     expectedInputSize = 0,
+    expectedErrorCode,
 }) {
     const waitTimeMs = 30000;
     const dbName = "https_test";
@@ -81,6 +82,11 @@ function runTest({
         assert.soon(() => { return sp.stats()["status"] == expectedStatus; },
                     "waiting for expected status",
                     waitTimeMs);
+        if (expectedErrorCode) {
+            const result = listStreamProcessors();
+            let thisSp = result.streamProcessors.find((sp) => sp.name == spName);
+            assert.eq(thisSp.error.code, expectedErrorCode);
+        }
         return;
     }
 
@@ -774,6 +780,17 @@ const testCases = [
             }
         }],
         allowAllTraffic: true,
+    },
+    {
+        description: "error responses should put SP with error",
+        spName: "tcShouldAlwaysFail",
+        stage: {
+            $https: {connectionName: httpsName, path: "/servfail/tcShouldAlwaysFail", method: "GET", as: "response"},
+        },
+        inputDocs: [{a: 1}],
+        allowAllTraffic: true,
+        expectedStatus: "error",
+        expectedErrorCode: ErrorCodes.StreamProcessorHTTPSConnectionError,
     },
 ];
 
