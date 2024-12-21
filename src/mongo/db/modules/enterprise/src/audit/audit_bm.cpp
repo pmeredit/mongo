@@ -45,7 +45,9 @@ BENCHMARK_DEFINE_F(AuditOCSFBMFixture, BM_ClientMetadataOCSF)(benchmark::State& 
 BENCHMARK_REGISTER_F(AuditMongoBMFixture, BM_ClientMetadataMongo)
     ->ArgsProduct({kSizes,
                    {static_cast<int64_t>(AuditDestination::None),
+#ifndef _WIN32
                     static_cast<int64_t>(AuditDestination::Syslog),
+#endif
                     static_cast<int64_t>(AuditDestination::FileJSON),
                     static_cast<int64_t>(AuditDestination::FileBSON)},
                    kFilters});
@@ -53,7 +55,9 @@ BENCHMARK_REGISTER_F(AuditMongoBMFixture, BM_ClientMetadataMongo)
 BENCHMARK_REGISTER_F(AuditOCSFBMFixture, BM_ClientMetadataOCSF)
     ->ArgsProduct({kSizes,
                    {static_cast<int64_t>(AuditDestination::None),
+#ifndef _WIN32
                     static_cast<int64_t>(AuditDestination::Syslog),
+#endif
                     static_cast<int64_t>(AuditDestination::FileJSON),
                     static_cast<int64_t>(AuditDestination::FileBSON)},
                    kFilters});
@@ -114,16 +118,22 @@ BENCHMARK_DEFINE_F(AuditOCSFBMFixture, BM_ImpersonatedClientMetadataOCSF)(benchm
 
 BENCHMARK_REGISTER_F(AuditMongoBMFixture, BM_ImpersonatedClientMetadataMongo)
     ->ArgsProduct({kSizes,
-                   {static_cast<int64_t>(AuditDestination::Syslog),
-                    static_cast<int64_t>(AuditDestination::FileJSON),
-                    static_cast<int64_t>(AuditDestination::FileBSON)},
+                   {
+#ifndef _WIN32
+                       static_cast<int64_t>(AuditDestination::Syslog),
+#endif
+                       static_cast<int64_t>(AuditDestination::FileJSON),
+                       static_cast<int64_t>(AuditDestination::FileBSON)},
                    kFilters});
 
 BENCHMARK_REGISTER_F(AuditOCSFBMFixture, BM_ImpersonatedClientMetadataOCSF)
     ->ArgsProduct({kSizes,
-                   {static_cast<int64_t>(AuditDestination::Syslog),
-                    static_cast<int64_t>(AuditDestination::FileJSON),
-                    static_cast<int64_t>(AuditDestination::FileBSON)},
+                   {
+#ifndef _WIN32
+                       static_cast<int64_t>(AuditDestination::Syslog),
+#endif
+                       static_cast<int64_t>(AuditDestination::FileJSON),
+                       static_cast<int64_t>(AuditDestination::FileBSON)},
                    kFilters});
 
 }  // namespace mongo::audit::bm

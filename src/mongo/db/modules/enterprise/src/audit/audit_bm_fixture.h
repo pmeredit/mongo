@@ -67,7 +67,7 @@ protected:
     virtual void setBMArguments(benchmark::State& state);
     void makeServiceContext();
     ServiceContext* getServiceContext();
-    BSONElement serializeMetadataObject();
+    BSONObj serializeMetadataObject();
     void setBMLabel(benchmark::State& state);
     void setupAuthorizationSession();
 

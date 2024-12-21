@@ -110,18 +110,20 @@ void AuditBenchmarkFixture<T>::TearDown(benchmark::State& state) {
     }
 }
 template <typename T>
-BSONElement AuditBenchmarkFixture<T>::serializeMetadataObject() {
+BSONObj AuditBenchmarkFixture<T>::serializeMetadataObject() {
     BSONObjBuilder builder;
     Status status = ClientMetadata::serialize(
         metadataValues.driver, metadataValues.version, metadataValues.appName, &builder);
     uassertStatusOK(status);
 
-    return builder.obj()["client"];
+    return builder.obj();
 }
 
 template <typename T>
 void AuditBenchmarkFixture<T>::setupClientMetadata() {
-    BSONElement metadataElem = serializeMetadataObject();
+    BSONObj metadataObj = serializeMetadataObject();
+    BSONElement metadataElem = metadataObj["client"];
+
     ClientMetadata::setFromMetadata(client.get(), metadataElem, true);
 }
 
@@ -147,7 +149,8 @@ void AuditBenchmarkFixture<T>::setupAuthorizationSession() {
 
 template <typename T>
 void AuditBenchmarkFixture<T>::bmConstructClientMetadata(benchmark::State& state) {
-    BSONElement metadataElem = serializeMetadataObject();
+    BSONObj metadataObj = serializeMetadataObject();
+    BSONElement metadataElem = metadataObj["client"];
 
     warmup([&]() { ClientMetadata::setFromMetadata(client.get(), metadataElem, true); });
 
