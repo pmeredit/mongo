@@ -24,15 +24,15 @@ mongo_cc_library(
         "kerberos_tool_options.h",
     ],
     linkopts = select({
-        "@platforms//os:windows": [],
-        "//conditions:default": [
+        "//bazel/config:build_enterprise_linux_enabled": [
             "-lgssapi_krb5",
             "-lkrb5",
         ],
+        "//conditions:default": [],
     }),
     local_defines = select({
-        "@platforms//os:windows": [],
-        "//conditions:default": ["MONGO_KRB5_HAVE_FEATURES"],
+        "//bazel/config:build_enterprise_linux_enabled": ["MONGO_KRB5_HAVE_FEATURES"],
+        "//conditions:default": [],
     }),
     deps = [
         "//src/mongo:base",
@@ -49,8 +49,8 @@ mongo_cc_binary(
         "//src/mongo/db/modules/enterprise/src/util:gssapi_helpers.h",
     ],
     local_defines = select({
-        "@platforms//os:windows": [],
-        "//conditions:default": ["MONGO_KRB5_HAVE_FEATURES"],
+        "//bazel/config:build_enterprise_linux_enabled": ["MONGO_KRB5_HAVE_FEATURES"],
+        "//conditions:default": [],
     }),
     tags = [
         "dist_test",
