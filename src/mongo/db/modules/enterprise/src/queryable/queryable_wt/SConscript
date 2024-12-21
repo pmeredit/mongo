@@ -1,19 +1,8 @@
 Import("env")
-Import("wiredtiger")
-
-if not wiredtiger:
-    env.FatalError("queryable_wt requires WiredTiger")
 
 env = env.Clone()
-env.InjectThirdParty(libraries=["wiredtiger"])
 
 env.CppIntegrationTest(
     target="enterprise_queryable_wt_test",
-    source=[
-        "blockstore_fs_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "queryable_wt",
-    ],
+    source=[],
 )

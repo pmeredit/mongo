@@ -4,12 +4,5 @@ env = env.Clone()
 
 env.CppIntegrationTest(
     target="enterprise_blockstore_test",
-    source=[
-        "create_file_test.cpp",
-        "list_dir_test.cpp",
-        "reader_writer_test.cpp",
-    ],
-    LIBDEPS=[
-        "blockstore",
-    ],
+    source=[],
 )

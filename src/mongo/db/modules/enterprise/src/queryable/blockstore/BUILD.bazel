@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_integration_test", "mongo_cc_library")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -26,5 +26,17 @@ mongo_cc_library(
         "//src/mongo:base",
         "//src/mongo/bson/util:bson_extract",
         "//src/mongo/util/net:http_client",
+    ],
+)
+
+mongo_cc_integration_test(
+    name = "enterprise_blockstore_test",
+    srcs = [
+        "create_file_test.cpp",
+        "list_dir_test.cpp",
+        "reader_writer_test.cpp",
+    ],
+    deps = [
+        ":blockstore",
     ],
 )

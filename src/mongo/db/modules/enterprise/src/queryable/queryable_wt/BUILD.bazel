@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_integration_test", "mongo_cc_library")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -40,5 +40,16 @@ mongo_cc_library(
         "//src/mongo/db/storage/wiredtiger:storage_wiredtiger",
         "//src/mongo/db/storage/wiredtiger:storage_wiredtiger_core",
         "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_integration_test(
+    name = "enterprise_queryable_wt_test",
+    srcs = [
+        "blockstore_fs_test.cpp",
+    ],
+    deps = [
+        ":queryable_wt",
+        "//src/mongo/db/auth:authmocks",
     ],
 )
