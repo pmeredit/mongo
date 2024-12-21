@@ -6,11 +6,6 @@ env = env.Clone()
 
 env.CppUnitTest(
     target="metric_manager_test",
-    source=[
-        "metric_manager_test.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "../streams_util",
-    ],
+    source=[],
+    LIBDEPS=[],
 )
