@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "mongo_cc_library", "mongo_cc_unit_test")
+load("//bazel:mongo_src_rules.bzl", "mongo_cc_binary", "mongo_cc_library", "mongo_cc_unit_test")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -6,7 +6,10 @@ exports_files(
     glob([
         "*.h",
         "*.cpp",
-    ]),
+    ]) + [
+        "mongo_crypt_v1.exported_symbols_list.lds",
+        "mongo_crypt_v1.version_script.lds",
+    ],
 )
 
 mongo_cc_unit_test(
@@ -31,5 +34,78 @@ mongo_cc_unit_test(
         "//src/mongo/db/auth:authmocks",
         "//src/mongo/db/modules/enterprise/src/fle/query_analysis",
         "//src/mongo/util:version_impl",
+    ],
+)
+
+mongo_cc_library(
+    name = "shim",
+    srcs = [],
+    hdrs = [],
+    tags = ["mongo_crypt"],
+    deps = [],
+)
+
+mongo_cc_library(
+    name = "mongo_crypt_v1",
+    srcs = [
+        "mongo_crypt.cpp",
+    ],
+    hdrs = [
+        "mongo_crypt.h",
+        "//src/mongo/embedded:api_common.h",
+    ],
+    additional_linker_inputs = select({
+        "@platforms//os:linux": [
+            ":mongo_crypt_v1.version_script.lds",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "@platforms//os:macos": [
+            ":mongo_crypt_v1.exported_symbols_list.lds",
+        ],
+        "//conditions:default": [],
+    }),
+    linkshared = True,
+    local_defines = ["MONGO_CRYPT_SUPPORT_COMPILING"],
+    non_transitive_dyn_linkopts = select({
+        "@platforms//os:linux": [
+            "-Wl,--version-script=$(location :mongo_crypt_v1.version_script.lds)",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "@platforms//os:macos": [
+            "-Wl,-exported_symbols_list,$(location :mongo_crypt_v1.exported_symbols_list.lds)",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = ["mongo_crypt"],
+    target_compatible_with = select({
+        "//bazel/config:shared_archive_or_link_dynamic": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "shim",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context_non_d",
+        "//src/mongo/db/modules/enterprise/src/fle/query_analysis",
+        "//src/mongo/util:version_impl",
+        "//src/mongo/util/options_parser",
+    ],
+)
+
+mongo_cc_binary(
+    name = "mongo_crypt_shlib_test",
+    srcs = [
+        "mongo_crypt.h",
+        "mongo_crypt_test.cpp",
+    ],
+    local_defines = ["MONGO_CRYPT_UNITTEST_DYNAMIC"],
+    tags = ["mongo_crypt"],
+    target_compatible_with = select({
+        "//bazel/config:shared_archive_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//src/mongo/db:service_context_test_fixture",
     ],
 )

@@ -38,6 +38,9 @@ mongo_cc_library(
         "//src/mongo/db/pipeline:pipeline_metadata_tree.h",
         "//src/mongo/s/commands:sharding_expressions.h",
     ],
+    tags = [
+        "mongo_crypt",
+    ],
     deps = [
         "//src/mongo:base",
         "//src/mongo/crypto:encrypted_field_config",

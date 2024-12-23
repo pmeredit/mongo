@@ -10,11 +10,6 @@ Import("get_option")
 env = env.Clone()
 
 cryptEnv = env.Clone()
-cryptEnv.AppendUnique(
-    CPPDEFINES=[
-        "MONGO_CRYPT_SUPPORT_COMPILING",
-    ],
-)
 
 
 def mongo_export_file_generator(target, source, env, for_signature):
@@ -44,17 +39,9 @@ if get_option("link-model") == "dynamic-sdk" and env.TargetOSIs("posix", "window
         ]
     )
 
-    cryptSupportTargets = cryptEnv.SharedLibrary(
+    cryptSupportTargets = cryptEnv.BazelSharedLibrary(
         target="mongo_crypt_v1",
-        source=[
-            "mongo_crypt.cpp",
-        ],
-        LIBDEPS_PRIVATE=[
-            "$BUILD_DIR/mongo/base",
-            "$BUILD_DIR/mongo/db/service_context_non_d",
-            "$BUILD_DIR/mongo/util/options_parser/options_parser",
-            "../query_analysis/query_analysis",
-        ],
+        source=[],
         AIB_COMPONENT="mongo-crypt",
         SHLIBPREFIX="",
     )
@@ -76,19 +63,10 @@ if get_option("link-model") != "dynamic-sdk":
 
 if get_option("link-model") != "dynamic-sdk":
     cryptShlibTestEnv = env.Clone()
-    cryptShlibTestEnv.AppendUnique(
-        CPPDEFINES=[
-            "MONGO_CRYPT_UNITTEST_DYNAMIC",
-        ]
-    )
 
-    obj = cryptShlibTestEnv.Object("mongo_crypt_shlib_test", "mongo_crypt_test.cpp")
-    unitTest = cryptShlibTestEnv.Program(
+    unitTest = cryptShlibTestEnv.BazelProgram(
         target="mongo_crypt_shlib_test",
-        source=obj[0],
-        LIBDEPS=[
-            "$BUILD_DIR/mongo/db/service_context_test_fixture",
-        ],
+        source=[],
         AIB_COMPONENT="mongo-crypt-shlib-test",
     )
 
