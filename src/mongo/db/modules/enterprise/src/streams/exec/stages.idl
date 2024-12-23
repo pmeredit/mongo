@@ -628,7 +628,7 @@ structs:
                 type: object
                 description: Target MongoDB instance to merge documents into.
 
-            on:
+            "on":
                 type: MergeOnFields
                 optional: true
                 description: A single field or array of fields that uniquely identify a document.

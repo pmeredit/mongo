@@ -144,32 +144,32 @@ structs:
         description: The WindowAwareOperator base class writes this document to mark the start of a new window of data.
         strict: false
         fields:
-            0:
+            "0":
                 type: safeInt64
                 cpp_name: startTimeMs
                 description: Start time of the window in millis.
-            1:
+            "1":
                 type: safeInt64
                 cpp_name: endTimeMs
                 description: End time of the window in millis.
-            2:
+            "2":
                 type: StreamMetaSourceType
                 cpp_name: sourceType
                 optional: true
                 description: Source type used in the StreamMeta template for the window.
-            3:
+            "3":
                 type: safeInt64
                 cpp_name: replayCheckpointId
                 optional: true
                 description: The replay checkpopint Id for this window.
             # The partition field is only populated for session windows.
-            4:
+            "4":
                 type: Value
                 cpp_name: partition
                 description: "Value identifier for partition"
                 optional: true
             # The window ID field is only populated for session windows.
-            5:
+            "5":
                 type: safeInt64
                 cpp_name: windowID
                 description: "Integer identifier for session window"
@@ -179,7 +179,7 @@ structs:
         description: The WindowAwareOperator base class writes this document to mark the end of a window of data.
         strict: false
         fields:
-            0:
+            "0":
                 type: safeInt64
                 cpp_name: windowEndMarker
                 description: Start time of the window corresponding to this window end marker.
@@ -188,7 +188,7 @@ structs:
         description: The WindowLimitAwareOperator class checkpoint state.
         strict: false
         fields:
-            0:
+            "0":
                 type: safeInt64
                 cpp_name: numSent
                 description: Number of documents sent so far in the limit operator.
@@ -197,11 +197,11 @@ structs:
         description: The WindowAwareGroupOperator checkpoint state format.
         strict: false
         fields:
-            0:
+            "0":
                 type: bindata_generic
                 description: group key
                 cpp_name: groupKey
-            1:
+            "1":
                 type: bindata_generic
                 description: group accumulators
                 cpp_name: groupAccumulators
@@ -213,44 +213,44 @@ structs:
         description: A variant type used for all WindowAwareOperator and derived class checkpoint state. Only one field will be set.
         strict: false
         fields:
-            0:
+            "0":
                 type: safeInt64
                 description: The minimum allowed window start time. This is the first record written in all WindowAwareOperator checkpoints.
                 cpp_name: minWindowStartTime
                 optional: true
-            1:
+            "1":
                 type: WindowOperatorStartRecord
                 description: Marks the start of a window of data.
                 cpp_name: windowStart
                 optional: true
-            2:
+            "2":
                 type: WindowOperatorEndRecord
                 description: Marks the end of a window of data.
                 cpp_name: windowEnd
                 optional: true
-            3:
+            "3":
                 type:
                     variant: [object, array]
                 description: An object field only used in unit testing.
                 cpp_name: testOnlyData
                 optional: true
-            4:
+            "4":
                 type: object
                 description: A document in the window sort.
                 cpp_name: sortRecord 
                 optional: true 
-            5:
+            "5":
                 type: WindowOperatorLimitRecord
                 description: Limit operator window state.
                 cpp_name: limitRecord
                 optional: true
-            6:
+            "6":
                 type: WindowAwareGroupRecord
                 description: A record to save the group key and the corresponding 
                              accumulators state
                 cpp_name: groupRecord
                 optional: true
-            7:
+            "7":
                 type: safeInt64
                 description: The minimum allowed window start time after a modify. Prior versions of the stream processor closed windows before this time.
                 cpp_name: replayMinWindowStartTime
