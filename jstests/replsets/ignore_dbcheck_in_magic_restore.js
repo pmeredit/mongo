@@ -4,7 +4,7 @@
  * @tags: [
  *     requires_persistence,
  *     requires_wiredtiger,
- *     requires_fcv_81,
+ *     featureFlagSecondaryIndexChecksInDbCheck,
  *     incompatible_with_windows_tls
  * ]
  */
