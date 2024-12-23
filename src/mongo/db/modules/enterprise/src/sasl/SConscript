@@ -6,13 +6,9 @@ Import("ssl_provider")
 env = env.Clone()
 
 if env.TargetOSIs("windows"):
-    env.SharedLibrary(
+    env.BazelSharedLibrary(
         target="cyrus_sasl_windows_test_plugin",
-        source=["cyrus_sasl_windows_test_plugin.cpp"],
-        LIBDEPS_NO_INHERIT=[
-            "$BUILD_DIR/third_party/tcmalloc/tcmalloc",
-            "$BUILD_DIR/third_party/gperftools/tcmalloc_minimal",
-        ],
+        source=[],
         AIB_COMPONENT="dist-test",
     )
 

@@ -288,3 +288,17 @@ mongo_cc_unit_test(
         "//src/mongo/util/net:network",
     ],
 )
+
+mongo_cc_library(
+    name = "cyrus_sasl_windows_test_plugin",
+    srcs = ["cyrus_sasl_windows_test_plugin.cpp"],
+    linkshared = True,
+    skip_global_deps = [
+        "allocator",
+    ],
+    tags = ["dist_test"],
+    target_compatible_with = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
