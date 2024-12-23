@@ -1,4 +1,4 @@
-load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_library")
+load("//bazel:mongo_src_rules.bzl", "idl_generator", "mongo_cc_benchmark", "mongo_cc_library")
 
 package(default_visibility = ["//src/mongo/db/modules/enterprise:__subpackages__"])
 
@@ -18,6 +18,22 @@ MONGOCXX_COPTS = [
     ],
     "@platforms//cpu:aarch64": [
         "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64",
+    ],
+    "//conditions:default": [],
+})
+
+SASL_SYSDEP = select({
+    "@platforms//os:windows": [
+        "sasl2.lib",
+    ],
+    "//conditions:default": [
+        "-lsasl2",
+    ],
+})
+
+RT_SYSDEP = select({
+    "@platforms//os:linux": [
+        "-lrt",
     ],
     "//conditions:default": [],
 })
@@ -342,5 +358,59 @@ mongo_cc_library(
         "//src/mongo/db/pipeline/process_interface:common_process_interface",
         "//src/third_party/librdkafka:rdkafka",
         "//src/third_party/librdkafka:rdkafka++",
+    ],
+)
+
+mongo_cc_benchmark(
+    name = "streams_operator_dag_bm",
+    srcs = [
+        "operator_dag_bm.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    deps = [
+        "streams_operators",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context_non_d",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/auth:authmocks",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
+        "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_benchmark(
+    name = "streams_window_operator_bm",
+    srcs = [
+        "window_operator_bm.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    deps = [
+        "streams_operators",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context_non_d",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",
+    ],
+)
+
+mongo_cc_benchmark(
+    name = "streams_session_window_stress_bm",
+    srcs = [
+        "session_window_stress_bm.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    deps = [
+        "streams_operators",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context_non_d",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/exec/document_value",
+        "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",
     ],
 )

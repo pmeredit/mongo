@@ -3,87 +3,19 @@
 Import("env")
 
 env = env.Clone()
-env.InjectThirdParty(libraries=["librdkafka", "bson", "snappy"])
-
-# TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
-platform_name = "linux_" + env["TARGET_ARCH"]
-if env.ToolchainIs("clang"):
-    # This section force includes third_party/mongocxx as a clang "isystem" include.
-    # We do this to avoid the headers being scanned with clang-tidy, becuase the clang-tidy
-    # HeaderFilterRegex does not support exclusions.
-    # TODO(SERVER-76494): Remove this workaround once clang-tidy support exclusion of header paths
-    env.AppendUnique(
-        CXXFLAGS=(
-            "-isystem",
-            env.Dir("$MONGOCXX_DIR").srcnode().abspath,
-            "-isystem",
-            env.Dir(f"$MONGOCXX_DIR/platform/{platform_name}").srcnode().abspath,
-        )
-    )
-else:
-    env.Append(
-        CPPPATH=[
-            "$MONGOCXX_DIR",
-            f"$MONGOCXX_DIR/platform/{platform_name}",
-        ]
-    )
-
 env.SConscript(must_exist=1, dirs=["tests"], exports=["env"])
 
 env.Benchmark(
     target="streams_operator_dag_bm",
-    source=[
-        "operator_dag_bm.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/auth/authmocks",
-        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
-        "$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util",
-        "$BUILD_DIR/mongo/db/query/query_test_service_context",
-        "$BUILD_DIR/mongo/db/service_context_non_d",
-        "$BUILD_DIR/mongo/db/service_context_test_fixture",
-        "streams_operators",
-        "tests/streams_test_utils",
-    ],
-    SYSLIBDEPS=[
-        "sasl2",
-    ],
+    source=[],
 )
 
 env.Benchmark(
     target="streams_window_operator_bm",
-    source=[
-        "window_operator_bm.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
-        "$BUILD_DIR/mongo/db/service_context_non_d",
-        "$BUILD_DIR/mongo/db/service_context_test_fixture",
-        "streams_operators",
-        "tests/streams_test_utils",
-    ],
-    SYSLIBDEPS=[
-        "sasl2",
-    ],
+    source=[],
 )
-
 
 env.Benchmark(
     target="streams_session_window_stress_bm",
-    source=[
-        "session_window_stress_bm.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/exec/document_value/document_value",
-        "$BUILD_DIR/mongo/db/service_context_non_d",
-        "$BUILD_DIR/mongo/db/service_context_test_fixture",
-        "streams_operators",
-        "tests/streams_test_utils",
-    ],
-    SYSLIBDEPS=[
-        "sasl2",
-    ],
+    source=[],
 )
