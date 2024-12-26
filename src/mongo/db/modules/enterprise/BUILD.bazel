@@ -1,0 +1,13 @@
+load("//bazel/install_rules:install_rules.bzl", "mongo_install")
+
+mongo_install(
+    name = "dist-test",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/audit:mongoauditdecrypt",
+        "//src/mongo/db/modules/enterprise/src/encryptdb:mongodecrypt",
+        "//src/mongo/db/modules/enterprise/src/fle:mongocryptd",
+        "//src/mongo/db/modules/enterprise/src/kerberos:mongokerberos",
+        "//src/mongo/db/modules/enterprise/src/ldap:mongoldap",
+    ],
+    visibility = ["//visibility:public"],
+)
