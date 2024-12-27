@@ -624,7 +624,11 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = [
+        "mongo_unittest_second_group",
+        # Timeout after 300s
+        #"code_coverage_quarantine"
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",

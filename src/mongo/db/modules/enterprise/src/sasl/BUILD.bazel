@@ -263,8 +263,17 @@ mongo_cc_unit_test(
     srcs = [
         "sasl_authentication_session_gssapi_test.cpp",
     ],
+    data = [
+        "//jstests/libs:mock_keytabs",
+        "//jstests/libs:mock_krb5",
+    ],
     has_custom_mainline = True,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = [
+        "mongo_unittest_fourth_group",
+        # System call appears to fail in sandbox
+        "code_coverage_quarantine",
+        "code_coverage_quarantine_SERVER-98845",
+    ],
     target_compatible_with = select({
         "@platforms//os:windows": ["@platforms//:incompatible"],
         "//conditions:default": [],
