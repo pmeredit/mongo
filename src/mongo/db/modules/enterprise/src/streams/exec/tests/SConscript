@@ -81,11 +81,6 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target="processing_time_windows_test",
-    source=[],
-)
-
-env.CppUnitTest(
     target="stream_stats_test",
     source=[],
 )

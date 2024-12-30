@@ -145,13 +145,6 @@ enums:
             Ignore: "ignore"
             Fail: "fail"
 
-    WindowBoundary:
-        type: string
-        description: Window boundary
-        values:
-            processingTime: "processingTime"
-            eventTime: "eventTime"
-
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -536,10 +529,6 @@ structs:
         description: "$tumblingWindow stage options"
         strict: true
         fields:
-            boundary:
-                description: "String representing how window boundaries are determined."
-                type: WindowBoundary
-                default: eventTime
             interval:
                 description: "Defines the size of the window."
                 type: StreamTimeDuration
@@ -565,10 +554,6 @@ structs:
         description: "$hoppingWindow stage options"
         strict: true
         fields:
-            boundary:
-                description: "String representing how window boundaries are determined. Should be one of 'eventTime' and 'processingTime'."
-                type: WindowBoundary
-                default: eventTime
             interval:
                 description: "Defines the size of the window."
                 type: StreamTimeDuration

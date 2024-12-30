@@ -214,11 +214,6 @@ const FeatureFlagDefinition FeatureFlags::kTimeseriesEmitDynamicContentRouting{
     "When set, timeseries $emit allows dynamic db and coll names for content routing",
     mongo::Value(false)};
 
-const FeatureFlagDefinition FeatureFlags::kProcessingTimeWindows{
-    "processingTimeWindows",
-    "Allows support for the processing time windows feature",
-    mongo::Value(false)};
-
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};

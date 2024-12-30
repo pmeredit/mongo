@@ -534,25 +534,6 @@ void configureContextStreamMetaFieldName(Context* context, StringData streamMeta
 Planner::Planner(Context* context, Options options)
     : _context(context), _options(std::move(options)), _nextOperatorId(_options.minOperatorId) {}
 
-mongo::WindowBoundaryEnum Planner::getValidBoundary(auto options) {
-    mongo::WindowBoundaryEnum boundary = options.getBoundary();
-    if (boundary == WindowBoundaryEnum::processingTime) {
-        auto enabled =
-            _context->featureFlags->getFeatureFlagValue(FeatureFlags::kProcessingTimeWindows)
-                .getBool();
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Processing time windows are not supported",
-                enabled && *enabled);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot specify allowed lateness value for a processing time window",
-                !options.getAllowedLateness());
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot specify idle timeout value for a processing time window",
-                !options.getIdleTimeout());
-    }
-    return boundary;
-}
-
 void Planner::appendOperator(std::unique_ptr<Operator> oper) {
     if (!_operators.empty()) {
         _operators.back()->addOutput(oper.get(), 0);
@@ -1219,7 +1200,6 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
             interval.getSize() > 0);
 
     WindowAssigner::Options windowingOptions;
-    windowingOptions.boundary = getValidBoundary(options);
     windowingOptions.size = interval.getSize();
     windowingOptions.sizeUnit = interval.getUnit();
     windowingOptions.slide = interval.getSize();
@@ -1308,7 +1288,6 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
             hopInterval.getSize() > 0);
 
     WindowAssigner::Options windowingOptions;
-    windowingOptions.boundary = getValidBoundary(options);
     windowingOptions.size = windowInterval.getSize();
     windowingOptions.sizeUnit = windowInterval.getUnit();
     windowingOptions.slide = hopInterval.getSize();

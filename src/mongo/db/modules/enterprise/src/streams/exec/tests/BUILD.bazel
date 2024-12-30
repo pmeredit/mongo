@@ -384,25 +384,6 @@ mongo_cc_unit_test(
 )
 
 mongo_cc_unit_test(
-    name = "processing_time_windows_test",
-    srcs = [
-        "processing_time_windows_test.cpp",
-    ],
-    copts = MONGOCXX_COPTS,
-    linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
-    deps = [
-        "streams_test_utils",
-        "//src/mongo:base",
-        "//src/mongo/db:service_context",
-        "//src/mongo/db:service_context_d_test_fixture",
-        "//src/mongo/db:service_context_test_fixture",
-        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
-        "//src/mongo/db/query:query_test_service_context",
-    ],
-)
-
-mongo_cc_unit_test(
     name = "stream_stats_test",
     srcs = [
         "stream_stats_test.cpp",

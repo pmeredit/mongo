@@ -24,7 +24,6 @@ public:
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
         int64_t allowedLatenessMs{0};
         boost::optional<int64_t> idleTimeoutMs;
-        mongo::WindowBoundaryEnum boundary;
     };
 
     WindowAssigner(Options options)
