@@ -251,11 +251,11 @@ mongo_cc_library(
         "ldap_manager_impl",
         "ldap_name_map",
         "ldap_query",
-        "//src/mongo/bson/mutable:mutable_bson",
         "//src/mongo/db:server_base",
         "//src/mongo/db/auth",
         "//src/mongo/db/auth:auth_impl_internal",
         "//src/mongo/db/auth:authserver",
+        "//src/mongo/db/exec/mutable_bson",
         "//src/mongo/util:background_job",
     ],
 )
