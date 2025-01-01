@@ -47,6 +47,7 @@ import {
     startHeartbeatThread,
 } from "jstests/libs/backup_utils.js";
 import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
+import {verifyOplogCapMaintainerThreadNotStarted} from "jstests/libs/oplog_truncation_util.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {findChunksUtil} from "jstests/sharding/libs/find_chunks_util.js";
@@ -871,13 +872,16 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                 allowUnsafeUntimestampedWrites: true,
                 wiredTigerSkipTableLoggingChecksOnStartup: true,
                 wiredTigerSkipTableLoggingChecksDuringValidation: true,
+                skipOplogSampling: true,
             }
         },
                                        isCSRS,
                                        isSelectiveRestore);
         options = _addEncryptOptions(options, encryptOptions);
 
+        clearRawMongoProgramOutput();
         let conn = MongoRunner.runMongod(options);
+        verifyOplogCapMaintainerThreadNotStarted(rawMongoProgramOutput(".*"));
 
         if (!isCSRS || configShard) {
             const collList = conn.getDB(dbName)
@@ -992,12 +996,15 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                     allowUnsafeUntimestampedWrites: true,
                     wiredTigerSkipTableLoggingChecksOnStartup: true,
                     wiredTigerSkipTableLoggingChecksDuringValidation: true,
+                    skipOplogSampling: true,
                 }
             },
                                        isCSRS,
                                        isSelectiveRestore);
             options = _addEncryptOptions(options, encryptOptions);
+            clearRawMongoProgramOutput();
             conn = MongoRunner.runMongod(options);
+            verifyOplogCapMaintainerThreadNotStarted(rawMongoProgramOutput(".*"));
 
             /**
              * PIT-4. Insert the desired oplog entries from the snapshot time until the desired time
