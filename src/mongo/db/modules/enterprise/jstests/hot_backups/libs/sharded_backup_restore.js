@@ -40,6 +40,7 @@ import "jstests/libs/parallelTester.js";
 import {
     copyBackupCursorExtendFiles,
     copyBackupCursorFiles,
+    copyBackupCursorFilesForIncremental,
     extendBackupCursor,
     getBackupCursorMetadata,
     openBackupCursor,
@@ -739,11 +740,8 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup,
                                                    /*async=*/ true,
                                                    fileCopiedCallback);
             } else {
-                copyThread = copyBackupCursorExtendFiles(backupCursors[i],
-                                                         namespacesToSkip,
-                                                         metadata["dbpath"],
-                                                         restorePaths[i],
-                                                         /*async=*/ true);
+                copyThread = copyBackupCursorFilesForIncremental(
+                    backupCursors[i], namespacesToSkip, metadata["dbpath"], restorePaths[i]);
             }
 
             jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " + tojson(metadata));
