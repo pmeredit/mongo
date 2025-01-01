@@ -2,7 +2,7 @@ version: 1.0.0
 filters:
   - "*":
     approvers:
-      - 10gen/server-rss-sydney
+      - 10gen/server-backup-restore
   - "magic_restore*":
     approvers:
       - 10gen/server-replication
