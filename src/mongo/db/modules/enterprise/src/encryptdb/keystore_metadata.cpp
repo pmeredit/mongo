@@ -9,6 +9,7 @@
 #include <fstream>
 
 #include "keystore_metadata.h"
+#include "mongo/bson/bson_validate.h"
 #include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/util/errno_util.h"
 #include "symmetric_crypto.h"
@@ -83,10 +84,12 @@ StatusWith<KeystoreMetadataFile> KeystoreMetadataFile::load(const boost::filesys
     }
 
     decryptedData.resize(outLen);
-    IDLParserContext ctx("ESE keystore metadata");
+
     try {
-        return KeystoreMetadataFileData::parse(
-            ctx, BSONObj(reinterpret_cast<const char*>(decryptedData.data())));
+        auto* dataPtr = reinterpret_cast<const char*>(decryptedData.data());
+        uassertStatusOK(validateBSON(dataPtr, outLen));
+        IDLParserContext ctx("ESE keystore metadata");
+        return KeystoreMetadataFileData::parse(ctx, BSONObj(dataPtr));
     } catch (const DBException& e) {
         return e.toStatus().withContext("Failed to parse keystore metadata file");
     }
