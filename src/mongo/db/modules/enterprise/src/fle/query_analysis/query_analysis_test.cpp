@@ -80,7 +80,7 @@ void verifyBinData(const char* rawBuffer, int length) {
     	    })"));
 }
 
-void assertEncryptedCorrectly(ResolvedEncryptionInfo info,
+void assertEncryptedCorrectly(const ResolvedEncryptionInfo& info,
                               const PlaceHolderResult& response,
                               BSONElement elem,
                               BSONElement orig,
@@ -841,7 +841,7 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholder) {
                                                  Fle2RangeOperator::kGt);
     ASSERT_EQ(expr.firstElementFieldName(), "age"_sd);
 
-    auto idlObj = parseRangePlaceholder(expr.firstElement());
+    auto idlObj = parseFLE2Placeholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -864,7 +864,7 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithInfiniteBounds) {
                                                  -1,
                                                  Fle2RangeOperator::kGt);
 
-    auto idlObj = parseRangePlaceholder(expr.firstElement());
+    auto idlObj = parseFLE2Placeholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -886,7 +886,7 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithNegativeInfiniteBounds) {
                                                  -1,
                                                  Fle2RangeOperator::kGt);
 
-    auto idlObj = parseRangePlaceholder(expr.firstElement());
+    auto idlObj = parseFLE2Placeholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -909,7 +909,7 @@ TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
                                                  -1,
                                                  Fle2RangeOperator::kGt);
 
-    auto idlObj = parseRangePlaceholder(expr.firstElement());
+    auto idlObj = parseFLE2Placeholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -1231,7 +1231,7 @@ TEST_F(RangeInsertTest, BasicInsertMarking) {
                              encryptedElem,
                              doc["age"],
                              EncryptedBinDataType::kFLE2Placeholder);
-    auto placeholder = parseRangePlaceholder(encryptedElem);
+    auto placeholder = parseFLE2Placeholder(encryptedElem);
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                 placeholder.getValue().getElement().Obj());
     ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
@@ -1252,7 +1252,7 @@ TEST_F(RangeInsertTest, BasicInsertMarkingDefaultBounds) {
                              encryptedElem,
                              doc["date"],
                              EncryptedBinDataType::kFLE2Placeholder);
-    auto placeholder = parseRangePlaceholder(encryptedElem);
+    auto placeholder = parseFLE2Placeholder(encryptedElem);
     ASSERT(placeholder.getSparsity().has_value());
     ASSERT_EQ(placeholder.getSparsity().value(), 1);
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
@@ -1275,7 +1275,7 @@ TEST_F(RangeInsertTest, NestedInsertMarking) {
                              encryptedElem,
                              doc["user"]["age"],
                              EncryptedBinDataType::kFLE2Placeholder);
-    auto placeholder = parseRangePlaceholder(encryptedElem);
+    auto placeholder = parseFLE2Placeholder(encryptedElem);
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                 placeholder.getValue().getElement().Obj());
     ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["user"]["age"].Int());
@@ -1297,7 +1297,7 @@ TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
                                  encryptedElem,
                                  doc["age"],
                                  EncryptedBinDataType::kFLE2Placeholder);
-        auto placeholder = parseRangePlaceholder(encryptedElem);
+        auto placeholder = parseFLE2Placeholder(encryptedElem);
         auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                     placeholder.getValue().getElement().Obj());
         ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
@@ -1316,5 +1316,238 @@ TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
                                  EncryptedBinDataType::kFLE2Placeholder);
     }
 }
+
+class TextSearchPlaceholderTest : public FLE2TestFixture {
+protected:
+    BSONObj makeSerializedPlaceholder(Fle2PlaceholderType type,
+                                      const FLE2TextSearchInsertSpec& spec,
+                                      bool setSparsity = false) {
+        auto backingBSON = BSON("" << spec.toBSON());
+        FLE2EncryptionPlaceholder pl(type,
+                                     Fle2AlgorithmInt::kTextSearch,
+                                     UUID::fromCDR(uuidBytes),
+                                     UUID::fromCDR(uuidBytes),
+                                     IDLAnyType(backingBSON.firstElement()),
+                                     1 /*cm*/);
+        if (setSparsity) {
+            pl.setSparsity(2);
+        }
+        return serializeFle2Placeholder("textField", pl);
+    }
+};
+
+TEST_F(TextSearchPlaceholderTest, RoundtripPlaceholder) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSuffixSpec(FLE2SuffixInsertSpec(10, 1));
+    spec.setPrefixSpec(FLE2PrefixInsertSpec(20, 2));
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(300, 30, 3));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+
+    auto parsedPlaceholder = parseFLE2Placeholder(serialized.firstElement());
+    auto parsedSpec = FLE2TextSearchInsertSpec::parse(
+        IDLParserContext("text"), parsedPlaceholder.getValue().getElement().Obj());
+
+    ASSERT_TRUE(parsedSpec.getSubstringSpec());
+    ASSERT_TRUE(parsedSpec.getSuffixSpec());
+    ASSERT_TRUE(parsedSpec.getPrefixSpec());
+    ASSERT_FALSE(parsedSpec.getCaseFold());
+    ASSERT_TRUE(parsedSpec.getDiacriticFold());
+
+    auto& suffixSpec = parsedSpec.getSuffixSpec().value();
+    ASSERT_EQ(suffixSpec.getMaxQueryLength(), 10);
+    ASSERT_EQ(suffixSpec.getMinQueryLength(), 1);
+    auto& prefixSpec = parsedSpec.getPrefixSpec().value();
+    ASSERT_EQ(prefixSpec.getMaxQueryLength(), 20);
+    ASSERT_EQ(prefixSpec.getMinQueryLength(), 2);
+    auto& substrSpec = parsedSpec.getSubstringSpec().value();
+    ASSERT_EQ(substrSpec.getMaxLength(), 300);
+    ASSERT_EQ(substrSpec.getMaxQueryLength(), 30);
+    ASSERT_EQ(substrSpec.getMinQueryLength(), 3);
+}
+
+TEST_F(TextSearchPlaceholderTest, FindPlaceholderNotYetSupported) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(100, 10, 1));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kFind, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783506);
+}
+
+TEST_F(TextSearchPlaceholderTest, ScalarAsValueParseFails) {
+    auto elt = BSON("" << 6);
+    FLE2EncryptionPlaceholder pl(Fle2PlaceholderType::kInsert,
+                                 Fle2AlgorithmInt::kTextSearch,
+                                 UUID::fromCDR(uuidBytes),
+                                 UUID::fromCDR(uuidBytes),
+                                 IDLAnyType(elt.firstElement()),
+                                 1);
+    auto serialized = serializeFle2Placeholder("textField", pl);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783505);
+}
+
+TEST_F(TextSearchPlaceholderTest, TextPlaceholderHasSparsity) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(100, 10, 1));
+    auto serialized =
+        makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec, true /*setSparsity*/);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 6832500);
+}
+
+TEST_F(TextSearchPlaceholderTest, MissingSubspec) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    auto serialized =
+        makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec, true /*setSparsity*/);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783500);
+}
+
+TEST_F(TextSearchPlaceholderTest, SubstringSpecUpperBoundLessThanLowerBound) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(100, 1 /*ub*/, 10 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783501);
+}
+
+TEST_F(TextSearchPlaceholderTest, SubstringSpecUpperBoundGreaterThanMaxLen) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(10 /*mlen*/, 100 /*ub*/, 1 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783502);
+}
+
+TEST_F(TextSearchPlaceholderTest, SuffixSpecUpperBoundLessThanLowerBound) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSuffixSpec(FLE2SuffixInsertSpec(1 /*ub*/, 10 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783503);
+}
+
+TEST_F(TextSearchPlaceholderTest, PrefixSpecUpperBoundLessThanLowerBound) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setPrefixSpec(FLE2PrefixInsertSpec(1 /*ub*/, 10 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783504);
+}
+
+using TextSearchInsertTest = FLE2TestFixture;
+
+void assertTextSearchPlaceholderIsValid(const ResolvedEncryptionInfo& metadata,
+                                        const FLE2EncryptionPlaceholder& placeholder,
+                                        Fle2PlaceholderType expectedPlaceholderType,
+                                        StringData expectedValue) {
+    auto& firstQueryTypeCfg = metadata.fle2SupportedQueries.get().front();
+
+    ASSERT_EQ(expectedPlaceholderType, placeholder.getType());
+    ASSERT_EQ(Fle2AlgorithmInt::kTextSearch, placeholder.getAlgorithm());
+    ASSERT_EQ(metadata.keyId.uuids()[0], placeholder.getIndexKeyId());
+    ASSERT_EQ(placeholder.getIndexKeyId(), placeholder.getUserKeyId());
+    ASSERT_EQ(placeholder.getMaxContentionCounter(), firstQueryTypeCfg.getContention());
+    auto insertSpec = FLE2TextSearchInsertSpec::parse(IDLParserContext("spec"),
+                                                      placeholder.getValue().getElement().Obj());
+    ASSERT_EQ(insertSpec.getValue(), expectedValue);
+    ASSERT_EQ(insertSpec.getCaseFold(), !firstQueryTypeCfg.getCaseSensitive().value());
+    ASSERT_EQ(insertSpec.getDiacriticFold(), !firstQueryTypeCfg.getDiacriticSensitive().value());
+
+    // If there are 2 configs, then set this to the second one, otherwise let it be identical to
+    // the first just to simplify the three assertions below.
+    auto& secondQueryTypeCfg = (metadata.fle2SupportedQueries.get().size() > 1)
+        ? metadata.fle2SupportedQueries.get().at(1)
+        : firstQueryTypeCfg;
+    ASSERT_EQ(insertSpec.getSubstringSpec().has_value(),
+              firstQueryTypeCfg.getQueryType() == QueryTypeEnum::SubstringPreview &&
+                  secondQueryTypeCfg.getQueryType() == QueryTypeEnum::SubstringPreview);
+    ASSERT_EQ(insertSpec.getSuffixSpec().has_value(),
+              firstQueryTypeCfg.getQueryType() == QueryTypeEnum::SuffixPreview ||
+                  secondQueryTypeCfg.getQueryType() == QueryTypeEnum::SuffixPreview);
+    ASSERT_EQ(insertSpec.getPrefixSpec().has_value(),
+              firstQueryTypeCfg.getQueryType() == QueryTypeEnum::PrefixPreview ||
+                  secondQueryTypeCfg.getQueryType() == QueryTypeEnum::PrefixPreview);
+
+    for (auto& qtc : metadata.fle2SupportedQueries.get()) {
+        if (qtc.getQueryType() == QueryTypeEnum::SubstringPreview) {
+            auto& subspec = insertSpec.getSubstringSpec().value();
+            ASSERT_EQ(subspec.getMaxLength(), qtc.getStrMaxLength());
+            ASSERT_EQ(subspec.getMaxQueryLength(), qtc.getStrMaxQueryLength());
+            ASSERT_EQ(subspec.getMinQueryLength(), qtc.getStrMinQueryLength());
+        }
+        if (qtc.getQueryType() == QueryTypeEnum::SuffixPreview) {
+            auto& subspec = insertSpec.getSuffixSpec().value();
+            ASSERT_EQ(subspec.getMaxQueryLength(), qtc.getStrMaxQueryLength());
+            ASSERT_EQ(subspec.getMinQueryLength(), qtc.getStrMinQueryLength());
+        }
+        if (qtc.getQueryType() == QueryTypeEnum::PrefixPreview) {
+            auto& subspec = insertSpec.getPrefixSpec().value();
+            ASSERT_EQ(subspec.getMaxQueryLength(), qtc.getStrMaxQueryLength());
+            ASSERT_EQ(subspec.getMinQueryLength(), qtc.getStrMinQueryLength());
+        }
+    }
+}
+
+TEST_F(TextSearchInsertTest, BasicInsertMarking) {
+    auto schemaTree = buildSchema(kTextFields);
+    auto substrMetadata =
+        schemaTree->getEncryptionMetadataForPath(FieldRef{"substringField"}).get();
+    auto suffixMetadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"suffixField"}).get();
+    auto prefixMetadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"prefixField"}).get();
+    auto comboMetadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"comboField"}).get();
+    auto doc = BSON("substringField"
+                    << "romanes eunt domus"
+                    << "suffixField"
+                    << "romani ite domum"
+                    << "prefixField"
+                    << "romans go home"
+                    << "comboField"
+                    << "people called romanes they go the house?");
+
+    auto replaceRes = replaceEncryptedFields(
+        doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
+    BSONElement substrElem = replaceRes.result["substringField"];
+    BSONElement suffixElem = replaceRes.result["suffixField"];
+    BSONElement prefixElem = replaceRes.result["prefixField"];
+    BSONElement comboElem = replaceRes.result["comboField"];
+    assertEncryptedCorrectly(substrMetadata,
+                             replaceRes,
+                             substrElem,
+                             doc["substringField"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    assertEncryptedCorrectly(suffixMetadata,
+                             replaceRes,
+                             suffixElem,
+                             doc["suffixField"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    assertEncryptedCorrectly(prefixMetadata,
+                             replaceRes,
+                             prefixElem,
+                             doc["prefixField"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    assertEncryptedCorrectly(comboMetadata,
+                             replaceRes,
+                             comboElem,
+                             doc["comboField"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    assertTextSearchPlaceholderIsValid(substrMetadata,
+                                       parseFLE2Placeholder(substrElem),
+                                       Fle2PlaceholderType::kInsert,
+                                       doc["substringField"].String());
+    assertTextSearchPlaceholderIsValid(suffixMetadata,
+                                       parseFLE2Placeholder(suffixElem),
+                                       Fle2PlaceholderType::kInsert,
+                                       doc["suffixField"].String());
+    assertTextSearchPlaceholderIsValid(prefixMetadata,
+                                       parseFLE2Placeholder(prefixElem),
+                                       Fle2PlaceholderType::kInsert,
+                                       doc["prefixField"].String());
+    assertTextSearchPlaceholderIsValid(comboMetadata,
+                                       parseFLE2Placeholder(comboElem),
+                                       Fle2PlaceholderType::kInsert,
+                                       doc["comboField"].String());
+}
+
 }  // namespace
 }  // namespace mongo::query_analysis

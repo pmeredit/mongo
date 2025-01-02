@@ -4225,6 +4225,110 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDecimal128Defaults) {
                               1);
 }
 
+// This test asserts that EncryptionSchemaTreeNode::parseEncryptedFieldConfig() calls
+// into the  IDL validators in encryption_fields_validation.h. See the unit tests in
+// encryption_fields_validation_test.cpp for more comprehensive test cases.
+TEST_F(EncryptionSchemaTreeTest, Fle2TextBadQueryTypeConfigs) {
+    BSONObj missingRequiredField = fromjson(R"({
+            "fields": [{
+                    "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                    "path": "a",
+                    "bsonType": "string",
+                    "queries": [
+                        {"queryType": "substringPreview", "strMinQueryLength": {$numberInt: "2"},
+                            "strMaxQueryLength": {$numberInt: "200"}, "caseSensitive": false,
+                            "diacriticSensitive": true}
+                    ]
+                }]
+           }
+    )");
+    BSONObj caseSensitiveMismatch = fromjson(R"({
+            "fields": [{
+                    "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                    "path": "a",
+                    "bsonType": "string",
+                    "queries": [
+                        {"queryType": "suffixPreview", "strMinQueryLength": {$numberInt: "2"},
+                            "strMaxQueryLength": {$numberInt: "200"}, "caseSensitive": false,
+                            "diacriticSensitive": true},
+                        {"queryType": "prefixPreview", "strMinQueryLength": {$numberInt: "2"},
+                            "strMaxQueryLength": {$numberInt: "200"}, "caseSensitive": true,
+                            "diacriticSensitive": true}
+                    ]
+                }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(missingRequiredField),
+                       AssertionException,
+                       9783407);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(caseSensitiveMismatch),
+                       AssertionException,
+                       9783409);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2TextValidQueryTypeConfigs) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.a",
+                       "bsonType": "string",
+                       "queries": [
+                            {"queryType": "substringPreview",
+                             "strMaxLength": 100, "strMinQueryLength": 1, "strMaxQueryLength": 10,
+                             "caseSensitive": true, "diacriticSensitive": false}
+                        ]},
+                        {
+                       "keyId": {$binary: "dkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.b",
+                       "bsonType": "string",
+                       "queries": [
+                            {"queryType": "suffixPreview",
+                             "strMinQueryLength": 1, "strMaxQueryLength": 100,
+                             "caseSensitive": false, "diacriticSensitive": true},
+                            {"queryType": "prefixPreview",
+                             "strMinQueryLength": 2, "strMaxQueryLength": 200,
+                             "caseSensitive": false, "diacriticSensitive": true}
+                        ]}
+                   ]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBA = nodeB->getNode(FieldRef{"a"});
+    auto leafBB = nodeB->getNode(FieldRef{"b"});
+    auto metadataBA = leafBA->getEncryptionMetadata();
+    auto metadataBB = leafBB->getEncryptionMetadata();
+    ASSERT(metadataBA->algorithmIs(Fle2AlgorithmInt::kTextSearch));
+    ASSERT(metadataBB->algorithmIs(Fle2AlgorithmInt::kTextSearch));
+    ASSERT(metadataBA->bsonTypeSet == MatcherTypeSet(BSONType::String));
+    ASSERT(metadataBB->bsonTypeSet == MatcherTypeSet(BSONType::String));
+    ASSERT_EQ(1, metadataBA->fle2SupportedQueries.value().size());
+    ASSERT_EQ(2, metadataBB->fle2SupportedQueries.value().size());
+    auto& qtcBA = metadataBA->fle2SupportedQueries.value().front();
+    auto& qtcBBSuffix = metadataBB->fle2SupportedQueries.value().at(0);
+    auto& qtcBBPrefix = metadataBB->fle2SupportedQueries.value().at(1);
+
+    ASSERT_EQ(qtcBA.getQueryType(), QueryTypeEnum::SubstringPreview);
+    ASSERT_EQ(qtcBBSuffix.getQueryType(), QueryTypeEnum::SuffixPreview);
+    ASSERT_EQ(qtcBBPrefix.getQueryType(), QueryTypeEnum::PrefixPreview);
+
+    ASSERT_EQ(qtcBA.getStrMaxLength().value(), 100);
+    ASSERT_EQ(qtcBA.getStrMinQueryLength().value(), 1);
+    ASSERT_EQ(qtcBA.getStrMaxQueryLength().value(), 10);
+    ASSERT_EQ(qtcBA.getCaseSensitive().value(), true);
+    ASSERT_EQ(qtcBA.getDiacriticSensitive().value(), false);
+    ASSERT_EQ(qtcBBSuffix.getStrMinQueryLength().value(), 1);
+    ASSERT_EQ(qtcBBSuffix.getStrMaxQueryLength().value(), 100);
+    ASSERT_EQ(qtcBBSuffix.getCaseSensitive().value(), false);
+    ASSERT_EQ(qtcBBSuffix.getDiacriticSensitive().value(), true);
+    ASSERT_EQ(qtcBBPrefix.getStrMinQueryLength().value(), 2);
+    ASSERT_EQ(qtcBBPrefix.getStrMaxQueryLength().value(), 200);
+    ASSERT_EQ(qtcBBPrefix.getCaseSensitive().value(), false);
+    ASSERT_EQ(qtcBBPrefix.getDiacriticSensitive().value(), true);
+}
+
 TEST_F(EncryptionSchemaTreeTest, QueryAnalysisParams_MultiSchemaAssertConstraints) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest("testdb.coll_a");
 

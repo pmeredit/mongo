@@ -32,6 +32,8 @@ protected:
     BSONObj kNestedAge;
     // Encrypted date field with default-bounded range index
     BSONObj kDateFields;
+    // Encrypted fields substring, suffix, and prefix index.
+    BSONObj kTextFields;
 
     BSONObj limitsBackingBSON;
     BSONElement kMaxDouble;
@@ -257,7 +259,7 @@ protected:
         return EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
     }
 
-    FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt) {
+    FLE2EncryptionPlaceholder parseFLE2Placeholder(BSONElement elt) {
         auto cdr = binDataToCDR(elt);
         auto [encryptedType, subCdr] = fromEncryptedConstDataRange(cdr);
         tassert(6720203,

@@ -500,8 +500,8 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelLte) {
     auto expected = BSON("age" << BSON("$lte" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
-    auto actualPlaceholder = parseRangePlaceholder(actual["age"]["$lte"]);
-    auto expectedPlaceholder = parseRangePlaceholder(expected["age"]["$lte"]);
+    auto actualPlaceholder = parseFLE2Placeholder(actual["age"]["$lte"]);
+    auto expectedPlaceholder = parseFLE2Placeholder(expected["age"]["$lte"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -518,8 +518,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderAnd) {
         BSON("$and" << BSON_ARRAY(BSON("age" << BSON("$gte" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
-    auto actualPlaceholder = parseRangePlaceholder(actual["$and"]["0"]["age"]["$gte"]);
-    auto expectedPlaceholder = parseRangePlaceholder(expected["$and"]["0"]["age"]["$gte"]);
+    auto actualPlaceholder = parseFLE2Placeholder(actual["$and"]["0"]["age"]["$gte"]);
+    auto expectedPlaceholder = parseFLE2Placeholder(expected["$and"]["0"]["age"]["$gte"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -627,8 +627,8 @@ TEST_F(FLE2MatchExpressionRangeTest, ExplicitTopLevelClosedRange) {
         BSON("age" << BSON("$gte" << marking.firstElement() << "$lte" << stub.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
-    auto actualPlaceholder = parseRangePlaceholder(actual["$and"]["0"]["age"]["$gte"]);
-    auto expectedPlaceholder = parseRangePlaceholder(expected["age"]["$gte"]);
+    auto actualPlaceholder = parseFLE2Placeholder(actual["$and"]["0"]["age"]["$gte"]);
+    auto expectedPlaceholder = parseFLE2Placeholder(expected["age"]["$gte"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, normalizeMatchExpression(expected));
@@ -724,9 +724,9 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithTwoRangePredicates) 
     auto actual = markMatchExpression(kAgeAndSalaryFields, match);
 
     auto actualPlaceholder =
-        parseRangePlaceholder(actual["$and"]["1"]["$and"]["0"]["salary"]["$gte"]);
+        parseFLE2Placeholder(actual["$and"]["1"]["$and"]["0"]["salary"]["$gte"]);
     auto expectedPlaceholder =
-        parseRangePlaceholder(expected["$and"]["1"]["$and"]["0"]["salary"]["$gte"]);
+        parseFLE2Placeholder(expected["$and"]["1"]["$and"]["0"]["salary"]["$gte"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);

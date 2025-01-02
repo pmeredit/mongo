@@ -1182,22 +1182,50 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 return placeholder;
             }
             case Fle2AlgorithmInt::kTextSearch: {
-                // At this point, there may be multiple query type configs, but all of them
-                // must be text search query types.
+                auto q = metadata.fle2SupportedQueries.value()[0];
+                tassert(9783507,
+                        "Encrypted text search query type must specify case sensitivity",
+                        q.getCaseSensitive().has_value());
+                tassert(9783508,
+                        "Encrypted text search query type must specify diacritic sensitivity",
+                        q.getDiacriticSensitive().has_value());
+                bool caseFold = !q.getCaseSensitive().value();
+                bool diacriticFold = !q.getDiacriticSensitive().value();
+                FLE2TextSearchInsertSpec spec(elem.String(), caseFold, diacriticFold);
+
                 for (auto& qtc : metadata.fle2SupportedQueries.value()) {
-                    auto qtype = qtc.getQueryType();
-                    invariant(qtype == QueryTypeEnum::SubstringPreview ||
-                              qtype == QueryTypeEnum::SuffixPreview ||
-                              qtype == QueryTypeEnum::PrefixPreview);
+                    switch (qtc.getQueryType()) {
+                        case QueryTypeEnum::SubstringPreview: {
+                            auto mlen = qtc.getStrMaxLength().value();
+                            auto lb = qtc.getStrMinQueryLength().value();
+                            auto ub = qtc.getStrMaxQueryLength().value();
+                            spec.setSubstringSpec(FLE2SubstringInsertSpec(mlen, ub, lb));
+                            break;
+                        }
+                        case QueryTypeEnum::SuffixPreview: {
+                            auto lb = qtc.getStrMinQueryLength().value();
+                            auto ub = qtc.getStrMaxQueryLength().value();
+                            spec.setSuffixSpec(FLE2SuffixInsertSpec(ub, lb));
+                            break;
+                        }
+                        case QueryTypeEnum::PrefixPreview: {
+                            auto lb = qtc.getStrMinQueryLength().value();
+                            auto ub = qtc.getStrMaxQueryLength().value();
+                            spec.setPrefixSpec(FLE2PrefixInsertSpec(ub, lb));
+                            break;
+                        }
+                        default:
+                            MONGO_UNREACHABLE;
+                    }
                 }
-                // TODO: SERVER-97835 implement FLE2TextSearchInsertSpec
-                auto placeholder = FLE2EncryptionPlaceholder(placeholderType,
-                                                             algorithm,
-                                                             ki /*indexKeyId*/,
-                                                             ki /*userKeyId*/,
-                                                             IDLAnyType(elem),
-                                                             cm);
-                return placeholder;
+                // Ensure that the serialized spec lives until the end of the enclosing scope.
+                backingBSON = BSON("" << spec.toBSON());
+                return FLE2EncryptionPlaceholder(placeholderType,
+                                                 algorithm,
+                                                 ki /*indexKeyId*/,
+                                                 ki /*userKeyId*/,
+                                                 IDLAnyType(backingBSON.firstElement()),
+                                                 cm);
             }
             case Fle2AlgorithmInt::kEquality:
             case Fle2AlgorithmInt::kUnindexed:

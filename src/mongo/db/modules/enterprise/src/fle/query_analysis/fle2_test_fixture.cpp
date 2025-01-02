@@ -105,6 +105,68 @@ void FLE2TestFixture::setUp() {
                 ]
             }
         )");
+    kTextFields = fromjson(R"(
+        {
+            "fields": [
+                {
+                    "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                    "path": "substringField",
+                    "bsonType": "string",
+                    "queries": {
+                        "queryType": "substringPreview",
+                        "strMaxLength": 100,
+                        "strMinQueryLength": 1,
+                        "strMaxQueryLength": 100,
+                        "caseSensitive": false,
+                        "diacriticSensitive": false
+                    }
+                },
+                {
+                    "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                    "path": "suffixField",
+                    "bsonType": "string",
+                    "queries": {
+                        "queryType": "suffixPreview",
+                        "strMinQueryLength": 2,
+                        "strMaxQueryLength": 20,
+                        "caseSensitive": true,
+                        "diacriticSensitive": false
+                    }
+                },
+                {
+                    "keyId": {'$binary': "CSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                    "path": "prefixField",
+                    "bsonType": "string",
+                    "queries": {
+                        "queryType": "prefixPreview",
+                        "strMinQueryLength": 2,
+                        "strMaxQueryLength": 20,
+                        "caseSensitive": false,
+                        "diacriticSensitive": true
+                    }
+                },
+                {
+                    "keyId": {'$binary': "DSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                    "path": "comboField",
+                    "bsonType": "string",
+                    "queries": [{
+                        "queryType": "prefixPreview",
+                        "strMinQueryLength": 2,
+                        "strMaxQueryLength": 20,
+                        "caseSensitive": false,
+                        "diacriticSensitive": true
+                    },
+                    {
+                        "queryType": "suffixPreview",
+                        "strMinQueryLength": 2,
+                        "strMaxQueryLength": 20,
+                        "caseSensitive": false,
+                        "diacriticSensitive": true
+                    }]
+                }
+            ]
+        }
+    )");
 
     limitsBackingBSON = BSON("minDouble" << -std::numeric_limits<double>::infinity() << "maxDouble"
                                          << std::numeric_limits<double>::infinity());
