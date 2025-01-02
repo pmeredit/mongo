@@ -114,6 +114,10 @@ Status _doSmokeTestAESCipherMode(const aesTest& test) {
     std::uint8_t outputBuffer[outputBufferSize];
     std::size_t resultLen;
 
+    // Initialize buffers.
+    memset(pt, 0, kMaxPTSize);
+    memset(outputBuffer, 0, outputBufferSize);
+
     SymmetricKeyId keyId("test", kKeyIdForTest);
     SymmetricKey key(test.key, test.keySize, crypto::aesAlgorithm, keyId, 0);
 
