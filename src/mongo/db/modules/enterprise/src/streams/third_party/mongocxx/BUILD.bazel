@@ -216,6 +216,7 @@ mongo_cc_library(
         "-Wno-pessimizing-move",
         "-Wno-uninitialized",
     ],
+    features = ["-pessimizing_move_warning"],
     local_defines = MONGOCXX_LOCAL_DEFINES,
     target_compatible_with = MONGOCXX_TARGET_COMPATIBILITY,
     deps = [
