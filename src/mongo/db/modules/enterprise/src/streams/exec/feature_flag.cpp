@@ -245,6 +245,12 @@ const FeatureFlagDefinition FeatureFlags::kCidrDenyList{
     "A list of CIDR strings that should not be addressable by the $https operator.",
     defaultCidrDenyListValue()};
 
+const FeatureFlagDefinition FeatureFlags::kEnableMongoCxxMonitoring{
+    "enableMongoCxxMonitor",
+    "If true, monitoring will be enabled on the mongodb driver",
+    mongo::Value(false),
+    {}};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -263,7 +269,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kHttpsRateLimitPerSecond.name, FeatureFlags::kHttpsRateLimitPerSecond},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
     {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},
-    {FeatureFlags::kCidrDenyList.name, FeatureFlags::kCidrDenyList}};
+    {FeatureFlags::kCidrDenyList.name, FeatureFlags::kCidrDenyList},
+    {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);

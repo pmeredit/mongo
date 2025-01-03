@@ -790,7 +790,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
     configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
-    MongoCxxClientOptions clientOptions(atlasOptions);
+    MongoCxxClientOptions clientOptions(atlasOptions, _context);
     clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
 
     auto db = options.getDb();
@@ -968,7 +968,7 @@ void Planner::planMergeSink(const BSONObj& spec) {
                                   .ns(NamespaceString(DatabaseName::kLocal))
                                   .build();
 
-    MongoCxxClientOptions clientOptions(atlasOptions);
+    MongoCxxClientOptions clientOptions(atlasOptions, _context);
     clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
     mergeExpressionCtx->setMongoProcessInterface(
         std::make_shared<MongoDBProcessInterface>(clientOptions));
@@ -1116,7 +1116,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
             auto atlasOptions = AtlasConnectionOptions::parse(
                 IDLParserContext("AtlasConnectionOptions"), connection.getOptions());
 
-            MongoCxxClientOptions options(atlasOptions);
+            MongoCxxClientOptions options(atlasOptions, _context);
             options.svcCtx = _context->opCtx->getServiceContext();
 
             const bool dynamicContentRoutingFeatureFlag =
@@ -1493,7 +1493,7 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
         auto atlasOptions = AtlasConnectionOptions::parse(
             IDLParserContext("AtlasConnectionOptions"), connection.getOptions());
 
-        MongoCxxClientOptions clientOptions(atlasOptions);
+        MongoCxxClientOptions clientOptions(atlasOptions, _context);
         clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
         auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
 

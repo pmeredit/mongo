@@ -55,7 +55,15 @@ mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
     return mongocxxInstance.get();
 }
 
-MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions) {
+bool isMonitoringEnabled(const Context* const context) {
+    const auto enabled =
+        context->featureFlags->getFeatureFlagValue(FeatureFlags::kEnableMongoCxxMonitoring)
+            .getBool();
+    return enabled && *enabled;
+}
+
+MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions,
+                                             const Context* const context) {
     uri = atlasOptions.getUri().toString();
 
     if (auto pemFileOption = atlasOptions.getPemFile()) {
@@ -70,6 +78,49 @@ MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions
         uassert(ErrorCodes::InternalError,
                 "Must specify 'pemFile' when 'caFile' is specified",
                 !pemFile.empty());
+    }
+
+    tassert(9747500, "Feature flags should be set", context->featureFlags);
+
+    if (isMonitoringEnabled(context)) {
+        apmOptions =
+            mongocxx::options::apm()
+                .on_heartbeat_failed(
+                    [context](const mongocxx::events::heartbeat_failed_event& event) {
+                        LOGV2_INFO(9747501,
+                                   "mongocxx heartbeat failed",
+                                   "host"_attr = event.host(),
+                                   "port"_attr = event.port(),
+                                   "error"_attr = event.message(),
+                                   "context"_attr = context->toBSON());
+                    })
+                .on_server_changed([context](const mongocxx::events::server_changed_event& event) {
+                    LOGV2_INFO(9747502,
+                               "mongocxx server changed",
+                               "host"_attr = event.host(),
+                               "port"_attr = event.port(),
+                               "topologyId"_attr = event.topology_id().to_string(),
+                               "newServerType"_attr = event.new_description().type(),
+                               "prevServerType"_attr = event.previous_description().type(),
+                               "context"_attr = context->toBSON());
+                })
+                .on_server_closed([context](const mongocxx::events::server_closed_event& event) {
+                    LOGV2_INFO(9747503,
+                               "mongocxx server closed",
+                               "host"_attr = event.host(),
+                               "port"_attr = event.port(),
+                               "topologyId"_attr = event.topology_id().to_string(),
+                               "context"_attr = context->toBSON());
+                })
+                .on_topology_changed(
+                    [context](const mongocxx::events::topology_changed_event& event) {
+                        LOGV2_INFO(9747504,
+                                   "mongocxx cluster topology changed",
+                                   "topologyId"_attr = event.topology_id().to_string(),
+                                   "newTopologyType"_attr = event.new_description().type(),
+                                   "prevTopologyType"_attr = event.previous_description().type(),
+                                   "context"_attr = context->toBSON());
+                    });
     }
 }
 
@@ -88,6 +139,11 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
 
         clientOptions.tls_opts(tlsOptions);
     }
+
+    if (apmOptions) {
+        clientOptions.apm_opts(*apmOptions);
+    }
+
     return clientOptions;
 }
 

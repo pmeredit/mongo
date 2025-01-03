@@ -78,7 +78,7 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);
         auto connectionOptions =
             AtlasConnectionOptions::parse(IDLParserContext("dlq"), connection.getOptions());
-        MongoCxxClientOptions options(connectionOptions);
+        MongoCxxClientOptions options(connectionOptions, context);
         options.svcCtx = svcCtx;
         options.database = startOptions.getDlq()->getDb().toString();
         options.collection = startOptions.getDlq()->getColl().toString();

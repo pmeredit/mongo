@@ -10,6 +10,7 @@
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/operation_exception.hpp>
 #include <mongocxx/instance.hpp>
+#include <mongocxx/options/apm.hpp>
 
 #include "mongo/bson/bsonobj.h"
 #include "streams/exec/stages_gen.h"
@@ -39,7 +40,8 @@ static const std::string kWriteErrorsFieldName =
  */
 struct MongoCxxClientOptions {
     MongoCxxClientOptions() = default;
-    MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions);
+    MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions,
+                          const Context* context);
 
     // Utility which produces options for the cxx driver.
     mongocxx::options::client toMongoCxxClientOptions() const;
@@ -51,6 +53,8 @@ struct MongoCxxClientOptions {
     std::string pemFile;
     std::string caFile;
     std::vector<std::string> collectionList;
+
+    boost::optional<mongocxx::options::apm> apmOptions;
 };
 
 // There should only be 1 mongocxx::instance object per process.
