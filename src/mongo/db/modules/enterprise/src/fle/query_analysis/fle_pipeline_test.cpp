@@ -674,5 +674,60 @@ TEST_F(FLEPipelineTest, PropagateSchemaForLookupCsfleEncryptionSchemas) {
     }
 }
 
+TEST_F(FLEPipelineTest, PropagateSchemaForGraphLookupCsfleEncryptionSchemasFails) {
+    RAIIServerParameterControllerForTest controller("featureFlagLookupEncryptionSchemasFLE", true);
+
+    const auto cmdObj = fromjson(R"({
+               "csfleEncryptionSchemas": { 
+                    "testdb.coll_a": {
+                        "jsonSchema": { 
+                                type: "object",
+                                properties: {
+                                    a: {
+                                        encrypt: {
+                                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                        }
+                                    }
+                                }
+                        },
+                        "isRemoteSchema": false },
+                   "testdb.coll_b": {
+                        "jsonSchema": { 
+                                type: "object",
+                                properties: {
+                                    b: {
+                                        encrypt: {
+                                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                        }
+                                    }
+                                }
+                        },
+                        "isRemoteSchema": false }
+                }
+           }
+    )");
+    auto nsA = getExpCtx()->getNamespaceString();
+    auto nsB = NamespaceString::createNamespaceString_forTest("testdb.coll_b");
+    getExpCtx()->setResolvedNamespaces({{nsA.coll().toString(), {nsA, std::vector<BSONObj>{}}},
+                                        {nsB.coll().toString(), {nsB, std::vector<BSONObj>{}}}});
+
+
+    auto graphLookupSpec = fromjson(R"({
+                    $graphLookup: {
+                        from: 'coll_b',
+                        as: 'reportingHierarchy',
+                        connectToField: 'name',
+                        connectFromField: 'reportsTo', startWith: '$reportsTo'
+                    }
+                })");
+    {
+        ASSERT_THROWS_CODE(getSchemaForStageMultiSchema({graphLookupSpec}, nsA, cmdObj),
+                           AssertionException,
+                           9894800);
+    }
+}
+
 }  // namespace
 }  // namespace mongo

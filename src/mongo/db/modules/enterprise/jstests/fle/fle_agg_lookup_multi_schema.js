@@ -1753,7 +1753,71 @@ encrypted field in subsequent stages works, has placeholders marked.",
             assert(cmdRes.result.pipeline[2].$match["docs.inner_docs.l_enc_sku"].$eq instanceof BinData,
                 cmdRes);
         }
-    } // 65
+    }, // 65
+    {
+        description:
+            "Test for $graphLookup in a $lookup multiple collections.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [{
+                    $lookup: {
+                        from: foreignColl.getName(), 
+                        as: "docs",
+                        localField: "foo",
+                        foreignField: "r_foo", 
+                        pipeline: [
+                            {
+                                $graphLookup: {
+                                        from: foreignColl.getName(),
+                                        as: "reportingHierarchy",
+                                        connectToField: "name",
+                                        connectFromField: "reportsTo",
+                                        startWith: "$reportsTo"
+                                    }
+                            }
+                        ]
+                    }}
+        ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            return {hasEncryptionPlaceholders: false, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true
+    }, // 66
+    {
+        description:
+            "Test for $graphLookup over multiple collections. The feature flag for $lookup support removes an important check which $graphLookup relies on to block foreign graphlookups.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [{
+                    $lookup: {
+                        from: coll.getName(), 
+                        as: "docs",
+                        localField: "foo",
+                        foreignField: "r_foo", 
+                        pipeline: [
+                            {
+                                $graphLookup: {
+                                        from: foreignColl.getName(),
+                                        as: "reportingHierarchy",
+                                        connectToField: "name",
+                                        connectFromField: "reportsTo",
+                                        startWith: "$reportsTo"
+                                    }
+                            }
+                        ]
+                    }}
+        ],
+            cursor: {}
+        },
+        schemas: twoEncryptedCollEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            return {failCodes: [9894800]};
+        },
+        runWithFle2: true
+    } // 67
 ];
 
 testList.forEach(runTest);

@@ -289,6 +289,18 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSourceGraphLookUp& source) {
+    /**
+     * GraphLookups involving multiple collections are not supported. Historically, a pipeline
+     * involving a $graphLookup and multiple collections was not permitted. However, in order to
+     * support $lookup with multiple encryption schemas, the assertion which enforced that a
+     * pipeline could a single collection was removed. The implementation below operates
+     * under the assumption that the $graphLookup references the same collection as the pipeline
+     * (i.e self-lookup), so we block foreign $graphLookups here explicitly, as the encryption
+     * metadata for a foreign collection is not available here.
+     */
+    uassert(9894800,
+            "$graphLookup involving multiple collections is not permitted",
+            source.getFromNs() == source.getContext()->getNamespaceString());
     auto connectFromField = source.getConnectFromField();
     FieldRef connectFromRef(connectFromField.fullPath());
     auto connectFromMetadata = prevSchema->getEncryptionMetadataForPath(connectFromRef);
