@@ -2,13 +2,12 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "audit/audit_client_observer.h"
+#include "audit/audit_client_attrs.h"
 #include "audit/audit_manager.h"
 
 #include "mongo/db/auth/authorization_session_test_fixture.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/service_context.h"
-#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/util/options_parser/environment.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -34,21 +33,11 @@ protected:
         // Validate initial state.
         ASSERT_EQ(am->isEnabled(), true);
 
-
-        // Manually register the AuditClientObserver. There is no way to set
-        // auditLog.destination before the unit test runs all global initializers, which means
-        // that auditing is initially disabled. This causes the ServiceContext CAR responsible
-        // for registering the AuditClientObserver to get skipped. So we do it here instead.
+        // Manually register the AuditClientObserver. There is no way to set auditLog.destination
+        // before the unit test runs all global initializers, which means that auditing is initially
+        // disabled. This causes the ServiceContext CAR responsible for registering the
+        // AuditClientObserver to get skipped. So we do it here instead.
         getGlobalServiceContext()->registerClientObserver(std::make_unique<AuditClientObserver>());
-    }
-};
-
-class AuditDecorationsCommunityTest : public AuthorizationSessionTestFixture {
-protected:
-    explicit AuditDecorationsCommunityTest(Options options = Options{}) {
-        auto* am = getGlobalAuditManager();
-        ASSERT_FALSE(am->isEnabled());
-        LOGV2(9791200, "Testing with disabled audit manager, skipping initialization");
     }
 };
 
@@ -65,27 +54,11 @@ TEST_F(AuditDecorationsTest, basicAuditUserAttrsCheck) {
                   ->addAndAuthorizeUser(_opCtx.get(), kUser1TestRequest->clone(), boost::none));
 
     auto opCtx2 = newClient->makeOperationContext();
-    auto auditAttrs = rpc::AuditUserAttrs::get(opCtx2.get());
+    auto auditAttrs = AuditUserAttrs::get(opCtx2.get());
 
-    ASSERT(auditAttrs);
-    ASSERT(auditAttrs->userName);
-    ASSERT_EQ(auditAttrs->userName->getUser(), "user1");
-    ASSERT_EQ(auditAttrs->roleNames.size(), 0);
-}
-
-TEST_F(AuditDecorationsCommunityTest, basicAuditUserAttrsCommunityCheck) {
-    ASSERT_OK(createUser(kUser1Test, {}));
-
-    auto newClient = getService()->makeClient("client1");
-    ASSERT_OK(AuthorizationSession::get(newClient.get())
-                  ->addAndAuthorizeUser(_opCtx.get(), kUser1TestRequest->clone(), boost::none));
-
-    auto opCtx2 = newClient->makeOperationContext();
-    auto auditAttrs = rpc::AuditUserAttrs::get(opCtx2.get());
-
-    // community version does not have AuditManager and thus should not have observer setting up the
-    // auditAttrs decoration
-    ASSERT_FALSE(auditAttrs);
+    ASSERT(auditAttrs->username);
+    ASSERT_EQ(auditAttrs->username->getUser(), "user1");
+    ASSERT_EQ(auditAttrs->rolenames.size(), 0);
 }
 
 }  // namespace
