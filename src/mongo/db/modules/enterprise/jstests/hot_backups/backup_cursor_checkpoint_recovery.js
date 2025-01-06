@@ -33,6 +33,10 @@ assert.commandWorked(
 assert.commandWorked(db.getCollection(collName).insert({}));
 
 const checkpoint = assert.commandWorked(db.adminCommand({fsync: 1}));
+// We can't rely on the checkpoint to advance the stable recovery timestamp, but we can
+// wait for it to advance and ensure that the restore works
+assert.commandWorked(
+    db.adminCommand({setDefaultRWConcern: 1, defaultWriteConcern: {w: 1, j: true}}));
 const lastStableRes =
     assert.commandWorked(db.adminCommand({replSetTest: 1, getLastStableRecoveryTimestamp: 1}));
 
@@ -46,9 +50,16 @@ const backupCursor = openBackupCursor(db);
 assert.commandWorked(db.getCollection(collName).insert({}));
 
 const backupCheckpoint = assert.commandWorked(db.adminCommand({fsync: 1}));
+// As above, wait for stable timestamp to advance
+assert.commandWorked(
+    db.adminCommand({setDefaultRWConcern: 1, defaultWriteConcern: {w: 1, j: true}}));
 const backupLastStableRes =
     assert.commandWorked(db.adminCommand({replSetTest: 1, getLastStableRecoveryTimestamp: 1}));
 
+jsTestLog(
+    "Checkpoint clustertime: " + tojson(checkpoint["$clusterTime"].clusterTime) +
+    ", backupCheckpoint clustertime: " + tojson(backupCheckpoint["$clusterTime"].clusterTime) +
+    " backup recovery timestamp: " + tojson(backupLastStableRes.lastStableRecoveryTimestamp));
 assert(timestampCmp(checkpoint["$clusterTime"].clusterTime,
                     backupCheckpoint["$clusterTime"].clusterTime) <= 0,
        "Checkpoint didn't increase cluster time");
@@ -64,6 +75,8 @@ db = rst.getPrimary().getDB(dbName);
 
 const recoveryLastStableRes =
     assert.commandWorked(db.adminCommand({replSetTest: 1, getLastStableRecoveryTimestamp: 1}));
+
+jsTestLog("Recovery timestamp: " + tojson(recoveryLastStableRes.lastStableRecoveryTimestamp));
 
 assert(timestampCmp(backupCheckpoint["$clusterTime"].clusterTime,
                     recoveryLastStableRes.lastStableRecoveryTimestamp) <= 0,
