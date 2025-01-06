@@ -207,7 +207,7 @@ structs:
 
     KafkaConnectionOptions:
         description: "Kafka connection options."
-        strict: true
+        strict: false
         fields:
             bootstrapServers:
                 description: "Comma separate string of bootstrapServer network locations."
