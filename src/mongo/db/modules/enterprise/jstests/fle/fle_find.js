@@ -215,7 +215,7 @@ assert.commandFailedWithCode(
 
 // Invalid type for command parameters correctly results in an error.
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({find: 5, filter: {}}, schema)),
-                             [ErrorCodes.TypeMismatch, ErrorCodes.BadValue, 6411900]);
+                             [ErrorCodes.InvalidNamespace, 6411900]);
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     find: "test",
     filter: "not an object",
