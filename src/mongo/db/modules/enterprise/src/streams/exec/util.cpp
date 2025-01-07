@@ -330,4 +330,15 @@ bool isConfluentBroker(const std::string& bootstrapServers) {
     return mongo::str::contains(bootstrapServers, kConfluentCloud);
 }
 
+std::vector<StringData> getLoggablePipeline(const std::vector<BSONObj>& pipeline) {
+    std::vector<StringData> stageNames;
+    stageNames.reserve(pipeline.size());
+
+    for (const BSONObj& stage : pipeline) {
+        stageNames.push_back(stage.firstElementFieldNameStringData());
+    }
+
+    return stageNames;
+}
+
 }  // namespace streams

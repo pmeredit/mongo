@@ -6,6 +6,7 @@
 #include <boost/optional.hpp>
 #include <memory>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/concurrent_memory_aggregator.h"
@@ -297,5 +298,4 @@ private:
 
 // Get the global StreamManager instance.
 StreamManager* getStreamManager(mongo::ServiceContext* svcCtx);
-
 }  // namespace streams

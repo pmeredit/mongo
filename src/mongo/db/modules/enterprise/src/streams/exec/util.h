@@ -73,4 +73,7 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
 // Determines if a list of bootstrap servers represents a confluent broker
 bool isConfluentBroker(const std::string& bootstrapServers);
 
+// Returns an anonymized pipeline for logging purposes
+std::vector<mongo::StringData> getLoggablePipeline(const std::vector<mongo::BSONObj>& pipeline);
+
 }  // namespace streams

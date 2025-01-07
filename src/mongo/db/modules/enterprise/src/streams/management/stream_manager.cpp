@@ -1,15 +1,17 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/util/assert_util.h"
 #include <chrono>
 #include <exception>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/error_labels.h"
 #include "mongo/db/operation_context.h"
@@ -17,6 +19,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/stdx/chrono.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/net/socket_utils.h"
@@ -50,6 +53,7 @@
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/timeseries_emit_operator.h"
+#include "streams/exec/util.h"
 #include "streams/management/stream_manager.h"
 
 using namespace mongo;
@@ -962,7 +966,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                "Using the Execution Plan from the checkpoint",
                                "context"_attr = processorInfo->context.get(),
                                "checkpointId"_attr = processorInfo->context->restoreCheckpointId,
-                               "executionPlan"_attr = processorInfo->context->executionPlan);
+                               "executionPlan"_attr =
+                                   getLoggablePipeline(processorInfo->context->executionPlan));
                 }
                 executionPlan = processorInfo->context->restoredCheckpointInfo->executionPlan;
             }
@@ -1026,6 +1031,13 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->operatorDag =
         streamPlanner.plan(executionPlan.empty() ? request.getPipeline() : executionPlan);
     processorInfo->context->executionPlan = processorInfo->operatorDag->optimizedPipeline();
+
+    LOGV2_INFO(9723601,
+               "Created execution plan",
+               "context"_attr = processorInfo->context.get(),
+               "userPipeline"_attr = getLoggablePipeline(request.getPipeline()),
+               "executionPlan"_attr = getLoggablePipeline(processorInfo->context->executionPlan));
+
     if (isValidateOnlyRequest(request) && processorInfo->context->isModifiedProcessor) {
         processorInfo->shouldStartDuringValidate = true;
     }

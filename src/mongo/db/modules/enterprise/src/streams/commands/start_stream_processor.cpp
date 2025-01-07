@@ -40,7 +40,9 @@ public:
     }
 
     std::set<StringData> sensitiveFieldNames() const final {
-        return {Request::kConnectionsFieldName, Request::kOptionsFieldName};
+        return {Request::kConnectionsFieldName,
+                Request::kOptionsFieldName,
+                Request::kPipelineFieldName};
     }
 
     class Invocation final : public InvocationBase {
