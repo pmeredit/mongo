@@ -1817,7 +1817,29 @@ encrypted field in subsequent stages works, has placeholders marked.",
             return {failCodes: [9894800]};
         },
         runWithFle2: true
-    } // 67
+    }, // 67
+    {
+        description:
+            "Test for foreign lookup with empty sub-pipeline. Required to test an empty pipeline.",
+        command: {
+            aggregate: coll.getName(),
+            pipeline: [{
+                    $lookup: {
+                        from: foreignColl.getName(), 
+                        as: "docs",
+                        localField: "foo",
+                        foreignField: "r_foo", 
+                        pipeline: []
+                    }}
+        ],
+            cursor: {}
+        },
+        schemas: nestedLookupEncryptionSchemas,
+        runtimeExpectedResults: function() {
+            return {hasEncryptionPlaceholders: false, schemaRequiresEncryption: true};
+        },
+        runWithFle2: true
+    } // 68
 ];
 
 testList.forEach(runTest);

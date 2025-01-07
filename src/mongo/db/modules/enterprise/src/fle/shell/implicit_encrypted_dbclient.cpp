@@ -53,6 +53,37 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
         }
     };
 
+    // This class is used to wrap a map of SchemaInfos based on their NamespaceString.
+    class SchemaInfoContainer {
+    public:
+        explicit SchemaInfoContainer(std::map<NamespaceString, SchemaInfo>&& schemaMap)
+            : _schemas(std::move(schemaMap)) {}
+
+        ~SchemaInfoContainer() {}
+
+        bool isFLE2() const {
+            tassert(9862700, "Invalid empty schemas", !_schemas.empty());
+            // We don't allow mixing FLE1/FLE2, so it should be sufficient to check the first
+            // schema.
+            return _schemas.begin()->second.isFLE2();
+        }
+
+        const std::map<NamespaceString, SchemaInfo>& getSchemas() const {
+            return _schemas;
+        }
+
+        bool isEmpty() const {
+            bool wasEmpty{true};
+            for (auto&& nsAndSchemaInfo : _schemas) {
+                wasEmpty &= nsAndSchemaInfo.second.schema.isEmpty();
+            }
+            return wasEmpty;
+        }
+
+    private:
+        const std::map<NamespaceString, SchemaInfo> _schemas;
+    };
+
 public:
     ImplicitEncryptedDBClientBase(std::shared_ptr<DBClientBase> conn,
                                   ClientSideFLEOptions encryptionOptions,
@@ -145,7 +176,7 @@ public:
     }
 
     BSONObj processExplainCommand(OpMsgRequest request,
-                                  const SchemaInfo& schemaInfo,
+                                  const SchemaInfoContainer& schemaInfo,
                                   const NamespaceString& ns) {
         // 1. Take an explain command:
         //    explain : {
@@ -187,7 +218,7 @@ public:
     }
 
     BSONObj runQueryAnalysisInt(OpMsgRequest request,
-                                const SchemaInfo& schemaInfo,
+                                const SchemaInfoContainer& schemaInfo,
                                 const NamespaceString& ns,
                                 StringData commandName) {
         if (commandName == kExplain) {
@@ -200,9 +231,25 @@ public:
             commandBuilder.appendElementsUnique(request.body);
         }
 
+        const auto& schemas = schemaInfo.getSchemas();
+        auto getSchemaMap = [&](bool isFle2) {
+            BSONObjBuilder bsonBuilder;
+            for (auto&& nsAndSchema : schemas) {
+                // Do not include tenant id in nss in the schema as the command request has
+                // unsigned security token.
+                bsonBuilder << nsAndSchema.first.serializeWithoutTenantPrefix_UNSAFE()
+                            << (isFle2 ? nsAndSchema.second.schema
+                                       : BSON(query_analysis::kJsonSchema
+                                              << nsAndSchema.second.schema
+                                              << query_analysis::kIsRemoteSchema
+                                              << nsAndSchema.second.remote));
+            }
+            return bsonBuilder.obj();
+        };
+
         if (schemaInfo.isFLE2()) {
             BSONObj ei =
-                EncryptionInformationHelpers::encryptionInformationSerialize(ns, schemaInfo.schema);
+                EncryptionInformationHelpers::encryptionInformationSerialize(getSchemaMap(true));
             if (commandName == "bulkWrite"_sd) {
                 // bulkWrite has different requirements here.
                 // It has an array<NamespaceInfoEntry> field `nsInfo` with
@@ -219,8 +266,13 @@ public:
             uassert(ErrorCodes::BadValue,
                     "The bulkWrite command only supports Queryable Encryption",
                     commandName != "bulkWrite"_sd);
-            commandBuilder.append(query_analysis::kJsonSchema, schemaInfo.schema);
-            commandBuilder.append(query_analysis::kIsRemoteSchema, schemaInfo.remote);
+            if (schemas.size() == 1) {
+                commandBuilder.append(query_analysis::kJsonSchema, schemas.begin()->second.schema);
+                commandBuilder.append(query_analysis::kIsRemoteSchema,
+                                      schemas.begin()->second.remote);
+            } else {
+                commandBuilder.append(query_analysis::kCsfleEncryptionSchemas, getSchemaMap(false));
+            }
         }
 
         BSONObj cmdObj = commandBuilder.obj();
@@ -268,8 +320,63 @@ public:
         return schemaInfoBuilder.obj();
     }
 
+    void findPipelineReferencedNamespaces(const DatabaseName& dbName,
+                                          const BSONObj& document,
+                                          std::set<NamespaceString>& referencedCols) {
+        if (document.hasField("pipeline")) {
+            auto elem = document.getField("pipeline");
+            tassert(9862701,
+                    fmt::format("Pipeline must be an array, but instead found type {}",
+                                typeName(elem.type())),
+                    elem.type() == mongo::Array);
+            findPipelineReferencedNamespaces(dbName, elem.Array(), referencedCols);
+        }
+    }
+
+    void findPipelineReferencedNamespaces(const DatabaseName& dbName,
+                                          const std::vector<BSONElement>& pipeline,
+                                          std::set<NamespaceString>& referencedCols) {
+        for (auto&& pipelineElem : pipeline) {
+            tassert(9862702,
+                    fmt::format("Pipeline stage must be an object, but instead found type {}",
+                                typeName(pipelineElem.type())),
+                    pipelineElem.type() == mongo::Object);
+            auto obj = pipelineElem.Obj();
+            if (obj.hasField("$lookup")) {
+                auto stage = obj.getObjectField("$lookup");
+                if (stage.hasField("from")) {
+                    referencedCols.insert(
+                        NamespaceStringUtil::deserialize(dbName, stage.getStringField("from")));
+                }
+                findPipelineReferencedNamespaces(dbName, stage, referencedCols);
+            } else if (obj.hasField("$facet")) {
+                uasserted(9862703, "$facet is yet not supported with FLE");
+                // Each facet pipeline may have additional referenced collections.
+                BSONObjIterator facetIter(obj.getObjectField("$facet"));
+                while (facetIter.more()) {
+                    auto facetElem = facetIter.next();
+                    findPipelineReferencedNamespaces(dbName, facetElem.Array(), referencedCols);
+                }
+            } else if (obj.hasField("$graphLookup")) {
+                auto stage = obj.getObjectField("$graphLookup");
+                if (stage.hasField("from")) {
+                    referencedCols.insert(
+                        NamespaceStringUtil::deserialize(dbName, stage.getStringField("from")));
+                }
+            } else if (obj.hasField("$unionWith")) {
+                uasserted(9862704, "$unionWith is yet not supported with FLE");
+                auto stage = obj.getObjectField("$unionWith");
+                if (stage.hasField("coll")) {
+                    referencedCols.insert(
+                        NamespaceStringUtil::deserialize(dbName, stage.getStringField("coll")));
+                }
+                findPipelineReferencedNamespaces(dbName, stage, referencedCols);
+            }
+        }
+    }
+
     BSONObj runQueryAnalysis(OpMsgRequest request,
-                             const SchemaInfo& schemaInfo,
+                             const SchemaInfoContainer& schemaInfo,
                              const NamespaceString& ns,
                              StringData commandName) {
         try {
@@ -343,20 +450,44 @@ public:
         }
 
         // Attempt to get schema.
-        auto schemaInfoObject = [&]() {
+        SchemaInfoContainer schemaInfoContainer([&]() {
+            std::map<NamespaceString, SchemaInfo> schemaMap;
             if (commandName == "create"_sd) {
                 if (request.body.hasField("encryptedFields")) {
-                    return SchemaInfo{request.body.getObjectField("encryptedFields").getOwned(),
-                                      Date_t::now(),
-                                      true,
-                                      SchemaInfo::SchemaType::encryptedFields};
+                    schemaMap.emplace(std::piecewise_construct,
+                                      std::forward_as_tuple(ns),
+                                      std::forward_as_tuple(SchemaInfo{
+                                          request.body.getObjectField("encryptedFields").getOwned(),
+                                          Date_t::now(),
+                                          true,
+                                          SchemaInfo::SchemaType::encryptedFields}));
                 } else {
-                    return SchemaInfo{BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none};
+                    schemaMap.emplace(
+                        std::piecewise_construct,
+                        std::forward_as_tuple(ns),
+                        std::forward_as_tuple(SchemaInfo{
+                            BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none}));
+                }
+            } else if (commandName == "aggregate") {
+                // An aggregation pipeline may reference more than one namespace (i.e $lookup).
+                // Collect the referenced namespaces and gather all their schemas.
+                std::set<NamespaceString> referencedNs;
+                referencedNs.emplace(ns);
+                findPipelineReferencedNamespaces(ns.dbName(), request.body, referencedNs);
+                for (auto&& usedNs : referencedNs) {
+                    schemaMap.emplace(std::piecewise_construct,
+                                      std::forward_as_tuple(usedNs),
+                                      std::forward_as_tuple(getSchema(
+                                          request, usedNs, request.validatedTenancyScope)));
                 }
             } else {
-                return getSchema(request, ns, request.validatedTenancyScope);
+                schemaMap.emplace(
+                    std::piecewise_construct,
+                    std::forward_as_tuple(ns),
+                    std::forward_as_tuple(getSchema(request, ns, request.validatedTenancyScope)));
             }
-        }();
+            return schemaMap;
+        }());
 
 
         // collMod commands can modify JSONSchema validators, and so we should invalidate the schema
@@ -366,16 +497,16 @@ public:
         }
 
         // Check the schema.
-        if (schemaInfoObject.schema.isEmpty()) {
+        if (schemaInfoContainer.isEmpty()) {
             // Always attempt to decrypt - could have encrypted data
             auto result = doRunCommand(std::move(params));
-            if (schemaInfoObject.isFLE2()) {
+            if (schemaInfoContainer.isFLE2()) {
                 return processResponseFLE2(std::move(result));
             }
             return processResponseFLE1(std::move(result), dbName);
         }
 
-        BSONObj schemaInfo = runQueryAnalysis(request, schemaInfoObject, ns, commandName);
+        BSONObj schemaInfo = runQueryAnalysis(request, schemaInfoContainer, ns, commandName);
 
         // Check schemaInfo object.
         if (!schemaInfo.getBoolField("hasEncryptionPlaceholders") &&
@@ -396,7 +527,7 @@ public:
 
         auto result = doRunCommand(newParam);
 
-        if (schemaInfoObject.isFLE2()) {
+        if (schemaInfoContainer.isFLE2()) {
             return processResponseFLE2(std::move(result));
         }
         return processResponseFLE1(std::move(result), dbName);
