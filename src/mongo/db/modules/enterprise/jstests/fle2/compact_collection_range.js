@@ -152,9 +152,12 @@ runEncryptedTest(db, kDBName, kCollName, kSampleEncryptedFields, (edb, client) =
                                  kMissingToken);
 });
 
+const kInvalidSearchedESCPositionsError = 7666502;
 function assertInvalidToken(res) {
-    assert.commandFailedWithCode(res, ErrorCodes.BadValue);
-    assert(res.errmsg.includes('Invalid value for ESCTokensV2 leaf tag'), tojson(res));
+    assert.commandFailedWithCode(res, [ErrorCodes.BadValue, kInvalidSearchedESCPositionsError]);
+    assert(res.errmsg.includes('Invalid value for ESCTokensV2 leaf tag') ||
+               res.errmsg.includes('invalid searched ESC positions'),
+           tojson(res));
     return res;
 }
 
