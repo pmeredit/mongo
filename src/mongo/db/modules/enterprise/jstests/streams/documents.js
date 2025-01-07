@@ -66,7 +66,7 @@ function lateDataExample() {
                         "ts": ISODate("2024-03-01T02:00:02Z"),
                         "_ts": ISODate("2024-03-01T02:00:02Z")
                     },
-                    "missedWindowStartTimes": [NumberLong("1709258400000")],
+                    "missedWindowStartTimes": [ISODate("2024-03-01T02:00:00.000Z")],
                 }
             }
         ],

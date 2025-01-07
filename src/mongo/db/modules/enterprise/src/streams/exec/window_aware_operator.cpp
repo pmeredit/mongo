@@ -5,6 +5,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/idl/idl_parser.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/stream_stats.h"
@@ -18,7 +19,7 @@ using namespace mongo;
 
 namespace {
 
-constexpr StringData kMissedWindowsFieldName = "missedWindowStartTimes"_sd;
+constexpr StringData kMissedWindowStartTimes = "missedWindowStartTimes"_sd;
 
 }
 
@@ -607,19 +608,19 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
     auto windowAssigner = getOptions().windowAssigner.get();
     tassert(8292300, "Expected to be the window assigner.", windowAssigner);
 
-    std::vector<int64_t> missedWindows;
+    std::vector<mongo::Date_t> missedWindowStartTimes;
     int64_t windowStartTs = minEligibleStartTime;
     while (windowStartTs < _minWindowStartTime && windowStartTs <= doc.minEventTimestampMs) {
-        missedWindows.push_back(windowStartTs);
+        missedWindowStartTimes.push_back(mongo::Date_t::fromMillisSinceEpoch(windowStartTs));
         windowStartTs = windowAssigner->getNextWindowStartTime(windowStartTs);
     }
-    if (missedWindows.size() > 0) {
+    if (missedWindowStartTimes.size() > 0) {
         // create Dlq document
         auto bsonObjBuilder = toDeadLetterQueueMsg(_context->streamMetaFieldName,
                                                    doc,
                                                    getName(),
                                                    std::string{"Input document arrived late."});
-        bsonObjBuilder.append(kMissedWindowsFieldName, missedWindows);
+        bsonObjBuilder.append(kMissedWindowStartTimes, missedWindowStartTimes);
 
         // write Dlq message
         int64_t numDlqBytes = _context->dlq->addMessage(std::move(bsonObjBuilder));

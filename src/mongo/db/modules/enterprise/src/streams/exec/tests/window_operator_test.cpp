@@ -3415,7 +3415,8 @@ TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
     auto dlqMessages =
         toVector(dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get())->getMessages());
     ASSERT_EQ(1, dlqMessages.size());
-    ASSERT_EQ(1000, dlqMessages[0].getField("missedWindowStartTimes").Array()[0].Long());
+    ASSERT_EQ(mongo::Date_t::fromMillisSinceEpoch(1000),
+              dlqMessages[0].getField("missedWindowStartTimes").Array()[0].Date());
 }
 
 // Test a $tumblingWindow with an input batch containing one late document, and one document
