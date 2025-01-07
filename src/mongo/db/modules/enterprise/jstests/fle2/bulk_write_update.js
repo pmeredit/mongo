@@ -9,7 +9,7 @@
  *   not_allowed_with_signed_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_transactions,
- *   requires_fcv_80
+ *   requires_fcv_81
  * ]
  */
 import {
@@ -444,6 +444,26 @@ assert.commandWorked(edb.eadminCommand({
     }));
 
     expected_pre_image = {"_id": 2, "middle": "BBB"};
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
+    cursorSizeValidator(res, 1);
+    cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
+    client.assertWriteCommandReplyFields(res);
+}
+
+{
+    print("Make sure writeConcern errors are handled correctly in bulkWrite FLE");
+
+    let res = edb.eadminCommand({
+        bulkWrite: 1,
+        ops: [{update: 0, filter: {_id: 2}, updateMods: {$set: {middle: "E"}}}],
+        nsInfo: [{ns: "basic_update.unencrypted_middle"}],
+        writeConcern: {w: 50, j: false, wtimeout: 100},
+    });
+
+    assert.commandFailed(res);
+
+    assert.eq(res.writeConcernError.code, 100, "writeConcern error not detected in " + tojson(res));
     summaryFieldsValidator(
         res, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
     cursorSizeValidator(res, 1);
