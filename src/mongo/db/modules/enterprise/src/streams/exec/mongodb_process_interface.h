@@ -367,8 +367,15 @@ public:
 
     mongo::Document readRecordFromRecordStore(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        mongo::RecordStore* rs,
+        const mongo::RecordStore* rs,
         mongo::RecordId rID) const override {
+        MONGO_UNREACHABLE;
+    }
+
+
+    bool checkRecordInRecordStore(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                                  const mongo::RecordStore* rs,
+                                  mongo::RecordId rID) const override {
         MONGO_UNREACHABLE;
     }
 
