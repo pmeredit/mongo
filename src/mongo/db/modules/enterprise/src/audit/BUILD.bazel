@@ -93,7 +93,7 @@ mongo_cc_library(
 mongo_cc_library(
     name = "audit_enterprise",
     srcs = [
-        "audit_client_attrs.cpp",
+        "audit_client_observer.cpp",
         "audit_command.cpp",
         "audit_commands_gen",
         "audit_event_type_gen",
@@ -136,7 +136,7 @@ mongo_cc_library(
         "//src/mongo/db/modules/enterprise/src/audit/ocsf:ocsf_audit_events_gen",
     ],
     hdrs = [
-        "audit_client_attrs.h",
+        "audit_client_observer.h",
         "audit_deduplication.h",
         "audit_event_type.h",
         "audit_frame.h",
@@ -275,7 +275,7 @@ mongo_cc_library(
 mongo_cc_unit_test(
     name = "audit_test",
     srcs = [
-        "audit_client_attrs_test.cpp",
+        "audit_client_observer_test.cpp",
         "audit_enc_comp_manager_test.cpp",
         "audit_file_header_test.cpp",
         "audit_key_manager_test.cpp",
