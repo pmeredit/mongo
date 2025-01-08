@@ -40,8 +40,7 @@ public:
     }
 
     void serialize(BSONArrayBuilder* arr) const {
-        SerializationOptions opts{.serializeForQueryAnalysis = true};
-        for (auto&& stage : _parsedPipeline->serialize(opts)) {
+        for (auto&& stage : _parsedPipeline->serialize()) {
             invariant(stage.getType() == BSONType::Object);
             arr->append(stage.getDocument().toBson());
         }

@@ -4,9 +4,7 @@
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
- *   assumes_standalone_mongod,
  *   featureFlagLookupEncryptionSchemasFLE,
- *   fle2_no_mongos
  * ]
  */
 
