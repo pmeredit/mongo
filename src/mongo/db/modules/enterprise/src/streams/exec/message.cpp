@@ -33,8 +33,8 @@ bool StreamDocument::operator==(const StreamDocument& other) const {
         compare.evaluate(mongo::Document{streamMeta.toBSON()} ==
                          mongo::Document{other.streamMeta.toBSON()}) &&
         minProcessingTimeMs == other.minProcessingTimeMs &&
-        minEventTimestampMs == other.minEventTimestampMs &&
-        maxEventTimestampMs == other.maxEventTimestampMs;
+        minDocTimestampMs == other.minDocTimestampMs &&
+        maxDocTimestampMs == other.maxDocTimestampMs;
 }
 
 BSONObj StreamDataMsg::toBSONForLogging() const {
@@ -71,7 +71,7 @@ BSONObj StreamControlMsg::toBSONForLogging() const {
         builder.append("checkpointMsg.checkpointId", checkpointMsg->id);
     }
     if (watermarkMsg) {
-        builder.append("watermarkMsg.watermarkEventTime", watermarkMsg->eventTimeWatermarkMs);
+        builder.append("watermarkMsg.watermarkEventTime", watermarkMsg->watermarkTimestampMs);
         builder.append("watermarkMsg.watermarkStatus", watermarkMsg->watermarkStatus);
     }
     if (windowCloseSignal) {

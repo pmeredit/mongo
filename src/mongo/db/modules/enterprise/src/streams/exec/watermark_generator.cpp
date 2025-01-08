@@ -20,7 +20,7 @@ WatermarkGenerator::WatermarkGenerator(int32_t inputIdx,
     : _inputIdx(inputIdx), _combiner(combiner) {
     if (initialWatermark) {
         // -1 indicates that the watermark timestamp has not be set yet.
-        invariant(initialWatermark->eventTimeWatermarkMs >= -1);
+        invariant(initialWatermark->watermarkTimestampMs >= -1);
         _watermarkMsg = *initialWatermark;
         if (_combiner) {
             _combiner->onWatermarkMsg(_inputIdx, _watermarkMsg);

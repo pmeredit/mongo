@@ -83,7 +83,7 @@ protected:
             // Create a session for each partition.
             for (int docNum = 0; docNum < docsPerSession; ++docNum) {
                 StreamDocument streamDoc(makeDocument(idx, idx, partition));
-                streamDoc.minEventTimestampMs =
+                streamDoc.minDocTimestampMs =
                     (sessionStartTime + secondsBetweenDocsInSession * docNum).asInt64();
                 docs.push_back(std::move(streamDoc));
                 ++idx;
@@ -92,7 +92,7 @@ protected:
         }
         // Sort by timestamps.
         std::sort(docs.begin(), docs.end(), [](const auto& left, const auto& right) {
-            return left.minEventTimestampMs < right.minEventTimestampMs;
+            return left.minDocTimestampMs < right.minDocTimestampMs;
         });
 
         // Organize into batches.
@@ -114,7 +114,7 @@ protected:
         for (const auto& msg : msgs) {
             for (const auto& doc : msg.docs) {
                 auto partition = doc.doc["partition"];
-                auto ts = doc.minEventTimestampMs;
+                auto ts = doc.minDocTimestampMs;
                 if (ts > maxTsPerPartition[partition]) {
                     maxTsPerPartition[partition] = ts;
                 }
@@ -206,13 +206,13 @@ protected:
             for (auto& dataMsg : dataMsgs) {
                 // This assumes the order is sorted.
                 const auto& lastDoc = dataMsg.docs[dataMsg.docs.size() - 1];
-                auto maxTs = lastDoc.minEventTimestampMs;
+                auto maxTs = lastDoc.minDocTimestampMs;
                 watermark = maxTs - 1;
                 window->onDataMsg(0,
                                   std::move(dataMsg),
                                   StreamControlMsg{WatermarkControlMsg{
                                       .watermarkStatus = WatermarkStatus::kActive,
-                                      .eventTimeWatermarkMs = watermark}});
+                                      .watermarkTimestampMs = watermark}});
             }
 
             state.PauseTiming();
@@ -252,13 +252,13 @@ protected:
             for (auto& dataMsg : dataMsgs) {
                 // This assumes the order is sorted.
                 const auto& lastDoc = dataMsg.docs[dataMsg.docs.size() - 1];
-                auto maxTs = lastDoc.minEventTimestampMs;
+                auto maxTs = lastDoc.minDocTimestampMs;
                 watermark = maxTs - 1;
                 window->onDataMsg(0,
                                   std::move(dataMsg),
                                   StreamControlMsg{WatermarkControlMsg{
                                       .watermarkStatus = WatermarkStatus::kActive,
-                                      .eventTimeWatermarkMs = watermark}});
+                                      .watermarkTimestampMs = watermark}});
             }
 
             state.PauseTiming();

@@ -48,9 +48,9 @@ void SortOperator::doProcessDocs(Window* window, std::vector<StreamDocument> str
         }
 
         window->minEventTimestampMs =
-            std::min(window->minEventTimestampMs, streamDoc.minEventTimestampMs);
+            std::min(window->minEventTimestampMs, streamDoc.minDocTimestampMs);
         window->maxEventTimestampMs =
-            std::max(window->maxEventTimestampMs, streamDoc.maxEventTimestampMs);
+            std::max(window->maxEventTimestampMs, streamDoc.maxDocTimestampMs);
 
         processor->add(sortKey, streamDoc.doc);
 
@@ -81,8 +81,8 @@ void SortOperator::doCloseWindow(Window* window) {
         curDataMsgByteSize += result.getApproximateSize();
         StreamDocument streamDoc(std::move(result));
         streamDoc.streamMeta = window->streamMetaTemplate;
-        streamDoc.minEventTimestampMs = window->minEventTimestampMs;
-        streamDoc.maxEventTimestampMs = window->maxEventTimestampMs;
+        streamDoc.minDocTimestampMs = window->minEventTimestampMs;
+        streamDoc.maxDocTimestampMs = window->maxEventTimestampMs;
         outputMsg.docs.emplace_back(std::move(streamDoc));
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
             curDataMsgByteSize >= kDataMsgMaxByteSize) {

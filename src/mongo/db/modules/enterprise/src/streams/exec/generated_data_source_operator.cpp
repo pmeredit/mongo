@@ -63,7 +63,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
                                            .timeSpent = dataMsg.creationTimer->elapsed()});
 
             if (_watermarkGenerator) {
-                _stats.watermark = _watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+                _stats.watermark = _watermarkGenerator->getWatermarkMsg().watermarkTimestampMs;
             }
 
             numDocsFlushed += dataMsg.docs.size();
@@ -125,15 +125,15 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
 
     doc.doc = mutableDoc.freeze();
     doc.minProcessingTimeMs = curTimeMillis64();
-    doc.minEventTimestampMs = timestampMs;
-    doc.maxEventTimestampMs = timestampMs;
+    doc.minDocTimestampMs = timestampMs;
+    doc.maxDocTimestampMs = timestampMs;
 
     return doc;
 }
 
 Date_t GeneratedDataSourceOperator::getTimestamp(const StreamDocument& doc) const {
-    if (doc.minEventTimestampMs >= 0) {
-        return Date_t::fromMillisSinceEpoch(doc.minEventTimestampMs);
+    if (doc.minDocTimestampMs >= 0) {
+        return Date_t::fromMillisSinceEpoch(doc.minDocTimestampMs);
     }
 
     const auto& opts = getOptions();

@@ -33,7 +33,7 @@ void LogSinkOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg cont
 
 void LogSinkOperator::logControl(StreamControlMsg controlMsg) {
     if (controlMsg.watermarkMsg) {
-        int64_t watermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
+        int64_t watermarkTime = controlMsg.watermarkMsg->watermarkTimestampMs;
         auto watermarkStatus = controlMsg.watermarkMsg->watermarkStatus;
         LOGV2_INFO(5739601,
                    "watermarkMsg",

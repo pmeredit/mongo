@@ -45,7 +45,7 @@ public:
      * events.
      */
     bool isLate(int64_t eventTimestampMs) const {
-        return (eventTimestampMs <= _watermarkMsg.eventTimeWatermarkMs);
+        return (eventTimestampMs <= _watermarkMsg.watermarkTimestampMs);
     }
 
     /**

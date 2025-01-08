@@ -80,14 +80,14 @@ void LimitOperatorTest::testBasic(bool useNewLimit) {
                 auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
                 for (int j = 0; j < msgSize; ++j, ++i) {
                     StreamDocument doc{inputDocs[i]};
-                    doc.minEventTimestampMs = startTime.toMillisSinceEpoch();
+                    doc.minDocTimestampMs = startTime.toMillisSinceEpoch();
                     dataMsg.docs.emplace_back(std::move(doc));
                 }
                 source.addDataMsg(std::move(dataMsg));
             }
         }
         source.addControlMsg(StreamControlMsg{
-            WatermarkControlMsg{.eventTimeWatermarkMs = endTime.toMillisSinceEpoch()}});
+            WatermarkControlMsg{.watermarkTimestampMs = endTime.toMillisSinceEpoch()}});
 
         // Push all the messages from the source to the sink.
         source.runOnce();
@@ -108,11 +108,11 @@ void LimitOperatorTest::testBasic(bool useNewLimit) {
             // The WindowAwareLimitOperator will send an output watermark 1 ms before the earliest
             // allowed window start time.
             ASSERT_EQ(endTime.toMillisSinceEpoch() - 1,
-                      messages.front().controlMsg->watermarkMsg->eventTimeWatermarkMs);
+                      messages.front().controlMsg->watermarkMsg->watermarkTimestampMs);
         } else {
             // LimitOperator just passes the input watermark along.
             ASSERT_EQ(endTime.toMillisSinceEpoch(),
-                      messages.front().controlMsg->watermarkMsg->eventTimeWatermarkMs);
+                      messages.front().controlMsg->watermarkMsg->watermarkTimestampMs);
         }
         ASSERT_EQUALS(outputDocs.size(), limit);
 

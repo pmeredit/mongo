@@ -795,8 +795,8 @@ int64_t KafkaConsumerOperator::doRunOnce() {
     // watermark from advancing.
     auto cmp = [&](int a, int b) -> bool {
         if (_options.useWatermarks) {
-            return _consumers[a].watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs >
-                _consumers[b].watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+            return _consumers[a].watermarkGenerator->getWatermarkMsg().watermarkTimestampMs >
+                _consumers[b].watermarkGenerator->getWatermarkMsg().watermarkTimestampMs;
         }
         return false;
     };
@@ -932,7 +932,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
             if (streamDoc) {
                 if (consumerInfo.watermarkGenerator) {
-                    consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
+                    consumerInfo.watermarkGenerator->onEvent(streamDoc->minDocTimestampMs);
                 }
 
                 curDataMsgByteSize += streamDoc->doc.getApproximateSize();
@@ -954,7 +954,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                                        .numDlqDocs = numDlqDocs,
                                        .timeSpent = dataMsg.creationTimer->elapsed()});
         if (_watermarkCombiner) {
-            _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().eventTimeWatermarkMs;
+            _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().watermarkTimestampMs;
         }
 
         flushed = maybeFlush(/*force*/ false);
@@ -1085,8 +1085,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         streamDoc = StreamDocument(Document(objBuilder.obj()));
         streamDoc->streamMeta = std::move(streamMeta);
         streamDoc->minProcessingTimeMs = curTimeMillis64();
-        streamDoc->minEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
-        streamDoc->maxEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
+        streamDoc->minDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
+        streamDoc->maxDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
     } catch (const std::exception& e) {
         LOGV2_ERROR(74675,
                     "{topicName}: encountered exception while processing a source "
@@ -1381,7 +1381,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
         partitionState.setTopic(consumerInfo.topic);
         if (_options.useWatermarks) {
             partitionState.setWatermark(WatermarkState{
-                consumerInfo.watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
+                consumerInfo.watermarkGenerator->getWatermarkMsg().watermarkTimestampMs});
         }
         partitions.push_back(std::move(partitionState));
     }
@@ -1424,7 +1424,7 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
         int64_t watermark{-1};
         if (consumerInfo.watermarkGenerator) {
             const auto& watermarkMsg = consumerInfo.watermarkGenerator->getWatermarkMsg();
-            watermark = watermarkMsg.eventTimeWatermarkMs;
+            watermark = watermarkMsg.watermarkTimestampMs;
             isIdle = watermarkMsg.watermarkStatus == WatermarkStatus::kIdle;
         }
 

@@ -218,8 +218,8 @@ void KafkaConsumerOperatorTest::verifyDocs(
         ASSERT_TRUE(consumerIdx);
         int32_t docIdx = nextDocIndexes[*consumerIdx]++;
         ASSERT_BSONOBJ_EQ(expectedOutputDocs[*consumerIdx][docIdx], doc.toBson());
-        ASSERT_EQUALS(partitionAppendTimes[*consumerIdx][docIdx], streamDoc.minEventTimestampMs);
-        ASSERT_EQUALS(partitionAppendTimes[*consumerIdx][docIdx], streamDoc.maxEventTimestampMs);
+        ASSERT_EQUALS(partitionAppendTimes[*consumerIdx][docIdx], streamDoc.minDocTimestampMs);
+        ASSERT_EQUALS(partitionAppendTimes[*consumerIdx][docIdx], streamDoc.maxDocTimestampMs);
     }
 };
 
@@ -227,7 +227,7 @@ namespace {
 
 WatermarkControlMsg createWatermarkControlMsg(int64_t watermark) {
     WatermarkControlMsg msg;
-    msg.eventTimeWatermarkMs = watermark;
+    msg.watermarkTimestampMs = watermark;
     return msg;
 }
 
@@ -441,8 +441,8 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     auto streamDoc =
         processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get());
     ASSERT_BSONOBJ_EQ(expectedOutputObj, streamDoc->doc.toBson());
-    ASSERT_EQUALS(1677876150055, streamDoc->minEventTimestampMs);
-    ASSERT_EQUALS(1677876150055, streamDoc->maxEventTimestampMs);
+    ASSERT_EQUALS(1677876150055, streamDoc->minDocTimestampMs);
+    ASSERT_EQUALS(1677876150055, streamDoc->maxDocTimestampMs);
 
     // Test that processSourceDocument() works as expected when timestamp cannot be extracted
     // successfully.
@@ -825,7 +825,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
 
     // Make sure p0 messages were processed first.
     auto front = sink->getMessages().front().dataMsg->docs.front();
-    ASSERT_EQUALS(20, front.minEventTimestampMs);
+    ASSERT_EQUALS(20, front.minDocTimestampMs);
 
     ASSERT_EQUALS(createWatermarkControlMsg(20),  // 21 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
@@ -850,7 +850,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
 
     // Make sure p0 messages were processed first.
     front = sink->getMessages().front().dataMsg->docs.front();
-    ASSERT_EQUALS(40, front.minEventTimestampMs);
+    ASSERT_EQUALS(40, front.minDocTimestampMs);
 
     ASSERT_EQUALS(createWatermarkControlMsg(40),  // 41 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
@@ -876,7 +876,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
 
     // Make sure p2 messages were processed first since p2 had the lowest local watermark.
     front = sink->getMessages().front().dataMsg->docs.front();
-    ASSERT_EQUALS(34, front.minEventTimestampMs);
+    ASSERT_EQUALS(34, front.minDocTimestampMs);
 
     ASSERT_EQUALS(createWatermarkControlMsg(42),  // 43 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
@@ -904,7 +904,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
 
     // Make sure p1 messages were processed first since p2 had the lowest local watermark.
     front = sink->getMessages().front().dataMsg->docs.front();
-    ASSERT_EQUALS(51, front.minEventTimestampMs);
+    ASSERT_EQUALS(51, front.minDocTimestampMs);
 
     ASSERT_EQUALS(createWatermarkControlMsg(49),  // 50 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
@@ -933,7 +933,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     // Make sure p2 messages were processed first since p2 just became active and
     // had the lowest local watermark.
     front = sink->getMessages().front().dataMsg->docs.front();
-    ASSERT_EQUALS(59, front.minEventTimestampMs);
+    ASSERT_EQUALS(59, front.minDocTimestampMs);
 
     ASSERT_EQUALS(createWatermarkControlMsg(59),  // 60 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());

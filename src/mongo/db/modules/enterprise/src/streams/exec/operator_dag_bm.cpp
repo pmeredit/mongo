@@ -350,8 +350,8 @@ void OperatorDagBMFixture::SetUp(benchmark::State& state) {
             default:
                 MONGO_UNREACHABLE;
         }
-        streamDoc->minEventTimestampMs = 1000;
-        streamDoc->maxEventTimestampMs = 1000;
+        streamDoc->minDocTimestampMs = 1000;
+        streamDoc->maxDocTimestampMs = 1000;
         _dataMsg.docs.emplace_back(std::move(*streamDoc));
     }
 
@@ -362,8 +362,8 @@ void OperatorDagBMFixture::SetUp(benchmark::State& state) {
             // Ensure that every doc in _dataMsg is an owned doc to mimic the production scenario.
             for (size_t j = 0; j < 10; ++j) {
                 StreamDocument streamDoc{_dataMsg.docs[j].doc.getOwned()};
-                streamDoc.minEventTimestampMs = 1000;
-                streamDoc.maxEventTimestampMs = 1000;
+                streamDoc.minDocTimestampMs = 1000;
+                streamDoc.maxDocTimestampMs = 1000;
                 _dataMsg.docs.emplace_back(std::move(streamDoc));
             }
             std::copy_n(_inputObjs.begin(), 10, std::back_inserter(_inputObjs));
@@ -468,15 +468,15 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
         for (size_t i = 0; i * kDocsPerMsg < kNumInputDocs; i++) {
             // Generate watermarks such that each StreamDataMsg is in its own window.
             for (auto& streamDoc : _dataMsg.docs) {
-                streamDoc.minEventTimestampMs = i * 1000;
-                streamDoc.maxEventTimestampMs = i * 1000;
+                streamDoc.minDocTimestampMs = i * 1000;
+                streamDoc.maxDocTimestampMs = i * 1000;
             }
             controlMsg.watermarkMsg =
-                WatermarkControlMsg{.eventTimeWatermarkMs = _dataMsg.docs[0].minEventTimestampMs};
+                WatermarkControlMsg{.watermarkTimestampMs = _dataMsg.docs[0].minDocTimestampMs};
             sourcePtr->addDataMsg(_dataMsg, controlMsg);
             sourcePtr->runOnce();
         }
-        controlMsg.watermarkMsg->eventTimeWatermarkMs += 1000;
+        controlMsg.watermarkMsg->watermarkTimestampMs += 1000;
         sourcePtr->addControlMsg(std::move(controlMsg));
         sourcePtr->runOnce();
 
@@ -641,15 +641,15 @@ void BatchSizeBenchmark::runBatchSizeBenchmark(benchmark::State& state,
         for (size_t i = 0; i * kDocsPerMsg < kNumInputDocs; i++) {
             // Generate watermarks such that each StreamDataMsg is in its own window.
             for (auto& streamDoc : _dataMsg.docs) {
-                streamDoc.minEventTimestampMs = i * 1000;
-                streamDoc.maxEventTimestampMs = i * 1000;
+                streamDoc.minDocTimestampMs = i * 1000;
+                streamDoc.maxDocTimestampMs = i * 1000;
             }
             controlMsg.watermarkMsg =
-                WatermarkControlMsg{.eventTimeWatermarkMs = _dataMsg.docs[0].minEventTimestampMs};
+                WatermarkControlMsg{.watermarkTimestampMs = _dataMsg.docs[0].minDocTimestampMs};
             sourcePtr->addDataMsg(_dataMsg, controlMsg);
             sourcePtr->runOnce();
         }
-        controlMsg.watermarkMsg->eventTimeWatermarkMs += 1000;
+        controlMsg.watermarkMsg->watermarkTimestampMs += 1000;
         sourcePtr->addControlMsg(std::move(controlMsg));
         sourcePtr->runOnce();
         dag->stop();

@@ -119,8 +119,8 @@ protected:
         int64_t maxTimestampMs = numWindows;
         for (auto& dataMsg : dataMsgs) {
             for (auto& doc : dataMsg.docs) {
-                doc.minEventTimestampMs = (cur % maxTimestampMs) * windowTimestampSparsityMs;
-                doc.maxEventTimestampMs = doc.minEventTimestampMs;
+                doc.minDocTimestampMs = (cur % maxTimestampMs) * windowTimestampSparsityMs;
+                doc.maxDocTimestampMs = doc.minDocTimestampMs;
                 cur += windowSlideMs;
             }
         }
@@ -235,7 +235,7 @@ BENCHMARK_DEFINE_F(WindowOperatorBMFixture, BM_WindowOperator_Flush)(benchmark::
         window->onControlMsg(
             0,
             StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                 .eventTimeWatermarkMs = std::numeric_limits<int64_t>::max()}});
+                                 .watermarkTimestampMs = std::numeric_limits<int64_t>::max()}});
     }
 
     state.SetItemsProcessed(kNumDocsPerDataMsg * kNumDataMsgs * state.iterations());

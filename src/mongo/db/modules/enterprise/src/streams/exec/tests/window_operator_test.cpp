@@ -100,7 +100,7 @@ public:
     static StreamDocument generateDoc(Date_t time, int id, int value) {
         Document doc(BSON("date" << time << "id" << id << "value" << value));
         StreamDocument streamDoc(std::move(doc));
-        streamDoc.minEventTimestampMs = time.toMillisSinceEpoch();
+        streamDoc.minDocTimestampMs = time.toMillisSinceEpoch();
         return streamDoc;
     }
 
@@ -109,8 +109,8 @@ public:
             LOGV2_INFO(5555501,
                        "dataMsg",
                        "tag"_attr = tag,
-                       "minEventTimestampMs"_attr = doc.minEventTimestampMs,
-                       "maxEventTimestampMs"_attr = doc.maxEventTimestampMs,
+                       "minDocTimestampMs"_attr = doc.minDocTimestampMs,
+                       "maxDocTimestampMs"_attr = doc.maxDocTimestampMs,
                        "doc"_attr = doc.doc.toString());
         }
     }
@@ -131,7 +131,7 @@ public:
                 LOGV2_INFO(5555500,
                            "controlMsg",
                            "watermark"_attr =
-                               result.controlMsg->watermarkMsg->eventTimeWatermarkMs);
+                               result.controlMsg->watermarkMsg->watermarkTimestampMs);
             } else {
                 logResults(*result.dataMsg, tag);
             }
@@ -934,7 +934,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
         dag->start();
 
         StreamDocument doc{Document()};
-        doc.minEventTimestampMs = 1000;
+        doc.minDocTimestampMs = 1000;
         StreamDataMsg dataMsg{.docs = {doc}, .creationTimer = mongo::Timer{}};
         source->addDataMsg(std::move(dataMsg), boost::none);
         source->runOnce();
@@ -1752,16 +1752,16 @@ TEST_F(WindowOperatorTest, LateData) {
         }
 
         // Iterate through all data messages (each representing a window) and verify that all
-        // documents within that window have the expected minEventTimestampMs and
-        // maxEventTimestampMs values.
+        // documents within that window have the expected minDocTimestampMs and
+        // maxDocTimestampMs values.
         for (size_t i = 0; i < results.size() - 1; i++) {
             auto result = results[i];
 
             ASSERT(result.dataMsg);
 
             for (auto& doc : result.dataMsg->docs) {
-                auto min = doc.minEventTimestampMs;
-                auto max = doc.maxEventTimestampMs;
+                auto min = doc.minDocTimestampMs;
+                auto max = doc.maxDocTimestampMs;
                 ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].first,
                           Date_t::fromMillisSinceEpoch(min));
                 ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].second,
@@ -1794,8 +1794,8 @@ TEST_F(WindowOperatorTest, LimitGroupSortLimitPipeline) {
             std::make_pair(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
                            timeZone.createFromDateParts(2023, 4, 10, 17, 2, 29, 120))};
 
-        // $limit performs a passthrough for the streamDoc.minEventTimestampMs and
-        // streamDoc.maxEventTimestampMs fields. Ensure that those fields are as we'd expect as
+        // $limit performs a passthrough for the streamDoc.minDocTimestampMs and
+        // streamDoc.maxDocTimestampMs fields. Ensure that those fields are as we'd expect as
         // output from the previous operator.
         std::string pipeline = R"(
         [
@@ -1843,16 +1843,16 @@ TEST_F(WindowOperatorTest, LimitGroupSortLimitPipeline) {
         }
 
         // Iterate through all data messages (each representing a window) and verify that all
-        // documents within that window have the expected minEventTimestampMs and
-        // maxEventTimestampMs values.
+        // documents within that window have the expected minDocTimestampMs and
+        // maxDocTimestampMs values.
         for (size_t i = 0; i < results.size() - 1; i++) {
             auto result = results[i];
 
             ASSERT(result.dataMsg);
 
             for (auto& doc : result.dataMsg->docs) {
-                auto min = doc.minEventTimestampMs;
-                auto max = doc.maxEventTimestampMs;
+                auto min = doc.minDocTimestampMs;
+                auto max = doc.maxDocTimestampMs;
                 ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].first,
                           Date_t::fromMillisSinceEpoch(min));
                 ASSERT_EQ(expectedEventTimestampBoundsPerWindow[i].second,
@@ -1935,9 +1935,9 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), end);
 
-            // Verify the doc.minEventTimestampMs matches the event times observed
-            auto min = doc.minEventTimestampMs;
-            auto max = doc.maxEventTimestampMs;
+            // Verify the doc.minDocTimestampMs matches the event times observed
+            auto min = doc.minDocTimestampMs;
+            auto max = doc.maxDocTimestampMs;
             ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(max));
         }
@@ -1950,9 +1950,9 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0), end);
 
-            // Verify the doc.minEventTimestampMs matches the event times observed
-            auto min = doc.minEventTimestampMs;
-            auto max = doc.maxEventTimestampMs;
+            // Verify the doc.minDocTimestampMs matches the event times observed
+            auto min = doc.minDocTimestampMs;
+            auto max = doc.maxDocTimestampMs;
             ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(max));
         }
@@ -2042,9 +2042,9 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowPlusOffset) {
                 ASSERT_EQUALS(expectedWindow.windowStart, start);
                 ASSERT_EQUALS(expectedWindow.windowEnd, end);
 
-                // Verify the doc.minEventTimestampMs matches the event times observed
-                int64_t min = actualDoc.minEventTimestampMs;
-                int64_t max = actualDoc.maxEventTimestampMs;
+                // Verify the doc.minDocTimestampMs matches the event times observed
+                int64_t min = actualDoc.minDocTimestampMs;
+                int64_t max = actualDoc.maxDocTimestampMs;
                 ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(min));
                 ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(max));
             }
@@ -2118,9 +2118,9 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), end);
 
-            // Verify the doc.minEventTimestampMs matches the event times observed
-            auto min = doc.minEventTimestampMs;
-            auto max = doc.maxEventTimestampMs;
+            // Verify the doc.minDocTimestampMs matches the event times observed
+            auto min = doc.minDocTimestampMs;
+            auto max = doc.maxDocTimestampMs;
             ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(max));
         }
@@ -2132,9 +2132,9 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0), end);
 
-            // Verify the doc.minEventTimestampMs matches the event times observed
-            auto min = doc.minEventTimestampMs;
-            auto max = doc.maxEventTimestampMs;
+            // Verify the doc.minDocTimestampMs matches the event times observed
+            auto min = doc.minDocTimestampMs;
+            auto max = doc.maxDocTimestampMs;
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
                       Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
@@ -2228,9 +2228,9 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowMinusOffset) {
                 ASSERT_EQUALS(expectedWindow.windowStart, start);
                 ASSERT_EQUALS(expectedWindow.windowEnd, end);
 
-                // Verify the doc.minEventTimestampMs matches the event times observed
-                int64_t min = actualDoc.minEventTimestampMs;
-                int64_t max = actualDoc.maxEventTimestampMs;
+                // Verify the doc.minDocTimestampMs matches the event times observed
+                int64_t min = actualDoc.minDocTimestampMs;
+                int64_t max = actualDoc.maxDocTimestampMs;
                 ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(min));
                 ASSERT_EQUALS(expectedObservedTimestamps[i][j], Date_t::fromMillisSinceEpoch(max));
             }
@@ -2393,8 +2393,8 @@ TEST_F(WindowOperatorTest, WindowMeta) {
             StreamDocument streamDoc(Document(BSON(
                 "date" << date << "id" << id << *_context->streamMetaFieldName << BSON("a" << 1))));
             streamDoc.minProcessingTimeMs = date.toMillisSinceEpoch();
-            streamDoc.minEventTimestampMs = date.toMillisSinceEpoch();
-            streamDoc.maxEventTimestampMs = date.toMillisSinceEpoch();
+            streamDoc.minDocTimestampMs = date.toMillisSinceEpoch();
+            streamDoc.maxDocTimestampMs = date.toMillisSinceEpoch();
             return StreamMsgUnion{
                 StreamDataMsg{.docs = {std::move(streamDoc)}, .creationTimer = mongo::Timer{}}};
         };
@@ -2483,9 +2483,9 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
 
-            // Verify the doc.minEventTimestampMs matches the event times observed
-            auto min = doc.minEventTimestampMs;
-            auto max = doc.maxEventTimestampMs;
+            // Verify the doc.minDocTimestampMs matches the event times observed
+            auto min = doc.minDocTimestampMs;
+            auto max = doc.maxDocTimestampMs;
             ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(expectedObservedTimestamps[0][i], Date_t::fromMillisSinceEpoch(max));
         }
@@ -2498,9 +2498,9 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0), end);
 
-            // Verify the doc.minEventTimestampMs matches the event times observed
-            auto min = doc.minEventTimestampMs;
-            auto max = doc.maxEventTimestampMs;
+            // Verify the doc.minDocTimestampMs matches the event times observed
+            auto min = doc.minDocTimestampMs;
+            auto max = doc.maxDocTimestampMs;
             ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(expectedObservedTimestamps[1][i], Date_t::fromMillisSinceEpoch(max));
         }
@@ -2737,7 +2737,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         ASSERT_EQ(streamControlMsgs.size(), 1);
         ASSERT(streamControlMsgs[0].watermarkMsg);
         ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs,
+        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkTimestampMs,
                   expectedMillisSinceEpoch);
     });
 }
@@ -2964,7 +2964,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
         ASSERT_EQ(streamControlMsgs.size(), 1);
         ASSERT(streamControlMsgs[0].watermarkMsg);
         ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs,
+        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkTimestampMs,
                   expectedMillisSinceEpoch);
     });
 }
@@ -3016,7 +3016,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
                 WatermarkControlMsg{
                     .watermarkStatus = WatermarkStatus::kActive,
                     // This should close ts=5s and ts=6s windows,
-                    .eventTimeWatermarkMs = 10000,
+                    .watermarkTimestampMs = 10000,
                 },
         });
         source->runOnce();
@@ -3291,7 +3291,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     ASSERT(results[0].controlMsg);
     ASSERT(results[0].controlMsg->watermarkMsg);
     ASSERT_EQ(expectedWindowOutputWatermark,
-              results[0].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+              results[0].controlMsg->watermarkMsg->watermarkTimestampMs);
     ASSERT_EQ(WatermarkStatus::kActive, results[0].controlMsg->watermarkMsg->watermarkStatus);
     ASSERT(results[1].dataMsg);
     ASSERT_EQ(1, results[1].dataMsg->docs.size());
@@ -3304,7 +3304,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     ASSERT(results[2].controlMsg);
     ASSERT(results[2].controlMsg->watermarkMsg);
     ASSERT_EQ((minWindowStartTime - Milliseconds{1}).toMillisSinceEpoch(),
-              results[2].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+              results[2].controlMsg->watermarkMsg->watermarkTimestampMs);
     ASSERT_EQ(WatermarkStatus::kActive, results[2].controlMsg->watermarkMsg->watermarkStatus);
 
     // After we sleep for a while longer, there should still be no more results.
@@ -3384,7 +3384,7 @@ TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
          StreamMsgUnion{
              .controlMsg = StreamControlMsg{
                  .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
-                                                     .eventTimeWatermarkMs = 2000}}}}};
+                                                     .watermarkTimestampMs = 2000}}}}};
     auto results = getResults(source, sink, input);
     ASSERT_EQ(2, results.size());
     ASSERT(results[0].dataMsg);
@@ -3446,7 +3446,7 @@ TEST_F(WindowOperatorTest, SERVER_92798) {
             .controlMsg =
                 StreamControlMsg{
                     .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
-                                                        .eventTimeWatermarkMs = 1000}}},
+                                                        .watermarkTimestampMs = 1000}}},
         StreamMsgUnion{.dataMsg = StreamDataMsg{.docs =
                                                     {// late
                                                      generateDocMs(0, 1, 1),

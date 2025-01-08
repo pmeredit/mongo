@@ -44,7 +44,7 @@ protected:
     // Tracks the latest WatermarkControlMsg received from each input.
     std::vector<WatermarkControlMsg> _watermarkMsgs;
     // Tracks the index of an active input in _watermarkMsgs that has the lowest
-    // WatermarkControlMsg.eventTimeWatermarkMs.
+    // WatermarkControlMsg.watermarkTimestampMs.
     int _minWatermarkInputIdx{0};
     // Tracks the result of combining WatermarkControlMsgs received from all inputs.
     WatermarkControlMsg _combinedWatermarkMsg;

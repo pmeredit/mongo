@@ -625,7 +625,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     }
 
     if (_watermarkGenerator) {
-        _stats.watermark = _watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+        _stats.watermark = _watermarkGenerator->getWatermarkMsg().watermarkTimestampMs;
     }
 
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
@@ -838,8 +838,8 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     streamDoc.streamMeta = std::move(streamMeta);
 
     streamDoc.minProcessingTimeMs = curTimeMillis64();
-    streamDoc.minEventTimestampMs = ts.toMillisSinceEpoch();
-    streamDoc.maxEventTimestampMs = ts.toMillisSinceEpoch();
+    streamDoc.minDocTimestampMs = ts.toMillisSinceEpoch();
+    streamDoc.maxDocTimestampMs = ts.toMillisSinceEpoch();
     return streamDoc;
 }
 
@@ -880,7 +880,7 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
 
     if (_watermarkGenerator) {
         _state.setWatermark(
-            WatermarkState{_watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
+            WatermarkState{_watermarkGenerator->getWatermarkMsg().watermarkTimestampMs});
     }
 
     invariant(_context->checkpointStorage);

@@ -304,9 +304,9 @@ TEST_F(SessionWindowAwareOperatorTest, NoMerge_OneWindow) {
     auto myTS = leftTS + gapMs - 1;
 
     inputDocs.push_back(Document{fromjson("{ a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{ a: 1, b: 1, id: 1}")});
-    inputDocs.back().minEventTimestampMs = myTS;
+    inputDocs.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -344,12 +344,12 @@ TEST_F(SessionWindowAwareOperatorTest, MergeLeft_OneWindow) {
     auto myTS = leftTS + 1;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -387,12 +387,12 @@ TEST_F(SessionWindowAwareOperatorTest, MergeRight_OneWindow) {
     auto myTS = rightTS + 1;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -439,12 +439,12 @@ TEST_F(SessionWindowAwareOperatorTest, MergeLeftFilteredOut_OneWindow) {
     auto myTS = leftTS + 1;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -477,12 +477,12 @@ TEST_F(SessionWindowAwareOperatorTest, MergeRightFilteredOut_OneWindow) {
     auto myTS = rightTS + 1;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -522,12 +522,12 @@ TEST_F(SessionWindowAwareOperatorTest, MergeMultipleDisjoint_OneWindow) {
     auto myTS = (leftTS + rightTS) / 2;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -566,16 +566,16 @@ TEST_F(SessionWindowAwareOperatorTest, MergeMultipleSpan_OneWindow) {
     auto myTS = (leftTS + rightTS) / 2;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 3}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs1.back().minEventTimestampMs = leftTS - 1;
+    inputDocs1.back().minDocTimestampMs = leftTS - 1;
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
-    inputDocs1.back().minEventTimestampMs = rightTS + 1;
+    inputDocs1.back().minDocTimestampMs = rightTS + 1;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -632,9 +632,9 @@ TEST_F(SessionWindowAwareOperatorTest, WatermarkWithinGap) {
     auto myTS = leftTS + toMillis(windowOptions.gapUnit, windowOptions.gapSize) - 1;
 
     inputDocs.push_back(Document{fromjson("{ a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{ a: 1, b: 1, id: 1}")});
-    inputDocs.back().minEventTimestampMs = myTS;
+    inputDocs.back().minDocTimestampMs = myTS;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -659,11 +659,11 @@ TEST_F(SessionWindowAwareOperatorTest, CloseEmptyMapFilteredOut) {
     std::vector<StreamDocument> inputDocs;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 0}")});
-    inputDocs.back().minEventTimestampMs = 0;
+    inputDocs.back().minDocTimestampMs = 0;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 1}")});
-    inputDocs.back().minEventTimestampMs = gapMs + 1;
+    inputDocs.back().minDocTimestampMs = gapMs + 1;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
-    inputDocs.back().minEventTimestampMs = 2 * gapMs + 1;
+    inputDocs.back().minDocTimestampMs = 2 * gapMs + 1;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -690,16 +690,16 @@ TEST_F(SessionWindowAwareOperatorTest, OneMergeeFilteredOut) {
     auto myTS = (leftTS + rightTS) / 2;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 3}")});
-    inputDocs.back().minEventTimestampMs = rightTS + gapMs + 1;
+    inputDocs.back().minDocTimestampMs = rightTS + gapMs + 1;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
-    inputDocs1.back().minEventTimestampMs = myTS + gapMs - 1;
+    inputDocs1.back().minDocTimestampMs = myTS + gapMs - 1;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -733,16 +733,16 @@ TEST_F(SessionWindowAwareOperatorTest, DestinationMergeeFilteredOut) {
     auto myTS = (leftTS + rightTS) / 2;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 3}")});
-    inputDocs.back().minEventTimestampMs = rightTS + gapMs + 1;
+    inputDocs.back().minDocTimestampMs = rightTS + gapMs + 1;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
-    inputDocs1.back().minEventTimestampMs = myTS + gapMs - 1;
+    inputDocs1.back().minDocTimestampMs = myTS + gapMs - 1;
 
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
@@ -778,16 +778,16 @@ TEST_F(SessionWindowAwareOperatorTest, AllMergeesFilteredOut) {
     auto myTS = (leftTS + rightTS) / 2;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 0}")});
-    inputDocs.back().minEventTimestampMs = leftTS;
+    inputDocs.back().minDocTimestampMs = leftTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 2}")});
-    inputDocs.back().minEventTimestampMs = rightTS;
+    inputDocs.back().minDocTimestampMs = rightTS;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 2, id: 3}")});
-    inputDocs.back().minEventTimestampMs = rightTS + gapMs + 1;
+    inputDocs.back().minDocTimestampMs = rightTS + gapMs + 1;
 
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = myTS;
+    inputDocs1.back().minDocTimestampMs = myTS;
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 4}")});
-    inputDocs1.back().minEventTimestampMs = myTS + gapMs - 1;
+    inputDocs1.back().minDocTimestampMs = myTS + gapMs - 1;
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
@@ -819,9 +819,9 @@ TEST_F(SessionWindowAwareOperatorTest, MultiplePartitions) {
     std::vector<StreamDocument> inputDocs;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = 0;
+    inputDocs.back().minDocTimestampMs = 0;
     inputDocs.push_back(Document{fromjson("{a: 2, b: 1, id: 1}")});
-    inputDocs.back().minEventTimestampMs = 1;
+    inputDocs.back().minDocTimestampMs = 1;
 
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
@@ -879,9 +879,9 @@ TEST_F(SessionWindowAwareOperatorTest, MultipleSessionsClosed) {
     std::vector<StreamDocument> inputDocs;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = 0;
+    inputDocs.back().minDocTimestampMs = 0;
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs.back().minEventTimestampMs = gapMs + 1000;
+    inputDocs.back().minDocTimestampMs = gapMs + 1000;
 
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
@@ -925,9 +925,9 @@ TEST_F(SessionWindowAwareOperatorTest, OpenClosePartition) {
     std::vector<StreamDocument> inputDocs1;
 
     inputDocs.push_back(Document{fromjson("{a: 1, b: 1, id: 0}")});
-    inputDocs.back().minEventTimestampMs = 0;
+    inputDocs.back().minDocTimestampMs = 0;
     inputDocs1.push_back(Document{fromjson("{a: 1, b: 1, id: 1}")});
-    inputDocs1.back().minEventTimestampMs = 0;
+    inputDocs1.back().minDocTimestampMs = 0;
 
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{

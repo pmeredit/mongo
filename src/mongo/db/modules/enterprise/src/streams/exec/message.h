@@ -63,15 +63,15 @@ struct KafkaSourceDocument {
 struct StreamDocument {
     StreamDocument(mongo::Document d) : doc(std::move(d)) {}
 
-    StreamDocument(mongo::Document d, int64_t minEventTimestampMs)
-        : doc(std::move(d)), minEventTimestampMs(minEventTimestampMs) {}
+    StreamDocument(mongo::Document d, int64_t minDocTimestampMs)
+        : doc(std::move(d)), minDocTimestampMs(minDocTimestampMs) {}
 
     // Copy the timing information from another stream document.
     void copyDocumentMetadata(const StreamDocument& other) {
         streamMeta = other.streamMeta;
         minProcessingTimeMs = other.minProcessingTimeMs;
-        minEventTimestampMs = other.minEventTimestampMs;
-        maxEventTimestampMs = other.maxEventTimestampMs;
+        minDocTimestampMs = other.minDocTimestampMs;
+        maxDocTimestampMs = other.maxDocTimestampMs;
     }
 
     mongo::Document doc;
@@ -82,13 +82,13 @@ struct StreamDocument {
     // the document above.
     int64_t minProcessingTimeMs{-1};
 
-    // The minimum event timestamp of input documents consumed to produce
+    // The minimum timestamp of input documents consumed to produce
     // the document above.
-    int64_t minEventTimestampMs{-1};
+    int64_t minDocTimestampMs{-1};
 
-    // The maximum event timestamp of input documents consumed to produce
+    // The maximum timestamp of input documents consumed to produce
     // the document above.
-    int64_t maxEventTimestampMs{-1};
+    int64_t maxDocTimestampMs{-1};
 
     // Only used for testing purposes.
     bool operator==(const StreamDocument& other) const;
@@ -139,13 +139,13 @@ struct WatermarkControlMsg {
 
     // Watermark of the sender operator in milliseconds.
     // This should only be used when watermarkStatus is kActive.
-    int64_t eventTimeWatermarkMs{-1};
+    int64_t watermarkTimestampMs{-1};
 
     bool operator==(const WatermarkControlMsg& other) const {
         if (watermarkStatus != other.watermarkStatus) {
             return false;
         }
-        if (eventTimeWatermarkMs != other.eventTimeWatermarkMs) {
+        if (watermarkTimestampMs != other.watermarkTimestampMs) {
             return false;
         }
         return true;

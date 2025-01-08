@@ -204,7 +204,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
     ASSERT_FALSE(msg.controlMsg->checkpointMsg);
 
     ASSERT_EQUALS(WatermarkStatus::kActive, msg.controlMsg->watermarkMsg->watermarkStatus);
-    ASSERT_EQUALS(1693933341000 - 1, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQUALS(1693933341000 - 1, msg.controlMsg->watermarkMsg->watermarkTimestampMs);
 }
 
 }  // namespace streams

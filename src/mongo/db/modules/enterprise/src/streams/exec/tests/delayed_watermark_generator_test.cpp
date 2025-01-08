@@ -27,45 +27,45 @@ TEST_F(DelayedWatermarkGeneratorTest, Basic) {
 
     // Test that the generator has the watermark message uninitialized before the first message is
     // fed.
-    ASSERT_EQUALS(-1, generator.getWatermarkMsg().eventTimeWatermarkMs);
+    ASSERT_EQUALS(-1, generator.getWatermarkMsg().watermarkTimestampMs);
 
     // Test that _ts=0 is allowed through when there is no watermark yet.
     ASSERT_FALSE(generator.isLate(0));
 
     generator.onEvent(/*eventTimestampMs*/ 20'000);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkTimestampMs, 20'000 - 1);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkTimestampMs, 20'000 - 1);
 
     // Test that generator sets the idle/active status as expected.
     generator.setIdle();
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kIdle);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkTimestampMs, 20'000 - 1);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kIdle);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkTimestampMs, 20'000 - 1);
     generator.setActive();
 
     // Test that watermark remains unchanged when out of order events arrive.
     generator.onEvent(/*eventTimestampMs*/ 300'000);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkTimestampMs, 300'000 - 1);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkTimestampMs, 300'000 - 1);
 
     // Test that watermark remains unchanged when out of order events arrive.
     generator.onEvent(/*eventTimestampMs*/ 100'000);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkTimestampMs, 300'000 - 1);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkTimestampMs, 300'000 - 1);
 
     // Test that watermark keeps advancing as event timestamp keeps increasing.
     generator.onEvent(/*eventTimestampMs*/ 400'001);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 400'000);
+    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkTimestampMs, 400'000);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 400'000);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkTimestampMs, 400'000);
 }
 
 TEST_F(DelayedWatermarkGeneratorTest, Restore) {
@@ -91,7 +91,7 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
             generator1.setIdle();
         }
         auto watermarkMsg1 = generator1.getWatermarkMsg();
-        ASSERT_EQUALS(spec.expectedWatermark1, watermarkMsg1.eventTimeWatermarkMs);
+        ASSERT_EQUALS(spec.expectedWatermark1, watermarkMsg1.watermarkTimestampMs);
         ASSERT_EQUALS(spec.eventTimestamp1, getMaxEventTimestampMs(&generator1));
         ASSERT_EQUALS(spec.status1, watermarkMsg1.watermarkStatus);
 
@@ -101,14 +101,14 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
             generator2.setIdle();
         }
         auto watermarkMsg2 = generator2.getWatermarkMsg();
-        ASSERT_EQUALS(spec.expectedWatermark2, watermarkMsg2.eventTimeWatermarkMs);
+        ASSERT_EQUALS(spec.expectedWatermark2, watermarkMsg2.watermarkTimestampMs);
         ASSERT_EQUALS(spec.eventTimestamp2, getMaxEventTimestampMs(&generator2));
         ASSERT_EQUALS(spec.status2, watermarkMsg2.watermarkStatus);
 
         // Verify the combined watermark
         auto combinedMsg = combiner.getCombinedWatermarkMsg();
         ASSERT_EQUALS(combinedMsg.watermarkStatus, WatermarkStatus::kActive);
-        ASSERT_EQUALS(spec.expectedCombinedWatermark, combinedMsg.eventTimeWatermarkMs);
+        ASSERT_EQUALS(spec.expectedCombinedWatermark, combinedMsg.watermarkTimestampMs);
 
         // Created restored generators and combiner.
         streams::WatermarkCombiner restoredCombiner(/*numInputs*/ 2);

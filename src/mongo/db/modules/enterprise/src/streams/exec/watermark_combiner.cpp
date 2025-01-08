@@ -26,8 +26,8 @@ void WatermarkCombiner::onWatermarkMsg(int32_t inputIdx, const WatermarkControlM
         _recomputeCombinedWatermark = true;
     }
 
-    if (wMsg.eventTimeWatermarkMs < watermarkMsg.eventTimeWatermarkMs) {
-        wMsg.eventTimeWatermarkMs = watermarkMsg.eventTimeWatermarkMs;
+    if (wMsg.watermarkTimestampMs < watermarkMsg.watermarkTimestampMs) {
+        wMsg.watermarkTimestampMs = watermarkMsg.watermarkTimestampMs;
         if (inputIdx == _minWatermarkInputIdx) {
             // The input that advanced previously had the lowest watermark. So, we should
             // recompute the combined watermark.
@@ -45,7 +45,7 @@ const WatermarkControlMsg& WatermarkCombiner::getCombinedWatermarkMsg() {
 }
 
 void WatermarkCombiner::computeCombinedWatermark() {
-    int64_t minEventTimeWatermarkMs = std::numeric_limits<int64_t>::max();
+    int64_t minWatermarkTimestampMs = std::numeric_limits<int64_t>::max();
     // Tracks the lowest watermark timestamp across all active inputs.
     int newMinWatermarkInputIdx{0};
     bool allIdle{true};
@@ -57,8 +57,8 @@ void WatermarkCombiner::computeCombinedWatermark() {
         }
 
         allIdle = false;
-        if (minEventTimeWatermarkMs > wMsg.eventTimeWatermarkMs) {
-            minEventTimeWatermarkMs = wMsg.eventTimeWatermarkMs;
+        if (minWatermarkTimestampMs > wMsg.watermarkTimestampMs) {
+            minWatermarkTimestampMs = wMsg.watermarkTimestampMs;
             newMinWatermarkInputIdx = i;
         }
     }
@@ -68,8 +68,8 @@ void WatermarkCombiner::computeCombinedWatermark() {
     } else {
         _combinedWatermarkMsg.watermarkStatus = WatermarkStatus::kActive;
         _minWatermarkInputIdx = newMinWatermarkInputIdx;
-        if (_combinedWatermarkMsg.eventTimeWatermarkMs <= minEventTimeWatermarkMs) {
-            _combinedWatermarkMsg.eventTimeWatermarkMs = minEventTimeWatermarkMs;
+        if (_combinedWatermarkMsg.watermarkTimestampMs <= minWatermarkTimestampMs) {
+            _combinedWatermarkMsg.watermarkTimestampMs = minWatermarkTimestampMs;
         }
     }
 }

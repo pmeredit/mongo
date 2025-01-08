@@ -83,7 +83,7 @@ public:
         std::map<int64_t, StreamDataMsg> inputMessages;
         for (auto& inputDoc : inputDocs) {
             // Assign the document to window(s).
-            auto docTime = inputDoc.minEventTimestampMs;
+            auto docTime = inputDoc.minDocTimestampMs;
             auto oldestStartTime = windowAssigner.toOldestWindowStartTime(docTime);
             std::vector<int64_t> times;
             for (auto start = oldestStartTime; start <= docTime;
@@ -189,7 +189,7 @@ TEST_F(WindowAwareOperatorTest, SingleGroup_OneWindow) {
     for (size_t i = 0; i < numDocuments; ++i) {
         StreamDocument doc{Document{fromjson(fmt::format("{{id: {}, val: {}}}", i, i))}};
         // Assign the document a timestamp that will put it in the first window.
-        doc.minEventTimestampMs =
+        doc.minDocTimestampMs =
             (expectedWindowStartTime + Seconds(int64_t(i % windowSize))).toMillisSinceEpoch();
         inputDocs.push_back(std::move(doc));
     }
@@ -243,7 +243,7 @@ TEST_F(WindowAwareOperatorTest, OneGroup_MultipleWindows) {
         for (size_t i = 0; i < documentsPerWindow; ++i) {
             StreamDocument doc{Document{fromjson(fmt::format("{{id: {}, val: 1}}", i))}};
             // Assign the document a timestamp that will put it in the window.
-            doc.minEventTimestampMs =
+            doc.minDocTimestampMs =
                 (window + Seconds(int64_t(i % windowSize))).toMillisSinceEpoch();
             inputDocs.push_back(std::move(doc));
         }
@@ -328,7 +328,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
                 StreamDocument doc{
                     Document{fromjson(fmt::format("{{customerId: {}, val: 1}}", customerId))}};
                 // Assign the document a timestamp that will put it in the window.
-                doc.minEventTimestampMs =
+                doc.minDocTimestampMs =
                     (window + Seconds(int64_t(customerId % windowSize))).toMillisSinceEpoch();
                 inputDocs.push_back(std::move(doc));
                 // Add this customer to the expected window results.
@@ -399,7 +399,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
         toMillis(windowOptions.sizeUnit, windowOptions.size);
     group1->onControlMsg(0,
                          StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                              .eventTimeWatermarkMs = lastWindowEndTime}});
+                                              .watermarkTimestampMs = lastWindowEndTime}});
 
     auto results = sink.getMessages();
     for (Date_t startTime : expectedWindowStartTimes) {
@@ -440,7 +440,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
     results.pop_front();
     ASSERT(msg.controlMsg);
     ASSERT(msg.controlMsg->watermarkMsg);
-    ASSERT_EQ(lastWindowEndTime - 1, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQ(lastWindowEndTime - 1, msg.controlMsg->watermarkMsg->watermarkTimestampMs);
 }
 
 /**
@@ -563,7 +563,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
     // Close both the windows and get the results.
     WatermarkControlMsg watermarkMsg{
         .watermarkStatus = WatermarkStatus::kActive,
-        .eventTimeWatermarkMs =
+        .watermarkTimestampMs =
             timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize * 2, 0).toMillisSinceEpoch(),
     };
     dummy.onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
@@ -598,7 +598,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
     ASSERT(results[3].controlMsg);
     ASSERT(results[3].controlMsg->watermarkMsg);
     ASSERT_EQ(window2 + windowSizeMs - 1,
-              results[3].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+              results[3].controlMsg->watermarkMsg->watermarkTimestampMs);
     ASSERT_EQ(WatermarkStatus::kActive, results[3].controlMsg->watermarkMsg->watermarkStatus);
 
     // Now, restore the checkpoint data into a new operator.
@@ -725,7 +725,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     // Close both the windows and get the results.
     WatermarkControlMsg watermarkMsg{
         .watermarkStatus = WatermarkStatus::kActive,
-        .eventTimeWatermarkMs =
+        .watermarkTimestampMs =
             timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize * 2, 0).toMillisSinceEpoch(),
     };
     sort->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
@@ -762,7 +762,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     ASSERT(results[3].controlMsg);
     ASSERT(results[3].controlMsg->watermarkMsg);
     ASSERT_EQ(window2 + windowSizeMs - 1,
-              results[3].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+              results[3].controlMsg->watermarkMsg->watermarkTimestampMs);
     ASSERT_EQ(WatermarkStatus::kActive, results[3].controlMsg->watermarkMsg->watermarkStatus);
 
     // Now, restore the checkpoint data into a new operator.
@@ -790,14 +790,14 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     // result.
     ASSERT_EQ(results.size() - 1, resultsAfterRestore.size());
     for (size_t i = 0; i < resultsAfterRestore.size(); ++i) {
-        // TODO(SERVER-94796): We need to remove the minEventTimestampMs and maxEventTimestampMs
+        // TODO(SERVER-94796): We need to remove the minDocTimestampMs and maxDocTimestampMs
         // fields from dataMsg.docs in `results` in order for the assertion to pass because the
         // checkpoint doesn't yet save these fields.
         if (results[i + 1].dataMsg) {
             auto defaultMax = std::numeric_limits<int64_t>::max();
             for (auto& doc : results[i + 1].dataMsg->docs) {
-                doc.minEventTimestampMs = defaultMax;
-                doc.maxEventTimestampMs = -1;
+                doc.minDocTimestampMs = defaultMax;
+                doc.maxDocTimestampMs = -1;
             }
         }
 
@@ -925,7 +925,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     // Close both the windows and get the results.
     WatermarkControlMsg watermarkMsg{
         .watermarkStatus = WatermarkStatus::kActive,
-        .eventTimeWatermarkMs =
+        .watermarkTimestampMs =
             timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize * 4, 0).toMillisSinceEpoch(),
     };
     groupOperator->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
@@ -1180,7 +1180,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
     // Close the first window.
     groupOperator->onControlMsg(0,
                                 StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                                     .eventTimeWatermarkMs = windowMs2,
+                                                     .watermarkTimestampMs = windowMs2,
                                                  }});
     stats = groupOperator->getStats();
     assertStateSize(357, stats.memoryUsageBytes);
@@ -1248,7 +1248,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
     // Close the first window.
     sortOperator->onControlMsg(0,
                                StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                                    .eventTimeWatermarkMs = windowMs2,
+                                                    .watermarkTimestampMs = windowMs2,
                                                 }});
     stats = sortOperator->getStats();
     assertStateSize(133, stats.memoryUsageBytes);

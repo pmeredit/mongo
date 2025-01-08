@@ -122,20 +122,20 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
     // First, sort the documents by timestamp.
     std::sort(
         dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
-            return lhs.minEventTimestampMs < rhs.minEventTimestampMs;
+            return lhs.minDocTimestampMs < rhs.minDocTimestampMs;
         });
 
     int64_t nextWindowStartDocIdx{0};
-    int64_t endTs = dataMsg.docs.back().minEventTimestampMs;
+    int64_t endTs = dataMsg.docs.back().minDocTimestampMs;
     int64_t nextWindowStartTs =
-        options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minEventTimestampMs);
+        options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minDocTimestampMs);
 
     // DLQ docs that are too late to fit in any open window.
     if (nextWindowStartTs < _minWindowStartTime) {
         nextWindowStartTs = _minWindowStartTime;
         while (nextWindowStartDocIdx < (int64_t)dataMsg.docs.size()) {
             const auto& doc = dataMsg.docs[nextWindowStartDocIdx];
-            int64_t docTime = doc.minEventTimestampMs;
+            int64_t docTime = doc.minDocTimestampMs;
             int64_t oldestWindowStartTime =
                 options.windowAssigner->toOldestWindowStartTime(docTime);
             // If some documents are late, the nextWindowStartTs might need to adjusted.
@@ -155,7 +155,7 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
     // DLQ any docs that fit into some open windows, but missed some older closed windows.
     for (size_t i = nextWindowStartDocIdx; i < dataMsg.docs.size(); ++i) {
         int64_t minEligibleStartTime =
-            options.windowAssigner->toOldestWindowStartTime(dataMsg.docs[i].minEventTimestampMs);
+            options.windowAssigner->toOldestWindowStartTime(dataMsg.docs[i].minDocTimestampMs);
         if (minEligibleStartTime >= _minWindowStartTime) {
             // This doc and following docs in the sorted batch are not late.
             break;
@@ -173,7 +173,7 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
         bool nextWindowStartTsSet{false};
         for (size_t i = nextWindowStartDocIdx; i < dataMsg.docs.size(); ++i) {
             auto& doc = dataMsg.docs[i];
-            int64_t docTs = doc.minEventTimestampMs;
+            int64_t docTs = doc.minDocTimestampMs;
             invariant(docTs >= windowStart);
             if (!nextWindowStartTsSet && docTs >= nextWindowStartTs) {
                 // Fast forward to the next window if the next window is after the initially
@@ -497,7 +497,7 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
     if (isInputActive) {
         _idleStartTime = boost::none;
         inputWatermarkTime =
-            watermark.eventTimeWatermarkMs - options.windowAssigner->getAllowedLateness();
+            watermark.watermarkTimestampMs - options.windowAssigner->getAllowedLateness();
         if (inputWatermarkTime > _maxReceivedWatermarkMs) {
             _maxReceivedWatermarkMs = inputWatermarkTime;
         }
@@ -592,7 +592,7 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         sendControlMsg(
             0 /* outputIdx */,
             StreamControlMsg{WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
-                                                 .eventTimeWatermarkMs = outputWatermark}});
+                                                 .watermarkTimestampMs = outputWatermark}});
         _maxSentWatermarkMs = outputWatermark;
     }
 }
@@ -610,7 +610,7 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
 
     std::vector<mongo::Date_t> missedWindowStartTimes;
     int64_t windowStartTs = minEligibleStartTime;
-    while (windowStartTs < _minWindowStartTime && windowStartTs <= doc.minEventTimestampMs) {
+    while (windowStartTs < _minWindowStartTime && windowStartTs <= doc.minDocTimestampMs) {
         missedWindowStartTimes.push_back(mongo::Date_t::fromMillisSinceEpoch(windowStartTs));
         windowStartTs = windowAssigner->getNextWindowStartTime(windowStartTs);
     }
@@ -684,7 +684,7 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
 
     std::sort(
         dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
-            return lhs.minEventTimestampMs < rhs.minEventTimestampMs;
+            return lhs.minDocTimestampMs < rhs.minDocTimestampMs;
         });
 
     const auto& options = getOptions();
@@ -702,12 +702,12 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
         auto& myMiniWindow = miniWindows[partition];
 
         if (myMiniWindow.docsInWindow.empty() ||
-            assigner->shouldMergeSessionWindows(doc.minEventTimestampMs,
-                                                doc.minEventTimestampMs,
+            assigner->shouldMergeSessionWindows(doc.minDocTimestampMs,
+                                                doc.minDocTimestampMs,
                                                 myMiniWindow.minTS,
                                                 myMiniWindow.maxTS)) {
-            myMiniWindow.minTS = std::min(myMiniWindow.minTS, doc.minEventTimestampMs);
-            myMiniWindow.maxTS = std::max(myMiniWindow.maxTS, doc.minEventTimestampMs);
+            myMiniWindow.minTS = std::min(myMiniWindow.minTS, doc.minDocTimestampMs);
+            myMiniWindow.maxTS = std::max(myMiniWindow.maxTS, doc.minDocTimestampMs);
             myMiniWindow.docsInWindow.push_back(std::move(doc));
         } else {
             processDocsInSessionWindow(partition,
@@ -716,7 +716,7 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
                                        myMiniWindow.maxTS,
                                        _context->shouldProjectStreamMetaPriorToSinkStage());
             myMiniWindow = MiniWindow{
-                std::vector<StreamDocument>{}, doc.minEventTimestampMs, doc.minEventTimestampMs};
+                std::vector<StreamDocument>{}, doc.minDocTimestampMs, doc.minDocTimestampMs};
             myMiniWindow.docsInWindow.push_back(std::move(doc));
         }
     }
@@ -916,7 +916,7 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
     int64_t inputWatermarkTime{0};
     if (isInputActive) {
         inputWatermarkTime =
-            watermark.eventTimeWatermarkMs - options.windowAssigner->getAllowedLateness();
+            watermark.watermarkTimestampMs - options.windowAssigner->getAllowedLateness();
         if (inputWatermarkTime > _maxReceivedWatermarkMs) {
             _maxReceivedWatermarkMs = inputWatermarkTime;
         }
