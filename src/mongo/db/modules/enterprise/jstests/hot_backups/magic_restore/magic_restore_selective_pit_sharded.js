@@ -154,7 +154,7 @@ function runTest(nodeOptionsArg) {
             // but still pass them into magic restore as additional oplog entries to apply.
             const filteredEntriesAfterBackup = entriesAfterBackup.filter(
                 elem => (elem.ns != "config.rangeDeletions" &&
-                         elem.o.msg != "ensureMajorityPrimaryAndScheduleDbTask"));
+                         elem.o != "ensureMajorityPrimaryAndScheduleDbTask"));
 
             // The unsharded collection lives on the primary shard.
             const expectedEntriesAfterBackup = isPrimaryShard ? 8 : 4;
