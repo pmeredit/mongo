@@ -4,7 +4,7 @@
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
- *   featureFlagLookupEncryptionSchemasFLE,
+ *   requires_fcv_81
  * ]
  */
 

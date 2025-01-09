@@ -63,9 +63,7 @@ function testIsRemoteSchemaFlag(command) {
 
     // Verify that the 'isRemoteSchema' field is required.
     delete command.isRemoteSchema;
-    // TODO SERVER-59284: Update test to only accept 9686706 error code for aggCommand.
-    assert.commandFailedWithCode(testDb.runCommand(command),
-                                 isAggCommand ? [9686706, 31104] : 31104);
+    assert.commandFailedWithCode(testDb.runCommand(command), isAggCommand ? 9686706 : 31104);
 
     // Verify that when 'isRemoteSchema' is true, we don't return encryption placeholders when
     // schema doesn't have encrypt fields.

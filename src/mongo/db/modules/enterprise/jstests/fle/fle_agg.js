@@ -4,7 +4,8 @@
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 import {
     fle2Enabled,
-    generateSchema
+    generateSchema,
+    generateSchemasFromSchemaMap
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 import {
     kDeterministicAlgo,
@@ -28,6 +29,11 @@ let command, cmdRes, schema;
 function buildAggregate(pipeline, schema) {
     return Object.assign({aggregate: coll.getName(), pipeline: pipeline, cursor: {}},
                          generateSchema(schema, coll.getFullName()));
+}
+
+function buildAggregateWithSchemaMap(pipeline, schemaMap) {
+    return Object.assign({aggregate: coll.getName(), pipeline: pipeline, cursor: {}},
+                         generateSchemasFromSchemaMap(schemaMap));
 }
 
 function buildCollectionlessAggregate(pipeline) {
@@ -167,22 +173,24 @@ for (let pipe of pipelinesForNotAffectedStages) {
 // Correctly fail for unsupported aggregation stages.
 const invalidStages = [
     {
-        $facet: {
-            "pipeline1": [{$unwind: "$tags"}, {$sortByCount: "$tags"}],
-            "pipeline2": [{$match: {ssn: 5}}]
-        }
+        stage: {
+            $facet: {
+                "pipeline1": [{$unwind: "$tags"}, {$sortByCount: "$tags"}],
+                "pipeline2": [{$match: {ssn: 5}}]
+            }
+        },
+        schemaMap: {[coll.getFullName()]: {}}
     },
-    {$redact: "$$DESCEND"},
-    {$planCacheStats: {}},
-    {$_internalInhibitOptimization: {}},
-    {$out: "other"},
+    {stage: {$redact: "$$DESCEND"}, schemaMap: {[coll.getFullName()]: {}}},
+    {stage: {$planCacheStats: {}}, schemaMap: {[coll.getFullName()]: {}}},
+    {stage: {$_internalInhibitOptimization: {}}, schemaMap: {[coll.getFullName()]: {}}},
+    {stage: {$out: "other"}, schemaMap: {[coll.getFullName()]: {}, "test.other": {}}}
 ];
 
-// TODO SERVER-59284: Update test for $out after feature flag is enabled by default, provide a
-// schema for 'other', and assert we get the unsupported stage error.
-for (let stage of invalidStages) {
-    const aggCommand = buildAggregate([stage], {});
-    assert.commandFailedWithCode(testDB.runCommand(aggCommand), [31011, 9710000]);
+for (let stageAndSchema of invalidStages) {
+    const aggCommand =
+        buildAggregateWithSchemaMap([stageAndSchema.stage], stageAndSchema.schemaMap);
+    assert.commandFailedWithCode(testDB.runCommand(aggCommand), [31011]);
 }
 
 // Correctly fail for stages that query an encrypted field with encrypted data.
@@ -200,7 +208,7 @@ command = Object.assign(
         coll.getFullName()));
 assert.commandFailedWithCode(testDB.runCommand(command), 31041);
 
-// Correctly fail for stages which reference additional collections.
+// Correctly fail for stages which reference additional collections without providing their schema.
 command = buildAggregate([{
             $graphLookup: {
                 from: "other",
@@ -211,49 +219,44 @@ command = buildAggregate([{
             }
         }], {});
 
-// TODO SERVER-59284: Change expected error code to only be 9710000 after feature flag is enabled by
-// default.
-assert.commandFailedWithCode(testDB.runCommand(command), [51204, 9710000]);
+assert.commandFailedWithCode(testDB.runCommand(command), [9710000]);
 command = buildAggregate(
     [{$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}}], {});
-assert.commandFailedWithCode(testDB.runCommand(command), [51204, 9710000]);
+assert.commandFailedWithCode(testDB.runCommand(command), [9710000]);
 
 // Test that all collection-less aggregations result in a failure.
-// TODO SERVER-59284: Update expected error messages once feature flag is enabled by default.
 command = buildCollectionlessAggregate([{$changeStream: {}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), [
-    31011 /*legacy fle1, feature flag off*/,
-    6411900 /*fle2, feature flag off*/,
-    9686712 /*fle2 feature flag on*/,
-    51213 /*legacy fle1, feature flag on*/
+    9686712 /*fle2*/,
+    51213 /*legacy fle1*/
 ]);
 
-// TODO SERVER-59284: Update expected error messages once feature flag is enabled by default.
 command = buildCollectionlessAggregate([{$listLocalSessions: {}}]);
-assert.commandFailedWithCode(
-    testDB.runCommand(command),
-    [31106 /*legacy fle1*/, 6411900 /*fle2, feature flag off*/, 9686712 /*fle2 feature flag on*/]);
+assert.commandFailedWithCode(testDB.runCommand(command), [
+    31106 /*legacy fle1*/,
+    9686712 /*fle2*/
+]);
 command = buildCollectionlessAggregate([{$listLocalSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(
-    testDB.runCommand(command),
-    [31106 /*legacy fle1*/, 6411900 /*fle2, feature flag off*/, 9686712 /*fle2 feature flag on*/]);
+assert.commandFailedWithCode(testDB.runCommand(command), [
+    31106 /*legacy fle1*/,
+    9686712 /*fle2*/
+]);
 command = buildCollectionlessAggregate([{$listSessions: {}}]);
-assert.commandFailedWithCode(
-    testDB.runCommand(command),
-    [31106 /*legacy fle1*/, 6411900 /*fle2, feature flag off*/, 9686712 /*fle2 feature flag on*/]);
+assert.commandFailedWithCode(testDB.runCommand(command), [
+    31106 /*legacy fle1*/,
+    9686712 /*fle2*/
+]);
 command = buildCollectionlessAggregate([{$listSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(
-    testDB.runCommand(command),
-    [31106 /*legacy fle1*/, 6411900 /*fle2, feature flag off*/, 9686712 /*fle2 feature flag on*/]);
+assert.commandFailedWithCode(testDB.runCommand(command), [
+    31106 /*legacy fle1*/,
+    9686712 /*fle2*/
+]);
 
 // CurrentOp must be run against admin db.
-// TODO SERVER-59284: Update expected error messages once feature flag is enabled by default.
 assert.commandFailedWithCode(
     testDB.getSiblingDB("admin").runCommand(buildCollectionlessAggregate([{$currentOp: {}}])), [
-        31011 /*legacy fle1, feature flag off*/,
-        6411900 /*fle2, feature flag off*/,
-        9686712 /*fle2 feature flag on*/,
-        51213 /*legacy fle1, feature flag on*/
+        9686712 /*fle2*/,
+        51213 /*legacy fle1*/
     ]);
 
 // Invalid pipelines correctly fail to parse.

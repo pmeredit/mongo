@@ -622,6 +622,15 @@ PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<Express
     const LiteParsedPipeline liteParsedPipeline(request);
     const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
 
+    // If an incorrect $db has been provided to the aggregate command, we must fail early. If the
+    // parsed db name from the request does not match that of the expression context (i.e $db
+    // field), an incorrect namespace may have been used to populate our schema map, resulting in a
+    // failure to find the encryption schema for the given namespace.
+    uassert(5928400,
+            "Mismatched dbname",
+            expCtx->getNamespaceString().dbName().serializeWithoutTenantPrefix_UNSAFE() ==
+                request.getNamespace().dbName().serializeWithoutTenantPrefix_UNSAFE());
+
     // Add the populated list of involved namespaces to the expression context, needed at parse
     // time by stages such as $lookup and $out.
     expCtx->setNamespaceString(request.getNamespace());

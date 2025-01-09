@@ -2,7 +2,7 @@
  * Test that mongocryptd can correctly mark the $lookup agg stage with intent-to-encrypt
  * placeholders.
  * * @tags: [
- *   featureFlagLookupEncryptionSchemasFLE
+ *   requires_fcv_81
  * ]
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";

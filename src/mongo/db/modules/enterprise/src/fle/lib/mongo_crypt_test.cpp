@@ -299,7 +299,7 @@ protected:
                 "jsonSchema" : <SCHEMA>,
                 "isRemoteSchema" : false,
                 "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
-                "$db": "test"
+                "$db": "db"
             })";
         std::string output =
             R"({
@@ -331,7 +331,7 @@ protected:
                 "jsonSchema" : <SCHEMA>,
                 "isRemoteSchema" : false,
                 "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
-                "$db": "test"
+                "$db": "db"
             })";
         std::string output =
             R"({
@@ -366,7 +366,7 @@ protected:
                 "jsonSchema" : <SCHEMA>,
                 "isRemoteSchema" : false,
                 "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
-                "$db": "test",
+                "$db": "db",
                 "apiVersion": "1",
                 "apiDeprecationErrors": true,
                 "apiStrict": true

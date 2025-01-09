@@ -198,26 +198,22 @@ assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
 // Test that not self-lookup specified with an equality match fails.
-// TODO SERVER-59284: Change expected error code to only be 9710000 after feature flag is enabled by
-// default.
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$lookup: {from: "foo", as: "docs", localField: "item", foreignField: "sku"}}],
     cursor: {}
 },
                                                              fooEncryptedSchema)),
-                             [51204, 9710000]);
+                             [9710000]);
 
 // Test that not self-lookup specified with a pipeline fails.
-// TODO SERVER-59284: Change expected error code to only be 9710000 after feature flag is enabled by
-// default.
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$lookup: {from: "foo", as: "docs", let : {}, pipeline: [{$match: {name: "bob"}}]}}],
     cursor: {}
 },
                                                              fooEncryptedSchema)),
-                             [51204, 9710000]);
+                             [9710000]);
 
 // Test that self-lookup when 'localField' has an encrypted child fails.
 assert.commandFailedWithCode(
