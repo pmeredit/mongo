@@ -103,9 +103,9 @@ structs:
             maxMemoryUsage:
                 description: Max memory usage of the operator thus far.
                 type: safeDouble
-            executionTimeSecs:
+            executionTimeMillis:
                 description: Total execution time of the operator (in seconds).
-                type: seconds 
+                type: milliseconds 
             timeSpentMillis:
                 description: Total timeSpent in the operator (in milliseconds)
                 type: milliseconds

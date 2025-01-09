@@ -1604,7 +1604,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                                        (double)s.numDlqBytes / scale,
                                        (double)s.memoryUsageBytes / scale,
                                        (double)s.maxMemoryUsageBytes / scale,
-                                       mongo::duration_cast<Seconds>(s.executionTime)};
+                                       mongo::duration_cast<Milliseconds>(s.executionTime)};
             stats.setTimeSpentMillis(mongo::duration_cast<Milliseconds>(s.timeSpent));
             stats.setMinOpenWindowStartTime(s.minOpenWindowStartTime);
             stats.setMaxOpenWindowStartTime(s.maxOpenWindowStartTime);
