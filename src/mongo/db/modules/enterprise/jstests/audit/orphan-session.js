@@ -14,7 +14,7 @@ let runTest = function(conn, audit, admin) {
     const session = conn.startSession();
     assert.commandFailedWithCode(admin.runCommand({endSessions: [session.getSessionId()]}),
                                  ErrorCodes.Unauthorized);
-    audit.assertNoNewEntries("authCheck");
+    audit.assertNoNewEntries("authCheck", {"command": "endSessions"});
     admin.auth("admin", "pwd");
 };
 
