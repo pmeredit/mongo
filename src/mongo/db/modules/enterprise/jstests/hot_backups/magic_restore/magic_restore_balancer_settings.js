@@ -98,9 +98,9 @@ shardingRestoreTest.getShardRestoreTests().forEach((magicRestoreTest) => {
 
         // There might be rangeDeletions ops after the backup, or a
         // ensureMajorityPrimaryAndScheduleDbTask too, filtering those out.
-        entriesAfterBackup =
-            entriesAfterBackup.filter(elem => (elem.ns != "config.rangeDeletions" &&
-                                               elem.o != "ensureMajorityPrimaryAndScheduleDbTask"));
+        entriesAfterBackup = entriesAfterBackup.filter(
+            elem => (elem.ns != "config.rangeDeletions" &&
+                     elem.o.msg != "ensureMajorityPrimaryAndScheduleDbTask"));
 
         assert.eq(entriesAfterBackup.length,
                   2,
