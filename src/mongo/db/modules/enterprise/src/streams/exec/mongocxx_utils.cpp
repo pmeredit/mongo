@@ -6,9 +6,11 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <bsoncxx/json.hpp>
 #include <exception>
+#include <fmt/core.h>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/operation_exception.hpp>
 #include <mongocxx/uri.hpp>
+#include <string>
 #include <unistd.h>
 
 #include "mongo/db/service_context.h"
@@ -37,10 +39,11 @@ std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri
     // mongocxx will include the URI in some errors messages. In Atlas Stream Processing
     // that URI will include internal mesh details, which we don't want to return to customers.
     // So we remove all the URI from the message.
+    constexpr auto kMeshUriLabel = ".mesh";
     auto sanitized = msg;
     for (const auto& host : uri.hosts()) {
-        boost::replace_all(sanitized, host.name, "");
-        boost::replace_all(sanitized, std::to_string(host.port), "");
+        boost::replace_all(sanitized, kMeshUriLabel, "");
+        boost::replace_all(sanitized, fmt::format(":{}", host.port), "");
     }
     return sanitized;
 }

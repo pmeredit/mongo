@@ -33,6 +33,7 @@ TEST(MongoCxxUtilTest, RoundTripFromBsonObjToBsoncxxValue) {
 }
 struct MongocxxExceptionToStatusTestCase {
     const mongocxx::exception& ex;
+    const std::string& uri;
     const std::string& errorPrefix;
     const SPStatus& expected;
 };
@@ -42,33 +43,55 @@ TEST(MongoCxxUtilTest, MongocxxExceptionToStatus) {
     auto transientAuthErrorMessage =
         "$merge to foobar failed : command update requires authentication";
 
+    auto meshURIErrorMessage =
+        "no suitable servers found: [error on 'some-url.mesh.mongodb.net:3333'] [error on: "
+        "'some-url.mesh.mongodb.net:3333']";
+    auto meshURIErrorMessageWithRedactions =
+        "no suitable servers found: [error on 'some-url.mongodb.net'] [error on: "
+        "'some-url.mongodb.net']";
+
     MongocxxExceptionToStatusTestCase tests[] = {
         {
             mongocxx::exception{ErrorCodes::Unauthorized,
                                 mongocxx::server_error_category(),
                                 transientAuthErrorMessage},
+            "mongodb://localhost:27017",
             "errorPrefix",
             SPStatus{Status{ErrorCodes::InternalError,
-                            fmt::format("errorPrefix: {} : generic server error ",
+                            fmt::format("errorPrefix: {}: generic server error",
                                         transientAuthErrorMessage)},
-                     transientAuthErrorMessage},
+                     fmt::format("{}: generic server error", transientAuthErrorMessage)},
         },
         {
             mongocxx::exception{ErrorCodes::Error{kAtlasErrorCode},
                                 mongocxx::server_error_category(),
                                 transientAuthErrorMessage},
+            "mongodb://localhost:27017",
             "errorPrefix",
             SPStatus{Status{ErrorCodes::InternalError,
-                            fmt::format("errorPrefix: {} : generic server error ",
+                            fmt::format("errorPrefix: {}: generic server error",
                                         transientAuthErrorMessage)},
-                     transientAuthErrorMessage},
+                     fmt::format("{}: generic server error", transientAuthErrorMessage)},
+        },
+
+        {
+            mongocxx::exception{ErrorCodes::Error{ErrorCodes::NotWritablePrimary},
+                                mongocxx::server_error_category(),
+                                meshURIErrorMessage},
+            "mongodb://some-url.mesh.mongodb.net:3333",
+            "errorPrefix",
+            SPStatus{Status{ErrorCodes::StreamProcessorAtlasConnectionError,
+                            fmt::format("errorPrefix: {}: generic server error",
+                                        meshURIErrorMessageWithRedactions)},
+                     fmt::format("{}: generic server error", meshURIErrorMessage)},
         },
     };
 
     for (auto tc : tests) {
-        auto actual = mongocxxExceptionToStatus(
-            tc.ex, mongocxx::uri{"mongodb://localhost:27017"}, tc.errorPrefix);
+        auto actual = mongocxxExceptionToStatus(tc.ex, mongocxx::uri{tc.uri}, tc.errorPrefix);
         ASSERT_EQUALS(tc.expected, actual);
+        ASSERT_EQUALS(tc.expected.reason(), actual.reason());
+        ASSERT_EQUALS(tc.expected.unsafeReason(), actual.unsafeReason());
     }
 }
 
