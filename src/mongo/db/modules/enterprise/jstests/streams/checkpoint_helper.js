@@ -513,13 +513,14 @@ export class TestHelper {
         return validateResult;
     }
 
-    stop(assertWorked = true) {
+    stop(assertWorked = true, checkpointOnStop = true) {
         // This will flush all the checkpoints on disk that have not already
         // been flushed.
         // skip checkpointing logic for the sample sourceTypes
-        this.sp[this.spName].stop(assertWorked,
-                                  this.checkpointUtil.flushedIds,
-                                  this.sourceType === "sample" /* skipCheckpoint */);
+        this.sp[this.spName].stop(
+            assertWorked,
+            this.checkpointUtil.flushedIds,
+            checkpointOnStop && this.sourceType != "sample" /* checkpointOnStop */);
         // Update the flushedIds so we don't flush them again on a subsequent start/stop.
         this.checkpointUtil.flushedIds = this.checkpointUtil.checkpointIds;
     }

@@ -1319,7 +1319,7 @@ void StreamManager::stopStreamProcessorAsync(const mongo::StopStreamProcessorCom
                    "context"_attr = processorInfo->context.get(),
                    "stopReason"_attr = stopReasonToString(stopReason),
                    "stopStatus"_attr = executorStatus ? executorStatus->reason() : "");
-        processorInfo->executor->stop(stopReason);
+        processorInfo->executor->stop(stopReason, request.getCheckpointOnStop());
     }
 }
 

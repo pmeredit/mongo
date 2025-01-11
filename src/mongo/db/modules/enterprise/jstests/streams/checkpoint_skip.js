@@ -158,7 +158,64 @@ function checkpointCoordinatorTakeCheckpointTest(useRestoredExecutionPlan) {
     test.stop();
 }
 
+function skipCheckpointOnStopTest() {
+    const pipeline = [
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        {$match: {a: 1}},
+        {$project: {_id: 0, _stream_meta: 0}},
+    ];
+
+    const inputBeforeStop = [{a: 1}, {a: 4}, {a: 2}, {a: 1}];
+    let inputDocCount = 4;
+    let test = new TestHelper(inputBeforeStop,
+                              pipeline,
+                              999999999 /* interval */,
+                              "changestream" /* sourceType */,
+                              true /*useNewCheckpointing*/,
+                              false /* useRestoredExecutionPlan */,
+                              null,
+                              null,
+                              null,
+                              null,
+                              false /*useTimeField*/);
+
+    test.run();
+
+    // Wait for the expected output to show up.
+    let expectedOutput = [{a: 1}, {a: 1}];
+    assert.soon(() => {
+        if (test.stats()["inputMessageCount"] != inputDocCount) {
+            return false;
+        }
+        return test.getResults().length == expectedOutput.length;
+    });
+
+    jsTestLog("Stopping now");
+    test.stop(/*assertWorked*/ true, /*checkpointOnStop*/ false);
+
+    test.outputColl.drop();
+
+    // Insert one more doc into the input collection.
+    assert.commandWorked(test.inputColl.insertMany([{a: 1}]));
+    inputDocCount = 5;
+    expectedOutput.push({a: 1});
+
+    // Run the streamProcessor, expecting to reprocess all the input again.
+    test.run(false /* firstStart */);
+
+    // Wait for the expected output to show up.
+    assert.soon(() => {
+        if (test.stats()["inputMessageCount"] != inputDocCount) {
+            return false;
+        }
+        return test.getResults().length == expectedOutput.length;
+    });
+    test.stop(/*assertWorked*/ true, /*checkpointOnStop*/ false);
+}
+
 checkpointCoordinatorTakeCheckpointTest(true);
 checkpointCoordinatorTakeCheckpointTest(false);
+
+skipCheckpointOnStopTest();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

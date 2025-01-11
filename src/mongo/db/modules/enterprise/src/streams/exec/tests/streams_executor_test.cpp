@@ -50,7 +50,7 @@ TEST_F(ExecutorTest, StopTimesOut) {
     }
 
     // Stop the Executor.
-    executor->stop(StopReason::Shutdown);
+    executor->stop(StopReason::Shutdown, /*checkpointOnStop*/ true);
 
     // Verify that Executor failed with timeout error because it took too long to stop.
     ASSERT_THROWS_WHAT(executorFuture.get(), DBException, "Timeout while stopping"_sd);

@@ -62,19 +62,24 @@ export class StreamProcessor {
         return result;
     }
 
-    makeStopCmd() {
+    makeStopCmd(checkpointOnStop = true) {
         if (this._isUsingAtlas) {
             return {stopStreamProcessor: this._name};
         }
 
-        return {streams_stopStreamProcessor: '', tenantId: this._tenantId, name: this._name};
+        return {
+            streams_stopStreamProcessor: '',
+            tenantId: this._tenantId,
+            name: this._name,
+            checkpointOnStop: checkpointOnStop
+        };
     }
 
     // Stop the streamProcessor.
-    stop(assertWorked = true, alreadyFlushedCheckpointIds = [], skipCheckpoint = false) {
+    stop(assertWorked = true, alreadyFlushedCheckpointIds = [], checkpointOnStop = true) {
         let flushThread = null;
         if (this._startOptions != null && this._startOptions.checkpointOptions != null &&
-            !skipCheckpoint) {
+            checkpointOnStop) {
             const checkpointOptions = this._startOptions.checkpointOptions;
             const checkpointBaseDir = checkpointOptions.localDisk.writeDirectory;
             flushThread = new Thread(flushUntilStopped,
@@ -86,7 +91,7 @@ export class StreamProcessor {
             flushThread.start();
         }
 
-        const result = this._db.runCommand(this.makeStopCmd());
+        const result = this._db.runCommand(this.makeStopCmd(checkpointOnStop));
         if (flushThread != null) {
             flushThread.join();
         }

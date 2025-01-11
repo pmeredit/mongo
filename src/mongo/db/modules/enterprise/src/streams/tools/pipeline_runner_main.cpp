@@ -121,7 +121,7 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     }
     std::cout << "\n\n\n(pipeline_runner_main) Received " << numDocs
               << " documents from the pipeline" << std::endl;
-    executor->stop(StopReason::ExternalStopRequest);
+    executor->stop(StopReason::ExternalStopRequest, /* checkpointOnStop */ true);
 
     auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(context->dlq.get());
     auto dlqMsgs = dlq->getMessages();

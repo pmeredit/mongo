@@ -583,6 +583,10 @@ commands:
                 description: Maximum processing time permitted for this command.
                 type: seconds 
                 default: 180
+            checkpointOnStop:
+                description: "By default, a checkpoint is written when a stream processor is stopped. If this option is set to false, the checkpoint is skipped."
+                type: bool
+                default: true
 
     streams_listStreamProcessors:
         description: "Command to list stream processors"

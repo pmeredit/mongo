@@ -209,10 +209,11 @@ Future<void> Executor::start() {
     return std::move(pf.future);
 }
 
-void Executor::stop(StopReason stopReason) {
+void Executor::stop(StopReason stopReason, bool checkpointOnStop) {
     stdx::lock_guard<stdx::mutex> lock(_mutex);
     _shutdown = true;
     _stopReason = stopReason;
+    _checkpointOnStop = checkpointOnStop;
     _stopDeadline = Date_t::now() + _options.stopTimeout;
     LOGV2_INFO(9764600,
                "executor received stop signal",
@@ -403,10 +404,12 @@ Executor::RunStatus Executor::runOnce() {
 
     if (shutdown) {
         StopReason stopReason;
+        bool checkpointOnStop{true};
         mongo::Date_t stopDeadline;
         {
             stdx::lock_guard<stdx::mutex> lock(_mutex);
             stopReason = _stopReason;
+            checkpointOnStop = _checkpointOnStop;
             stopDeadline = _stopDeadline;
         }
 
@@ -440,7 +443,7 @@ Executor::RunStatus Executor::runOnce() {
                    "stopReason"_attr = stopReasonToString(stopReason));
 
         _executorTimer.reset();
-        if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {
+        if (checkpointCoordinator && checkpointOnStop) {
             auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
                 CheckpointCoordinator::CheckpointRequest{
                     .changeStreamAdvanced = changeStreamAdvanced,

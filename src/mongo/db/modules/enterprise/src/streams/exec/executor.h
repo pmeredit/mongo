@@ -52,9 +52,6 @@ public:
         // Sleep duration when source is not idle.
         // This is currently always zero except when a sample data source is used.
         int32_t sourceNotIdleSleepDurationMs{0};
-        // Whether the executor should send one last CheckpointControlMsg through the OperatorDag
-        // before shutting down.
-        bool sendCheckpointControlMsgBeforeShutdown{true};
         // Maximum time allowed to set up the initial connections.
         mongo::Seconds connectTimeout{60};
         // Maximum time allowed to gracefully stop the stream processor.
@@ -77,7 +74,7 @@ public:
     mongo::Future<void> start();
 
     // Stops the OperatorDag and _executorThread.
-    void stop(StopReason stopReason);
+    void stop(StopReason stopReason, bool checkpointOnStop);
 
     // True if the Operators have succesfully connected.
     bool isConnected();
@@ -199,6 +196,7 @@ private:
     mutable mongo::stdx::mutex _mutex;
     bool _shutdown{false};
     StopReason _stopReason;
+    bool _checkpointOnStop{true};
     mongo::Date_t _stopDeadline;
     // During stop we write a final checkpoint and set this member variable.
     boost::optional<CheckpointId> _lastCheckpointId;
