@@ -90,8 +90,6 @@ TEST(MongoCxxUtilTest, MongocxxExceptionToStatus) {
     for (auto tc : tests) {
         auto actual = mongocxxExceptionToStatus(tc.ex, mongocxx::uri{tc.uri}, tc.errorPrefix);
         ASSERT_EQUALS(tc.expected, actual);
-        ASSERT_EQUALS(tc.expected.reason(), actual.reason());
-        ASSERT_EQUALS(tc.expected.unsafeReason(), actual.unsafeReason());
     }
 }
 

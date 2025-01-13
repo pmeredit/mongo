@@ -32,6 +32,11 @@ public:
 
     SPStatus(mongo::Status status) : mongo::Status{std::move(status)} {}
 
+    bool operator==(const SPStatus& other) const {
+        return _unsafeError == other._unsafeError && code() == other.code() &&
+            reason() == other.reason();
+    }
+
     // An error message used for internal logs that should not be sent to customers.
     const std::string& unsafeReason() const {
         return _unsafeError;
