@@ -370,8 +370,7 @@ mongo::Document convertDateToISO8601(mongo::Document doc) {
     MutableDocument mut(doc);
     auto it = doc.fieldIterator();
     while (it.more()) {
-        auto fieldName = it.fieldName();
-        const auto& field = doc[fieldName];
+        const auto& [fieldName, field] = it.next();
         auto type = doc[fieldName].getType();
         if (type == BSONType::Date) {
             mut.setField(fieldName, Value(convertDateToISO8601(field.getDate())));
@@ -380,7 +379,6 @@ mongo::Document convertDateToISO8601(mongo::Document doc) {
         } else if (type == BSONType::Array) {
             mut.setField(fieldName, Value(convertDateToISO8601(field.getArray())));
         }
-        it.advance();
     }
     return mut.freeze();
 }

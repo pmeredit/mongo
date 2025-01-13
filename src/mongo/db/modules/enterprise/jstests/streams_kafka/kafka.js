@@ -2933,3 +2933,63 @@ for (const testCase of modifyKafkaTestCases) {
     jsTestLog(`Running: ${tojson(testCase)}`);
     runKafkaTest(kafka, () => modifyKafkaTestRunner(testCase));
 }
+
+// Date format.
+runKafkaTest(kafka, () => {
+    const str = "2023-01-01T00:00:00.000Z";
+    const date = ISODate(str);
+    const run = (topic, useISO8601 = false) => {
+        const spName = topic;
+        let emit = {
+            $emit: {
+                connectionName: kafkaPlaintextName,
+                topic: topic,
+            }
+        };
+        if (useISO8601) {
+            emit["$emit"]["config"] = {};
+            emit["$emit"]["config"]["dateFormat"] = "ISO8601";
+        }
+        sp.createStreamProcessor(spName, [{$source: {'connectionName': '__testMemory'}}, emit]);
+        sp[spName].start();
+        sp[spName].testInsert({ts: ISODate("2023-01-01T00:00:00.000Z"), a: 1});
+        assert.soon(() => { return sp[spName].stats().outputMessageCount == 1; });
+        sp[spName].stop();
+    };
+    const get = (topic) => {
+        const spName = topic;
+        const outputCollName = topic;
+        const dlqCollName = topic + "dlq";
+        const outputColl = db.getSiblingDB(dbName)[outputCollName];
+        sp.createStreamProcessor(spName, [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topic,
+                    config: {auto_offset_reset: "earliest"}
+                }
+            },
+            {$project: {_ts: 0}},
+            {
+                $merge: {
+                    into: {connectionName: dbConnName, db: dbName, coll: outputCollName},
+                    whenMatched: "replace"
+                }
+            }
+        ]);
+        sp[spName].start(
+            {dlq: {connectionName: dbConnName, db: dbName, coll: dlqCollName}, featureFlags: {}});
+        assert.soon(() => {
+            jsTestLog(sp[spName].stats());
+            jsTestLog(tojson(db.getSiblingDB(dbName)[dlqCollName].find({}).toArray()));
+            return sp[spName].stats().outputMessageCount == 1;
+        });
+        sp[spName].stop();
+        return outputColl.find({}).toArray()[0]["ts"];
+    };
+
+    run("tDefault", false);
+    assert.eq(get("tDefault"), date);
+    run("tISO8601", true);
+    assert.eq(get("tISO8601"), str);
+});
