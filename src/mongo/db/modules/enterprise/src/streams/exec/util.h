@@ -76,4 +76,7 @@ bool isConfluentBroker(const std::string& bootstrapServers);
 // Returns an anonymized pipeline for logging purposes
 std::vector<mongo::StringData> getLoggablePipeline(const std::vector<mongo::BSONObj>& pipeline);
 
+// Change all Date fields to ISO8601 strings.
+mongo::Document convertDateToISO8601(mongo::Document doc);
+
 }  // namespace streams

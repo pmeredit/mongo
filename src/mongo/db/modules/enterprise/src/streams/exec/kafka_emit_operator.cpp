@@ -239,6 +239,10 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     bool samplersPresent = samplersExist();
     for (auto& streamDoc : dataMsg.docs) {
         try {
+            if (_options.dateSerializationFormat == mongo::DateSerializationFormatEnum::ISO8601) {
+                streamDoc.doc = convertDateToISO8601(std::move(streamDoc.doc));
+            }
+
             processStreamDoc(streamDoc);
             numOutputDocs++;
             auto bytes = streamDoc.doc.memUsageForSorter();

@@ -7,7 +7,10 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bsontypes.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/name_expression.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
@@ -339,6 +342,47 @@ std::vector<StringData> getLoggablePipeline(const std::vector<BSONObj>& pipeline
     }
 
     return stageNames;
+}
+
+std::string convertDateToISO8601(mongo::Date_t date) {
+    return dateToISOStringUTC(date);
+}
+
+std::vector<mongo::Value> convertDateToISO8601(const std::vector<mongo::Value>& arr) {
+    std::vector<mongo::Value> result;
+    result.reserve(arr.size());
+    for (const auto& value : arr) {
+        auto type = value.getType();
+        if (type == BSONType::Date) {
+            result.push_back(Value(convertDateToISO8601(value.getDate())));
+        } else if (type == BSONType::Object) {
+            result.push_back(Value(convertDateToISO8601(value.getDocument())));
+        } else if (type == BSONType::Array) {
+            result.push_back(Value(convertDateToISO8601(value.getArray())));
+        } else {
+            result.push_back(value);
+        }
+    }
+    return result;
+}
+
+mongo::Document convertDateToISO8601(mongo::Document doc) {
+    MutableDocument mut(doc);
+    auto it = doc.fieldIterator();
+    while (it.more()) {
+        auto fieldName = it.fieldName();
+        const auto& field = doc[fieldName];
+        auto type = doc[fieldName].getType();
+        if (type == BSONType::Date) {
+            mut.setField(fieldName, Value(convertDateToISO8601(field.getDate())));
+        } else if (type == BSONType::Object) {
+            mut.setField(fieldName, Value(convertDateToISO8601(field.getDocument())));
+        } else if (type == BSONType::Array) {
+            mut.setField(fieldName, Value(convertDateToISO8601(field.getArray())));
+        }
+        it.advance();
+    }
+    return mut.freeze();
 }
 
 }  // namespace streams

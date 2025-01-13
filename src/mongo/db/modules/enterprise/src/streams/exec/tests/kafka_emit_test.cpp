@@ -8,14 +8,17 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/bsontypes_util.h"
+#include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/util.h"
 #include "streams/util/metric_manager.h"
 
 using namespace mongo;
@@ -255,6 +258,158 @@ TEST_F(KafkaEmitTest, TestSerializeHeaders) {
     assertBinDataEquals(result, expectedBinData);
 
     delete headers;
+}
+
+TEST_F(KafkaEmitTest, TestDateFormat) {
+    std::string isoString("2024-01-01T00:00:01.000Z");
+    Date_t date = dateFromISOString(isoString).getValue();
+
+    // basic case
+    auto doc = Document(BSON("a" << 1 << "b" << date));
+    ASSERT_VALUE_EQ(Value(doc), Value(doc));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                    Value(Document(BSON("a" << 1 << "b" << isoString))));
+
+    // basic case 2
+    doc = Document(BSON("b" << date));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)), Value(Document(BSON("b" << isoString))));
+
+    // no-op
+    doc = Document(BSON("a" << 1 << "b"
+                            << "foo"));
+    ASSERT_VALUE_EQ(Value(doc), Value(doc));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)), Value(doc));
+
+    // nested doc
+    doc = Document(BSON("a" << 1 << "b" << BSON("d" << date)));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                    Value(Document(BSON("a" << 1 << "b" << BSON("d" << isoString)))));
+
+    // nested doc(doc)
+    doc = Document(BSON("a" << 1 << "b"
+                            << BSON("c" << BSON("d" << date << "e"
+                                                    << "foo"))));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                    Value(Document(BSON("a" << 1 << "b"
+                                            << BSON("c" << BSON("d" << isoString << "e"
+                                                                    << "foo"))))));
+
+    // nested doc(doc(doc))
+    doc = Document(BSON("a" << 1 << "b"
+                            << BSON("c" << BSON("d" << date << "e"
+                                                    << "foo"
+                                                    << "f" << BSON("g" << date << "h" << 1)))));
+    ASSERT_VALUE_EQ(
+        Value(convertDateToISO8601(doc)),
+        Value(Document(
+            BSON("a" << 1 << "b"
+                     << BSON("c" << BSON("d" << isoString << "e"
+                                             << "foo"
+                                             << "f" << BSON("g" << isoString << "h" << 1)))))));
+
+    // nested doc no-op
+    doc = Document(BSON("a" << 1 << "b"
+                            << BSON("c" << BSON("e"
+                                                << "foo"))));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)), Value(doc));
+
+    // nested array
+    {
+        auto arr = BSONArrayBuilder();
+        arr.append(date);
+        doc = Document(BSON("a" << 1 << "d" << arr.arr()));
+        auto exArr = BSONArrayBuilder();
+        exArr.append(isoString);
+        ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                        Value(Document(BSON("a" << 1 << "d" << exArr.arr()))));
+    }
+
+    // nested array no-op
+    {
+        auto arr = BSONArrayBuilder();
+        arr.append(2);
+        doc = Document(BSON("a" << 1 << "d" << arr.arr()));
+        auto exArr = BSONArrayBuilder();
+        exArr.append(isoString);
+        ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)), Value(doc));
+    }
+
+    // nested array with multiple values
+    {
+        auto arr = BSONArrayBuilder();
+        arr.append(date);
+        arr.append("foo");
+        arr.append(1);
+        arr.append(date);
+        doc = Document(BSON("a" << 1 << "d" << arr.arr()));
+        auto exArr = BSONArrayBuilder();
+        exArr.append(isoString);
+        exArr.append("foo");
+        exArr.append(1);
+        exArr.append(isoString);
+        ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                        Value(Document(BSON("a" << 1 << "d" << exArr.arr()))));
+    }
+
+    // nested array(doc)
+    {
+        auto arr = BSONArrayBuilder();
+        arr.append(date);
+        arr.append("foo");
+        arr.append(1);
+        arr.append(BSON("d" << 2 << "e" << date));
+        doc = Document(BSON("a" << 1 << "d" << arr.arr()));
+        auto exArr = BSONArrayBuilder();
+        exArr.append(isoString);
+        exArr.append("foo");
+        exArr.append(1);
+        exArr.append(BSON("d" << 2 << "e" << isoString));
+        ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                        Value(Document(BSON("a" << 1 << "d" << exArr.arr()))));
+    }
+
+    // nested array(doc(array(doc)))
+    {
+        auto build = [&](bool useDate) {
+            auto appendDate = [&](BSONArrayBuilder& b) {
+                if (useDate) {
+                    b.append(date);
+                } else {
+                    b.append(isoString);
+                }
+            };
+            auto appendDateToObj = [&](BSONObjBuilder& b, const std::string& name) {
+                if (useDate) {
+                    b.appendDate(name, date);
+                } else {
+                    b.append(name, isoString);
+                }
+            };
+
+            auto arr2 = BSONArrayBuilder();
+            arr2.append("foo");
+            arr2.append(1);
+            appendDate(arr2);
+            auto builder = BSONObjBuilder();
+            builder.append("f", 1);
+            appendDateToObj(builder, "g");
+            builder.append("arr2", arr2.arr());
+
+            auto arr = BSONArrayBuilder();
+            appendDate(arr);
+            auto builder2 = BSONObjBuilder();
+            builder2.append("d", 2);
+            appendDateToObj(builder2, "g");
+            arr.append(builder2.obj());
+
+            auto b = BSONObjBuilder();
+            b.append("a", 1);
+            b.append("d", arr.arr());
+            appendDateToObj(b, "f");
+            return Document(b.obj());
+        };
+        ASSERT_VALUE_EQ(Value(convertDateToISO8601(build(true))), Value(build(false)));
+    }
 }
 
 }  // namespace streams

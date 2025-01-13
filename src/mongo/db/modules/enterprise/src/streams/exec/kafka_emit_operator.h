@@ -63,6 +63,9 @@ public:
         mongo::KafkaCompressionTypeEnum compressionType{mongo::KafkaCompressionTypeEnum::none};
         // acks setting
         mongo::KafkaAcksEnum acks{mongo::KafkaAcksEnum::All};
+        // Date serialization format.
+        mongo::DateSerializationFormatEnum dateSerializationFormat{
+            mongo::DateSerializationFormatEnum::Default};
     };
 
     KafkaEmitOperator(Context* context, Options options);

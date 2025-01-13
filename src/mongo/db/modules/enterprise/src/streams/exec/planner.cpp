@@ -1092,6 +1092,8 @@ void Planner::planEmitSink(const BSONObj& spec) {
                 if (options.getConfig()->getAcks()) {
                     kafkaEmitOptions.acks = *options.getConfig()->getAcks();
                 }
+
+                kafkaEmitOptions.dateSerializationFormat = options.getConfig()->getDateFormat();
             }
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())

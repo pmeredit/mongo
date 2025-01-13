@@ -69,6 +69,13 @@ enums:
             Latest: "latest"
             End: "end"
 
+    DateSerializationFormat:
+        description: "Format to serialize date values."
+        type: string
+        values:
+            Default: "default"
+            ISO8601: "ISO8601"
+
     KafkaAuthSaslMechanism:
         type: string
         description: "Kafka sasl.mechanism options."
@@ -400,6 +407,10 @@ structs:
                 optional: true
                 type: KafkaAcks
                 default: All
+            dateFormat:
+                description: "Date format, might override the default date format in the outputFormat."
+                type: DateSerializationFormat
+                default: Default
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
