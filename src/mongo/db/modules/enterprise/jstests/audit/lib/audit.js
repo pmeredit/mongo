@@ -702,11 +702,16 @@ MongoRunner.runMongodAuditLogger = function(opts, format = "JSON", schema = "mon
     return mongo;
 };
 
-ReplSetTest.runReplSetAuditLogger = function(opts = {}, format = "JSON", schema = "mongo") {
+ReplSetTest.runReplSetAuditLogger = function(
+    opts = {}, format = "JSON", schema = "mongo", expectPrimaryChange = false) {
     const rsOpts = makeReplSetAuditOpts(opts, format, schema);
     const rs = new ReplSetTest(rsOpts);
     rs.startSet();
-    rs.initiate();
+    if (expectPrimaryChange) {
+        rs.initiate(null, null, {initiateWithDefaultElectionTimeout: true});
+    } else {
+        rs.initiate();
+    }
     rs.nodes.forEach(function(node) {
         if (!schema) {
             node.auditSpooler = (() => new AuditSpooler(node.fullOptions.auditPath, format));
@@ -733,12 +738,13 @@ ReplSetTest.runReplSetAuditLogger = function(opts = {}, format = "JSON", schema 
  * set for a single shard), mongos', and config servers.
  */
 MongoRunner.runShardedClusterAuditLogger = function(
-    opts = {}, baseOptions = {}, format = "JSON", schema = "mongo") {
+    opts = {}, baseOptions = {}, format = "JSON", schema = "mongo", expectPrimaryChange = false) {
     const defaultOpts = {
         mongos: [makeAuditOpts(baseOptions, format, schema)],
         config: [makeAuditOpts(baseOptions, format, schema)],
         shards: 1,
         rs0: makeReplSetAuditOpts(baseOptions, format, schema),
+        initiateWithDefaultElectionTimeout: expectPrimaryChange
     };
 
     // Beware! This does not do a nested merge, so if your provided opts has an "other" field, it

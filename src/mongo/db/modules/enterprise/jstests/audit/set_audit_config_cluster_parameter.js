@@ -373,7 +373,7 @@ function runTestReplset() {
         nodeOptions: {auditRuntimeConfiguration: true},
     };
 
-    const rs = ReplSetTest.runReplSetAuditLogger(rsOpts);
+    const rs = ReplSetTest.runReplSetAuditLogger(rsOpts, "JSON", "mongo", true);
     rs.awaitSecondaryNodes();
     const replset = new SetAuditConfigFixture(rs.getPrimary());
     replset.waitFor = function(assertion) {
@@ -421,7 +421,7 @@ function runTestSharding() {
         }
     };
 
-    const st = MongoRunner.runShardedClusterAuditLogger(opts, nodeOpts);
+    const st = MongoRunner.runShardedClusterAuditLogger(opts, nodeOpts, "JSON", "mongo", true);
     const sharding = new SetAuditConfigFixture(st.s);
     sharding.waitFor = function(assertion) {
         const kInterval = kPollingFrequencySecs * 1000;
