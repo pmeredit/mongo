@@ -538,6 +538,9 @@ protected:
     void visit(ExpressionInternalFLEBetween*) final {
         ensureNotEncryptedEnterEval("a fle between match", subtreeStack);
     }
+    void visit(ExpressionInternalRawSortKey*) final {
+        ensureNotEncryptedEnterEval("a raw sort key metadata access", subtreeStack);
+    }
     void visit(ExpressionMap*) final {
         ensureNotEncryptedEnterEval("a map function", subtreeStack);
     }
@@ -923,6 +926,7 @@ protected:
     void visit(ExpressionLog10*) override {}
     void visit(ExpressionInternalFLEEqual*) override {}
     void visit(ExpressionInternalFLEBetween*) override {}
+    void visit(ExpressionInternalRawSortKey*) override {}
     void visit(ExpressionMap*) override {}
     void visit(ExpressionMeta*) override {}
     void visit(ExpressionMod*) override {}
@@ -1252,6 +1256,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalFLEBetween*) override {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalRawSortKey*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMap*) override {
