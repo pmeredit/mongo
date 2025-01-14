@@ -11,9 +11,9 @@
 #include "mongo/base/string_data.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/service_context_d_test_fixture.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_session_cache.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/system_clock_source.h"
@@ -33,9 +33,9 @@ ServiceContext::ConstructorActionRegisterer createEncryptionKeyManager{
         encryptionGlobalParams.enableEncryption = true;
     }};
 
-class WiredTigerConnection {
+class WiredTigerConnectionTest {
 public:
-    WiredTigerConnection(StringData dbpath, StringData cipherName) : _conn(nullptr) {
+    WiredTigerConnectionTest(StringData dbpath, StringData cipherName) : _conn(nullptr) {
         encryptionGlobalParams.encryptionCipherMode = cipherName.toString();
         std::stringstream ss;
         ss << "create,cache_size=100MB,";
@@ -48,7 +48,7 @@ public:
         ASSERT_OK(wtRCToStatus(ret, nullptr));
         ASSERT(_conn);
     }
-    ~WiredTigerConnection() {
+    ~WiredTigerConnectionTest() {
         _conn->close(_conn, nullptr);
     }
     WT_CONNECTION* getConnection() const {
@@ -67,11 +67,11 @@ class WiredTigerUtilHarnessHelper {
 public:
     WiredTigerUtilHarnessHelper(const std::string& dbPath, const std::string& cipherName)
         : _cipherName(cipherName),
-          _connection(dbPath, cipherName),
-          _sessionCache(_connection.getConnection(), _connection.getClockSource()) {}
+          _connectionTest(dbPath, cipherName),
+          _connection(_connectionTest.getConnection(), _connectionTest.getClockSource()) {}
 
     void writeData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_sessionCache, nullptr);
+        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_connection, nullptr);
         ru.setOperationContext(opCtx);
         WiredTigerSession* mongoSession = ru.getSession();
 
@@ -130,7 +130,7 @@ public:
     }
 
     void readData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit recoveryUnit(&_sessionCache, nullptr);
+        WiredTigerRecoveryUnit recoveryUnit(&_connection, nullptr);
         recoveryUnit.setOperationContext(opCtx);
         WiredTigerSession* mongoSession = recoveryUnit.getSession();
         WT_SESSION* session = mongoSession->getSession();
@@ -158,8 +158,8 @@ public:
 
 private:
     std::string _cipherName;
+    WiredTigerConnectionTest _connectionTest;
     WiredTigerConnection _connection;
-    WiredTigerSessionCache _sessionCache;
 };
 
 class WiredTigerEncryptionTest : public ServiceContextMongoDTest {};
