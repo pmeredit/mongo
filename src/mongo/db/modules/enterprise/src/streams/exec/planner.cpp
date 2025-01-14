@@ -1309,6 +1309,10 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "Window hopSize size must be greater than 0.",
             hopInterval.getSize() > 0);
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Window hopSize cannot be greater than interval.",
+            toMillis(hopInterval.getUnit(), hopInterval.getSize()) <=
+                toMillis(windowInterval.getUnit(), windowInterval.getSize()));
 
     WindowAssigner::Options windowingOptions;
     windowingOptions.boundary = getValidBoundary(options);

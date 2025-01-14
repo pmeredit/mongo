@@ -235,6 +235,67 @@ TEST_F(PlannerTest, MultipleWindowsNotSupported) {
                        ErrorCodes::StreamProcessorInvalidOptions);
 }
 
+TEST_F(PlannerTest, HopSizeGreaterThanIntervalNotSupported) {
+    std::string pipeline = R"(
+[
+    { $match: { a: 1 }},
+    {
+        $hoppingWindow: {
+            interval: {size: 5, unit: "second"},
+            hopSize: {size: 6, unit: "second"},
+            pipeline: [
+                { $count: "a" }
+            ]
+        }
+    }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        AssertionException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Window hopSize cannot be greater than interval.");
+
+    pipeline = R"(
+[
+    { $match: { a: 1 }},
+    {
+        $hoppingWindow: {
+            interval: {size: 5, unit: "second"},
+            hopSize: {size: 6, unit: "minute"},
+            pipeline: [
+                { $count: "a" }
+            ]
+        }
+    }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        AssertionException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Window hopSize cannot be greater than interval.");
+
+    pipeline = R"(
+[
+    { $match: { a: 1 }},
+    {
+        $hoppingWindow: {
+            interval: {size: 5, unit: "second"},
+            hopSize: {size: 5, unit: "second"},
+            pipeline: [
+                { $count: "a" }
+            ]
+        }
+    }
+]
+    )";
+
+    addSourceSinkAndParse(pipeline);
+}
+
 /**
 Parse a user defined pipeline with all the supported MDP mapping stages.
 Verify that we can create an OperatorDag from it, and that the operators
