@@ -7,6 +7,8 @@
 #include <openssl/bn.h>
 #include <rdkafkacpp.h>
 
+#include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
@@ -189,11 +191,12 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
             BSONObjBuilder outputDocBuilder(*sourceDoc.doc);
             outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
             outputDocBuilder << "_stream_meta"
-                             << BSON("source" << BSON("type"
-                                                      << "kafka"
-                                                      << "topic" << sourceDoc.topic << "partition"
-                                                      << sourceDoc.partition << "offset"
-                                                      << sourceDoc.offset));
+                             << BSON("source"
+                                     << BSON("type"
+                                             << "kafka"
+                                             << "topic" << sourceDoc.topic << "partition"
+                                             << sourceDoc.partition << "offset" << sourceDoc.offset
+                                             << "key" << BSONNULL << "headers" << BSONArray()));
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());
             sourceDocs.push_back(std::move(sourceDoc));
         }

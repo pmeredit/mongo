@@ -107,15 +107,10 @@ void GroupOperator::doCloseWindow(Window* window) {
         curDataMsgByteSize += result->getApproximateSize();
 
         auto doc = std::move(*result);
-        if (_context->shouldProjectStreamMetaPriorToSinkStage()) {
-            auto newStreamMeta = updateStreamMeta(doc.getField(*_context->streamMetaFieldName),
-                                                  window->streamMetaTemplate);
-            MutableDocument mutableDoc(std::move(doc));
-            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
-            doc = mutableDoc.freeze();
-        }
         StreamDocument streamDoc(std::move(doc));
         streamDoc.streamMeta = window->streamMetaTemplate;
+        streamDoc.windowId = window->windowID;
+        streamDoc.onMetaUpdate(_context);
         streamDoc.minDocTimestampMs = window->minEventTimestampMs;
         streamDoc.maxDocTimestampMs = window->maxEventTimestampMs;
         outputMsg.docs.emplace_back(std::move(streamDoc));

@@ -90,7 +90,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
                     curDataMsgByteSize += outputDoc.getApproximateSize();
                     ++_unwindCurIndex;
                     StreamDocument outputStreamDoc(std::move(outputDoc));
-                    outputStreamDoc.copyDocumentMetadata(streamDoc);
+                    outputStreamDoc.copyDocumentMetadata(streamDoc, _context);
                     outputMsg.docs.emplace_back(std::move(outputStreamDoc));
                     // Should not reset the '_pipeline' until it's exhausted.
                     resetPipeline.dismiss();
@@ -99,7 +99,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
                     auto outputDoc = produceJoinedDoc(std::move(inputDoc), Value());
                     curDataMsgByteSize += outputDoc.getApproximateSize();
                     StreamDocument outputStreamDoc(std::move(outputDoc));
-                    outputStreamDoc.copyDocumentMetadata(streamDoc);
+                    outputStreamDoc.copyDocumentMetadata(streamDoc, _context);
                     outputMsg.docs.emplace_back(std::move(outputStreamDoc));
                 }
                 continue;
@@ -123,7 +123,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
                             produceJoinedDoc(std::move(inputDoc), Value(std::move(*results)));
                         curDataMsgByteSize += outputDoc.getApproximateSize();
                         StreamDocument outputStreamDoc(std::move(outputDoc));
-                        outputStreamDoc.copyDocumentMetadata(streamDoc);
+                        outputStreamDoc.copyDocumentMetadata(streamDoc, _context);
                         outputMsg.docs.emplace_back(std::move(outputStreamDoc));
                     }
                 }

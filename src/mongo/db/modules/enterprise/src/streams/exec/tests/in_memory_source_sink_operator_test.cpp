@@ -37,7 +37,7 @@ protected:
 
 InMemorySourceOperator::Options InMemorySourceSinkOperatorTest::makeSourceOptions() const {
     return InMemorySourceOperator::Options(SourceOperator::Options{
-        .timestampOutputFieldName = "_ts",
+        .timestampOutputFieldName = std::string{"_ts"},
         .useWatermarks = true,
     });
 }

@@ -50,5 +50,6 @@ boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 boost::optional<int64_t> getKafkaTotalQueuedBytes(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
+bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 
 }  // namespace streams

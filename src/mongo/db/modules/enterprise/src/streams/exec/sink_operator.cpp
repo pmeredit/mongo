@@ -55,14 +55,7 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
 
     if (_context->shouldProjectStreamMetaInSinkStage()) {
         for (auto& doc : dataMsg.docs) {
-            auto newStreamMeta =
-                updateStreamMeta(doc.doc.getField(*_context->streamMetaFieldName), doc.streamMeta);
-            if (newStreamMeta.empty()) {
-                break;
-            }
-            MutableDocument mutableDoc{std::move(doc.doc)};
-            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
-            doc.doc = mutableDoc.freeze();
+            doc.onMetaUpdate(_context, true /* isSink */);
         }
     }
 

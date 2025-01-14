@@ -10,7 +10,10 @@ import {
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
     getDefaultSp,
-    Streams
+    Streams,
+} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {
+    test as testConstants
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     TEST_TENANT_ID,
@@ -49,35 +52,107 @@ export function sanitizeDlqDoc(d) {
 
 /**
  * Helper function to test that the pipeline returns the expectedOutput for the given input.
- * First, a test source is used.
+ * First, the $source.documents test source is used.
+ * Then, then a mock Kafka $source is used.
  * Then, a change stream source is used, and there is a checkpoint in the middle.
  */
-export function commonTest({input, pipeline, expectedOutput, timeField = "$ts", expectedDlq = []}) {
-    // Test with a test source and no checkpoints.
+export function commonTest({
+    input,
+    pipeline,
+    expectedOutput,
+    timeField = "$ts",
+    expectedGeneratedOutput,
+    expectedChangestreamOutput,
+    expectedTestKafkaOutput,
+    useTimeField = true,
+    featureFlags = {},
+    expectedDlq = [],
+    useKafka = true
+}) {
     const sp = getDefaultSp();
+
+    assert(expectedOutput ||
+           (expectedGeneratedOutput && expectedChangestreamOutput && expectedTestKafkaOutput));
+
+    // Test with a test source and no checkpoints.
     const documentsSourceInput = input.filter(d => !d.hasOwnProperty(batchBreakerField));
-    const output = sp.process([
-        {$source: {documents: documentsSourceInput, timeField: timeField}},
-        ...pipeline,
-    ]);
+    let generatedSource = {$source: {documents: documentsSourceInput}};
+    if (useTimeField) {
+        generatedSource["$source"]["timeField"] = timeField;
+    }
+    const output = sp.process(
+        [
+            generatedSource,
+            ...pipeline,
+        ],
+        3 /* maxLoops */,
+        featureFlags);
     const dlqMessageField = "_dlqMessage";
     const dlqOutput = output.filter(d => d.hasOwnProperty(dlqMessageField))
                           .map(d => sanitizeDlqDoc(d[dlqMessageField]));
     const actualOutput = output.filter(d => !d.hasOwnProperty(dlqMessageField));
-    assert(resultsEq(actualOutput, expectedOutput, true /* verbose */));
+    const exOutput = expectedGeneratedOutput ? expectedGeneratedOutput : expectedOutput;
+    assert(resultsEq(actualOutput, exOutput, true /* verbose */));
     assert(resultsEq(dlqOutput, expectedDlq, true /* verbose */));
+
+    if (useKafka) {
+        // Test with a test Kafka source and no checkpoints.
+        const outputColl =
+            db.getSiblingDB(testConstants.dbName).getCollection(testConstants.outputCollName);
+        outputColl.drop();
+        let kafkaPipeline = [
+            {
+                $source: {
+                    connectionName: testConstants.kafkaConnection,
+                    testOnlyPartitionCount: NumberInt(1),
+                    topic: "t1",
+                }
+            },
+            ...pipeline,
+            {
+                $merge: {
+                    into: {
+                        connectionName: testConstants.atlasConnection,
+                        db: testConstants.dbName,
+                        coll: testConstants.outputCollName
+                    }
+                }
+            }
+        ];
+        if (useTimeField) {
+            kafkaPipeline[0]["$source"]["timeField"] = timeField;
+        }
+        sp.createStreamProcessor("foo", kafkaPipeline);
+        sp.foo.start({featureFlags: featureFlags});
+        sp.foo.testInsert(...documentsSourceInput);
+        const exKafkaOutput = expectedTestKafkaOutput ? expectedTestKafkaOutput : expectedOutput;
+        assert.soon(() => {
+            jsTestLog(outputColl.find({}).toArray());
+            return outputColl.count() == exKafkaOutput.length;
+        }, "waiting for output from kafka", 1000 * 10);
+        assert(
+            resultsEq(outputColl.find({}).toArray(), exKafkaOutput, true /* verbose */, ["_id"]));
+        sp.foo.stop();
+    }
+
     // Test with a changestream source and a checkpoint in the middle.
     const newPipeline = [
         {$match: {operationType: "insert"}},
         {$replaceRoot: {newRoot: "$fullDocument"}},
         ...pipeline,
     ];
-    const test = new TestHelper(
-        input,
-        newPipeline,
-        undefined,  // interval
-        "atlas"     // sourcetype
-    );
+    const test = new TestHelper(input,
+                                newPipeline,
+                                undefined,  // interval
+                                "atlas",    // sourcetype
+                                undefined,  // useNewCheckpointing
+                                undefined,  // useRestoredExecutionPlan
+                                undefined,  // writeDir
+                                undefined,  // restoreDir
+                                undefined,  // dbForTest
+                                undefined,  // targetSourceMergeDb
+                                useTimeField);
+    test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
 
     jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
 
@@ -101,6 +176,7 @@ export function commonTest({input, pipeline, expectedOutput, timeField = "$ts", 
     };
 
     // Start the processor and write part of the input.
+    const csOutput = expectedChangestreamOutput ? expectedChangestreamOutput : expectedOutput;
     test.startFromLatestCheckpoint();
     const firstInput = input.slice(0, input.length - 1);
     insertData(firstInput);
@@ -110,9 +186,8 @@ export function commonTest({input, pipeline, expectedOutput, timeField = "$ts", 
     // Start the processor from its last checkpoint.
     test.startFromLatestCheckpoint();
     // Validate the expected results are obtained.
-    assert.soon(() => { return test.stats().outputMessageCount == expectedOutput.length; });
-    assert(
-        resultsEq(test.outputColl.find({}).toArray(), expectedOutput, true /* verbose */, ["_id"]));
+    assert.soon(() => { return test.stats().outputMessageCount == csOutput.length; });
+    assert(resultsEq(test.outputColl.find({}).toArray(), csOutput, true /* verbose */, ["_id"]));
     // Wait for expected DLQ results.
     assert.soon(() => { return test.stats().dlqMessageCount == expectedDlq.length; },
                 "waiting for expected DLQ stats",

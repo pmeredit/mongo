@@ -80,7 +80,14 @@ void SortOperator::doCloseWindow(Window* window) {
         auto result = std::move(processor->getNext().second);
         curDataMsgByteSize += result.getApproximateSize();
         StreamDocument streamDoc(std::move(result));
+        // Don't update the internal DocumentMetadataFields.
+        // Before a document enters a $sort stage, the $source stage might have set
+        // some source metadata (topic, offset, etc.). We don't want to overwrite that
+        // metadata in this stage's output.
+        // TODO(SERVER-99097): Read DocumentMetadataFields and put it
+        // back into the StreamDocument::streamMeta.
         streamDoc.streamMeta = window->streamMetaTemplate;
+        streamDoc.windowId = window->windowID;
         streamDoc.minDocTimestampMs = window->minEventTimestampMs;
         streamDoc.maxDocTimestampMs = window->maxEventTimestampMs;
         outputMsg.docs.emplace_back(std::move(streamDoc));

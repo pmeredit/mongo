@@ -184,6 +184,10 @@ private:
     void validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserPipeline,
                                 const std::vector<mongo::BSONObj>& newUserPipeline);
 
+    // Returns true if a $hoppingWindow or $tumblingWindow's inner pipeline requires
+    // prepending a dummy limit operator.
+    bool shouldPrependDummyLimit(mongo::Pipeline* innerPipeline);
+
     Context* _context{nullptr};
     Options _options;
     // True if a window has been planned.

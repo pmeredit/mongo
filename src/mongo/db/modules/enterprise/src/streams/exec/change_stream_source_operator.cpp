@@ -822,20 +822,15 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 
     // Add 'ts' to 'mutableChangeEvent', overwriting 'timestampOutputFieldName' if it already
     // exists.
-    mutableChangeEvent[_options.timestampOutputFieldName] = Value(ts);
+    if (_options.timestampOutputFieldName) {
+        mutableChangeEvent[*_options.timestampOutputFieldName] = Value(ts);
+    }
+    StreamDocument streamDoc(mutableChangeEvent.freeze());
+
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Atlas);
-    StreamMeta streamMeta;
-    streamMeta.setSource(std::move(streamMetaSource));
-    if (_context->shouldProjectStreamMetaPriorToSinkStage()) {
-        auto newStreamMeta = updateStreamMeta(
-            mutableChangeEvent.peek().getField(*_context->streamMetaFieldName), streamMeta);
-        mutableChangeEvent.setField(*_context->streamMetaFieldName,
-                                    Value(std::move(newStreamMeta)));
-    }
-
-    StreamDocument streamDoc(mutableChangeEvent.freeze());
-    streamDoc.streamMeta = std::move(streamMeta);
+    streamDoc.streamMeta.setSource(std::move(streamMetaSource));
+    streamDoc.onMetaUpdate(_context);
 
     streamDoc.minProcessingTimeMs = curTimeMillis64();
     streamDoc.minDocTimestampMs = ts.toMillisSinceEpoch();

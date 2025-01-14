@@ -643,8 +643,9 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Messa
     auto keyPointer = static_cast<const uint8_t*>(message.key_pointer());
     if (keyPointer) {
         auto keyLen = message.key_len();
-        sourceDoc.key.reserve(keyLen);
-        sourceDoc.key.assign(keyPointer, keyPointer + keyLen);
+        sourceDoc.key.emplace();
+        sourceDoc.key->reserve(keyLen);
+        sourceDoc.key->assign(keyPointer, keyPointer + keyLen);
     }
     auto msgHeaders = message.headers();
     if (msgHeaders) {

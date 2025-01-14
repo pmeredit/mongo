@@ -122,8 +122,7 @@ structs:
                 optional: true
             key:
                 description: "Key of this Kafka document"
-                type:
-                    variant: [bindata_generic, string, object, int, long, double]
+                type: Value
                 optional: true
             headers:
                 description: "Headers of this Kafka document"
@@ -147,11 +146,6 @@ structs:
                 # TODO(SERVER-92473): Project partition into the document _stream_meta.
                 description: "Value identifier for partition"
                 type: Value
-                optional: true
-            # Window ID doesn't get projected to _stream_meta.
-            windowID:
-                description: "Integer identifier for session window"
-                type: int
                 optional: true
 
     StreamMetaHttps:

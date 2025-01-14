@@ -8,6 +8,7 @@
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 
+#include "mongo/bson/bsonmisc.h"
 #include "mongo/db/json.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
@@ -56,6 +57,23 @@ bool topicExists(const std::string& topic,
         }
     }
     return false;
+}
+
+// Convert a kafka key variant to a Value.
+mongo::Value kafkaKeyVariantToValue(const std::variant<std::vector<std::uint8_t>,
+                                                       std::string,
+                                                       mongo::BSONObj,
+                                                       std::int32_t,
+                                                       std::int64_t,
+                                                       double>& key) {
+    return std::visit(mongo::OverloadedVisitor{
+                          [&](const std::vector<std::uint8_t>& k) {
+                              return mongo::Value(mongo::BSONBinData{
+                                  k.data(), static_cast<int>(k.size()), mongo::BinDataGeneral});
+                          },
+                          [&](const std::int64_t& k) { return mongo::Value::createIntOrLong(k); },
+                          [&](const auto& k) { return mongo::Value(k); }},
+                      key);
 }
 
 }  // namespace
@@ -1054,29 +1072,45 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             : Value();
         sourceDoc.doc = boost::none;
         BSONObjBuilder objBuilder(std::move(bsonDoc));
-        objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
+        if (_options.timestampOutputFieldName) {
+            objBuilder.appendDate(*_options.timestampOutputFieldName, eventTimestamp);
+        }
         StreamMetaSource streamMetaSource;
         streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
         streamMetaSource.setTopic(sourceDoc.topic);
         streamMetaSource.setPartition(sourceDoc.partition);
         streamMetaSource.setOffset(sourceDoc.offset);
-        auto deserializedKey = deserializeKafkaKey(std::move(sourceDoc.key), _options.keyFormat);
-        // If the required format is not binData but we find binData to be the result, this
-        // means deserialization error happened. Push error to the DLQ if that is the requested
-        // way to deal with the error.
-        if (_options.keyFormat != KafkaKeyFormatEnum::BinData &&
-            std::holds_alternative<std::vector<std::uint8_t>>(deserializedKey) &&
-            _options.keyFormatError == KafkaSourceKeyFormatErrorEnum::Dlq) {
-            sourceDoc.key = std::move(std::get<std::vector<std::uint8_t>>(deserializedKey));
-            uasserted(ErrorCodes::BadValue,
-                      str::stream() << "Failed to deserialize the Kafka key according to the "
-                                       "specified key format '"
-                                    << KafkaKeyFormat_serializer(_options.keyFormat) << "'");
+        Value key{NullLabeler{}};
+        std::variant<std::vector<std::uint8_t>,
+                     std::string,
+                     mongo::BSONObj,
+                     std::int32_t,
+                     std::int64_t,
+                     double>
+            deserializedKey;
+        if (sourceDoc.key) {
+            deserializedKey = deserializeKafkaKey(std::move(*sourceDoc.key), _options.keyFormat);
+            // If the required format is not binData but we find binData to be the result, this
+            // means deserialization error happened. Push error to the DLQ if that is the requested
+            // way to deal with the error.
+            if (_options.keyFormat != KafkaKeyFormatEnum::BinData &&
+                std::holds_alternative<std::vector<std::uint8_t>>(deserializedKey) &&
+                _options.keyFormatError == KafkaSourceKeyFormatErrorEnum::Dlq) {
+                sourceDoc.key = std::move(std::get<std::vector<std::uint8_t>>(deserializedKey));
+                uasserted(ErrorCodes::BadValue,
+                          str::stream() << "Failed to deserialize the Kafka key according to the "
+                                           "specified key format '"
+                                        << KafkaKeyFormat_serializer(_options.keyFormat) << "'");
+            }
+            key = kafkaKeyVariantToValue(deserializedKey);
         }
-        streamMetaSource.setKey(std::move(deserializedKey));
+        streamMetaSource.setKey(std::move(key));
         streamMetaSource.setHeaders(std::move(sourceDoc.headers));
         StreamMeta streamMeta;
         streamMeta.setSource(std::move(streamMetaSource));
+
+        // For backwards compat reasons, we don't use StreamDocument::onMetaUpdate in this class,
+        // as Kafka $source does not overwrite an existing _stream_meta field in the user's doc.
         if (_context->shouldProjectStreamMetaPriorToSinkStage()) {
             auto newStreamMeta = updateStreamMeta(currStreamMeta, streamMeta);
             objBuilder.append(*_context->streamMetaFieldName, newStreamMeta.toBson());
@@ -1084,6 +1118,11 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 
         streamDoc = StreamDocument(Document(objBuilder.obj()));
         streamDoc->streamMeta = std::move(streamMeta);
+        if (_context->shouldUseDocumentMetadataFields) {
+            MutableDocument mutableDoc(std::move(streamDoc->doc));
+            mutableDoc.metadata().setStream(Value(streamDoc->streamMeta.toBSON()));
+            streamDoc->doc = mutableDoc.freeze();
+        }
         streamDoc->minProcessingTimeMs = curTimeMillis64();
         streamDoc->minDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
         streamDoc->maxDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
@@ -1117,7 +1156,21 @@ BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument s
     streamMetaSource.setTopic(sourceDoc.topic);
     streamMetaSource.setPartition(sourceDoc.partition);
     streamMetaSource.setOffset(sourceDoc.offset);
-    streamMetaSource.setKey(deserializeKafkaKey(std::move(sourceDoc.key), _options.keyFormat));
+    std::variant<std::vector<std::uint8_t>,
+                 std::string,
+                 mongo::BSONObj,
+                 std::int32_t,
+                 std::int64_t,
+                 double>
+        deserializedKey;
+    Value key{NullLabeler{}};
+    if (sourceDoc.key) {
+        deserializedKey = deserializeKafkaKey(std::move(*sourceDoc.key), _options.keyFormat);
+        // The key Value does not own the std::vector<uint8_t> memory, so the deserializedKey is
+        // declared outside of this if statement.
+        key = kafkaKeyVariantToValue(deserializedKey);
+    }
+    streamMetaSource.setKey(std::move(key));
     streamMetaSource.setHeaders(std::move(sourceDoc.headers));
     StreamMeta streamMeta;
     streamMeta.setSource(std::move(streamMetaSource));
@@ -1144,6 +1197,7 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
             int64_t sizeBytes = inputDocs[j].objsize();
             docs.push_back(
                 KafkaSourceDocument{.doc = std::move(inputDocs[j]),
+                                    .topic = _consumers[partition].topic,
                                     .messageSizeBytes = sizeBytes,
                                     .logAppendTimeMs = Date_t::now().toMillisSinceEpoch()});
         }

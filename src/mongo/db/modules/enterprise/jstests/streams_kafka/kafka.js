@@ -434,6 +434,9 @@ function mongoToKafkaToMongo({
             let expectedHeaders = expectedSerializedHeaders;
             if (expectedHeaders === undefined) {
                 expectedHeaders = sinkHeaders === undefined ? undefined : input[i].headers;
+                if (expectedHeaders === undefined) {
+                    expectedHeaders = [];
+                }
             }
 
             assert.eq(outputDoc._stream_meta.source.topic, topicName1, outputDoc);
@@ -1067,6 +1070,9 @@ function mongoToKafkaToMongoMultiTopic({
             let expectedHeaders = expectedSerializedHeaders;
             if (expectedHeaders === undefined) {
                 expectedHeaders = sinkHeaders === undefined ? undefined : input[i].headers;
+                if (expectedHeaders === undefined) {
+                    expectedHeaders = [];
+                }
             }
 
             assert.eq(outputDoc._stream_meta.source.topic,

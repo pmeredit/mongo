@@ -71,24 +71,32 @@ struct Context {
     boost::optional<StreamProcessorFeatureFlags> featureFlags;
     // The stream metadata field name. If none, disable projecting stream metadata.
     boost::optional<std::string> streamMetaFieldName{boost::none};
-    // Whether the pipeline has stream metadata dependency.
+
+    // If true, metadata is projected into user documents before the sink stage.
     bool projectStreamMetaPriorToSinkStage{false};
+
+    // If true, stream metadata is projected into the _stream_meta field of the user document.
+    bool projectStreamMeta{true};
 
     // Set to true when starting a modified stream processor.
     bool isModifiedProcessor{false};
+
+    // Set to true if the user's pipeline uses the meta expression to read stream
+    // metadata, i.e. {$meta: "stream"}
+    bool shouldUseDocumentMetadataFields{false};
 
     mongo::BSONObj toBSON() const;
 
     // For non sink stages, add metadata when there is explicit dependency of metadata in the
     // pipeline.
     bool shouldProjectStreamMetaPriorToSinkStage() {
-        return streamMetaFieldName && projectStreamMetaPriorToSinkStage;
+        return projectStreamMeta && streamMetaFieldName && projectStreamMetaPriorToSinkStage;
     }
 
     // For sink stages, add metadata when there is no dependency of metadata in the
     // pipeline but the user has requested the metadata.
     bool shouldProjectStreamMetaInSinkStage() {
-        return streamMetaFieldName && !projectStreamMetaPriorToSinkStage;
+        return projectStreamMeta && streamMetaFieldName && !projectStreamMetaPriorToSinkStage;
     }
 
     ~Context();

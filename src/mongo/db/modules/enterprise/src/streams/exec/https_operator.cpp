@@ -255,19 +255,7 @@ void HttpsOperator::writeToStreamMeta(StreamDocument* streamDoc,
     streamMetaHttps.setResponseTimeMs(responseTimeMs);
 
     streamDoc->streamMeta.setHttps(std::move(streamMetaHttps));
-
-    if (!_context->projectStreamMetaPriorToSinkStage) {
-        return;
-    }
-
-    tassert(9503302, "Expected streamMetaFieldName to be set", _context->streamMetaFieldName);
-
-    auto newStreamMeta = updateStreamMeta(streamDoc->doc.getField(*_context->streamMetaFieldName),
-                                          streamDoc->streamMeta);
-
-    MutableDocument mutableDoc(std::move(streamDoc->doc));
-    mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
-    streamDoc->doc = mutableDoc.freeze();
+    streamDoc->onMetaUpdate(_context);
 }
 
 void HttpsOperator::writeToDLQ(StreamDocument* streamDoc,

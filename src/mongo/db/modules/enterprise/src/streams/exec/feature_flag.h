@@ -68,6 +68,7 @@ public:
     static const FeatureFlagDefinition kTimeseriesEmitDynamicContentRouting;
     static const FeatureFlagDefinition kEnableMongoCxxMonitoring;
     static const FeatureFlagDefinition kProcessingTimeWindows;
+    static const FeatureFlagDefinition kOldStreamMeta;
 };
 
 }  // namespace streams

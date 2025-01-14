@@ -30,6 +30,8 @@ using CheckpointId = int64_t;
 // Indicates whether the input is active or idle.
 enum class WatermarkStatus { kActive, kIdle };
 
+struct Context;
+
 // Encapsulates a document read from Kafka and all the metadata for it.
 // TODO(SERVER-92412): Reduce this struct's size.
 struct KafkaSourceDocument {
@@ -53,7 +55,7 @@ struct KafkaSourceDocument {
     boost::optional<int64_t> logAppendTimeMs{0};
 
     // The key of the Kafka message.
-    std::vector<uint8_t> key;
+    boost::optional<std::vector<uint8_t>> key;
 
     // The headers of the Kafka message.
     std::vector<mongo::KafkaHeader> headers;
@@ -67,15 +69,24 @@ struct StreamDocument {
         : doc(std::move(d)), minDocTimestampMs(minDocTimestampMs) {}
 
     // Copy the timing information from another stream document.
-    void copyDocumentMetadata(const StreamDocument& other) {
+    void copyDocumentMetadata(const StreamDocument& other, Context* context) {
         streamMeta = other.streamMeta;
+        onMetaUpdate(context);
         minProcessingTimeMs = other.minProcessingTimeMs;
         minDocTimestampMs = other.minDocTimestampMs;
         maxDocTimestampMs = other.maxDocTimestampMs;
     }
 
+    // If required, synchronize internal metadata with user-readable metadata.
+    // This should be called after any update to this->streamMeta.
+    void onMetaUpdate(Context* context, bool isSink = false);
+
     mongo::Document doc;
 
+    // TODO(SERVER-99097): Consider getting rid of this in favor of just using
+    // DocumentMetadataFields.
+    // Internal metadata. This information is accessible by the user
+    // through {$meta: "stream"}.
     mongo::StreamMeta streamMeta;
 
     // The minimum processing time of input documents consumed to produce
@@ -89,6 +100,9 @@ struct StreamDocument {
     // The maximum timestamp of input documents consumed to produce
     // the document above.
     int64_t maxDocTimestampMs{-1};
+
+    // only set for session windows
+    boost::optional<int32_t> windowId{-1};
 
     // Only used for testing purposes.
     bool operator==(const StreamDocument& other) const;

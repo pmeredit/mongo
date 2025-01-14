@@ -38,7 +38,8 @@ void LimitOperator::doProcessDocs(Window* window, std::vector<StreamDocument> st
     msg.docs = std::move(streamDocs);
     // Apply the window's stream meta to the output.
     for (auto& doc : msg.docs) {
-        doc.streamMeta = window->streamMetaTemplate;
+        doc.streamMeta.setWindow(window->streamMetaTemplate.getWindow());
+        doc.onMetaUpdate(_context);
     }
     if (!msg.docs.empty()) {
         incOperatorStats({.timeSpent = window->creationTimer.elapsed()});

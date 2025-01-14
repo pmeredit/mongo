@@ -63,7 +63,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
             invariant(nextInputDocIdx > 0);
             const auto& streamDoc = dataMsg.docs[nextInputDocIdx - 1];
             StreamDocument resultStreamDoc(std::move(*resultDoc));
-            resultStreamDoc.copyDocumentMetadata(streamDoc);
+            resultStreamDoc.copyDocumentMetadata(streamDoc, _context);
             outputMsg.docs.emplace_back(std::move(resultStreamDoc));
             if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
                 curDataMsgByteSize >= kDataMsgMaxByteSize) {

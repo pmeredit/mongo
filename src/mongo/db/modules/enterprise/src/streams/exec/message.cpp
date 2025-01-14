@@ -6,6 +6,8 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/document_comparator.h"
+#include "streams/exec/context.h"
+#include "streams/exec/util.h"
 
 namespace streams {
 
@@ -81,6 +83,25 @@ BSONObj StreamControlMsg::toBSONForLogging() const {
         builder.append("windowCloseSignal.WindowId", windowCloseSignal->windowId);
     }
     return builder.obj();
+}
+
+void StreamDocument::onMetaUpdate(Context* context, bool isSink) {
+    bool shouldProjectIntoDocument = (isSink && context->shouldProjectStreamMetaInSinkStage()) ||
+        (!isSink && context->shouldProjectStreamMetaPriorToSinkStage());
+    if (shouldProjectIntoDocument) {
+        auto newMeta = updateStreamMeta(doc.getField(*context->streamMetaFieldName), streamMeta);
+        if (!newMeta.empty()) {
+            MutableDocument mutableDoc(std::move(doc));
+            mutableDoc.setField(*context->streamMetaFieldName, Value(std::move(newMeta)));
+            doc = mutableDoc.freeze();
+        }
+    }
+
+    if (context->shouldUseDocumentMetadataFields) {
+        MutableDocument mutableDoc(std::move(doc));
+        mutableDoc.metadata().setStream(Value(streamMeta.toBSON()));
+        doc = mutableDoc.freeze();
+    }
 }
 
 };  // namespace streams

@@ -93,4 +93,8 @@ boost::optional<int64_t> getKafkaTotalQueuedBytes(
     return val.coerceToLong();
 }
 
+bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kOldStreamMeta).getBool();
+}
+
 }  // namespace streams

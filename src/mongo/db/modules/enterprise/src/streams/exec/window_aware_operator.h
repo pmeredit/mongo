@@ -103,9 +103,8 @@ protected:
         // Use this checkpointId's source state to replay the entire window.
         boost::optional<CheckpointId> replayCheckpointId;
 
-        int64_t getWindowID() {
-            return *streamMetaTemplate.getWindow()->getWindowID();
-        }
+        // Used to identify session windows within a partition.
+        int32_t windowID{-1};
 
         const mongo::Value& getPartition() {
             return *streamMetaTemplate.getWindow()->getPartition();
@@ -164,14 +163,12 @@ private:
     // Process documents for a particular window.
     void processDocsInWindow(int64_t windowStartTimestampMs,
                              int64_t windowEndTimestampMs,
-                             std::vector<StreamDocument> streamDocs,
-                             bool projectMetadata);
+                             std::vector<StreamDocument> streamDocs);
 
     void processDocsInSessionWindow(mongo::Value const& partition,
                                     std::vector<StreamDocument> streamDocs,
                                     int64_t minTimestampMs,
-                                    int64_t maxTimestampMs,
-                                    bool projectMetadata);
+                                    int64_t maxTimestampMs);
 
     // Creates a Window object representing an open window.
     std::unique_ptr<Window> makeWindow(mongo::StreamMeta streamMetaTemplate);

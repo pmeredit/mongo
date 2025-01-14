@@ -201,5 +201,6 @@ commonTest({
             "value": 4,
             "ts": ISODate("2022-01-01T01:01:56Z"),
         },
-    }]
+    }],
+    useKafka: false
 });

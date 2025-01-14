@@ -216,6 +216,11 @@ const FeatureFlagDefinition FeatureFlags::kProcessingTimeWindows{
     "Allows support for the processing time windows feature",
     mongo::Value(false)};
 
+const FeatureFlagDefinition FeatureFlags::kOldStreamMeta{
+    "oldStreamMeta",
+    "If true, the old _stream_meta and _ts projection behavior enabled.",
+    mongo::Value(true)};
+
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};
@@ -267,6 +272,7 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
     {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},
     {FeatureFlags::kCidrDenyList.name, FeatureFlags::kCidrDenyList},
+    {FeatureFlags::kOldStreamMeta.name, FeatureFlags::kOldStreamMeta},
     {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {

@@ -53,7 +53,15 @@ export class StreamProcessor {
     start(options, assertWorked = true, pipelineVersion = undefined) {
         this._startOptions = options;
         this._pipelineVersion = pipelineVersion;
-        const cmd = this.makeStartCmd(options);
+        if (this._startOptions === undefined) {
+            this._startOptions = {};
+        }
+        if (this._startOptions.featureFlags === undefined) {
+            this._startOptions.featureFlags = {};
+        }
+        this._startOptions.featureFlags.enableSessionWindow = true;
+        const cmd = this.makeStartCmd(this._startOptions);
+
         jsTestLog(`Starting processor ${tojson(cmd)}`);
         const result = this._db.runCommand(cmd);
         if (assertWorked) {
@@ -269,12 +277,15 @@ export class Streams {
         return res;
     }
 
-    process(pipeline, maxLoops = 3) {
+    process(pipeline, maxLoops = 3, featureFlags = {}) {
         let name = UUID().toString();
         this[name] =
             new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
-        let startResult = this[name].start(
-            {ephemeral: true, shouldStartSample: true, featureFlags: {enableSessionWindow: true}});
+        let flags = {enableSessionWindow: true};
+        flags = Object.assign(flags, featureFlags);
+        let startOptions = {ephemeral: true, shouldStartSample: true, featureFlags: flags};
+        jsTestLog(`Starting with ${tojson(startOptions)}`);
+        let startResult = this[name].start(startOptions);
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
         let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);
@@ -293,6 +304,7 @@ export class Streams {
 export let sp = new Streams(TEST_TENANT_ID, []);
 export const test = {
     atlasConnection: "StreamsAtlasConnection",
+    kafkaConnection: "StreamsKafkaConnection",
     dbName: "test",
     inputCollName: "testin",
     outputCollName: "testout",
@@ -306,6 +318,11 @@ export function getDefaultSp() {
             name: test.atlasConnection,
             type: 'atlas',
             options: {uri: uri},
+        },
+        {
+            name: test.kafkaConnection,
+            type: 'kafka',
+            options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
         },
     ]);
 }

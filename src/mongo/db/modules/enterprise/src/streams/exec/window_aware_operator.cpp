@@ -48,10 +48,8 @@ void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
         auto start = dataMsg.docs.front().streamMeta.getWindow()->getStart();
         auto end = dataMsg.docs.front().streamMeta.getWindow()->getEnd();
         // Process all the docs in the data message.
-        processDocsInWindow(start->toMillisSinceEpoch(),
-                            end->toMillisSinceEpoch(),
-                            std::move(dataMsg.docs),
-                            false /* projectStreamMeta */);
+        processDocsInWindow(
+            start->toMillisSinceEpoch(), end->toMillisSinceEpoch(), std::move(dataMsg.docs));
     }
 
     if (controlMsg) {
@@ -193,11 +191,7 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
             }
         }
 
-        processDocsInWindow(
-            windowStart,
-            windowEnd,
-            std::move(docsInThisWindow),
-            _context->shouldProjectStreamMetaPriorToSinkStage() /* projectStreamMeta */);
+        processDocsInWindow(windowStart, windowEnd, std::move(docsInThisWindow));
     }
 }
 
@@ -228,8 +222,7 @@ OperatorStats WindowAwareOperator::doGetStats() {
 // Process documents for a particular window.
 void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
                                               int64_t windowEndTime,
-                                              std::vector<StreamDocument> streamDocs,
-                                              bool projectStreamMeta) {
+                                              std::vector<StreamDocument> streamDocs) {
     invariant(!streamDocs.empty());
     const auto& firstStreamMeta = streamDocs.front().streamMeta;
     auto [window, isNew] = addOrGetWindow(
@@ -243,13 +236,10 @@ void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
         window->replayCheckpointId = _context->checkpointStorage->onWindowOpen();
     }
 
-    if (projectStreamMeta) {
+    if (getOptions().windowAssigner) {
         for (auto& streamDoc : streamDocs) {
-            auto newStreamMeta = updateStreamMeta(
-                streamDoc.doc.getField(*_context->streamMetaFieldName), window->streamMetaTemplate);
-            MutableDocument mutableDoc(std::move(streamDoc.doc));
-            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
-            streamDoc.doc = mutableDoc.freeze();
+            streamDoc.streamMeta.setWindow(window->streamMetaTemplate.getWindow());
+            streamDoc.onMetaUpdate(_context);
         }
     }
 
@@ -335,7 +325,7 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
         if (isSessionWindow()) {
             // For session windows, add their partition and windowID.
             windowStart.setPartition(window->getPartition());
-            windowStart.setWindowID(window->getWindowID());
+            windowStart.setWindowID(window->windowID);
         }
 
         windowStart.setReplayCheckpointId(window->replayCheckpointId);
@@ -661,8 +651,7 @@ void WindowAwareOperator::onDataMsgSessionWindow(int32_t inputIdx,
         processDocsInSessionWindow(partition,
                                    std::move(dataMsg.docs),
                                    minTS.toMillisSinceEpoch(),
-                                   maxTS.toMillisSinceEpoch(),
-                                   false);
+                                   maxTS.toMillisSinceEpoch());
     }
     if (controlMsg) {
         onControlMsg(/*inputIdx*/ 0, std::move(*controlMsg));
@@ -745,8 +734,7 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
             processDocsInSessionWindow(partition,
                                        std::move(myMiniWindow.docsInWindow),
                                        myMiniWindow.minTS,
-                                       myMiniWindow.maxTS,
-                                       _context->shouldProjectStreamMetaPriorToSinkStage());
+                                       myMiniWindow.maxTS);
             myMiniWindow = MiniWindow{
                 std::vector<StreamDocument>{}, doc.minDocTimestampMs, doc.minDocTimestampMs};
             myMiniWindow.docsInWindow.push_back(std::move(doc));
@@ -757,8 +745,7 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
         processDocsInSessionWindow(std::move(pair.first),
                                    std::move(pair.second.docsInWindow),
                                    pair.second.minTS,
-                                   pair.second.maxTS,
-                                   _context->shouldProjectStreamMetaPriorToSinkStage());
+                                   pair.second.maxTS);
     }
 }
 
@@ -787,15 +774,16 @@ bool WindowAwareOperator::fitsInOpenSession(const mongo::Value& partition, int64
 void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partition,
                                                      std::vector<StreamDocument> streamDocs,
                                                      int64_t minTS,
-                                                     int64_t maxTS,
-                                                     bool projectStreamMeta) {
+                                                     int64_t maxTS) {
     invariant(!streamDocs.empty());
-    const auto& firstStreamMeta = streamDocs.front().streamMeta;
+    const auto& firstDoc = streamDocs.front();
+    const auto& firstStreamMeta = firstDoc.streamMeta;
+    auto windowID = getOptions().windowAssigner ? boost::none : firstDoc.windowId;
     auto [window, isNew] = addOrGetSessionWindow(
         partition,
         minTS,
         maxTS,
-        firstStreamMeta.getWindow() ? firstStreamMeta.getWindow()->getWindowID() : boost::none,
+        windowID,
         firstStreamMeta.getSource() ? firstStreamMeta.getSource()->getType() : boost::none);
     invariant(window);  // cannot be a null ptr
     if (!window->status.isOK()) {
@@ -806,13 +794,11 @@ void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partiti
         window->replayCheckpointId = _context->checkpointStorage->onWindowOpen();
     }
 
-    if (projectStreamMeta) {
+    if (getOptions().windowAssigner) {
         for (auto& streamDoc : streamDocs) {
-            auto newStreamMeta = updateStreamMeta(
-                streamDoc.doc.getField(*_context->streamMetaFieldName), window->streamMetaTemplate);
-            MutableDocument mutableDoc(std::move(streamDoc.doc));
-            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
-            streamDoc.doc = mutableDoc.freeze();
+            streamDoc.streamMeta.setWindow(window->streamMetaTemplate.getWindow());
+            streamDoc.windowId = window->windowID;
+            streamDoc.onMetaUpdate(_context);
         }
     }
 
@@ -845,7 +831,7 @@ WindowAwareOperator::Window* WindowAwareOperator::mergeSessionWindows(
     auto assigner = dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get());
     while (it != partitionWindows.end()) {
         auto window = it->get();
-        auto currWindowID = window->getWindowID();
+        auto currWindowID = window->windowID;
         int64_t start = window->getStartMs();
         int64_t end = window->getEndMs();
 
@@ -923,11 +909,10 @@ std::pair<WindowAwareOperator::Window*, bool> WindowAwareOperator::addOrGetSessi
         }
     } else {
         invariant(windowID);
-        auto windowIt = std::find_if(partitionWindows.begin(),
-                                     partitionWindows.end(),
-                                     [&](const std::unique_ptr<Window>& window) {
-                                         return window->getWindowID() == *windowID;
-                                     });
+        auto windowIt = std::find_if(
+            partitionWindows.begin(),
+            partitionWindows.end(),
+            [&](const std::unique_ptr<Window>& window) { return window->windowID == *windowID; });
         if (windowIt != partitionWindows.end()) {
             return std::make_pair(windowIt->get(), false);
         }
@@ -941,7 +926,6 @@ std::pair<WindowAwareOperator::Window*, bool> WindowAwareOperator::addOrGetSessi
 
     StreamMetaWindow streamMetaWindow;
     streamMetaWindow.setPartition(partition);
-    streamMetaWindow.setWindowID(*windowID);
     streamMetaWindow.setStart(Date_t::fromMillisSinceEpoch(minTS));
     streamMetaWindow.setEnd(Date_t::fromMillisSinceEpoch(maxTS));
 
@@ -950,6 +934,7 @@ std::pair<WindowAwareOperator::Window*, bool> WindowAwareOperator::addOrGetSessi
     streamMetaTemplate.setWindow(std::move(streamMetaWindow));
 
     auto window = makeWindow(std::move(streamMetaTemplate));
+    window->windowID = *windowID;
 
     if (options.windowAssigner) {
         // Store new window in auxillary data structure used for closing windows.
@@ -1012,7 +997,7 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
                     _context->checkpointStorage->onWindowClose(*window->replayCheckpointId);
                 }
 
-                auto windowID = window->getWindowID();
+                auto windowID = window->windowID;
                 const auto& partition = window->getPartition();
 
                 if (sendWindowSignals) {
@@ -1030,7 +1015,7 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
                 auto windowIt = std::find_if(partitionWindows.begin(),
                                              partitionWindows.end(),
                                              [&](const std::unique_ptr<Window>& window) {
-                                                 return window->getWindowID() == windowID;
+                                                 return window->windowID == windowID;
                                              });
                 invariant(windowIt != partitionWindows.end());
                 partitionWindows.erase(windowIt);
@@ -1064,7 +1049,7 @@ void WindowAwareOperator::processSessionWindowCloseMsg(StreamControlMsg controlM
         std::find_if(partitionWindows.begin(),
                      partitionWindows.end(),
                      [&controlMsg](const std::unique_ptr<Window>& window) {
-                         return window->getWindowID() == controlMsg.windowCloseSignal->windowId;
+                         return window->windowID == controlMsg.windowCloseSignal->windowId;
                      });
 
     if (windowIt == partitionWindows.end()) {
@@ -1141,7 +1126,7 @@ void WindowAwareOperator::processSessionWindowMergeMsg(StreamControlMsg controlM
         auto windowIt = std::find_if(partitionWindows.begin(),
                                      partitionWindows.end(),
                                      [windowId](const std::unique_ptr<Window>& window) {
-                                         return window->getWindowID() == windowId;
+                                         return window->windowID == windowId;
                                      });
 
         // This window got filtered out.
@@ -1153,7 +1138,7 @@ void WindowAwareOperator::processSessionWindowMergeMsg(StreamControlMsg controlM
             // Use this window as the destination window.
             destinationWindow = windowIt->get();
             // Set it's windowID the upstream assigner specified.
-            destinationWindow->streamMetaTemplate.getWindow()->setWindowID(destinationWindowId);
+            destinationWindow->windowID = destinationWindowId;
             destinationWindow->setStartMs(minTS);
             destinationWindow->setEndMs(maxTS);
         } else {

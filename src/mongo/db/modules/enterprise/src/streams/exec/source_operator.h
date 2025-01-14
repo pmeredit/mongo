@@ -24,8 +24,9 @@ public:
     struct Options {
         // May be nullptr.
         DocumentTimestampExtractor* timestampExtractor{nullptr};
-        // The output field name for the event timestamp. Must be set.
-        std::string timestampOutputFieldName;
+        // If set, the SourceOperator will project the assigned timestamp into this
+        // field name. Currently this defaults to "_ts".
+        boost::optional<std::string> timestampOutputFieldName;
         // If true, watermarks are created and sent in this $source.
         bool useWatermarks{false};
         // If true, kIdle watermark messages are sent whenever 0 documents are returned

@@ -500,14 +500,13 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
         options.timestampOutputFieldName = tsFieldName->toString();
         uassert(7756300,
                 "'tsFieldOverride' cannot be a dotted path",
-                options.timestampOutputFieldName.find('.') == std::string::npos);
+                options.timestampOutputFieldName->find('.') == std::string::npos);
     } else {
         options.timestampOutputFieldName = kDefaultTimestampOutputFieldName;
     }
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << ChangeStreamSourceOptions::kTsFieldOverrideFieldName
-                          << " cannot be empty",
-            !options.timestampOutputFieldName.empty());
+    if (options.timestampOutputFieldName->empty()) {
+        options.timestampOutputFieldName = boost::none;
+    }
     options.timestampExtractor = timestampExtractor;
     return options;
 }
@@ -1208,6 +1207,35 @@ void Planner::planWindowCommon() {
     }
 }
 
+bool Planner::shouldPrependDummyLimit(Pipeline* innerPipeline) {
+    if (_windowPlanningInfo->numWindowAwareStages == 0 || innerPipeline->getSources().empty()) {
+        // If the inner pipeline is empty or there are no window aware stages, add a dummy limit.
+        return true;
+    }
+
+    bool firstStageIsWindowAware =
+        isWindowAwareStage(innerPipeline->getSources().front()->getSourceName());
+    if (firstStageIsWindowAware) {
+        // If the first stage is already window aware, no need to prepend a dummy limit.
+        return false;
+    }
+
+    if (_context->projectStreamMeta && _context->streamMetaFieldName &&
+        _context->projectStreamMetaPriorToSinkStage) {
+        // If the user pipeline has a dependency on _stream_meta, prepend a dummy limit if the
+        // first stage in the inner pipeline isn't window aware.
+        return true;
+    }
+
+    if (_context->shouldUseDocumentMetadataFields) {
+        // If the user pipeline has a dependency {$meta: "stream"}, prepend a dummy limit if the
+        // first stage in the inner pipeline isn't window aware.
+        return true;
+    }
+
+    return false;
+}
+
 BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     planWindowCommon();
     auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
@@ -1256,19 +1284,10 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
-    if (_options.planningUserPipeline) {
-        // If we're planning the user pipeline and there's no window aware stage,
-        // create a dummy window aware limit to maintain window semantics.
-        // Otherwise, if we require metadata to be projected and the first window stage is
-        // not window aware, we add a dummy limit operator at the beginning of the pipeline so that
-        // the window related metadata can be projected.
-        if (_windowPlanningInfo->numWindowAwareStages == 0 ||
-            (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
-             !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
-            pipeline->addInitialSource(
-                DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
-            ++_windowPlanningInfo->numWindowAwareStages;
-        }
+    if (_options.planningUserPipeline && shouldPrependDummyLimit(pipeline.get())) {
+        pipeline->addInitialSource(
+            DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
+        ++_windowPlanningInfo->numWindowAwareStages;
     }
     auto optimizedPipeline = planPipeline(*pipeline, std::move(pipelineRewriter));
 
@@ -1350,19 +1369,10 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     }
 
     auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
-    if (_options.planningUserPipeline) {
-        // If we're planning the user pipeline and there's no window aware stage,
-        // create a dummy window aware limit to maintain window semantics.
-        // Otherwise, if we require metadata to be projected and the first window stage is
-        // not window aware, we add a dummy limit operator at the beginning of the pipeline so that
-        // the window related metadata can be projected.
-        if ((_windowPlanningInfo->numWindowAwareStages == 0 ||
-             (_context->streamMetaFieldName && _context->projectStreamMetaPriorToSinkStage &&
-              !isWindowAwareStage(pipeline->getSources().front()->getSourceName())))) {
-            pipeline->addInitialSource(
-                DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
-            ++_windowPlanningInfo->numWindowAwareStages;
-        }
+    if (_options.planningUserPipeline && shouldPrependDummyLimit(pipeline.get())) {
+        pipeline->addInitialSource(
+            DocumentSourceLimit::create(_context->expCtx, std::numeric_limits<int64_t>::max()));
+        ++_windowPlanningInfo->numWindowAwareStages;
     }
     auto executionPlan = planPipeline(*pipeline, std::move(pipelineRewriter));
 
@@ -1744,43 +1754,52 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
         for (const auto& stage : pipeline->getSources()) {
             DepsTracker deps;
             auto depsState = stage->getDependencies(&deps);
-            if (depsState == DepsTracker::State::NOT_SUPPORTED) {
-                // If the dependency checking is not supported, we assume there is stream
-                // metadata dependency to be safe.
-                hasStreamMetaDependency = true;
-            } else {
-                if (deps.needWholeDocument) {
-                    // If the stage references $$ROOT then this flag will be set and we
-                    // should see it as depending on stream metadata.
+
+            if (_context->projectStreamMeta) {
+                if (depsState == DepsTracker::State::NOT_SUPPORTED) {
+                    // If the dependency checking is not supported, we assume there is stream
+                    // metadata dependency to be safe.
                     hasStreamMetaDependency = true;
-                }
-                for (const auto& field : deps.fields) {
-                    if (FieldPath(field).front() == *_context->streamMetaFieldName) {
+                } else {
+                    if (deps.needWholeDocument) {
+                        // If the stage references $$ROOT then this flag will be set and we
+                        // should see it as depending on stream metadata.
                         hasStreamMetaDependency = true;
-                        break;
+                    }
+                    for (const auto& field : deps.fields) {
+                        if (FieldPath(field).front() == *_context->streamMetaFieldName) {
+                            hasStreamMetaDependency = true;
+                            break;
+                        }
                     }
                 }
-            }
-            auto modPaths = stage->getModifiedPaths();
-            if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kNotSupported) {
-                // If the modified path checking is not supported, we assume there is stream
-                // metadata dependency to be safe.
-                hasStreamMetaDependency = true;
-            } else if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet) {
-                if (modPaths.canModify(FieldPath(*_context->streamMetaFieldName))) {
-                    hasStreamMetaDependency = true;
-                }
-            }
 
-            _context->projectStreamMetaPriorToSinkStage |= hasStreamMetaDependency;
+                auto modPaths = stage->getModifiedPaths();
+                if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kNotSupported) {
+                    // If the modified path checking is not supported, we assume there is stream
+                    // metadata dependency to be safe.
+                    hasStreamMetaDependency = true;
+                } else if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet) {
+                    if (modPaths.canModify(FieldPath(*_context->streamMetaFieldName))) {
+                        hasStreamMetaDependency = true;
+                    }
+                }
+
+                _context->projectStreamMetaPriorToSinkStage |= hasStreamMetaDependency;
+            }
 
             if (isBlockingWindowAwareStage(stage->getSourceName())) {
                 ++blockingWindowAwareOperators;
             }
-            if (_windowPlanningInfo && hasStreamMetaDependency &&
+            bool usesStreamMetaExpr =
+                deps.metadataDeps().test(DocumentMetadataFields::MetaType::kStream);
+            if (_windowPlanningInfo && (hasStreamMetaDependency || usesStreamMetaExpr) &&
                 blockingWindowAwareOperators <= 1) {
                 _windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking = true;
             }
+
+            // If the expression is used, set the switch to write to DocumentMetadataFields.
+            _context->shouldUseDocumentMetadataFields |= usesStreamMetaExpr;
         }
     }
 
@@ -2012,6 +2031,8 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
 }
 
 std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
+    _context->projectStreamMeta = getOldStreamMetaEnabled(_context->featureFlags);
+
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "Pipeline must have at least one stage",
             !bsonPipeline.empty());
