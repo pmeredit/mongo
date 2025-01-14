@@ -4,6 +4,7 @@
 
 #include "streams/exec/json_event_deserializer.h"
 
+#include <bsoncxx/exception/exception.hpp>
 #include <bsoncxx/json.hpp>
 
 #include "mongo/bson/json.h"
@@ -22,7 +23,20 @@ BSONObj JsonEventDeserializer::doDeserialize(const char* buf, int len) {
     if (len == 0) {
         return BSONObj();
     }
-    return fromBsoncxxDocument(bsoncxx::from_json(bsoncxx::stdx::string_view{buf, (size_t)len}));
+
+    bsoncxx::stdx::string_view view{buf, (size_t)len};
+
+    // We automatically parse Confluent JSON. Confluent JSON prepends 1 Magic Byte and 4 schema ID
+    // bytes, see
+    // https://docs.confluent.io/platform/current/schema-registry/fundamentals/serdes-develop/index.html#messages-wire-format
+    char confluentMagicByte{0};
+    int confluentPrefixSize = sizeof(confluentMagicByte) + 4;
+    if (len > confluentPrefixSize && buf[0] == confluentMagicByte) {
+        view = bsoncxx::stdx::string_view{buf + confluentPrefixSize,
+                                          (size_t)len - confluentPrefixSize};
+    }
+
+    return fromBsoncxxDocument(bsoncxx::from_json(view));
 }
 
 }  // namespace streams

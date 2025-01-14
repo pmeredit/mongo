@@ -1,8 +1,10 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include <bsoncxx/exception/exception.hpp>
 #include <exception>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/framework.h"
@@ -66,6 +68,65 @@ TEST(JsonEventDeserializerTest, ValidWithSurroundingWhitespace) {
     ASSERT(!bson.isEmpty());
     ASSERT(bson.nFields() == 1);
     ASSERT(bson.getField("a").numberInt() == 1);
+}
+
+TEST(JsonEventDeserializerTest, ConfluentJsonParsing) {
+    auto makePrefix = []() {
+        std::vector<char> bytes;
+        bytes.push_back(0);
+        // Append the Schema ID.
+        bytes.push_back(1);
+        bytes.push_back(2);
+        bytes.push_back(3);
+        bytes.push_back(4);
+        return bytes;
+    };
+
+    auto innerTest = [&](const std::string& in, BSONObj expected) {
+        JsonEventDeserializer deserializer;
+        auto bytes = makePrefix();
+        for (size_t i = 0; i < in.length(); ++i) {
+            bytes.push_back(in.c_str()[i]);
+        }
+        auto bson = deserializer.deserialize(bytes.data(), bytes.size());
+        ASSERT_BSONOBJ_EQ(bson, expected);
+    };
+
+    // Typical case.
+    innerTest(R"({"a": 1})", BSON("a" << 1));
+    // Prefix followed by empty object.
+    innerTest(R"({})", BSONObj{});
+
+    // Prefix with no data.
+    auto expectFail = [](auto func) {
+        try {
+            func();
+            ASSERT(false);
+        } catch (const bsoncxx::exception&) {
+        }
+    };
+    {
+        JsonEventDeserializer deserializer;
+        auto bytes = makePrefix();
+        expectFail([&]() { deserializer.deserialize(bytes.data(), bytes.size()); });
+    }
+    // Bad prefix (only 3 bytes).
+    {
+        JsonEventDeserializer deserializer;
+        std::vector<char> bytes;
+        bytes.push_back(0);
+        // Append the Schema ID.
+        bytes.push_back(1);
+        bytes.push_back(2);
+        expectFail([&]() { deserializer.deserialize(bytes.data(), bytes.size()); });
+    }
+    // Bad prefix (magic byte != 0);
+    {
+        JsonEventDeserializer deserializer;
+        auto bytes = makePrefix();
+        bytes[0] = 1;
+        expectFail([&]() { deserializer.deserialize(bytes.data(), bytes.size()); });
+    }
 }
 
 }  // namespace
