@@ -44,6 +44,9 @@ public:
         return _partitionBy;
     }
 
+    int64_t getGap() const {
+        return _windowGapSizeMs;
+    }
 
 private:
     const boost::intrusive_ptr<mongo::Expression> _partitionBy;

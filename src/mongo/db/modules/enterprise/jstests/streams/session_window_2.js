@@ -4,7 +4,10 @@
  * ]
  */
 
-import {commonTest} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {
+    commonTest,
+    makeBatchBreakerDoc
+} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 
 commonTest({
     input: [
@@ -45,14 +48,14 @@ commonTest({
             "ad": 1,
             "totalValue": 5,
             "window":
-                {"start": ISODate("2023-01-01T00:59:57Z"), "end": ISODate("2023-01-01T01:00:15Z")}
+                {"start": ISODate("2023-01-01T00:59:57Z"), "end": ISODate("2023-01-01T01:01:15Z")}
         },
         {
             "customer": 2,
             "ad": 3,
             "totalValue": 4,
             "window":
-                {"start": ISODate("2023-01-01T01:00:01Z"), "end": ISODate("2023-01-01T01:00:06Z")}
+                {"start": ISODate("2023-01-01T01:00:01Z"), "end": ISODate("2023-01-01T01:01:06Z")}
         }
     ]
 });
@@ -94,7 +97,7 @@ commonTest({
             "avg": 2,
             "window": {
                 "start": ISODate("2023-01-01T00:59:57"),
-                "end": ISODate("2023-01-01T00:59:57"),
+                "end": ISODate("2023-01-01T01:00:57"),
                 "partition": 1
             }
         },
@@ -104,7 +107,7 @@ commonTest({
             "avg": 4.5,
             "window": {
                 start: ISODate("2023-01-01T01:00:57"),
-                end: ISODate("2023-01-01T01:01:56"),
+                end: ISODate("2023-01-01T01:02:56"),
                 partition: 2
             }
         }
@@ -145,4 +148,58 @@ commonTest({
         {customer: 2, ad: 1, all: [3], avg: 3},
         {customer: 2, ad: 3, all: [6, 4], avg: 5},
     ],
+});
+commonTest({
+    input: [
+        {customer: 1, ad: 1, value: 2, ts: ISODate("2023-01-01T00:59:57")},
+        {customer: 1, ad: 1, value: 4, ts: ISODate("2023-01-01T00:59:57")},
+        {customer: 2, ad: 1, value: 3, ts: ISODate("2023-01-01T01:00:57")},
+        {justAWatermark: 1, ts: ISODate("2023-01-01T03:00:57.001")},
+        makeBatchBreakerDoc(),
+        // late data that doesn't fit into an open session, it is DLQ-ed
+        {customer: 1, ad: 3, value: 4, ts: ISODate("2022-01-01T01:01:56")},
+    ],
+    pipeline: [
+        {
+            $match: {
+                $expr: {
+                    $and: [
+                        {$ne: ["$justAWatermark", 1]},
+                    ]
+                }
+            }
+        },
+        {
+            $sessionWindow: {
+                gap: {size: NumberInt(1), unit: "minute"},
+                partitionBy: "$customer",
+                pipeline: [
+                    {$group: {_id: "$ad", all: {$push: "$value"}, avg: {$avg: "$value"}}},
+                ]
+            }
+        },
+        {
+            $project: {
+                customer: "$_stream_meta.window.partition",
+                ad: "$_id",
+                all: 1,
+                avg: 1,
+            }
+        },
+        {$project: {_id: 0}}
+    ],
+    expectedOutput: [
+        {customer: 1, ad: 1, all: [2, 4], avg: 3},
+        {customer: 2, ad: 1, all: [3], avg: 3},
+    ],
+    expectedDlq: [{
+        "errInfo": {"reason": "Input document arrived late."},
+        "operatorName": "GroupOperator",
+        "doc": {
+            "customer": 1,
+            "ad": 3,
+            "value": 4,
+            "ts": ISODate("2022-01-01T01:01:56Z"),
+        },
+    }]
 });

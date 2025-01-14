@@ -4,6 +4,7 @@
 
 #include "streams/exec/planner.h"
 
+#include "mongo/db/pipeline/expression.h"
 #include <any>
 #include <boost/none.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -1383,13 +1384,18 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
     auto options = SessionWindowOptions::parse(IDLParserContext("sessionWindow"), bsonOptions);
 
     auto gap = options.getGap();
-    boost::intrusive_ptr<mongo::Expression> partitionBy =
-        parseStringOrObjectExpression(_context->expCtx, options.getPartitionBy());
+    boost::intrusive_ptr<mongo::Expression> partitionBy;
+    if (options.getPartitionBy()) {
+        partitionBy = parseStringOrObjectExpression(_context->expCtx, *options.getPartitionBy());
+    } else {
+        partitionBy = ExpressionConstant::create(_context->expCtx.get(), Value());
+    }
 
     SessionWindowAssigner::Options windowingOptions(WindowAssigner::Options{});
 
     windowingOptions.gapSize = gap.getSize();
     windowingOptions.gapUnit = gap.getUnit();
+    windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     windowingOptions.partitionBy = partitionBy;
 
     _windowPlanningInfo.emplace();

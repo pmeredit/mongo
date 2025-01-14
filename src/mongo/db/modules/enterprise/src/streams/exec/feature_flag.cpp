@@ -107,10 +107,7 @@ const FeatureFlagDefinition FeatureFlags::kKafkaEmitUseDeliveryCallback{
     {}};
 
 const FeatureFlagDefinition FeatureFlags::kEnableSessionWindow{
-    "enableSessionWindow",
-    "If true, the $sessionWindow stage is enabled.",
-    mongo::Value(false),
-    {}};
+    "enableSessionWindow", "If true, the $sessionWindow stage is enabled.", mongo::Value(true), {}};
 
 const FeatureFlagDefinition FeatureFlags::kSourceBufferTotalSize{
     "sourceBufferTotalSize",

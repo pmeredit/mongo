@@ -29,20 +29,43 @@ export function removeProjections(doc) {
     return doc;
 }
 
+// Used in commonTest to force the next document to be in a new batch after previous documents
+// have all been processed.
+export const batchBreakerField = "__batchBreaker";
+export function makeBatchBreakerDoc() {
+    let doc = {};
+    doc[batchBreakerField] = 1;
+    return doc;
+}
+// Makes comparisons easier in commonTest.
+export function sanitizeDlqDoc(d) {
+    delete d["_stream_meta"];
+    delete d["processorName"];
+    delete d["dlqTime"];
+    delete d["doc"]["_ts"];
+    delete d["doc"]["_stream_meta"];
+    return d;
+}
+
 /**
  * Helper function to test that the pipeline returns the expectedOutput for the given input.
  * First, a test source is used.
  * Then, a change stream source is used, and there is a checkpoint in the middle.
  */
-export function commonTest({input, pipeline, expectedOutput, timeField = "$ts"}) {
+export function commonTest({input, pipeline, expectedOutput, timeField = "$ts", expectedDlq = []}) {
     // Test with a test source and no checkpoints.
     const sp = getDefaultSp();
+    const documentsSourceInput = input.filter(d => !d.hasOwnProperty(batchBreakerField));
     const output = sp.process([
-        {$source: {documents: input, timeField: timeField}},
+        {$source: {documents: documentsSourceInput, timeField: timeField}},
         ...pipeline,
     ]);
-    assert(resultsEq(output, expectedOutput, true /* verbose */));
-
+    const dlqMessageField = "_dlqMessage";
+    const dlqOutput = output.filter(d => d.hasOwnProperty(dlqMessageField))
+                          .map(d => sanitizeDlqDoc(d[dlqMessageField]));
+    const actualOutput = output.filter(d => !d.hasOwnProperty(dlqMessageField));
+    assert(resultsEq(actualOutput, expectedOutput, true /* verbose */));
+    assert(resultsEq(dlqOutput, expectedDlq, true /* verbose */));
     // Test with a changestream source and a checkpoint in the middle.
     const newPipeline = [
         {$match: {operationType: "insert"}},
@@ -58,18 +81,29 @@ export function commonTest({input, pipeline, expectedOutput, timeField = "$ts"})
 
     jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
 
+    const insertData = (docs) => {
+        let numInserts = 0;
+        for (const doc of docs) {
+            if (doc.hasOwnProperty(batchBreakerField)) {
+                // Wait for all other docs to be processed.
+                assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
+                            `waiting for inputMessageCount of ${numInserts}`,
+                            1000 * 10);
+            } else {
+                assert.commandWorked(test.inputColl.insertOne(doc));
+                numInserts += 1;
+            }
+        }
+
+        assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
+                    `waiting for inputMessageCount of ${numInserts}`,
+                    1000 * 10);
+    };
+
     // Start the processor and write part of the input.
     test.startFromLatestCheckpoint();
     const firstInput = input.slice(0, input.length - 1);
-    assert.commandWorked(test.inputColl.insertMany(firstInput));
-    assert.soon(
-        () => {
-            jsTestLog(test.stats());
-            return test.stats().inputMessageCount == firstInput.length;
-        },
-        `waiting for inputMessageCount of ${firstInput.length}, got ${
-            test.stats().inputMessageCount}`,
-        1000 * 10);
+    insertData(firstInput);
     // Stop the processor and write the rest of the input.
     test.stop();
     assert.commandWorked(test.inputColl.insertOne(input[input.length - 1]));
@@ -79,6 +113,15 @@ export function commonTest({input, pipeline, expectedOutput, timeField = "$ts"})
     assert.soon(() => { return test.stats().outputMessageCount == expectedOutput.length; });
     assert(
         resultsEq(test.outputColl.find({}).toArray(), expectedOutput, true /* verbose */, ["_id"]));
+    // Wait for expected DLQ results.
+    assert.soon(() => { return test.stats().dlqMessageCount == expectedDlq.length; },
+                "waiting for expected DLQ stats",
+                10 * 1000);
+    assert(resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
+                     expectedDlq,
+                     true /* verbose */,
+                     ["_id"]));
+
     test.stop();
 }
 

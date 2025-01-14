@@ -46,6 +46,7 @@ public:
         windowOptions.gapUnit = mongo::StreamTimeUnitEnum::Hour;
         windowOptions.partitionBy = ExpressionFieldPath::parse(
             _context->expCtx.get(), "$a", _context->expCtx->variablesParseState);
+        windowOptions.allowedLatenessMs = 0;
         gapMs = toMillis(windowOptions.gapUnit, windowOptions.gapSize);
     }
 
@@ -254,7 +255,7 @@ public:
             msg.dataMsg.get().docs[0].streamMeta.getWindow()->getStart()->toMillisSinceEpoch();
         auto end = msg.dataMsg.get().docs[0].streamMeta.getWindow()->getEnd()->toMillisSinceEpoch();
         ASSERT_EQUALS(start, expectedStart);
-        ASSERT_EQUALS(end, expectedEnd);
+        ASSERT_EQUALS(end, expectedEnd + gapMs);
     }
 
 protected:
@@ -932,37 +933,28 @@ TEST_F(SessionWindowAwareOperatorTest, OpenClosePartition) {
 
     std::vector<std::variant<StreamDataMsg, StreamControlMsg>> messages{
         StreamDataMsg{.docs = std::move(inputDocs)},
-        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, gapMs}},
         StreamDataMsg{.docs = std::move(inputDocs1)},
         StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, gapMs}}};
 
     auto result = testSortGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 2);
-    validateDocIds(result[0], std::vector<int>{0});
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1});
     validateWindowBounds(result[0], 0, 0);
-    validateDocIds(result[1], std::vector<int>{1});
-    validateWindowBounds(result[1], 0, 0);
 
     result = testLimitMatchSortGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 2);
-    validateDocIds(result[0], std::vector<int>{0});
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1});
     validateWindowBounds(result[0], 0, 0);
-    validateDocIds(result[1], std::vector<int>{1});
-    validateWindowBounds(result[1], 0, 0);
 
     result = testLimitMatchGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 2);
-    validateDocIds(result[0], std::vector<int>{0});
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1});
     validateWindowBounds(result[0], 0, 0);
-    validateDocIds(result[1], std::vector<int>{1});
-    validateWindowBounds(result[1], 0, 0);
 
     result = testLimitMatchLimitGroupPipeline(windowOptions, messages);
-    ASSERT_EQUALS(result.size(), 2);
-    validateDocIds(result[0], std::vector<int>{0});
+    ASSERT_EQUALS(result.size(), 1);
+    validateDocIds(result[0], std::vector<int>{0, 1});
     validateWindowBounds(result[0], 0, 0);
-    validateDocIds(result[1], std::vector<int>{1});
-    validateWindowBounds(result[1], 0, 0);
 }
 
 TEST_F(SessionWindowAwareOperatorTest, shouldCloseWindow) {

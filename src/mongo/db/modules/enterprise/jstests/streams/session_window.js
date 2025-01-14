@@ -67,12 +67,18 @@ const invalidPipelines = [
     limitBeforeFirstBlockingPipeline
 ];
 
-function createSessionWindow(pipeline, gap, partitionBy) {
-    let arg = {pipeline: pipeline, gap: gap, partitionBy: partitionBy};
+function createSessionWindow(pipeline, gap, partitionBy, allowedLateness) {
+    let arg = {
+        pipeline: pipeline,
+        gap: gap,
+        partitionBy: partitionBy,
+        allowedLateness: allowedLateness ? allowedLateness : NumberInt(0)
+    };
     return {["$sessionWindow"]: arg};
 }
 
-function testRunner(pipeline, gap, partitionBy, dataMsg, expectedWindows, shouldFail) {
+function testRunner(
+    pipeline, gap, partitionBy, dataMsg, expectedWindows, shouldFail, allowedLateness) {
     const uri = 'mongodb://' + db.getMongo().host;
     let connectionRegistry = [
         {
@@ -95,7 +101,7 @@ function testRunner(pipeline, gap, partitionBy, dataMsg, expectedWindows, should
                 testOnlyPartitionCount: NumberInt(1)
             }
         },
-        createSessionWindow(pipeline, gap, partitionBy),
+        createSessionWindow(pipeline, gap, partitionBy, allowedLateness),
         {$project: {_id: 0}},
         {$merge: {into: {connectionName: "db1", db: "test", coll: "sessionWindows"}}}
     ];
@@ -189,7 +195,7 @@ function noMerge() {
     let expectedOutput = [buildExpectedDoc({
         allIds: [0, 1],
         start: ISODate(getTime(0, 0, 0, 0)),
-        end: ISODate(getTime(0, 40, 0, 0), 1),
+        end: ISODate(getTime(1, 40, 0, 0), 1),
         partition: 1
     })];
 
@@ -199,7 +205,8 @@ function noMerge() {
 }
 
 function mergeMultiple() {
-    const gap = {size: NumberInt(200), unit: "second"};
+    const gapSeconds = 200;
+    const gap = {size: NumberInt(gapSeconds), unit: "second"};
     const partitionBy = "$a";
 
     let docs = [];
@@ -213,7 +220,7 @@ function mergeMultiple() {
     let expectedOutput = [buildExpectedDoc({
         allIds: Array.from({length: N}, (_, i) => i),
         start: ISODate(getTime(0, 0, 0, 0)),
-        end: ISODate(getTime(0, 0, N - 1, 0)),
+        end: ISODate(getTime(0, 0, N - 1 + gapSeconds, 0)),
         partition: 1
     })];
 
@@ -223,7 +230,8 @@ function mergeMultiple() {
 }
 
 function mergeMultipleWithManyPartitions() {
-    const gap = {size: NumberInt(200), unit: "second"};
+    const gapSeconds = 200;
+    const gap = {size: NumberInt(gapSeconds), unit: "second"};
     const partitionBy = "$a";
 
     let docs = [];
@@ -242,13 +250,16 @@ function mergeMultipleWithManyPartitions() {
         expectedOutput.push(buildExpectedDoc({
             allIds: Array.from({length: N}, (_, i) => i + p * N),
             start: ISODate(getTime(0, 0, 0, 0)),
-            end: ISODate(getTime(0, 0, N - 1, 0)),
+            end: ISODate(getTime(0, 0, N - 1 + gapSeconds, 0)),
             partition: p
         }));
     }
 
     for (const pipeline of validPipelines) {
-        testRunner(pipeline, gap, partitionBy, docs, expectedOutput, false);
+        testRunner(pipeline, gap, partitionBy, docs, expectedOutput, false, {
+            size: NumberInt(10),
+            unit: "second"
+        });
     }
 }
 

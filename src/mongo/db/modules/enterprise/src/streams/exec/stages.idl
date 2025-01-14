@@ -618,6 +618,13 @@ structs:
                 description: "Expression for the partition."
                 type:
                     variant: [object, string]
+                optional: true
+            allowedLateness:
+                description: "Defines the allowed lateness for documents."
+                type: 
+                    variant: [StreamTimeDuration, int]
+                optional: true
+
 
     ValidateOptions:
         description: "$validate stage options"

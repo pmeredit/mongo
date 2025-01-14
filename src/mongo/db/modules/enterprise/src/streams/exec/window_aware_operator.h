@@ -57,7 +57,8 @@ public:
     WindowAwareOperator(Context* context)
         : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
           _sessionWindows(mongo::ValueComparator::kInstance.makeUnorderedValueMap<
-                          boost::container::small_vector<std::unique_ptr<Window>, 1>>()) {}
+                          boost::container::small_vector<std::unique_ptr<Window>, 1>>()),
+          _memoryUsageHandle{context->memoryAggregator->createUsageHandle()} {}
 
 protected:
     // Tracks stats for one window.
@@ -244,15 +245,22 @@ private:
         return getOptions().isSessionWindow;
     }
 
+    SessionWindowAssigner* getSessionAssigner();
+
     // Called when a window might have been opened or closed, to update the
     // minOpenWindowStartTime/maxOpenWindowStartTime stats.
     void updateMinMaxOpenWindowStats();
+
+    bool fitsInOpenSession(const mongo::Value& partition, int64_t ts);
 
     std::map<int64_t, std::unique_ptr<Window>> _windows;
 
     // The largest watermark this operator has sent.
     int64_t _maxSentWatermarkMs{0};
-    // Windows before this start time are already closed.
+    // _minWindowStartTime is used for keeping track of what data is considered "late".
+    // For hopping windows, it's the minimum allowed window start time. Windows before this
+    // start time are already closed.
+    // For session windows, it's the last source watermark minus allowedLateness processed.
     int64_t _minWindowStartTime{0};
     // If set, windows before this start time were already closed by a past version of the
     // processor.
@@ -274,6 +282,9 @@ private:
     // This is a vector of all the session windows used during watermark processing.
     // Only used if this operator is the window assigner.
     std::vector<Window*> _sessionWindowsVector;
+    // Tracks the memory used by the window metadata storage (not the memory used by the underlying
+    // group or sort state).
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 };
 
 }  // namespace streams

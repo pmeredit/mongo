@@ -163,6 +163,7 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
         sendLateDocDlqMessage(dataMsg.docs[i], minEligibleStartTime);
     }
 
+    // Iterate through all the windows involved in the batch, process each.
     while (nextWindowStartTs <= endTs) {
         int64_t windowStart = nextWindowStartTs;
         int64_t windowEnd = options.windowAssigner->getWindowEndTime(windowStart);
@@ -205,12 +206,16 @@ OperatorStats WindowAwareOperator::doGetStats() {
     int64_t memoryUsageBytes{0};
 
     if (getOptions().isSessionWindow) {
+        int64_t windowMetadataBytes{0};
         for (const auto& [partition, partitionWindows] : _sessionWindows) {
             for (const auto& window : partitionWindows) {
                 memoryUsageBytes += window->stats.memoryUsageBytes;
             }
-            memoryUsageBytes += partition.getApproximateSize();
+            auto size = partition.getApproximateSize();
+            memoryUsageBytes += size;
+            windowMetadataBytes += size;
         }
+        _memoryUsageHandle.set(windowMetadataBytes);
     } else {
         for (auto& [startTime, window] : _windows) {
             memoryUsageBytes += window->stats.memoryUsageBytes;
@@ -605,6 +610,24 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
         return;
     }
 
+    auto makeBuilder = [&]() {
+        return toDeadLetterQueueMsg(_context->streamMetaFieldName,
+                                    doc,
+                                    getName(),
+                                    std::string{"Input document arrived late."});
+    };
+    auto writeToDlq = [&](BSONObjBuilder builder) {
+        // write Dlq message
+        int64_t numDlqBytes = _context->dlq->addMessage(std::move(builder));
+        // update Dlq stats
+        incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
+    };
+
+    if (isSessionWindow()) {
+        writeToDlq(makeBuilder());
+        return;
+    }
+
     auto windowAssigner = getOptions().windowAssigner.get();
     tassert(8292300, "Expected to be the window assigner.", windowAssigner);
 
@@ -616,16 +639,9 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
     }
     if (missedWindowStartTimes.size() > 0) {
         // create Dlq document
-        auto bsonObjBuilder = toDeadLetterQueueMsg(_context->streamMetaFieldName,
-                                                   doc,
-                                                   getName(),
-                                                   std::string{"Input document arrived late."});
+        auto bsonObjBuilder = makeBuilder();
         bsonObjBuilder.append(kMissedWindowStartTimes, missedWindowStartTimes);
-
-        // write Dlq message
-        int64_t numDlqBytes = _context->dlq->addMessage(std::move(bsonObjBuilder));
-        // update Dlq stats
-        incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
+        writeToDlq(std::move(bsonObjBuilder));
     }
 }
 
@@ -675,7 +691,6 @@ void WindowAwareOperator::onControlMsgSessionWindow(int32_t inputIdx, StreamCont
 }
 
 void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg dataMsg) {
-    // TODO(SERVER-92473): Send late arriving date to the DLQ
     struct MiniWindow {
         std::vector<StreamDocument> docsInWindow;
         int64_t minTS = std::numeric_limits<int64_t>::max();
@@ -693,8 +708,25 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
     mongo::ValueUnorderedMap<MiniWindow> miniWindows =
         mongo::ValueComparator::kInstance.makeUnorderedValueMap<MiniWindow>();
     for (auto& doc : dataMsg.docs) {
-        // TODO(SERVER-92473): Handle exceptions here and send offending doc to DLQ.
-        mongo::Value partition = expr->evaluate(doc.doc, &expr->getExpressionContext()->variables);
+        Value partition;
+        try {
+            partition = expr->evaluate(doc.doc, &expr->getExpressionContext()->variables);
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to process input document in " << getName()
+                                              << " with error: " << e.what();
+            auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
+                _context->streamMetaFieldName, doc, getName(), std::move(error)));
+            incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
+            continue;
+        }
+
+        if (doc.minDocTimestampMs < _minWindowStartTime &&
+            !fitsInOpenSession(partition, doc.minDocTimestampMs)) {
+            // Send late data that does not fit into an existing session to the DLQ.
+            sendLateDocDlqMessage(doc, doc.minDocTimestampMs);
+            continue;
+        }
+
         auto partitionIt = miniWindows.find(partition);
         if (partitionIt == miniWindows.end()) {
             miniWindows[partition] = MiniWindow{};
@@ -730,6 +762,28 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
     }
 }
 
+SessionWindowAssigner* WindowAwareOperator::getSessionAssigner() {
+    auto assigner = dynamic_cast<SessionWindowAssigner*>(getOptions().windowAssigner.get());
+    tassert(9247300, "Expected a session window assigner", assigner);
+    return assigner;
+}
+
+bool WindowAwareOperator::fitsInOpenSession(const mongo::Value& partition, int64_t ts) {
+    auto partitionIt = _sessionWindows.find(partition);
+    if (partitionIt == _sessionWindows.end()) {
+        return false;
+    }
+
+    auto assigner = getSessionAssigner();
+    const auto& windows = partitionIt->second;
+    for (const auto& window : windows) {
+        if (assigner->shouldMergeSessionWindows(window->getStartMs(), window->getEndMs(), ts, ts)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partition,
                                                      std::vector<StreamDocument> streamDocs,
                                                      int64_t minTS,
@@ -744,13 +798,12 @@ void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partiti
         firstStreamMeta.getWindow() ? firstStreamMeta.getWindow()->getWindowID() : boost::none,
         firstStreamMeta.getSource() ? firstStreamMeta.getSource()->getType() : boost::none);
     invariant(window);  // cannot be a null ptr
+    if (!window->status.isOK()) {
+        return;
+    }
 
     if (getOptions().windowAssigner && _context->checkpointStorage && isNew) {
         window->replayCheckpointId = _context->checkpointStorage->onWindowOpen();
-    }
-
-    if (!window->status.isOK()) {
-        return;
     }
 
     if (projectStreamMeta) {
@@ -766,6 +819,7 @@ void WindowAwareOperator::processDocsInSessionWindow(mongo::Value const& partiti
     try {
         doProcessDocs(window, std::move(streamDocs));
     } catch (const DBException& e) {
+        // If an exception escapes the doProcessDocs, we need to DLQ the whole window.
         window->status = e.toStatus();
     }
 }
@@ -788,14 +842,15 @@ WindowAwareOperator::Window* WindowAwareOperator::mergeSessionWindows(
     Window* destinationWindow{nullptr};
 
     auto it = partitionWindows.begin();
+    auto assigner = dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get());
     while (it != partitionWindows.end()) {
         auto window = it->get();
         auto currWindowID = window->getWindowID();
         int64_t start = window->getStartMs();
         int64_t end = window->getEndMs();
 
-        if (dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get())
-                ->shouldMergeSessionWindows(start, end, newStartTimestampMs, newEndTimestampMs)) {
+        if (assigner->shouldMergeSessionWindows(
+                start, end, newStartTimestampMs, newEndTimestampMs)) {
             // If this window overlaps within gap distance of the input interval, update window
             // bounds.
             newStartTimestampMs = std::min(start, newStartTimestampMs);
@@ -927,7 +982,7 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
         return;
     }
 
-    auto assigner = dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get());
+    auto assigner = getSessionAssigner();
     auto sendWindowSignals = options.sendWindowSignals;
 
     auto newEnd = std::remove_if(
@@ -935,13 +990,25 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
         _sessionWindowsVector.end(),
         [this, inputWatermarkTime, sendWindowSignals, &assigner](Window* window) {
             if (assigner->shouldCloseWindow(window->getEndMs(), inputWatermarkTime)) {
-                // close window
-                closeWindow(window);
+                /*
+                    The window's end timestamp is the the max doc ts we've seen,
+                    plus the gap, similar to Spark and Flink's behaviors.
 
+                    df = spark.createDataFrame([
+                        ("2016-03-11 09:00:07", 1),
+                        ("2016-03-11 09:00:09", 1)
+                    ]).toDF("date", "val")
+                    w = df.groupBy(session_window("date", "5 seconds")).count()
+                    +------------------------------------------+-----+
+                    |session_window                            |count|
+                    +------------------------------------------+-----+
+                    |{2016-03-11 09:00:07, 2016-03-11 09:00:14}|2    |
+                    +------------------------------------------+-----+
+                */
+                window->setEndMs(window->getEndMs() + getSessionAssigner()->getGap());
+
+                closeWindow(window);
                 if (window->replayCheckpointId) {
-                    tassert(9531616,
-                            "Found replayCheckpointId, expected to be the window assigner",
-                            getOptions().windowAssigner);
                     _context->checkpointStorage->onWindowClose(*window->replayCheckpointId);
                 }
 
@@ -977,6 +1044,9 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
 
     // Remove closed windows from auxillary data structure.
     _sessionWindowsVector.erase(newEnd, _sessionWindowsVector.end());
+
+    // Set the _minWindowStartTime to the watermark-allowedLateness we just processed.
+    _minWindowStartTime = inputWatermarkTime;
 }
 
 void WindowAwareOperator::processSessionWindowCloseMsg(StreamControlMsg controlMsg) {
