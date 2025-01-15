@@ -50,6 +50,7 @@ REGISTER_INTERNAL_DOCUMENT_SOURCE(_backupFile,
                                   LiteParsedDocumentSourceBackupFile::parse,
                                   DocumentSourceBackupFile::createFromBson,
                                   true);
+ALLOCATE_DOCUMENT_SOURCE_ID(_backupFile, DocumentSourceBackupFile::id)
 
 boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::create(
     const boost::intrusive_ptr<ExpressionContext>& expCtx, DocumentSourceBackupFileSpec spec) {

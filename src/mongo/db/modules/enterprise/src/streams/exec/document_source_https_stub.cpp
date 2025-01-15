@@ -35,5 +35,6 @@ REGISTER_INTERNAL_DOCUMENT_SOURCE(https,
                                   LiteParsedDocumentSourceDefault::parse,
                                   DocumentSourceHttpsStub::createFromBson,
                                   true);
+ALLOCATE_DOCUMENT_SOURCE_ID(https, DocumentSourceHttpsStub::id)
 
 }  // namespace streams

@@ -24,6 +24,8 @@ namespace streams {
 using boost::intrusive_ptr;
 using namespace mongo;
 
+ALLOCATE_DOCUMENT_SOURCE_ID(_remoteDbCursor, DocumentSourceRemoteDbCursor::id)
+
 const char* DocumentSourceRemoteDbCursor::getSourceName() const {
     return kStageName.rawData();
 }

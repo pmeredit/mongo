@@ -22,8 +22,10 @@ public:
 
     const char* getSourceName() const override;
 
-    mongo::DocumentSourceType getType() const override {
-        return mongo::DocumentSourceType::kFeeder;
+    static const Id& id;
+
+    Id getId() const override {
+        return id;
     }
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {

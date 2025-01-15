@@ -32,8 +32,10 @@ protected:
         return kStageName;
     }
 
-    mongo::DocumentSourceType getType() const override {
-        return mongo::DocumentSourceType::kValidateStub;
+    static const Id& id;
+
+    Id getId() const override {
+        return id;
     }
 
     mongo::StageConstraints constraints(mongo::Pipeline::SplitState pipeState) const override;

@@ -38,5 +38,6 @@ REGISTER_INTERNAL_DOCUMENT_SOURCE(validate,
                                   LiteParsedDocumentSourceDefault::parse,
                                   DocumentSourceValidateStub::createFromBson,
                                   true);
+ALLOCATE_DOCUMENT_SOURCE_ID(validate, DocumentSourceValidateStub::id)
 
 }  // namespace streams

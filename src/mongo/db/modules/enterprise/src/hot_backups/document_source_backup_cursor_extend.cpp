@@ -22,6 +22,7 @@ REGISTER_DOCUMENT_SOURCE(backupCursorExtend,
                          DocumentSourceBackupCursorExtend::LiteParsed::parse,
                          DocumentSourceBackupCursorExtend::createFromBson,
                          AllowedWithApiStrict::kAlways);
+ALLOCATE_DOCUMENT_SOURCE_ID(backupCursorExtend, DocumentSourceBackupCursorExtend::id)
 
 DocumentSourceBackupCursorExtend::DocumentSourceBackupCursorExtend(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx,

@@ -55,4 +55,6 @@ REGISTER_INTERNAL_DOCUMENT_SOURCE(sessionWindow,
                                   DocumentSourceSessionWindowStub::createFromBson,
                                   true);
 
+ALLOCATE_DOCUMENT_SOURCE_ID(windowStub, DocumentSourceWindowStub::id)
+
 }  // namespace streams

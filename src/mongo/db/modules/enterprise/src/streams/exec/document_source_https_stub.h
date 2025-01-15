@@ -29,8 +29,10 @@ public:
     static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(
         mongo::BSONElement elem, const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx);
 
-    mongo::DocumentSourceType getType() const override {
-        return mongo::DocumentSourceType::kHttps;
+    static const Id& id;
+
+    Id getId() const override {
+        return id;
     }
 
     const mongo::BSONObj& bsonOptions() {

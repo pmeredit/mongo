@@ -13,6 +13,8 @@ namespace streams {
 
 using namespace mongo;
 
+ALLOCATE_DOCUMENT_SOURCE_ID(_feeder, DocumentSourceFeeder::id)
+
 constexpr mongo::StringData kStageName = "$_feeder"_sd;
 
 DocumentSourceFeeder::DocumentSourceFeeder(const boost::intrusive_ptr<ExpressionContext>& expCtx)

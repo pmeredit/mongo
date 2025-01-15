@@ -53,8 +53,10 @@ public:
 
     const char* getSourceName() const override;
 
-    mongo::DocumentSourceType getType() const override {
-        return mongo::DocumentSourceType::kRemoteDbCursor;
+    static const Id& id;
+
+    Id getId() const override {
+        return id;
     }
 
     Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final {
