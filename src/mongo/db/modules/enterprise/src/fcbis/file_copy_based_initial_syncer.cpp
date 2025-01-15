@@ -32,7 +32,6 @@
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/destructor_guard.h"
 #include "mongo/util/future_util.h"
 #include "mongo/watchdog/watchdog.h"
 
@@ -145,10 +144,12 @@ FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
 }
 
 FileCopyBasedInitialSyncer::~FileCopyBasedInitialSyncer() {
-    DESTRUCTOR_GUARD({
+    try {
         shutdown().transitional_ignore();
         join();
-    });
+    } catch (...) {
+        reportFailedDestructor(MONGO_SOURCE_LOCATION());
+    }
 }
 
 std::string FileCopyBasedInitialSyncer::getInitialSyncMethod() const {
@@ -1557,7 +1558,11 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     // shoud be of no consequence).
     ON_BLOCK_EXIT([&client, cursorId = cursor->getCursorId(), nss = cursor->getNamespaceString()] {
         if (cursorId) {
-            DESTRUCTOR_GUARD(client.killCursor(nss, cursorId));
+            try {
+                client.killCursor(nss, cursorId);
+            } catch (...) {
+                reportFailedDestructor(MONGO_SOURCE_LOCATION());
+            }
         }
     });
 
