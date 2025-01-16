@@ -86,8 +86,8 @@ struct in_addr KafkaResolveCallback::getRandomProxy(AddrInfoPtr& addresses) {
     return proxyEndpoints.at(rng(_gen));
 }
 
-sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
-                                               const std::string& port) {
+std::unique_ptr<sockaddr_in> KafkaResolveCallback::resolve_name(const std::string& hostname,
+                                                                const std::string& port) {
     int err;
 
     // Build hints for getaddrinfo.
@@ -114,7 +114,7 @@ sockaddr_in KafkaResolveCallback::resolve_name(const std::string& hostname,
     addr.sin_port = htons(atoi(port.c_str()));
     addr.sin_addr = getRandomProxy(addrs);
 
-    return addr;
+    return std::make_unique<sockaddr_in>(addr);
 }
 
 // resolve_cb wraps resolveCbImpl to handle any unexpected exceptions.
@@ -145,7 +145,9 @@ int KafkaResolveCallback::resolveCbImpl(const char* node,
         LOGV2_INFO(780007,
                    "resolver has null node and service, freeing structures",
                    "context"_attr = _context);
-        _endpoint.reset();
+        delete (*res)->ai_addr;
+        delete *res;
+
         return 0;
     }
 
@@ -154,17 +156,20 @@ int KafkaResolveCallback::resolveCbImpl(const char* node,
     auto [hostname, port] = generateAddressAndService(_targetProxy, service);
     auto resolverResult = resolve_name(hostname, port);
 
-    _endpoint = std::make_unique<addrinfo>();
-    _endpoint->ai_family = AF_INET;
-    _endpoint->ai_socktype = SOCK_STREAM;
-    _endpoint->ai_protocol = IPPROTO_TCP;
-    _endpoint->ai_addrlen = sizeof(sockaddr_in);
-    _endpoint->ai_next = nullptr;
-    _endpoint->ai_addr = reinterpret_cast<sockaddr*>(&resolverResult);
+    // Using smart pointers for these is a bit superfluous, but limits the number
+    // of places we specifically create raw pointers and makes it more obvious
+    // when we transfer ownership of them to the C callback code in librdkafka.
+    std::unique_ptr<addrinfo> endpoint = std::make_unique<addrinfo>();
+    endpoint->ai_family = AF_INET;
+    endpoint->ai_socktype = SOCK_STREAM;
+    endpoint->ai_protocol = IPPROTO_TCP;
+    endpoint->ai_addrlen = sizeof(sockaddr_in);
+    endpoint->ai_next = nullptr;
+    endpoint->ai_addr = reinterpret_cast<sockaddr*>(resolverResult.release());
 
     // Point res to the underlying raw pointer. The addrinfo struct will be cleaned
     // up when the operator which instantiated the resolve_cb is destroyed.
-    *res = _endpoint.get();
+    *res = endpoint.release();
 
     return 0;
 }

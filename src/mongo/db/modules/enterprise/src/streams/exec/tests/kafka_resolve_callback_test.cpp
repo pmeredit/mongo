@@ -66,6 +66,9 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetHost) {
 
     inet_ntop(AF_INET, &addr.s_addr, saddr, INET_ADDRSTRLEN);
     ASSERT_EQUALS(saddr, StringData("127.0.0.1"));
+
+    // Free structures
+    krc.resolve_cb(nullptr, nullptr, nullptr, &res);
 }
 
 TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetIP) {
@@ -90,6 +93,9 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetIP) {
 
     inet_ntop(AF_INET, &addr.s_addr, saddr, INET_ADDRSTRLEN);
     ASSERT_EQUALS(saddr, StringData("1.2.3.4"));
+
+    // Free structures
+    krc.resolve_cb(nullptr, nullptr, nullptr, &res);
 }
 
 TEST_F(KafkaResolveCallbackTest, EnsureResolverFailsPredictablyBadHostname) {

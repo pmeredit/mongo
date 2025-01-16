@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <memory>
 #include <random>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -38,7 +39,7 @@ private:
     Context* _context{nullptr};
     std::pair<std::string, std::string> generateAddressAndService(const std::string& hostname,
                                                                   const char* service);
-    sockaddr_in resolve_name(const std::string& hostname, const std::string& port);
+    std::unique_ptr<sockaddr_in> resolve_name(const std::string& hostname, const std::string& port);
     struct in_addr getRandomProxy(AddrInfoPtr& addresses);
     int resolveCbImpl(const char* node,
                       const char* service,
@@ -47,7 +48,6 @@ private:
 
     std::string _operatorName;
     std::string _targetProxy;
-    std::unique_ptr<addrinfo> _endpoint;
     std::mt19937 _gen;
 };
 
