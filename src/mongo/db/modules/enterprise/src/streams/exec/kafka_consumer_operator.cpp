@@ -130,6 +130,7 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
 
     if (eventCb) {
         setConf("event_cb", eventCb);
+        setConf("debug", "security");
     }
 
     for (const auto& config : authConfig) {

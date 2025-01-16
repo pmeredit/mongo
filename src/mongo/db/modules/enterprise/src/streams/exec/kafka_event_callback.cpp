@@ -101,6 +101,12 @@ void KafkaEventCallback::event_cb(RdKafka::Event& event) {
                            "context"_attr = _context,
                            "operatorName"_attr = _operatorName,
                            "event"_attr = toBSON(event));
+            } else if (sev == RdKafka::Event::EVENT_SEVERITY_DEBUG) {
+                LOGV2_INFO(9841301,
+                           "Kafka debug log event",
+                           "context"_attr = _context,
+                           "operatorName"_attr = _operatorName,
+                           "event"_attr = toBSON(event));
             }
             break;
         }

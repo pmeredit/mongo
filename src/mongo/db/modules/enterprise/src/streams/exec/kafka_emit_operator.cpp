@@ -160,6 +160,7 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     setConf("topic.metadata.refresh.interval.ms", "-1");
     // Set the event callback.
     setConf("event_cb", _eventCbImpl.get());
+    setConf("debug", "security");
 
     if (_useDeliveryCallback) {
         // Set the delivery callback, used during flush to detect connectivity errors.

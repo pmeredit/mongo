@@ -352,6 +352,9 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
         setConf(config.first, config.second);
     }
 
+    // Set debug contexts to get more information from librdkafka
+    setConf("debug", "security");
+
     // TODO(sandeep): Set more config options that could be useful.
     return conf;
 }
