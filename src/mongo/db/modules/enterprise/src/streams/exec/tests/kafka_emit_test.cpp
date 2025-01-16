@@ -13,6 +13,7 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -273,6 +274,23 @@ TEST_F(KafkaEmitTest, TestDateFormat) {
     // basic case 2
     doc = Document(BSON("b" << date));
     ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)), Value(Document(BSON("b" << isoString))));
+
+    // basic case pre-1970
+    Date_t date2 = dateFromISOString("1970-01-01T00:00:00.000Z").getValue() - mongo::Minutes{1};
+    doc = Document(BSON("a" << 1 << "b" << date2));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                    Value(Document(BSON("a" << 1 << "b"
+                                            << "1969-12-31T23:59:00.000Z"))));
+    date2 = date2 - mongo::Days{365};
+    doc = Document(BSON("a" << 1 << "b" << date2));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                    Value(Document(BSON("a" << 1 << "b"
+                                            << "1968-12-31T23:59:00.000Z"))));
+    date2 = date2 - 10 * mongo::Days{365};
+    doc = Document(BSON("a" << 1 << "b" << date2));
+    ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)),
+                    Value(Document(BSON("a" << 1 << "b"
+                                            << "1959-01-03T23:59:00.000Z"))));
 
     // no-op
     doc = Document(BSON("a" << 1 << "b"

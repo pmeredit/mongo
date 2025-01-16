@@ -10,6 +10,7 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/name_expression.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -324,7 +325,9 @@ std::vector<StringData> getLoggablePipeline(const std::vector<BSONObj>& pipeline
 }
 
 std::string convertDateToISO8601(mongo::Date_t date) {
-    return dateToISOStringUTC(date);
+    auto result = TimeZoneDatabase::utcZone().formatDate(kIsoFormatStringZ, date);
+    uassertStatusOK(result);
+    return result.getValue();
 }
 
 std::vector<mongo::Value> convertDateToISO8601(const std::vector<mongo::Value>& arr) {
