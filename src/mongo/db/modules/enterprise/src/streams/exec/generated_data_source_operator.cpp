@@ -121,6 +121,9 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
         doc.streamMeta.setSource(streamMetaSource);
     }
     doc.streamMeta.getSource()->setType(StreamMetaSourceTypeEnum::Generated);
+    if (_context->shouldUseDocumentMetadataFields) {
+        doc.streamMeta.getSource()->setTs(timestamp);
+    }
     doc.onMetaUpdate(_context);
 
     doc.minProcessingTimeMs = curTimeMillis64();

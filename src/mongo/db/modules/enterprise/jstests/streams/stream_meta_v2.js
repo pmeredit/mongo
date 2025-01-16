@@ -20,7 +20,8 @@ commonTest({
                 _id: 0,
             }
         },
-        {$project: {customer: 1, ad: 1, value: 1, sourceMeta: {$meta: "stream.source"}}}
+        {$project: {customer: 1, ad: 1, value: 1, sourceMeta: {$meta: "stream.source"}}},
+        {$project: {"sourceMeta.ts": 0}}
     ],
     useTimeField: false,
     expectedGeneratedOutput: [
@@ -164,6 +165,7 @@ commonTest({
                 windowStart: {$meta: "stream.window.start"},
                 windowEnd: {$meta: "stream.window.end"},
                 sourceMeta: {$meta: "stream.source"},
+                meta: {$meta: "stream"},
             }
         },
         {
@@ -179,9 +181,16 @@ commonTest({
             value: 2,
             ts: ISODate("2023-01-01T00:59:57"),
             _ts: ISODate("2023-01-01T00:59:57"),
-            sourceMeta: {type: "generated"},
+            sourceMeta: {type: "generated", ts: ISODate("2023-01-01T00:59:57")},
             windowStart: ISODate("2023-01-01T00:59:55Z"),
-            windowEnd: ISODate("2023-01-01T01:00:00Z")
+            windowEnd: ISODate("2023-01-01T01:00:00Z"),
+            meta: {
+                source: {type: "generated", ts: ISODate("2023-01-01T00:59:57")},
+                window: {
+                    start: ISODate("2023-01-01T00:59:55Z"),
+                    end: ISODate("2023-01-01T01:00:00Z"),
+                }
+            }
         },
         {
             customer: 2,
@@ -189,9 +198,22 @@ commonTest({
             value: 1,
             ts: ISODate("2023-01-01T00:59:57"),
             _ts: ISODate("2023-01-01T00:59:57"),
-            sourceMeta: {type: "generated"},
             windowStart: ISODate("2023-01-01T00:59:55Z"),
-            windowEnd: ISODate("2023-01-01T01:00:00Z")
+            windowEnd: ISODate("2023-01-01T01:00:00Z"),
+            sourceMeta: {
+                type: "generated",
+                ts: ISODate("2023-01-01T00:59:57"),
+            },
+            meta: {
+                source: {
+                    type: "generated",
+                    ts: ISODate("2023-01-01T00:59:57"),
+                },
+                window: {
+                    start: ISODate("2023-01-01T00:59:55Z"),
+                    end: ISODate("2023-01-01T01:00:00Z"),
+                }
+            }
         },
     ],
     expectedTestKafkaOutput: [
@@ -201,10 +223,33 @@ commonTest({
             value: 2,
             ts: ISODate("2023-01-01T00:59:57"),
             _ts: ISODate("2023-01-01T00:59:57"),
-            sourceMeta:
-                {type: "kafka", topic: "t1", partition: 0, offset: 0, key: null, headers: []},
+            sourceMeta: {
+                type: "kafka",
+                topic: "t1",
+                partition: 0,
+                offset: 0,
+                key: null,
+                headers: [],
+                ts: ISODate("2023-01-01T00:59:57")
+            },
             windowStart: ISODate("2023-01-01T00:59:55Z"),
-            windowEnd: ISODate("2023-01-01T01:00:00Z")
+            windowEnd: ISODate("2023-01-01T01:00:00Z"),
+            meta: {
+                source: {
+                    type: "kafka",
+                    topic: "t1",
+                    partition: 0,
+                    offset: 0,
+                    key: null,
+                    headers: [],
+                    ts: ISODate("2023-01-01T00:59:57")
+                },
+                window: {
+                    start: ISODate("2023-01-01T00:59:55Z"),
+                    end: ISODate("2023-01-01T01:00:00Z"),
+                }
+
+            }
         },
         {
             customer: 2,
@@ -212,10 +257,32 @@ commonTest({
             value: 1,
             ts: ISODate("2023-01-01T00:59:57"),
             _ts: ISODate("2023-01-01T00:59:57"),
-            sourceMeta:
-                {type: "kafka", topic: "t1", partition: 0, offset: 4, key: null, headers: []},
+            sourceMeta: {
+                type: "kafka",
+                topic: "t1",
+                partition: 0,
+                offset: 4,
+                key: null,
+                headers: [],
+                ts: ISODate("2023-01-01T00:59:57")
+            },
             windowStart: ISODate("2023-01-01T00:59:55Z"),
-            windowEnd: ISODate("2023-01-01T01:00:00Z")
+            windowEnd: ISODate("2023-01-01T01:00:00Z"),
+            meta: {
+                source: {
+                    type: "kafka",
+                    topic: "t1",
+                    partition: 0,
+                    offset: 4,
+                    key: null,
+                    headers: [],
+                    ts: ISODate("2023-01-01T00:59:57")
+                },
+                window: {
+                    start: ISODate("2023-01-01T00:59:55Z"),
+                    end: ISODate("2023-01-01T01:00:00Z"),
+                }
+            }
         },
     ],
     expectedChangestreamOutput: [
@@ -224,18 +291,29 @@ commonTest({
             ad: 1,
             value: 2,
             ts: ISODate("2023-01-01T00:59:57"),
-            sourceMeta: {type: "atlas"},
+            // No _ts because of the $replaceRoot the test helper adds.
+            sourceMeta: {type: "atlas", ts: ISODate("2023-01-01T00:59:57")},
             windowStart: ISODate("2023-01-01T00:59:55Z"),
-            windowEnd: ISODate("2023-01-01T01:00:00Z")
+            windowEnd: ISODate("2023-01-01T01:00:00Z"),
+            meta: {
+                source: {type: "atlas", ts: ISODate("2023-01-01T00:59:57")},
+                window:
+                    {start: ISODate("2023-01-01T00:59:55Z"), end: ISODate("2023-01-01T01:00:00Z")}
+            }
         },
         {
             customer: 2,
             ad: 1,
             value: 1,
             ts: ISODate("2023-01-01T00:59:57"),
-            sourceMeta: {type: "atlas"},
+            sourceMeta: {type: "atlas", ts: ISODate("2023-01-01T00:59:57")},
             windowStart: ISODate("2023-01-01T00:59:55Z"),
-            windowEnd: ISODate("2023-01-01T01:00:00Z")
+            windowEnd: ISODate("2023-01-01T01:00:00Z"),
+            meta: {
+                source: {type: "atlas", ts: ISODate("2023-01-01T00:59:57")},
+                window:
+                    {start: ISODate("2023-01-01T00:59:55Z"), end: ISODate("2023-01-01T01:00:00Z")}
+            }
         },
     ],
 });
@@ -251,7 +329,8 @@ commonTest({
                 _id: 0,
             }
         },
-        {$project: {customer: 1, ad: 1, value: 1, sourceMeta: {$meta: "stream.source"}}}
+        {$project: {customer: 1, ad: 1, value: 1, sourceMeta: {$meta: "stream.source"}}},
+        {$project: {"sourceMeta.ts": 0}}
     ],
     useTimeField: false,
     expectedGeneratedOutput: [{

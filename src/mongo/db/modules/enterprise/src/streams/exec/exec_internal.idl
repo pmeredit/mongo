@@ -108,6 +108,10 @@ structs:
                 description: "Type of source e.g. kafka, atlas"
                 type: StreamMetaSourceType
                 optional: true
+            ts:
+                description: "Timestamp assigned by the source"
+                type: date
+                optional: true
             topic:
                 description: "Topic of this Kafka document"
                 type: string

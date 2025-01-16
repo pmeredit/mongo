@@ -829,6 +829,9 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Atlas);
+    if (_context->shouldUseDocumentMetadataFields) {
+        streamMetaSource.setTs(ts);
+    }
     streamDoc.streamMeta.setSource(std::move(streamMetaSource));
     streamDoc.onMetaUpdate(_context);
 
