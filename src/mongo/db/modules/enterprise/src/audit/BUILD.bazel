@@ -282,6 +282,8 @@ mongo_cc_unit_test(
         "audit_output_test.cpp",
         "audit_sequence_id_test.cpp",
         "//src/mongo/db/modules/enterprise/src/audit/logger:rotatable_file_writer_test.cpp",
+        "//src/mongo/transport:test_fixtures.h",
+        "//src/mongo/unittest:join_thread.h",
     ],
     tags = ["mongo_unittest_second_group"],
     deps = [
@@ -309,6 +311,7 @@ mongo_cc_unit_test(
         "//src/mongo/db/repl:storage_interface_impl",
         "//src/mongo/idl:cluster_server_parameter",
         "//src/mongo/idl:server_parameter_test_util",
+        "//src/mongo/transport:transport_layer",
         "//src/mongo/transport:transport_layer_mock",
         "//src/mongo/util:signal_handlers",
         "//src/mongo/util/options_parser",

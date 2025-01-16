@@ -15,7 +15,7 @@
 namespace mongo::audit {
 class AuditClientObserver final : public ServiceContext::ClientObserver {
 public:
-    void onCreateClient(Client* client) final{};
+    void onCreateClient(Client* client) final;
     void onDestroyClient(Client* client) final{};
 
     void onCreateOperationContext(OperationContext* opCtx) final;
