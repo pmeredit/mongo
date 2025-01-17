@@ -1082,7 +1082,8 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     };
 
     ExpectedResults results;
-    results.expectedUri = kUriString;
+    results.expectedUri =
+        kUriString + "/?serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000";
     results.expectedDatabase = "db";
     results.expectedCollection = "foo";
     results.expectedChangeStreamPipeline = mongocxx::pipeline();

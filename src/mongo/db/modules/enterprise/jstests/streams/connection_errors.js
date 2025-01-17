@@ -52,7 +52,7 @@ function badDBSourceStartError() {
     });
     assert.commandFailed(result);
     assert.eq(ErrorCodes.StreamProcessorAtlasConnectionError, result.code);
-    let errmsg = `Change stream $source ${dbName}.${inputCollName} failed: No suitable servers found (\`serverSelectionTryOnce\` set): [connection refused calling hello on '127.0.0.1']: generic server error`;
+    let errmsg = `Change stream $source ${dbName}.${inputCollName} failed: No suitable servers found: \`serverselectiontimeoutms\` timed out: [connection refused calling hello on '127.0.0.1']: generic server error`;
     assert.eq(errmsg, result.errmsg);
 }
 
@@ -183,7 +183,7 @@ function badMergeStartError() {
     assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
     assert.eq(
         result.errmsg,
-        "$merge to test.outputcoll failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on '127.0.0.1']: generic server error");
+        "$merge to test.outputcoll failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error");
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.
@@ -238,7 +238,7 @@ function badMerge_WithOn_StartError() {
     assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
     assert.eq(
         result.errmsg,
-        "$merge to test.outputcoll failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on '127.0.0.1']: generic server error");
+        "$merge to test.outputcoll failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error");
 }
 
 function badMongoDLQAsyncError() {
@@ -291,7 +291,7 @@ function badMongoDLQAsyncError() {
             sp.error.code == ErrorCodes.StreamProcessorAtlasConnectionError &&
             sp.error.retryable == true && sp.error.userError == false &&
             sp.error.reason ===
-            "Dead letter queue test.dlq failed: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on '127.0.0.1']: generic server error";
+            "Dead letter queue test.dlq failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error";
     });
 
     stopStreamProcessor(spName);

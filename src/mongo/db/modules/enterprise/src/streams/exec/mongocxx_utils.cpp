@@ -65,9 +65,53 @@ bool isMonitoringEnabled(const Context* const context) {
     return enabled && *enabled;
 }
 
+static constexpr const char* serverSelectionTryOnceOption = "serverSelectionTryOnce";
+static constexpr const char* schemeDelimiter = "://";
+
+std::string applyServerSelectionOptions(const std::string& uri, const Context* const context) {
+    try {
+        const mongocxx::uri mongoUri = mongocxx::uri{uri};
+    } catch (const std::exception& e) {
+        // Ignore invalid URIs
+        LOGV2_WARNING(9887300,
+                      "invalid mongodb URI",
+                      "context"_attr = context->toBSON(),
+                      "exception"_attr = e.what());
+        return uri;
+    }
+
+    if (boost::algorithm::ifind_first(uri, serverSelectionTryOnceOption)) {
+        return uri;
+    }
+
+    std::ostringstream uriOptions;
+    uriOptions << serverSelectionTryOnceOption << "=false&serverSelectionTimeoutMS=15000";
+
+    // Check if the URI already contains options
+    if (uri.find('?') != std::string::npos) {
+        return uri + "&" + uriOptions.str();
+    }
+
+    const std::size_t schemePos = uri.find(schemeDelimiter);
+    if (schemePos == std::string::npos) {
+        // Ignore invalid URIs
+        LOGV2_WARNING(
+            9887301, "invalid mongodb URI: scheme not found", "context"_attr = context->toBSON());
+        return uri;
+    }
+
+    if (uri.find('/', schemePos + std::strlen(schemeDelimiter)) == std::string::npos) {
+        // If there's no slash after the scheme, add one at the end
+        return uri + "/?" + uriOptions.str();
+    }
+
+    return uri + "?" + uriOptions.str();
+}
+
 MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions,
                                              const Context* const context) {
     uri = atlasOptions.getUri().toString();
+    uri = applyServerSelectionOptions(uri, context);
 
     if (auto pemFileOption = atlasOptions.getPemFile()) {
         pemFile = pemFileOption->toString();

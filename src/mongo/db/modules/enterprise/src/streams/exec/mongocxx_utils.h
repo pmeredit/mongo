@@ -125,4 +125,16 @@ std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri);
 boost::optional<mongo::write_ops::WriteError> getWriteErrorFromRawServerError(
     const mongocxx::operation_exception& ex);
 
+/**
+ * TODO(SERVER-99330): replace this function with the new client option introduce with CXX-3204
+ * Tries to set the serverSelectionTryOnce option to "false" and serverSelectionTimeoutMS to 15000.
+ * By default, single-threaded (non-pooled) clients scan only once when an operation requires a
+ * server that is not known. If you attempt an insert and there is no known primary, the client
+ * checks all servers once trying to find it, then succeeds or returns an error with domain
+ * MONGOC_ERROR_SERVER_SELECTION. But if you set serverSelectionTryOnce to "false", the
+ * single-threaded client loops, checking all servers every half-second, until
+ * serverSelectionTimeoutMS.
+ */
+std::string applyServerSelectionOptions(const std::string& uri, const Context* context);
+
 }  // namespace streams

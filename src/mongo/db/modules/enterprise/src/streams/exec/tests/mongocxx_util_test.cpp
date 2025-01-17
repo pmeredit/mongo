@@ -10,6 +10,7 @@
 #include "mongo/bson/simple_bsonobj_comparator.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/framework.h"
+#include "streams/exec/context.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/util/exception.h"
 
@@ -91,6 +92,96 @@ TEST(MongoCxxUtilTest, MongocxxExceptionToStatus) {
         auto actual = mongocxxExceptionToStatus(tc.ex, mongocxx::uri{tc.uri}, tc.errorPrefix);
         ASSERT_EQUALS(tc.expected, actual);
     }
+}
+
+auto makeContext() {
+    auto context = std::make_unique<Context>();
+    context->streamProcessorId = UUID::gen().toString();
+    context->tenantId = UUID::gen().toString();
+    return context;
+}
+
+TEST(MongoCxxUtilTest, ApplyServerSelectionOptions) {
+    struct TestCase {
+        std::string inputUri;
+        boost::optional<bool> inputUriTryOnce;
+        std::string expectedUri;
+        boost::optional<bool> expectedUriTryOnce;
+        boost::optional<int32_t> expectedServerSelectionTimeoutMS;
+    };
+
+    std::vector<TestCase> tests = {
+        {.inputUri{"mongodb://localhost:27017/"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{"mongodb://localhost:27017/"
+                      "?serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+        {.inputUri{"mongodb://localhost:27017"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{"mongodb://localhost:27017/"
+                      "?serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+        {.inputUri{"mongodb://localhost:27017/dbName"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{"mongodb://localhost:27017/"
+                      "dbName?serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+        {.inputUri{"mongodb://user@127.0.0.1:1234,127.0.0.2:1234/?replicaSet=replName"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{
+             "mongodb://user@127.0.0.1:1234,127.0.0.2:1234/"
+             "?replicaSet=replName&serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+        {.inputUri{"mongodb://localhost:27017/?serverSelectionTryOnce=true"},
+         .inputUriTryOnce{true},
+         .expectedUri{"mongodb://localhost:27017/"
+                      "?serverSelectionTryOnce=true"},
+         .expectedUriTryOnce{true}},
+        {.inputUri{"mongodb+srv://abc.mongodb.net/"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{"mongodb+srv://abc.mongodb.net/"
+                      "?serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+        {.inputUri{"mongodb+srv://abc.mongodb.net"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{"mongodb+srv://abc.mongodb.net/"
+                      "?serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+        {.inputUri{"mongodb+srv://abc.mongodb.net/?ssl=true"},
+         .inputUriTryOnce{boost::none},
+         .expectedUri{"mongodb+srv://abc.mongodb.net/"
+                      "?ssl=true&serverSelectionTryOnce=false&serverSelectionTimeoutMS=15000"},
+         .expectedUriTryOnce{false},
+         .expectedServerSelectionTimeoutMS{15000}},
+    };
+
+    for (const auto& tc : tests) {
+        auto tryOnce = mongocxx::uri{tc.inputUri}.server_selection_try_once();
+        ASSERT_EQUALS(tryOnce, tc.inputUriTryOnce) << "Failing URI: " << tc.inputUri;
+
+        auto context = makeContext();
+        auto actual = applyServerSelectionOptions(tc.inputUri, context.get());
+        ASSERT_EQUALS(tc.expectedUri, actual) << "Failing URI: " << tc.inputUri;
+
+        auto actualUri = mongocxx::uri{actual};
+        ASSERT_EQUALS(actualUri.server_selection_try_once(), tc.expectedUriTryOnce)
+            << "Failing URI: " << tc.inputUri;
+        ASSERT_EQUALS(actualUri.server_selection_timeout_ms(), tc.expectedServerSelectionTimeoutMS)
+            << "Failing URI: " << tc.inputUri;
+    }
+}
+
+TEST(MongoCxxUtilTest, ApplyServerSelectionOptionsWithInvalidUri) {
+    auto context = makeContext();
+    const auto invalidUri = "mongodb://localhost:27017/dbName?foo=a&b";
+    auto actual = applyServerSelectionOptions(invalidUri, context.get());
+    ASSERT_EQUALS(actual, invalidUri);
 }
 
 }  // namespace
