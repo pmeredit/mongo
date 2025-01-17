@@ -326,10 +326,12 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     if (streams::isConfluentBroker(_options.bootstrapServers)) {
         setConf("client.id", std::string(streams::kKafkaClientID));
     }
-    // Do not log broker disconnection messages.
-    setConf("log.connection.close", "false");
-    // Do not refresh topic or broker metadata.
-    setConf("topic.metadata.refresh.interval.ms", "-1");
+    if (!enableMetadataRefreshInterval(_context->featureFlags)) {
+        // Do not refresh topic or broker metadata.
+        setConf("topic.metadata.refresh.interval.ms", "-1");
+        // Do not log broker disconnection messages.
+        setConf("log.connection.close", "false");
+    }
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
     setConf("consume.callback.max.messages", "500");

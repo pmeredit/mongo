@@ -14,6 +14,7 @@
 #include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_resolve_callback.h"
+#include "streams/exec/rate_limiter.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/stages_gen.h"
 
@@ -109,6 +110,8 @@ protected:
     void doFlush() override;
 
 private:
+    static constexpr double kTryLogRate{1.0 / 60};
+
     // This class encapsulates the initial connection logic for this operator.
     class Connector {
     public:
@@ -181,6 +184,8 @@ private:
     // RdKafka::Producer.
     std::unique_ptr<RdKafka::Conf> createKafkaConf();
 
+    void tryLog(int id, std::function<void(int logID)> logFn);
+
     Options _options;
     // Used to print librdkafka logs.
     std::unique_ptr<KafkaEventCallback> _eventCbImpl;
@@ -207,5 +212,11 @@ private:
 
     // Set to true depending on a feature flag.
     bool _useDeliveryCallback{false};
+
+    // TODO(SERVER-99604): Refactor this and log rate limiter in https_operator.h
+    // Log rate limiter.
+    mongo::stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
+    // timer used for log rate limiting
+    Timer _timer{};
 };
 }  // namespace streams

@@ -221,6 +221,11 @@ const FeatureFlagDefinition FeatureFlags::kOldStreamMeta{
     "If true, the old _stream_meta and _ts projection behavior enabled.",
     mongo::Value(true)};
 
+const FeatureFlagDefinition FeatureFlags::kEnableMetadataRefreshInterval{
+    "enableMetadataRefreshInterval",
+    "If true, enable librdakfka's metadata refresh interval.",
+    mongo::Value(true)};
+
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};
@@ -273,6 +278,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},
     {FeatureFlags::kCidrDenyList.name, FeatureFlags::kCidrDenyList},
     {FeatureFlags::kOldStreamMeta.name, FeatureFlags::kOldStreamMeta},
+    {FeatureFlags::kEnableMetadataRefreshInterval.name,
+     FeatureFlags::kEnableMetadataRefreshInterval},
     {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {

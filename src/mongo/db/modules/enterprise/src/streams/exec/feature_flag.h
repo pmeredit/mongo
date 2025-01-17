@@ -69,6 +69,7 @@ public:
     static const FeatureFlagDefinition kEnableMongoCxxMonitoring;
     static const FeatureFlagDefinition kProcessingTimeWindows;
     static const FeatureFlagDefinition kOldStreamMeta;
+    static const FeatureFlagDefinition kEnableMetadataRefreshInterval;
 };
 
 }  // namespace streams

@@ -101,7 +101,8 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
     boost::optional<mongo::BSONObj> configurations,
     RdKafka::ResolveCb* resolveCb,
     RdKafka::ConnectCb* connectCb,
-    RdKafka::EventCb* eventCb) {
+    RdKafka::EventCb* eventCb,
+    Context* context) {
 
     // conf will go out of scope at the end of this function but it should be fine since it is
     // expected to be valid only when it is being used in the call to RdKafkaConsumer::create
@@ -119,8 +120,10 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
     if (streams::isConfluentBroker(bootstrapServers)) {
         setConf("client.id", std::string(streams::kKafkaClientID));
     }
-    setConf("log.connection.close", "false");
-    setConf("topic.metadata.refresh.interval.ms", "-1");
+    if (!enableMetadataRefreshInterval(context->featureFlags)) {
+        setConf("topic.metadata.refresh.interval.ms", "-1");
+        setConf("log.connection.close", "false");
+    }
 
     setConf("enable.auto.commit", "false");
     setConf("group.id", consumerGroupId);
@@ -205,7 +208,8 @@ KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
                                              _options.configurations,
                                              _resolveCbImpl ? _resolveCbImpl.get() : nullptr,
                                              _connectCbImpl ? _connectCbImpl.get() : nullptr,
-                                             _eventCallback.get());
+                                             _eventCallback.get(),
+                                             _context);
 }
 
 KafkaConsumerOperator::Connector::~Connector() {
@@ -1250,7 +1254,8 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
                                         _options.configurations,
                                         _resolveCbImpl ? _resolveCbImpl.get() : nullptr,
                                         _connectCbImpl ? _connectCbImpl.get() : nullptr,
-                                        nullptr);
+                                        nullptr,
+                                        _context);
 }
 
 // topic partition ids should have been fetched before calling getCommittedOffsets

@@ -177,10 +177,12 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     if (streams::isConfluentBroker(_options.bootstrapServers)) {
         setConf("client.id", std::string(streams::kKafkaClientID));
     }
-    // Do not log broker disconnection messages.
-    setConf("log.connection.close", "false");
-    // Do not refresh topic or broker metadata.
-    setConf("topic.metadata.refresh.interval.ms", "-1");
+    if (!enableMetadataRefreshInterval(_context->featureFlags)) {
+        // Do not refresh topic or broker metadata.
+        setConf("topic.metadata.refresh.interval.ms", "-1");
+        // Do not log broker disconnection messages.
+        setConf("log.connection.close", "false");
+    }
     // Set the event callback.
     setConf("event_cb", _eventCbImpl.get());
     setConf("debug", "security");
@@ -534,6 +536,18 @@ Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
     return {};
 }
 
+void KafkaEmitOperator::tryLog(int id, std::function<void(int logID)> logFn) {
+    if (!_logIDToRateLimiter.contains(id)) {
+        _logIDToRateLimiter[id] = std::make_unique<RateLimiter>(kTryLogRate, 1, &_timer);
+    }
+
+    if (_logIDToRateLimiter[id]->consume() > Seconds(0)) {
+        return;
+    }
+
+    logFn(id);
+}
+
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto docAsStr = tojson(streamDoc.doc.toBson(), _options.jsonStringFormat);
     auto docSize = docAsStr.size();
@@ -596,6 +610,11 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto deadline = Date_t::now() + Milliseconds{getKafkaProduceTimeoutMs(_context->featureFlags)};
     auto err = pollAndProduce();
     while (err == RdKafka::ERR__QUEUE_FULL && Date_t::now() < deadline) {
+        tryLog(9604800, [&](int logID) {
+            LOGV2_INFO(logID,
+                       "Encountered ERR__QUEUE_FULL when producing to Kafka",
+                       "context"_attr = _context);
+        });
         err = pollAndProduce();
     }
 
