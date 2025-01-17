@@ -4,6 +4,8 @@
 
 #include "streams/exec/generated_data_source_operator.h"
 
+#include "mongo/db/pipeline/window_function/window_bounds.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/util.h"
@@ -133,7 +135,10 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
     return doc;
 }
 
-Date_t GeneratedDataSourceOperator::getTimestamp(const StreamDocument& doc) const {
+Date_t GeneratedDataSourceOperator::getTimestamp(const StreamDocument& doc) {
+    if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+        return Date_t::fromMillisSinceEpoch(getRealOrMockedCurTimeMillis64());
+    }
     if (doc.minDocTimestampMs >= 0) {
         return Date_t::fromMillisSinceEpoch(doc.minDocTimestampMs);
     }

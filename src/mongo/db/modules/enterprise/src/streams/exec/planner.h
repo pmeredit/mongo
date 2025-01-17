@@ -103,7 +103,7 @@ private:
         std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     };
 
-    mongo::WindowBoundaryEnum getValidBoundary(auto options);
+    mongo::WindowBoundaryEnum getValidWindowBoundary(auto options);
     // Adds the given Operator to '_operators'.
     void appendOperator(std::unique_ptr<Operator> oper);
 

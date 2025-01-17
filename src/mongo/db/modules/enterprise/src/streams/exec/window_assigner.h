@@ -24,7 +24,7 @@ public:
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
         int64_t allowedLatenessMs{0};
         boost::optional<int64_t> idleTimeoutMs;
-        mongo::WindowBoundaryEnum boundary{mongo::WindowBoundaryEnum::eventTime};
+        mongo::WindowBoundaryEnum windowBoundary{mongo::WindowBoundaryEnum::eventTime};
     };
 
     WindowAssigner(Options options)
@@ -65,6 +65,10 @@ public:
     bool hasIdleTimeoutElapsed(int64_t idleDurationMs) const {
         tassert(8347601, "Expected idleTimeout to be set", _options.idleTimeoutMs);
         return idleDurationMs >= *_options.idleTimeoutMs;
+    }
+
+    bool hasProcessingTimeWindowBoundary() {
+        return _options.windowBoundary == mongo::WindowBoundaryEnum::processingTime;
     }
 
 private:

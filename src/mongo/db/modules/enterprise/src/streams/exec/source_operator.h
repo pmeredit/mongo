@@ -67,6 +67,10 @@ public:
         return doOnCheckpointFlush(checkpointId);
     }
 
+    void setWindowBoundary(mongo::WindowBoundaryEnum windowBoundary) {
+        _windowBoundary = windowBoundary;
+    }
+
 protected:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
@@ -106,6 +110,9 @@ protected:
 
     // _lastControlMsg is updated whenever the source instance sends a watermark message.
     StreamControlMsg _lastControlMsg;
+
+    // Window boundary
+    mongo::WindowBoundaryEnum _windowBoundary{mongo::WindowBoundaryEnum::eventTime};
 };
 
 }  // namespace streams

@@ -4,7 +4,6 @@
 
 #include "streams/exec/planner.h"
 
-#include "mongo/db/pipeline/expression.h"
 #include <any>
 #include <boost/none.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -37,6 +36,7 @@
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_redact.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/db/service_context.h"
@@ -63,6 +63,7 @@
 #include "streams/exec/documents_data_source_operator.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/feedable_pipeline.h"
+#include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/https_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -329,7 +330,11 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
 }
 
 int64_t parseAllowedLateness(
-    const boost::optional<std::variant<std::int32_t, StreamTimeDuration>>& param) {
+    const boost::optional<std::variant<std::int32_t, StreamTimeDuration>>& param,
+    mongo::WindowBoundaryEnum windowBoundary = mongo::WindowBoundaryEnum::eventTime) {
+    if (windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+        return 0;
+    }
     // From the spec, 3 seconds is the default allowed lateness.
     int64_t allowedLatenessMs = 3 * 1000;
     if (param) {
@@ -534,7 +539,7 @@ void configureContextStreamMetaFieldName(Context* context, StringData streamMeta
 Planner::Planner(Context* context, Options options)
     : _context(context), _options(std::move(options)), _nextOperatorId(_options.minOperatorId) {}
 
-mongo::WindowBoundaryEnum Planner::getValidBoundary(auto options) {
+mongo::WindowBoundaryEnum Planner::getValidWindowBoundary(auto options) {
     mongo::WindowBoundaryEnum boundary = options.getBoundary();
     if (boundary == WindowBoundaryEnum::processingTime) {
         auto enabled =
@@ -1250,14 +1255,20 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
             interval.getSize() > 0);
 
     WindowAssigner::Options windowingOptions;
-    windowingOptions.boundary = getValidBoundary(options);
+    windowingOptions.windowBoundary = getValidWindowBoundary(options);
+
+    tassert(9940801, "Operators shouldn't be empty", !_operators.empty());
+    if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
+        src->setWindowBoundary(windowingOptions.windowBoundary);
+    }
     windowingOptions.size = interval.getSize();
     windowingOptions.sizeUnit = interval.getUnit();
     windowingOptions.slide = interval.getSize();
     windowingOptions.slideUnit = interval.getUnit();
     windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
-    windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    windowingOptions.allowedLatenessMs =
+        parseAllowedLateness(options.getAllowedLateness(), windowingOptions.windowBoundary);
     windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
 
     _windowPlanningInfo.emplace();
@@ -1334,14 +1345,19 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
                 toMillis(windowInterval.getUnit(), windowInterval.getSize()));
 
     WindowAssigner::Options windowingOptions;
-    windowingOptions.boundary = getValidBoundary(options);
+    windowingOptions.windowBoundary = getValidWindowBoundary(options);
+
+    if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
+        src->setWindowBoundary(windowingOptions.windowBoundary);
+    }
     windowingOptions.size = windowInterval.getSize();
     windowingOptions.sizeUnit = windowInterval.getUnit();
     windowingOptions.slide = hopInterval.getSize();
     windowingOptions.slideUnit = hopInterval.getUnit();
     windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
-    windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    windowingOptions.allowedLatenessMs =
+        parseAllowedLateness(options.getAllowedLateness(), windowingOptions.windowBoundary);
     windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
     // TODO: what about offset.
 

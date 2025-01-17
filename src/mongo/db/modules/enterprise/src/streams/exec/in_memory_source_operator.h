@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <queue>
-
 #include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"

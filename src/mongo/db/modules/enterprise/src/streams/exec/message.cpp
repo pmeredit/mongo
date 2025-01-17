@@ -73,7 +73,7 @@ BSONObj StreamControlMsg::toBSONForLogging() const {
         builder.append("checkpointMsg.checkpointId", checkpointMsg->id);
     }
     if (watermarkMsg) {
-        builder.append("watermarkMsg.watermarkEventTime", watermarkMsg->watermarkTimestampMs);
+        builder.append("watermarkMsg.watermarkTimestamp", watermarkMsg->watermarkTimestampMs);
         builder.append("watermarkMsg.watermarkStatus", watermarkMsg->watermarkStatus);
     }
     if (windowCloseSignal) {

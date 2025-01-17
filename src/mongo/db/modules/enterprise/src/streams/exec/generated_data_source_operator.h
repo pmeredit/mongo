@@ -9,6 +9,7 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/time_support.h"
+#include "mongo/util/timer.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
@@ -20,6 +21,10 @@ namespace streams {
 class GeneratedDataSourceOperator : public SourceOperator {
 public:
     GeneratedDataSourceOperator(Context* context, int32_t numOutputs);
+
+    void setMockTimer(mongo::Timer* timer) {
+        _mockTimer = timer;
+    }
 
 protected:
     // Guards each `run()` instance, including `getMessages()`.
@@ -51,10 +56,24 @@ private:
     boost::optional<StreamDocument> processDocument(StreamDocument doc);
 
     // Extracts the timestamp from the input document.
-    mongo::Date_t getTimestamp(const StreamDocument& doc) const;
+    mongo::Date_t getTimestamp(const StreamDocument& doc);
 
     // Watermark generator. Only set if watermarking is enabled.
     std::unique_ptr<DelayedWatermarkGenerator> _watermarkGenerator;
+
+    // Timer passed in from a test. Used to mock time
+    mongo::Timer* _mockTimer{nullptr};
+
+    // Returns the real or mocked current time in milliseconds based on if we're in a test or not.
+    unsigned long long getRealOrMockedCurTimeMillis64() {
+        if (_mockTimer) {
+            return _mockTimer->millis();
+        } else {
+            return mongo::curTimeMillis64();
+        }
+    }
+
+
 };  // class GeneratedDataSourceOperator
 
 };  // namespace streams
