@@ -204,3 +204,8 @@ env.CppUnitTest(
     target="rate_limiter_test",
     source=[],
 )
+
+env.CppUnitTest(
+    target="kafka_utils_test",
+    source=[],
+)

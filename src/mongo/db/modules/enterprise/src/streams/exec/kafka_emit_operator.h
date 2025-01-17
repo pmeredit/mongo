@@ -6,6 +6,7 @@
 
 #include <boost/intrusive_ptr.hpp>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/duration.h"
@@ -61,8 +62,12 @@ public:
         mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
         // compression.type setting
         mongo::KafkaCompressionTypeEnum compressionType{mongo::KafkaCompressionTypeEnum::none};
+        bool setCompressionType{false};
         // acks setting
         mongo::KafkaAcksEnum acks{mongo::KafkaAcksEnum::All};
+        bool setAcks{false};
+        // kafka configurations defined in the connection
+        boost::optional<mongo::BSONObj> configurations;
         // Date serialization format.
         mongo::DateSerializationFormatEnum dateSerializationFormat{
             mongo::DateSerializationFormatEnum::Default};

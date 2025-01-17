@@ -8,6 +8,7 @@
 #include <queue>
 #include <rdkafkacpp.h>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
@@ -101,6 +102,8 @@ public:
         // Whether to commit offsets on reads or on checkpoints. true indicates that offsets will be
         // commited on reads.
         bool enableAutoCommit{false};
+        // kafka configurations defined in the connection
+        boost::optional<mongo::BSONObj> configurations;
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -173,6 +176,7 @@ private:
             boost::optional<std::string> gwproxyKey;
             std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;
             std::shared_ptr<KafkaConnectAuthCallback> kafkaConnectAuthCallback;
+            boost::optional<mongo::BSONObj> configurations;
         };
 
         Connector(Context* context, Options options);

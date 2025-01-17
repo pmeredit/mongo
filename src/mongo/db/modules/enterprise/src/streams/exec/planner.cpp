@@ -11,6 +11,7 @@
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/change_stream.hpp>
+#include <rdkafkacpp.h>
 #include <utility>
 #include <variant>
 
@@ -684,6 +685,9 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
         std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
+
+    internalOptions.configurations = baseOptions.getConfigurations();
+
     std::visit(
         OverloadedVisitor{
             [&](const std::string& str) { internalOptions.topicNames.push_back(str); },
@@ -727,6 +731,31 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
 
     // The default is to start processing at the current end of topic.
     internalOptions.startOffset = RdKafka::Topic::OFFSET_END;
+
+    if (internalOptions.configurations &&
+        internalOptions.configurations->hasField("auto.offset.reset") &&
+        internalOptions.configurations->getField("auto.offset.reset").type() == mongo::String) {
+        auto autoOffsetReset =
+            internalOptions.configurations->getField("auto.offset.reset").String();
+        if (autoOffsetReset == "earliest") {
+            internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
+        } else if (autoOffsetReset == "latest") {
+            internalOptions.startOffset = RdKafka::Topic::OFFSET_END;
+        } else if (autoOffsetReset == "none") {
+            internalOptions.startOffset = RdKafka::Topic::OFFSET_END;
+        } else {
+            LOGV2_WARNING(9863001,
+                          "The provided auto.reset.offset configuration is not valid.",
+                          "auto.offset.reset"_attr = autoOffsetReset);
+        }
+    } else if (internalOptions.configurations &&
+               internalOptions.configurations->hasField("auto.offset.reset")) {
+        // The auto.offset.reset defined was not a string type, don't error for now to avoid
+        // breaking changes
+        // TODO(SERVER-99524) - if the user passed in a non-string value we should error
+        LOGV2_WARNING(9863002, "auto.offset.reset was not provided as a string type.");
+    }
+
     auto config = options.getConfig();
     if (config) {
         auto autoOffsetReset = config->getAutoOffsetReset();
@@ -742,7 +771,19 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     auto groupIdDefined = config && config->getGroupId();
     if (groupIdDefined) {
         internalOptions.consumerGroupId = std::string{*config->getGroupId()};
+    } else if (internalOptions.configurations &&
+               internalOptions.configurations->hasField("group.id") &&
+               internalOptions.configurations->getField("group.id").type() == mongo::String) {
+        internalOptions.consumerGroupId =
+            internalOptions.configurations->getField("group.id").String();
     } else {
+        if (internalOptions.configurations &&
+            internalOptions.configurations->hasField("group.id")) {
+            // The group.id defined was not a string type, don't error for now to avoid breaking
+            // changes
+            // TODO(SERVER-99524) - if the user passed in a non-string value we should error
+            LOGV2_WARNING(9863003, "group.id was not provided as a string type.");
+        }
         internalOptions.consumerGroupId =
             fmt::format("asp-{}-consumer", _context->streamProcessorId);
     }
@@ -1092,10 +1133,12 @@ void Planner::planEmitSink(const BSONObj& spec) {
 
                 if (options.getConfig()->getCompressionType()) {
                     kafkaEmitOptions.compressionType = *options.getConfig()->getCompressionType();
+                    kafkaEmitOptions.setCompressionType = true;
                 }
 
                 if (options.getConfig()->getAcks()) {
                     kafkaEmitOptions.acks = *options.getConfig()->getAcks();
+                    kafkaEmitOptions.setAcks = true;
                 }
 
                 kafkaEmitOptions.dateSerializationFormat = options.getConfig()->getDateFormat();
@@ -1105,6 +1148,9 @@ void Planner::planEmitSink(const BSONObj& spec) {
                 : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
             if (options.getTestOnlyPartition()) {
                 kafkaEmitOptions.testOnlyPartition = *options.getTestOnlyPartition();
+            }
+            if (baseOptions.getConfigurations()) {
+                kafkaEmitOptions.configurations = *baseOptions.getConfigurations();
             }
 
             sinkOperator =

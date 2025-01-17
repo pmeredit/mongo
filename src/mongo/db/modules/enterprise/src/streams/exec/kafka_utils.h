@@ -22,4 +22,10 @@ std::string kafkaErrToString(const std::string& wrappingErrMsg, RdKafka::ErrorCo
 boost::optional<int64_t> getRdKafkaQueuedMaxMessagesKBytes(
     const boost::optional<StreamProcessorFeatureFlags>& flags, int32_t numPartitions);
 
+// Calls the provided function for each configuration in the allowedConfigurations list
+void setKafkaConnectionConfigurations(
+    mongo::BSONObj configurations,
+    std::function<void(const std::string& field, const std::string& value)> setConf,
+    const mongo::stdx::unordered_set<std::string>& allowedConfigurations);
+
 }  // namespace streams

@@ -26,6 +26,10 @@ import {
 
 const kafkaPlaintextName = "kafka1";
 const kafkaSASLSSLName = "kafkaSSL1";
+const kafkaWithCompressionTypeGzip = "kafkaWithCompressionTypeGzip";
+const kafkaWithGroupId = "kafkaWithGroupId";
+const kafkaWithAutoOffsetResetEarliest = "kafkaWithAutoOffsetResetEarliest";
+const kafkaWithAutoOffsetResetLatest = "kafkaWithAutoOffsetResetLatest";
 const dbConnName = "db1";
 const uri = 'mongodb://' + db.getMongo().host;
 const kafkaUri = 'localhost:9092';
@@ -61,7 +65,7 @@ const startOptions = {
     },
     featureFlags: {useExecutionPlanFromCheckpoint: true},
 };
-
+const groupIdFromConnectionValue = "groupIdFromTheKafkaConnection";
 const connectionRegistry = [
     {name: dbConnName, type: 'atlas', options: {uri: uri}},
     {
@@ -83,6 +87,46 @@ const connectionRegistry = [
                     "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
             }
         }
+    },
+    {
+        name: kafkaWithCompressionTypeGzip,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUri,
+            configurations: {
+                'compression.type': 'gzip',
+            }
+        },
+    },
+    {
+        name: kafkaWithGroupId,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUri,
+            configurations: {
+                'group.id': groupIdFromConnectionValue,
+            }
+        },
+    },
+    {
+        name: kafkaWithAutoOffsetResetEarliest,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUri,
+            configurations: {
+                'auto.offset.reset': 'earliest',
+            }
+        },
+    },
+    {
+        name: kafkaWithAutoOffsetResetLatest,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUri,
+            configurations: {
+                'auto.offset.reset': 'latest',
+            }
+        },
     },
     {name: '__testMemory', type: 'in_memory', options: {}},
 ];
@@ -217,6 +261,7 @@ function makeKafkaToMongoStartCmd({
     consumerGroupId,
     restoreDirectory = null,
     ephemeral = false,
+    connName = kafkaPlaintextName,
 }) {
     let topicNameForProcessorId;
     if (Array.isArray(topicName)) {
@@ -253,7 +298,7 @@ function makeKafkaToMongoStartCmd({
         pipeline: pipeline.length ? pipeline : [
             {
                 $source: {
-                    connectionName: kafkaPlaintextName,
+                    connectionName: connName,
                     topic: topicName,
                     config: {
                         keyFormat: sourceKeyFormat,
@@ -372,9 +417,10 @@ function mongoToKafkaToMongo({
     jsonType,
     compressionType,
     acks,
+    connectionName = kafkaPlaintextName,
 } = {}) {
     // Prepare a topic 'topicName1'.
-    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, connectionName);
     // Cleanup the source collection.
     sourceColl1.drop();
 
@@ -384,6 +430,7 @@ function mongoToKafkaToMongo({
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+        connName: connectionName,
         topicName: topicName1,
         collName: sinkColl1.getName(),
         sourceKeyFormat: sourceKeyFormat,
@@ -406,7 +453,7 @@ function mongoToKafkaToMongo({
     assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
         collName: sourceColl1.getName(),
         topicName: topicName1,
-        connName: kafkaPlaintextName,
+        connName: connectionName,
         sinkKey,
         sinkKeyFormat,
         sinkHeaders,
@@ -446,6 +493,12 @@ function mongoToKafkaToMongo({
             outputDoc = sanitizeDoc(outputDoc);
             delete outputDoc._id;
             assert.docEq(input[i], outputDoc, outputDoc);
+        }
+
+        // If the user did not specify a compressionType in the operator and we specify compression
+        // type gzip in the connection, we would expect that compression type gzip is being used.
+        if (compressionType === undefined && connectionName === kafkaWithCompressionTypeGzip) {
+            compressionType = "gzip";
         }
 
         if (results.length) {
@@ -1367,20 +1420,28 @@ function writeToTopic(topicName, input) {
     stopStreamProcessor(startCmd.name);
 }
 
-function kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {enableAutoCommit, ephemeral} = {}) {
+function kafkaConsumerGroupOffsetWithEnableAutoCommit(
+    kafka,
+    {enableAutoCommit, ephemeral, connName, removeConsumerGroupId, groupIdFromConnection} = {}) {
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
     const topicName = topicName1;
     const collName = sinkCollName1;
-    const consumerGroupId = "consumer-group-withEnableAutoCommit";
+    let consumerGroupId = removeConsumerGroupId ? undefined : "consumer-group-withEnableAutoCommit";
 
     // Start KafkaToMongo SP with default enableAutoCommit (true).
     const startCmd = makeKafkaToMongoStartCmd(
-        {topicName, collName, consumerGroupId, enableAutoCommit, ephemeral});
+        {topicName, collName, consumerGroupId, enableAutoCommit, ephemeral, connName});
     assert.commandWorked(db.runCommand(startCmd));
 
     const docsToInsert = [{a: 1}, {b: 1}, {c: 1}];
     writeToTopic(topicName1, docsToInsert);
+
+    if (removeConsumerGroupId) {
+        // if we didn't pass in a consumerGroupId then we would expect it to use the
+        // group.id defined in the kafka connection configurations.
+        consumerGroupId = groupIdFromConnection;
+    }
 
     // Because enableAutoCommit was enabled, the consumer group offset should be updated
     // every 500ms (at time of writing).
@@ -1775,11 +1836,10 @@ function kafkaMultiTopicCheckpointTest(kafka, numPartitions) {
     stopStreamProcessor(name, alreadyFlushedIds);
 }
 
-function kafkaStartAtEarliestTest() {
+function kafkaStartAtEarliestTest(setInOperator = true, connName = kafkaPlaintextName) {
     // Create a new topic and write two documents to it.
     const numDocuments = 2;
-    makeSureKafkaTopicCreated(
-        sourceColl1, topicName1, kafkaPlaintextName, /* count */ numDocuments);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, connName, /* count */ numDocuments);
 
     const processorId = `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`;
     // TODO(SERVER-93198): Remove this once the feature flag is removed.
@@ -1787,6 +1847,7 @@ function kafkaStartAtEarliestTest() {
     // is off.
     let options = startOptions;
     options.featureFlags.kafkaEmitUserDeliveryCallback = false;
+    const config = setInOperator ? {auto_offset_reset: "earliest"} : {};
 
     const startCmd = {
         streams_startStreamProcessor: '',
@@ -1795,9 +1856,9 @@ function kafkaStartAtEarliestTest() {
         pipeline: [
             {
                 $source: {
-                    connectionName: kafkaPlaintextName,
+                    connectionName: connName,
                     topic: topicName1,
-                    config: {auto_offset_reset: "earliest"},
+                    config: config,
                 }
             },
             {$emit: {connectionName: "__noopSink"}}
@@ -2579,6 +2640,14 @@ runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "lz4"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "zstd"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({compressionType: "none"}));
 
+runKafkaTest(kafka, () => mongoToKafkaToMongo({connectionName: kafkaWithCompressionTypeGzip}));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(
+                 {connectionName: kafkaWithCompressionTypeGzip, compressionType: "zstd"}));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(
+                 {connectionName: kafkaWithCompressionTypeGzip, compressionType: "none"}));
+
 runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "all"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "-1"}));
 runKafkaTest(kafka, () => mongoToKafkaToMongo({acks: "0"}));
@@ -2597,7 +2666,16 @@ runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka));
 runKafkaTest(kafka,
              () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {enableAutoCommit: true}));
 runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {ephemeral: true}));
+runKafkaTest(
+    kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {connName: kafkaWithGroupId}));
+runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka, {
+                        connName: kafkaWithGroupId,
+                        removeConsumerGroupId: true,
+                        groupIdFromConnection: groupIdFromConnectionValue
+                    }));
 runKafkaTest(kafka, kafkaStartAtEarliestTest);
+runKafkaTest(kafka, () => kafkaStartAtEarliestTest(true, kafkaWithAutoOffsetResetLatest));
+runKafkaTest(kafka, () => kafkaStartAtEarliestTest(false, kafkaWithAutoOffsetResetEarliest));
 
 // offset lag in verbose stats
 runKafkaTest(kafka, testKafkaOffsetLag);

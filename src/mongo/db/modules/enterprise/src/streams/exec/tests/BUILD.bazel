@@ -840,3 +840,16 @@ mongo_cc_unit_test(
         "//src/mongo/util:tick_source_mock",
     ],
 )
+
+mongo_cc_unit_test(
+    name = "kafka_utils_test",
+    srcs = [
+        "kafka_utils_test.cpp",
+    ],
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+    ],
+)

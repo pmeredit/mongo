@@ -35,6 +35,27 @@ namespace streams {
 
 using namespace mongo;
 
+// IMPORTANT! If you update this allowed list make sure you also update the UI that shows
+// warnings for unsupported configurations. Keep in mind that there is also a list for
+// allowed sink configurations that you may need to synchronize with as well.
+// The UI logic was added in this PR https://github.com/10gen/mms/pull/117213
+mongo::stdx::unordered_set<std::string> allowedSourcePartitionConfigurations = {
+    "max.poll.records",
+    "max.poll.interval.ms",
+    "fetch.min.bytes",
+    "fetch.max.bytes",
+    "allow.auto.create.topics",
+    "isolation.level",
+    "client.dns.lookup",
+    "max.partition.fetch.bytes",
+    "connections.max.idle.ms",
+    "exclude.internal.topics",
+    "request.timeout.ms",
+    // configurations shared with allowedSourceConfigurations
+    "session.timeout.ms",
+    "heartbeat.interval.ms",
+    "client.id",
+};
 namespace {
 
 // This is the timeout we use for `consume_callback`, within librdkafka this is just
@@ -312,19 +333,6 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
     setConf("consume.callback.max.messages", "500");
-    if (_options.rdkafkaQueuedMaxMessagesKBytes) {
-        setConf("queued.max.messages.kbytes",
-                std::to_string(*_options.rdkafkaQueuedMaxMessagesKBytes));
-        // Use a fetch.max.bytes that is smaller than the queued.max.messages.kbytes.
-        int64_t fetchMaxBytes = (*_options.rdkafkaQueuedMaxMessagesKBytes * 1024) - 64_KiB;
-        setConf("fetch.max.bytes", std::to_string(fetchMaxBytes));
-        LOGV2_INFO(9649600,
-                   "Setting rdkafka queue size",
-                   "queuedMaxMessagesKBytes"_attr = *_options.rdkafkaQueuedMaxMessagesKBytes,
-                   "fetchMaxBytes"_attr = fetchMaxBytes,
-                   "context"_attr = _context,
-                   "partition"_attr = _options.partition);
-    }
 
     // Set the resolve callback.
     if (_options.gwproxyEndpoint) {
@@ -352,10 +360,29 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
         setConf(config.first, config.second);
     }
 
+    // These are the configurations that the user manually specified in the kafka connection.
+    if (_options.configurations) {
+        setKafkaConnectionConfigurations(
+            *_options.configurations, setConf, allowedSourcePartitionConfigurations);
+    }
+
+    if (_options.rdkafkaQueuedMaxMessagesKBytes) {
+        setConf("queued.max.messages.kbytes",
+                std::to_string(*_options.rdkafkaQueuedMaxMessagesKBytes));
+        // Use a fetch.max.bytes that is smaller than the queued.max.messages.kbytes.
+        int64_t fetchMaxBytes = (*_options.rdkafkaQueuedMaxMessagesKBytes * 1024) - 64_KiB;
+        setConf("fetch.max.bytes", std::to_string(fetchMaxBytes));
+        LOGV2_INFO(9649600,
+                   "Setting rdkafka queue size",
+                   "queuedMaxMessagesKBytes"_attr = *_options.rdkafkaQueuedMaxMessagesKBytes,
+                   "fetchMaxBytes"_attr = fetchMaxBytes,
+                   "context"_attr = _context,
+                   "partition"_attr = _options.partition);
+    }
+
     // Set debug contexts to get more information from librdkafka
     setConf("debug", "security");
 
-    // TODO(sandeep): Set more config options that could be useful.
     return conf;
 }
 

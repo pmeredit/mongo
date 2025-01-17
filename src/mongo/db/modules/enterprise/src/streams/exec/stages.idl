@@ -235,6 +235,10 @@ structs:
                 description: "Pre-shared 32-byte (AES-256) key for GWProxy authentication for VPC peering sessions."
                 type: string
                 optional: true
+            configurations:
+                description: "Kafka config values that let users customize their kafka source and/or sink."
+                type: object
+                optional: true
 
     HttpsConnectionOptions:
         description: "HTTPS connection options."
@@ -401,12 +405,10 @@ structs:
                 optional: true
                 cpp_name: compressionType
                 type: KafkaCompressionType
-                default: none
             acks:
                 description: "The number of acknowledgements the producer requires kafka to have received"
                 optional: true
                 type: KafkaAcks
-                default: All
             dateFormat:
                 description: "Date format, might override the default date format in the outputFormat."
                 type: DateSerializationFormat

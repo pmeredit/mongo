@@ -52,6 +52,8 @@ public:
         boost::optional<int64_t> rdkafkaQueuedMaxMessagesKBytes;
         // If true, data flow is enabled.
         bool enableDataFlow{true};
+        // Kafka configurations defined in the connection
+        boost::optional<mongo::BSONObj> configurations;
     };
 
     KafkaPartitionConsumerBase(Context* context, Options options);

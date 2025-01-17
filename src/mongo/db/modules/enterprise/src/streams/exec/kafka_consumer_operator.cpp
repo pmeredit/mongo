@@ -9,6 +9,7 @@
 #include <rdkafkacpp.h>
 
 #include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/db/json.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
@@ -80,6 +81,16 @@ mongo::Value kafkaKeyVariantToValue(const std::variant<std::vector<std::uint8_t>
 
 using namespace mongo;
 
+// IMPORTANT! If you update this allowed list make sure you also update the UI that shows
+// warnings for unsupported configurations. Keep in mind that there is also a list for
+// allowed sink configurations that you may need to synchronize with as well.
+// The UI logic was added in this PR https://github.com/10gen/mms/pull/117213
+mongo::stdx::unordered_set<std::string> allowedSourceConfigurations = {
+    "session.timeout.ms", "heartbeat.interval.ms", "client.id",
+    // "group.id", requires special handling, this logic exists in planner.cpp
+    // "auto.offset.reset", requires special handling, this logic exists in planner.cpp
+};
+
 // Helper method used to create KafkaConsumer. Used from KafkaConsumerOperator::Connector
 // and from KafkaConsumerOperator.
 std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
@@ -87,6 +98,7 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
     std::string consumerGroupId,
     bool shouldEnableAutoCommit,
     mongo::stdx::unordered_map<std::string, std::string> authConfig,
+    boost::optional<mongo::BSONObj> configurations,
     RdKafka::ResolveCb* resolveCb,
     RdKafka::ConnectCb* connectCb,
     RdKafka::EventCb* eventCb) {
@@ -137,6 +149,11 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
         setConf(config.first, config.second);
     }
 
+    // These are the configurations that the user manually specified in the kafka connection.
+    if (configurations) {
+        setKafkaConnectionConfigurations(*configurations, setConf, allowedSourceConfigurations);
+    }
+
     // KafkaConsumer::create internally makes copies of any bits it needs from conf and so
     // we are ok with letting conf destruct after this call.
     std::string err;
@@ -185,6 +202,7 @@ KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
                                              _options.consumerGroupId,
                                              false, /* shouldEnableAutoCommit */
                                              _options.authConfig,
+                                             _options.configurations,
                                              _resolveCbImpl ? _resolveCbImpl.get() : nullptr,
                                              _connectCbImpl ? _connectCbImpl.get() : nullptr,
                                              _eventCallback.get());
@@ -405,16 +423,16 @@ void KafkaConsumerOperator::doStart() {
         // We already know the topic partition map. This is only true on test-only code path.
         init();
     } else {
-        // Now create a Connector instace.
-        Connector::Options options{
-            .topicNames = _options.topicNames,
-            .kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs,
-            .bootstrapServers = _options.bootstrapServers,
-            .consumerGroupId = _options.consumerGroupId,
-            .authConfig = _options.authConfig,
-            .gwproxyEndpoint = _options.gwproxyEndpoint,
-            .gwproxyKey = _options.gwproxyKey,
-        };
+        // Now create a Connector instance.
+        Connector::Options options{.topicNames = _options.topicNames,
+                                   .kafkaRequestFailureSleepDurationMs =
+                                       _options.kafkaRequestFailureSleepDurationMs,
+                                   .bootstrapServers = _options.bootstrapServers,
+                                   .consumerGroupId = _options.consumerGroupId,
+                                   .authConfig = _options.authConfig,
+                                   .gwproxyEndpoint = _options.gwproxyEndpoint,
+                                   .gwproxyKey = _options.gwproxyKey,
+                                   .configurations = _options.configurations};
 
         _connector = std::make_unique<Connector>(_context, std::move(options));
         _connector->start();
@@ -1229,6 +1247,7 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
                                         _options.consumerGroupId,
                                         _options.enableAutoCommit,
                                         _options.authConfig,
+                                        _options.configurations,
                                         _resolveCbImpl ? _resolveCbImpl.get() : nullptr,
                                         _connectCbImpl ? _connectCbImpl.get() : nullptr,
                                         nullptr);
@@ -1390,6 +1409,7 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.gwproxyKey = _options.gwproxyKey;
     options.rdkafkaQueuedMaxMessagesKBytes = rdkafkaQueuedMaxMessagesKBytes;
     options.enableDataFlow = getOptions().enableDataFlow;
+    options.configurations = _options.configurations;
 
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(_context, std::move(options));

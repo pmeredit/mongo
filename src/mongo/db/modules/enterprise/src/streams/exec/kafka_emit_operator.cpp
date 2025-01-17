@@ -31,6 +31,29 @@ namespace streams {
 using namespace mongo;
 using namespace fmt::literals;
 
+// IMPORTANT! If you update this allowed list make sure you also update the UI that
+// shows warnings for unsupported configurations. Keep in mind that there is also a
+// list for allowed source configurations that you may need to synchronize with as
+// well.
+// The UI logic was added in this PR https://github.com/10gen/mms/pull/117213
+mongo::stdx::unordered_set<std::string> allowedSinkConfigurations = {
+    "acks",
+    "compression.type",
+    "batch.size",
+    "linger.ms",
+    "buffer.memory",
+    "retries",
+    "delivery.timeout.ms",
+    "client.id",
+    "max.request.size",
+    "request.timeout.ms",
+    "max.in.flight.requests.per.connection",
+    "enable.idempotence",
+    "transactional.id",
+    "client.dns.lookup",
+    "connections.max.idle.ms",
+};
+
 KafkaEmitOperator::Connector::Connector(Options options) : _options(std::move(options)) {
     tassert(ErrorCodes::InternalError,
             "Expected kafkaEventCallback to be set",
@@ -189,10 +212,20 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         setConf(config.first, config.second);
     }
 
-    setConf("compression.type",
-            KafkaCompressionType_serializer(_options.compressionType).toString());
+    // These are the configurations that the user manually specified in the kafka connection.
+    if (_options.configurations) {
+        setKafkaConnectionConfigurations(
+            *_options.configurations, setConf, allowedSinkConfigurations);
+    }
 
-    setConf("acks", KafkaAcks_serializer(_options.acks).toString());
+    if (_options.setCompressionType) {
+        setConf("compression.type",
+                KafkaCompressionType_serializer(_options.compressionType).toString());
+    }
+
+    if (_options.setAcks) {
+        setConf("acks", KafkaAcks_serializer(_options.acks).toString());
+    }
 
     // Configure the underlying kafka producer queue with sensible defaults. In particular:
     // - We want to have a relatively low memory footprint, so allow our queue to buffer up to 16MB
