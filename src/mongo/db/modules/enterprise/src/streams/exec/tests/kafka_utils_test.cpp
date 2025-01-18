@@ -27,7 +27,9 @@ TEST(KafkaUtilsTest, OnlyAllowedConfigurations) {
     mongo::stdx::unordered_set<std::string> allowedConfigurations = {"a", "b", "c"};
 
     std::vector<std::string> results;
-    auto setConf = [&results](const std::string& _, std::string confValue) {
+    auto setConf = [&results](const std::string& _,
+                              std::string confValue,
+                              bool errorOnInvalidConfigurationValue = true) {
         results.emplace_back(confValue);
     };
 

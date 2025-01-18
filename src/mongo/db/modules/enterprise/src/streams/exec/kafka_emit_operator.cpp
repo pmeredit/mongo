@@ -165,12 +165,23 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
     _deliveryCb = std::make_unique<DeliveryReportCallback>(_context);
 
-    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
+    auto setConf = [confPtr = conf.get(), this](const std::string& confName,
+                                                auto confValue,
+                                                bool errorOnInvalidConfigurationValue = true) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(8720702,
-                      str::stream() << "Failed while setting configuration " << confName
-                                    << " with error: " << errstr);
+            if (errorOnInvalidConfigurationValue) {
+                uasserted(8720702,
+                          str::stream() << "Failed while setting configuration " << confName
+                                        << " with error: " << errstr);
+            } else {
+                // TODO(SERVER-99607) we eventually want to remove this logic and always error out
+                LOGV2_INFO(9960601,
+                           "Failed while setting configuration",
+                           "configuration"_attr = confName,
+                           "context"_attr = _context,
+                           "error"_attr = errstr);
+            }
         }
     };
     setConf("bootstrap.servers", _options.bootstrapServers);

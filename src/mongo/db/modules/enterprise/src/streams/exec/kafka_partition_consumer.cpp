@@ -313,12 +313,23 @@ OperatorStats KafkaPartitionConsumer::doGetStats() {
 
 std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
+    auto setConf = [confPtr = conf.get(), this](const std::string& confName,
+                                                auto confValue,
+                                                bool errorOnInvalidConfigurationValue = true) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                      str::stream() << "Failed while setting configuration " << confName
-                                    << " with error: " << errstr);
+            if (errorOnInvalidConfigurationValue) {
+                uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                          str::stream() << "Failed while setting configuration " << confName
+                                        << " with error: " << errstr);
+            } else {
+                // TODO(SERVER-99607) we eventually want to remove this logic and always error out
+                LOGV2_INFO(9960602,
+                           "Failed while setting configuration",
+                           "configuration"_attr = confName,
+                           "context"_attr = _context,
+                           "error"_attr = errstr);
+            }
         }
     };
 

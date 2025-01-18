@@ -108,12 +108,24 @@ std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer(
     // expected to be valid only when it is being used in the call to RdKafkaConsumer::create
     // towards the end of this function.
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
+    auto setConf = [confPtr = conf.get(), context](const std::string& confName,
+                                                   auto confValue,
+                                                   bool errorOnInvalidConfigurationValue = true) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(8720700,
-                      str::stream() << "KafkaConsumerOperator failed while setting configuration "
-                                    << confName << " with error: " << errstr);
+            if (errorOnInvalidConfigurationValue) {
+                uasserted(8720700,
+                          str::stream()
+                              << "KafkaConsumerOperator failed while setting configuration "
+                              << confName << " with error: " << errstr);
+            } else {
+                // TODO(SERVER-99607) we eventually want to remove this logic and always error out
+                LOGV2_INFO(9960600,
+                           "KafkaConsumerOperator failed while setting configuration",
+                           "configuration"_attr = confName,
+                           "context"_attr = context,
+                           "error"_attr = errstr);
+            }
         }
     };
     setConf("bootstrap.servers", bootstrapServers);

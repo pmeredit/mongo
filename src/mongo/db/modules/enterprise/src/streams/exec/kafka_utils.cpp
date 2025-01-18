@@ -43,7 +43,9 @@ boost::optional<int64_t> getRdKafkaQueuedMaxMessagesKBytes(
 
 void setKafkaConnectionConfigurations(
     mongo::BSONObj configurations,
-    std::function<void(const std::string& field, const std::string& value)> setConf,
+    std::function<void(const std::string& field,
+                       const std::string& value,
+                       bool errorOnInvalidConfigurationValue)> setConf,
     const mongo::stdx::unordered_set<std::string>& allowedConfigurations) {
     for (const auto& config : configurations) {
         if (!allowedConfigurations.contains(config.fieldName())) {
@@ -60,7 +62,7 @@ void setKafkaConnectionConfigurations(
         auto fieldValue = (config.type() == mongo::String)
             ? config.String()
             : config.toString(false /* includeFieldName */);
-        setConf(config.fieldName(), fieldValue);
+        setConf(config.fieldName(), fieldValue, false /* errorOnInvalidConfigurationValue */);
     }
 }
 

@@ -25,7 +25,9 @@ boost::optional<int64_t> getRdKafkaQueuedMaxMessagesKBytes(
 // Calls the provided function for each configuration in the allowedConfigurations list
 void setKafkaConnectionConfigurations(
     mongo::BSONObj configurations,
-    std::function<void(const std::string& field, const std::string& value)> setConf,
+    std::function<void(const std::string& field,
+                       const std::string& value,
+                       bool errorOnInvalidConfigurationValue)> setConf,
     const mongo::stdx::unordered_set<std::string>& allowedConfigurations);
 
 }  // namespace streams
