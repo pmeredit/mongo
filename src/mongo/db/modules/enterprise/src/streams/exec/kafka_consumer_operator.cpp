@@ -316,78 +316,101 @@ void KafkaConsumerOperator::Connector::retrieveTopicPartitions() {
     invariant(getTopicPartitions().empty());
     std::vector<TopicPartition> topicPartitions;
 
+    auto deadline = Date_t::now() + _options.connectTimeout;
     for (const auto& topicName : _options.topicNames) {
-        std::string errStr;
-        std::unique_ptr<RdKafka::Topic> rdTopic{
-            RdKafka::Topic::create(_consumer.get(), topicName, nullptr, errStr)};
-        if (!rdTopic) {
-            if (errStr.empty()) {
-                errStr = "Could not create topic while trying to connect to Kafka";
+        constexpr int maxAttempts = 3;
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            if (_shutdown || Date_t::now() >= deadline) {
+                std::string errMsg = fmt::format("Aborting connection attempt due to [%s]",
+                                                 _shutdown ? "shutdown" : "deadline exceeded");
+                LOGV2_INFO(
+                    9674010, "Connection error", "context"_attr = _context, "error"_attr = errMsg);
+                uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, errMsg);
             }
-            LOGV2_INFO(9358011,
-                       "could not create topic",
-                       "context"_attr = _context,
-                       "topic"_attr = topicName,
-                       "error"_attr = errStr);
-            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, errStr);
-        }
 
-        RdKafka::Metadata* metadata{nullptr};
-        RdKafka::ErrorCode resp =
-            _consumer->metadata(false, rdTopic.get(), &metadata, kKafkaRequestTimeoutMs);
-        std::unique_ptr<RdKafka::Metadata> metadataHolder{metadata};
-        const boost::optional<std::string> verboseCallbackErrors =
-            getVerboseCallbackErrorsIfExists();
-        if (resp != RdKafka::ERR_NO_ERROR || !metadata || metadata->topics()->size() != 1 ||
-            metadata->topics()->at(0)->topic() != topicName) {
-            LOGV2_INFO(9358012,
-                       "could not load topic metadata",
-                       "context"_attr = _context,
-                       "topic"_attr = topicName,
-                       "errorCode"_attr = resp,
-                       "errorMsg"_attr = RdKafka::err2str(resp));
+            if (attempt > 0) {
+                sleepFor(Seconds{1});
+            }
 
-            uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
-                    verboseCallbackErrors
-                        ? verboseCallbackErrors.get()
-                        : kafkaErrToString("Could not connect to the Kafka topic", resp),
-                    resp == RdKafka::ERR_NO_ERROR);
-        }
-
-        auto* partitions = metadataHolder->topics()->at(0)->partitions();
-        tassert(ErrorCodes::StreamProcessorKafkaConnectionError,
-                "expected partitions to be non-null",
-                partitions);
-        if (partitions->empty()) {
-            LOGV2_INFO(9358013,
-                       "topic does not exist",
-                       "context"_attr = _context,
-                       "topic"_attr = topicName);
-            uasserted(
-                ErrorCodes::StreamProcessorKafkaConnectionError,
-                fmt::format("no partitions found in topic {}. Does the topic exist?", topicName));
-        }
-
-        // Iterate over all partitions of topicName, check whether any of them is reporting an
-        // error
-        for (const auto& partition : *partitions) {
-            auto partitionErr = partition->err();
-            if (partitionErr != RdKafka::ERR_NO_ERROR) {
-                LOGV2_INFO(9358014,
-                           "partition has error:",
+            std::string errStr;
+            std::unique_ptr<RdKafka::Topic> rdTopic{
+                RdKafka::Topic::create(_consumer.get(), topicName, nullptr, errStr)};
+            if (!rdTopic) {
+                if (errStr.empty()) {
+                    errStr = "Could not create topic while trying to connect to Kafka";
+                }
+                LOGV2_INFO(9358011,
+                           "could not create topic",
                            "context"_attr = _context,
                            "topic"_attr = topicName,
-                           "partition"_attr = partition->id(),
-                           "error"_attr = RdKafka::err2str(partitionErr));
-                uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                          fmt::format("topic[{}]/partition[{}] has error: [{}]",
-                                      topicName,
-                                      partition->id(),
-                                      RdKafka::err2str(partition->err())));
+                           "error"_attr = errStr);
+                uasserted(ErrorCodes::StreamProcessorKafkaConnectionError, errStr);
             }
 
-            // All good, add this topic/partition
-            topicPartitions.emplace_back(topicName, partition->id());
+            RdKafka::Metadata* metadata{nullptr};
+            RdKafka::ErrorCode resp =
+                _consumer->metadata(false, rdTopic.get(), &metadata, kKafkaRequestTimeoutMs);
+            std::unique_ptr<RdKafka::Metadata> metadataHolder{metadata};
+            const boost::optional<std::string> verboseCallbackErrors =
+                getVerboseCallbackErrorsIfExists();
+            if (resp != RdKafka::ERR_NO_ERROR) {
+                if (attempt < maxAttempts - 1) {
+                    continue;
+                }
+                LOGV2_INFO(9358012,
+                           "could not load topic metadata",
+                           "context"_attr = _context,
+                           "attempt"_attr = attempt,
+                           "topic"_attr = topicName,
+                           "errorCode"_attr = resp,
+                           "errorMsg"_attr = RdKafka::err2str(resp));
+                uassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+                        verboseCallbackErrors
+                            ? verboseCallbackErrors.get()
+                            : kafkaErrToString("Could not connect to the Kafka topic", resp),
+                        resp == RdKafka::ERR_NO_ERROR);
+            }
+
+            auto* partitions = metadataHolder->topics()->at(0)->partitions();
+            tassert(ErrorCodes::StreamProcessorKafkaConnectionError,
+                    "expected partitions to be non-null",
+                    partitions);
+            if (partitions->empty()) {
+                if (attempt < maxAttempts - 1) {
+                    continue;
+                }
+                LOGV2_INFO(9358013,
+                           "topic does not exist",
+                           "attempt"_attr = attempt,
+                           "context"_attr = _context,
+                           "topic"_attr = topicName);
+                uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                          fmt::format("no partitions found in topic {}. Does the topic exist?",
+                                      topicName));
+            }
+
+            // Iterate over all partitions of topicName, check whether any of them is reporting an
+            // error
+            for (const auto& partition : *partitions) {
+                auto partitionErr = partition->err();
+                if (partitionErr != RdKafka::ERR_NO_ERROR) {
+                    LOGV2_INFO(9358014,
+                               "partition has error:",
+                               "context"_attr = _context,
+                               "topic"_attr = topicName,
+                               "partition"_attr = partition->id(),
+                               "error"_attr = RdKafka::err2str(partitionErr));
+                    uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                              fmt::format("topic[{}]/partition[{}] has error: [{}]",
+                                          topicName,
+                                          partition->id(),
+                                          RdKafka::err2str(partition->err())));
+                }
+
+                // All good, add this topic/partition
+                topicPartitions.emplace_back(topicName, partition->id());
+            }
+            break;
         }
     }
 
@@ -439,7 +462,7 @@ void KafkaConsumerOperator::doStart() {
         // We already know the topic partition map. This is only true on test-only code path.
         init();
     } else {
-        // Now create a Connector instance.
+        // Now create a Connector instace.
         Connector::Options options{.topicNames = _options.topicNames,
                                    .kafkaRequestFailureSleepDurationMs =
                                        _options.kafkaRequestFailureSleepDurationMs,
@@ -448,7 +471,8 @@ void KafkaConsumerOperator::doStart() {
                                    .authConfig = _options.authConfig,
                                    .gwproxyEndpoint = _options.gwproxyEndpoint,
                                    .gwproxyKey = _options.gwproxyKey,
-                                   .configurations = _options.configurations};
+                                   .configurations = _options.configurations,
+                                   .connectTimeout = _context->connectTimeout};
 
         _connector = std::make_unique<Connector>(_context, std::move(options));
         _connector->start();

@@ -2120,6 +2120,34 @@ function testKafkaSourceAutoCreateTopicTrueError() {
               `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
 }
 
+function testKafkaNonExistentTopicError() {
+    dropCollections();
+
+    // Bring up a Kafka.
+    const partitionCount = 1;
+    let kafka = new LocalKafkaCluster();
+    kafka.start(partitionCount);
+
+    // Build command to start a processor with kafka source that specifies a non-existent topic
+    const nonExistentTopic = "nonExistentTopic";
+    const startCmd = makeKafkaToMongoStartCmd({
+        topicName: nonExistentTopic,
+        collName: sinkColl1,
+    });
+
+    // Assert that starting the processor returns the expected error
+    let result = db.runCommand(startCmd);
+    assert.neq(result["errmsg"], undefined);
+    assert.eq(result["errmsg"],
+              `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
+
+    // Use the logs to verify we made 3 attempts
+    const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+    const line = findMatchingLogLine(log, {id: 9358013});
+    const entry = JSON.parse(line);
+    assert.eq(2, entry.attr.attempt);
+}
+
 // Starts a mongo->kafka->mongo setup and tests that in the SP that is
 // processing incoming kafka events, we see an offset lag in the verbose stats
 function testKafkaOffsetLag(
@@ -2679,6 +2707,7 @@ runKafkaTest(kafka, () => kafkaStartAtEarliestTest(false, kafkaWithAutoOffsetRes
 
 // offset lag in verbose stats
 runKafkaTest(kafka, testKafkaOffsetLag);
+testKafkaNonExistentTopicError();
 
 if (!debugBuild) {
     // Use a large number of documents on release builds.

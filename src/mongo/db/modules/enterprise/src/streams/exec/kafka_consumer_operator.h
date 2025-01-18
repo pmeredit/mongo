@@ -177,6 +177,7 @@ private:
             std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;
             std::shared_ptr<KafkaConnectAuthCallback> kafkaConnectAuthCallback;
             boost::optional<mongo::BSONObj> configurations;
+            mongo::Seconds connectTimeout{60};
         };
 
         Connector(Context* context, Options options);

@@ -885,6 +885,10 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     context->concurrentCheckpointController = _concurrentCheckpointController;
 
+    if (request.getTimeout() > mongo::Seconds::zero()) {
+        context->connectTimeout = request.getTimeout();
+    }
+
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
@@ -1123,7 +1127,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     Executor::Options executorOptions;
     executorOptions.operatorDag = processorInfo->operatorDag.get();
     executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
-    executorOptions.connectTimeout = Seconds{60};
+    executorOptions.connectTimeout = processorInfo->context->connectTimeout;
     executorOptions.enableDataFlow = enableDataFlow;
     if (isValidateOnlyRequest(request)) {
         tassert(9719102, "Expected enableDataFlow to be false", !executorOptions.enableDataFlow);

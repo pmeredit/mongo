@@ -74,9 +74,11 @@ struct Context {
 
     // If true, metadata is projected into user documents before the sink stage.
     bool projectStreamMetaPriorToSinkStage{false};
-
     // If true, stream metadata is projected into the _stream_meta field of the user document.
     bool projectStreamMeta{true};
+
+    // During the start() of the SP, the source operator will try to honor this timeout.
+    mongo::Seconds connectTimeout{60};
 
     // Set to true when starting a modified stream processor.
     bool isModifiedProcessor{false};
