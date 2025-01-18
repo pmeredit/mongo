@@ -570,6 +570,9 @@ protected:
     void visit(ExpressionRandom*) final {
         ensureNotEncryptedEnterEval("a $rand expression", subtreeStack);
     }
+    void visit(ExpressionCurrentDate*) final {
+        ensureNotEncryptedEnterEval("a $currentDate expression", subtreeStack);
+    }
     void visit(ExpressionRange*) final {
         ensureNotEncryptedEnterEval("a numeric sequence generator", subtreeStack);
     }
@@ -936,6 +939,7 @@ protected:
     void visit(ExpressionOr*) override {}
     void visit(ExpressionPow*) override {}
     void visit(ExpressionRandom*) override {}
+    void visit(ExpressionCurrentDate*) override {}
     void visit(ExpressionRange*) override {}
     void visit(ExpressionReduce* reduce) override {
         // As with ExpressionLet the child here is part of the parent Subtree.
@@ -1284,6 +1288,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRandom*) override {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionCurrentDate*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRange*) override {

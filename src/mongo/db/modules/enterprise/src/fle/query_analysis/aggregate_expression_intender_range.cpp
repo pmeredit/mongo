@@ -761,6 +761,9 @@ protected:
     void visit(ExpressionRandom* expr) override {
         internalPerformReplacement(expr);
     }
+    void visit(ExpressionCurrentDate* expr) override {
+        internalPerformReplacement(expr);
+    }
     void visit(ExpressionRange* expr) override {
         internalPerformReplacement(expr);
     }
@@ -1294,6 +1297,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     void visit(ExpressionRandom* expr) override {
+        internalPerformReplacement(expr);
+        IntentionPostVisitorBase::visit(expr);
+    }
+    void visit(ExpressionCurrentDate* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }

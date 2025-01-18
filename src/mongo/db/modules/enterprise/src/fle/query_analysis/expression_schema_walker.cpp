@@ -518,6 +518,9 @@ public:
     void visit(const ExpressionRandom*) override {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionCurrentDate*) override {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionToHashedIndexKey*) override {
         _tracker.enterEvaluateOrCompare();
     }
@@ -766,6 +769,7 @@ public:
     void visit(const ExpressionTests::Testable*) override {}
     void visit(const ExpressionFieldPath*) override {}
     void visit(const ExpressionRandom*) override {}
+    void visit(const ExpressionCurrentDate*) override {}
     void visit(const ExpressionToHashedIndexKey*) override {}
     void visit(const ExpressionGetField*) override {}
     void visit(const ExpressionSetField*) override {}
@@ -1226,6 +1230,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionRandom*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionCurrentDate*) override {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionToHashedIndexKey*) override {
