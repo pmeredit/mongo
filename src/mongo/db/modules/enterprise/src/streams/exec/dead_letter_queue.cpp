@@ -41,6 +41,7 @@ void DeadLetterQueue::registerMetrics(MetricManager* metricManager) {
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
+    labels.push_back(std::make_pair(kProcessorNameLabelKey, _context->streamName));
     _numDlqDocumentsCounter = metricManager->registerCounter(
         "num_dlq_documents", "Number of documents inserted into the DLQ", labels);
     _numDlqBytesCounter = metricManager->registerCounter(

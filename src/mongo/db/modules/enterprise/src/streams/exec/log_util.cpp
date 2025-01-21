@@ -17,6 +17,7 @@ MetricManager::LabelsVec getDefaultMetricLabels(Context* context) {
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, context->streamProcessorId));
+    labels.push_back(std::make_pair(kProcessorNameLabelKey, context->streamName));
     return labels;
 }
 

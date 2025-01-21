@@ -787,11 +787,23 @@ TEST_F(StreamManagerTest, GetMetrics_durationSinceLastRunOnce) {
         });
     };
 
+    const auto getLabelValue = [](const mongo::GaugeMetricValue& gauge,
+                                  const std::string& targetLabelKey) -> std::string {
+        for (const auto& label : gauge.getLabels()) {
+            if (label.getKey() == targetLabelKey) {
+                return std::string(label.getValue());
+            }
+        }
+        return "";
+    };
+
     const auto sp1RunOnceMetric = findRunOnceMetric(sp1Request, metrics);
     ASSERT_GREATER_THAN_OR_EQUALS(sp1RunOnceMetric->getValue(), sleepMillis);
+    ASSERT_EQUALS(sp1Name, getLabelValue(*sp1RunOnceMetric, kProcessorNameLabelKey));
 
-    const auto sp2RunOnceMetric = findRunOnceMetric(sp1Request, metrics);
+    const auto sp2RunOnceMetric = findRunOnceMetric(sp2Request, metrics);
     ASSERT_GREATER_THAN_OR_EQUALS(sp2RunOnceMetric->getValue(), sleepMillis);
+    ASSERT_EQUALS(sp2Name, getLabelValue(*sp2RunOnceMetric, kProcessorNameLabelKey));
 
 
     stopStreamProcessor(streamManager.get(), kTestTenantId1, sp1Name);

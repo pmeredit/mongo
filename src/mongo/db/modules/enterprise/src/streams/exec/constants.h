@@ -12,6 +12,7 @@ constexpr const char kDefaultTimestampOutputFieldName[] = "_ts";
 constexpr const char kFromFieldName[] = "from";
 constexpr const char kTenantIdLabelKey[] = "tenant_id";
 constexpr const char kProcessorIdLabelKey[] = "processor_id";
+constexpr const char kProcessorNameLabelKey[] = "processor_name";
 constexpr const char kStatusLabelKey[] = "status";
 
 // All connections to Kafka must have the following client.id parameter set when a source/sink
