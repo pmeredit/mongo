@@ -1,0 +1,26 @@
+version: 1.0.0
+filters:
+  - "/BUILD.bazel":
+    approvers:
+      - 10gen/devprod-build
+  - "/build.py":
+    approvers:
+      - 10gen/devprod-build
+  - "/SConscript":
+    approvers:
+      - 10gen/devprod-build
+  - "/.gitignore":
+    approvers:
+      - 10gen/devprod-build
+  - "/.git-blame-ignore-revs":
+    approvers:
+      - 10gen/devprod-build
+  - "/.clang-format":
+    approvers:
+      - 10gen/server-programmability
+  - "/.eslintrc.yml":
+    approvers:
+      - 10gen/devprod-correctness
+  - "/README.md":
+    approvers:
+      - 10gen/server-release

@@ -1,0 +1,8 @@
+version: 1.0.0
+filters:
+  - "fle":
+    approvers:
+      - 10gen/server-security
+  - "enterprise_security_guide.md":
+    approvers:
+      - 10gen/server-security
