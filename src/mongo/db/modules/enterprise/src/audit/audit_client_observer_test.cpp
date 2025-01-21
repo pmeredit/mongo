@@ -7,6 +7,7 @@
 
 #include "mongo/db/auth/authorization_session_test_fixture.h"
 #include "mongo/db/auth/sasl_options.h"
+#include "mongo/db/s/forwardable_operation_metadata.h"
 #include "mongo/db/service_context.h"
 #include "mongo/rpc/metadata/audit_client_attrs.h"
 #include "mongo/rpc/metadata/audit_user_attrs.h"
@@ -72,7 +73,26 @@ constexpr auto kProxyProtocolHeader = "PROXY TCP4 10.122.9.63 54.225.237.121 100
 
 class AuditClientAttrsTestFixture : public ServiceContextTest {
 protected:
-    explicit AuditClientAttrsTestFixture() {
+    explicit AuditClientAttrsTestFixture()
+        : _threadPool([]() {
+              // Launch a separate background threadpool that can verify propagation of
+              // ForwardableOperationMetadata.
+              ThreadPool::Options options;
+              options.poolName = "AuditClientAttrsTestFixture";
+              options.minThreads = 0;
+              options.maxThreads = 3;
+
+              // Ensure all threads have a client.
+              options.onCreateThread = [](const std::string& threadName) {
+                  Client::initThread(
+                      threadName,
+                      getGlobalServiceContext()->getService(ClusterRole::ShardServer),
+                      Client::noSession(),
+                      ClientOperationKillableByStepdown{false});
+              };
+
+              return options;
+          }()) {
         // Set up an AsioTransportLayer that binds to a system-assigned port on 127.0.0.1.
         ServerGlobalParams params;
         params.noUnixSocket = true;
@@ -88,16 +108,28 @@ protected:
         ASSERT_OK(_tla->start());
 
         enableAuditing();
+
+        _threadPool.startup();
     }
 
     ~AuditClientAttrsTestFixture() override {
         _sessionManager->endAllSessions({});
         _tla->shutdown();
+        _threadPool.shutdown();
+        _threadPool.join();
+    }
+
+    void assertAuditClientAttrsMatch(const rpc::AuditClientAttrs& newAttrs,
+                                     const rpc::AuditClientAttrs& oldAttrs) {
+        ASSERT_EQ(newAttrs.getLocal().toString(), oldAttrs.getLocal().toString());
+        ASSERT_EQ(newAttrs.getRemote().toString(), oldAttrs.getRemote().toString());
+        ASSERT_EQ(newAttrs.getProxiedEndpoints(), oldAttrs.getProxiedEndpoints());
     }
 
 protected:
     std::unique_ptr<AsioTransportLayer> _tla;
     test::MockSessionManager* _sessionManager;
+    ThreadPool _threadPool;
 
 private:
     std::shared_ptr<void> _disableTfo = tfo::setConfigForTest(0, 0, 0, 1024, Status::OK());
@@ -155,6 +187,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
         // the transport session.
         auto client =
             getServiceContext()->getService()->makeClient("AuditClientAttrsTest", st.session());
+        auto opCtx = client->makeOperationContext();
         ASSERT_FALSE(client->isRouterClient());
         auto auditClientAttrs = rpc::AuditClientAttrs::get(client.get());
         ASSERT_TRUE(auditClientAttrs);
@@ -164,6 +197,34 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
                   st.session()->getSourceRemoteEndpoint().toString());
         ASSERT_EQ(auditClientAttrs->getProxiedEndpoints(), std::vector<HostAndPort>{});
 
+        // Propagate AuditClientAttrs to another thread via ForwardableOperationMetadata.
+        auto onBackgroundThreadComplete = std::make_shared<Notification<void>>();
+        ForwardableOperationMetadata opMetadata(opCtx.get());
+        _threadPool.schedule([this, &opMetadata, &onBackgroundThreadComplete, auditClientAttrs](
+                                 Status schedStatus) mutable noexcept {
+            auto* backgroundClient = Client::getCurrent();
+            auto backgroundOpCtx = backgroundClient->makeOperationContext();
+
+            // Since this client was created in the background without a transport::Session, it is
+            // not expected to have an AuditClientAttrs.
+            ASSERT_FALSE(rpc::AuditClientAttrs::get(backgroundClient));
+
+            // Set the old OperationContext/Client's info onto this one, including
+            // AuditClientAttrs.
+            opMetadata.setOn(backgroundOpCtx.get());
+
+            // Now, this thread's client should also have the same AuditClientAttrs as the
+            // parent.
+            auto backgroundAuditClientAttrs = rpc::AuditClientAttrs::get(backgroundClient);
+            ASSERT_TRUE(backgroundAuditClientAttrs);
+            assertAuditClientAttrsMatch(backgroundAuditClientAttrs.value(),
+                                        auditClientAttrs.value());
+            onBackgroundThreadComplete->set();
+        });
+
+        // Wait for the background thread to signal that it has finished its assertions before
+        // signaling to the outermost client thread that session establishment is complete.
+        onBackgroundThreadComplete->get();
         onStartSession->set();
     });
 
@@ -176,8 +237,9 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
 }
 
 TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
-    // Simulate a load-balanced connection to the AsioTransportLayer and assert that newly-created
-    // clients see Session information propagated over to the Client's AuditClientAttrs.
+    // Simulate a load-balanced connection to the AsioTransportLayer and assert that
+    // newly-created clients see Session information propagated over to the Client's
+    // AuditClientAttrs.
     auto onStartSession = std::make_shared<Notification<void>>();
     _sessionManager->setOnStartSession([&](test::SessionThread& st) {
         // Check that the session contains the expected values.
@@ -188,10 +250,11 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
         ASSERT_TRUE(st.session()->isFromLoadBalancer());
         ASSERT_TRUE(st.session()->getProxiedDstEndpoint());
 
-        // Check that auditClientAttrs exists on the newly-created client and matches the values on
-        // the transport session.
+        // Check that auditClientAttrs exists on the newly-created client and matches the values
+        // on the transport session.
         auto client =
             getServiceContext()->getService()->makeClient("AuditClientAttrsTest", st.session());
+        auto opCtx = client->makeOperationContext();
         ASSERT_FALSE(client->isRouterClient());
         auto auditClientAttrs = rpc::AuditClientAttrs::get(client.get());
         ASSERT_TRUE(auditClientAttrs);
@@ -202,11 +265,40 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
         ASSERT_EQ(auditClientAttrs->getProxiedEndpoints(),
                   std::vector<HostAndPort>{st.session()->getProxiedDstEndpoint().value()});
 
+        // Propagate AuditClientAttrs to another thread via ForwardableOperationMetadata.
+        auto onBackgroundThreadComplete = std::make_shared<Notification<void>>();
+        ForwardableOperationMetadata opMetadata(opCtx.get());
+        _threadPool.schedule([this, &opMetadata, &onBackgroundThreadComplete, auditClientAttrs](
+                                 Status schedStatus) mutable noexcept {
+            auto* backgroundClient = Client::getCurrent();
+            auto backgroundOpCtx = backgroundClient->makeOperationContext();
+
+            // Since this client was created in the background without a transport::Session, it
+            // is not expected to have an AuditClientAttrs.
+            ASSERT_FALSE(rpc::AuditClientAttrs::get(backgroundClient));
+
+            // Set the old OperationContext/Client's info onto this one, including
+            // AuditClientAttrs.
+            opMetadata.setOn(backgroundOpCtx.get());
+
+            // Now, this thread's client should also have the same AuditClientAttrs as the
+            // parent.
+            auto backgroundAuditClientAttrs = rpc::AuditClientAttrs::get(backgroundClient);
+            ASSERT_TRUE(backgroundAuditClientAttrs);
+            assertAuditClientAttrsMatch(backgroundAuditClientAttrs.value(),
+                                        auditClientAttrs.value());
+            onBackgroundThreadComplete->set();
+        });
+
+        // Wait for the background thread to signal that it has finished its assertions before
+        // signaling to the outermost client thread that session establishment is complete.
+        onBackgroundThreadComplete->get();
+
         onStartSession->set();
     });
 
-    // Connect to the load balancer port that _tla is listening on and then write a proxy protocol
-    // header.
+    // Connect to the load balancer port that _tla is listening on and then write a proxy
+    // protocol header.
     asio::io_context ctx{};
     asio::ip::tcp::socket sock{ctx};
     std::error_code ec;
