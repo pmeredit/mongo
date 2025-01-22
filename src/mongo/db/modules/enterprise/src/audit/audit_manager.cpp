@@ -18,6 +18,7 @@
 #include "audit_event_type.h"
 #include "audit_log.h"
 #include "mongo/base/init.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
@@ -54,6 +55,17 @@ void AuditManager::setAuditAuthorizationSuccess(bool val) {
             !_runtimeConfiguration);
 
     _config->auditAuthorizationSuccess.store(val);
+}
+
+bool AuditManager::shouldAudit(const MatchableDocument* event) const {
+    if (!_enabled) {
+        return false;
+    }
+    auto cfg = getConfig();
+    if (!cfg->filter) {
+        return true;
+    }
+    return exec::matcher::matches(cfg->filter.get(), event);
 }
 
 void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& config) {
