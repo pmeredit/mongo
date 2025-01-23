@@ -9,7 +9,6 @@
 #include "initial_sync_file_mover.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
-#include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
@@ -155,7 +154,7 @@ void BackupFileCloner::runQuery() {
                 2,
                 "Backup file cloner running aggregation",
                 "source"_attr = getSource(),
-                "aggRequest"_attr = aggregation_request_helper::serializeToCommandObj(aggRequest));
+                "aggRequest"_attr = aggRequest.toBSON());
     const bool useExhaust = !MONGO_unlikely(initialSyncBackupFileClonerDisableExhaust.shouldFail());
     std::unique_ptr<DBClientCursor> cursor = uassertStatusOK(DBClientCursor::fromAggregationRequest(
         getClient(), std::move(aggRequest), true /* secondaryOk */, useExhaust));
