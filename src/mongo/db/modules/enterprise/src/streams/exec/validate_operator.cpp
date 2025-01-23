@@ -3,7 +3,6 @@
  */
 
 #include "streams/exec/validate_operator.h"
-#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
@@ -31,7 +30,7 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
     for (auto& streamDoc : dataMsg.docs) {
         boost::optional<std::string> error;
         try {
-            if (exec::matcher::matchesBSON(_options.validator.get(), streamDoc.doc.toBson())) {
+            if (_options.validator->matchesBSON(streamDoc.doc.toBson())) {
                 // Doc passed the validation.
                 outputMsg.docs.emplace_back(std::move(streamDoc));
                 continue;

@@ -91,7 +91,16 @@ public:
      * Check the event to be audited against the filter (if any)
      * and return true if it should be emitted to the audit log.
      */
-    bool shouldAudit(const MatchableDocument* event) const;
+    bool shouldAudit(const MatchableDocument* event) const {
+        if (!_enabled) {
+            return false;
+        }
+        auto cfg = getConfig();
+        if (!cfg->filter) {
+            return true;
+        }
+        return cfg->filter->matches(event);
+    }
 
     /**
      * Whether our configuration has ever been set. False means that we are on the default
