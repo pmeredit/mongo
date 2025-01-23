@@ -209,3 +209,8 @@ env.CppUnitTest(
     target="kafka_utils_test",
     source=[],
 )
+
+env.CppUnitTest(
+    target="aws_test",
+    source=[],
+)

@@ -853,3 +853,17 @@ mongo_cc_unit_test(
         "//src/mongo:base",
     ],
 )
+
+mongo_cc_unit_test(
+    name = "aws_test",
+    srcs = [
+        "aws_test.cpp",
+    ],
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/third_party/aws-sdk",
+    ],
+)
