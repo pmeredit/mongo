@@ -133,7 +133,10 @@ function testRunner({
         assert.soon(function() {
             const dataSize = oplog.dataSize();
             // The oplog milestone system allows the oplog to grow to 110% its max size.
-            return dataSize < 1.1 * (oplogSizeMB * 1024 * 1024);
+            const targetSize = 1.1 * (oplogSizeMB * 1024 * 1024);
+            jsTestLog("current oplog size: " + dataSize +
+                      " bytes. Waiting until it is <= " + targetSize + " bytes.");
+            return dataSize <= targetSize;
         }, "waiting for oplog to be truncated", 5 * 60 * 1000, 5 * 1000);
     }
 
