@@ -8,6 +8,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
+#include "mongo/rpc/metadata/audit_client_attrs.h"
 #include "mongo/transport/asio/asio_session_impl.h"
 #include "mongo/util/processinfo.h"
 
@@ -26,6 +27,7 @@ constexpr auto kDestinationEndpointField = "dst_endpoint"_sd;
 constexpr auto kFullNameField = "full_name"_sd;
 constexpr auto kGroupsField = "groups"_sd;
 constexpr auto kInterfaceNameField = "interface_name"_sd;
+constexpr auto kIntermediateEndpointsField = "intermediate_ips"_sd;
 constexpr auto kIPField = "ip"_sd;
 constexpr auto kMetadataField = "metadata"_sd;
 constexpr auto kNameField = "name"_sd;
@@ -52,35 +54,13 @@ constexpr auto kTypeIdWindows = 100;
 constexpr auto kTypeIdLinux = 200;
 constexpr auto kTypeIdMacOS = 300;
 
-void serializeSockAddrToBSONOCSF(const SockAddr& sockaddr,
-                                 StringData fieldName,
-                                 BSONObjBuilder* builder) {
-    BSONObjBuilder bob(builder->subobjStart(fieldName));
-
-    if (sockaddr.isIP()) {
-        bob.append(kIPField, sockaddr.getAddr());
-        bob.append(kPortField, static_cast<int>(sockaddr.getPort()));
-    } else if (sockaddr.getType() == AF_UNIX) {
-        bob.append(kInterfaceNameField, kUnixField);
-        if (!sockaddr.isAnonymousUNIXSocket()) {
-            bob.append(kIPField, sockaddr.getAddr());
-        } else {
-            bob.append(kIPField, kAnonymous);
-        }
-    }
-}
-
-void serializeHostAndPortToBSONOCSF(const HostAndPort& hp,
-                                    StringData fieldName,
-                                    BSONObjBuilder* builder) {
-    BSONObjBuilder bob(builder->subobjStart(fieldName));
-
+void serializeHostAndPortToBSONOCSF(const HostAndPort& hp, BSONObjBuilder* bob) {
     if (hp.hasPort()) {
-        bob.append(kIPField, hp.host());
-        bob.append(kPortField, hp.port());
+        bob->append(kIPField, hp.host());
+        bob->append(kPortField, hp.port());
     } else {
-        bob.append(kInterfaceNameField, kUnixField);
-        bob.append(kIPField, hp.host().empty() ? kAnonymous : StringData(hp.host()));
+        bob->append(kInterfaceNameField, kUnixField);
+        bob->append(kIPField, hp.host().empty() ? kAnonymous : StringData(hp.host()));
     }
 }
 
@@ -139,20 +119,26 @@ void AuditOCSF::AuditEventOCSF::_init(const TryLogEventParamsOCSF& tryLogParams)
 void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* builder) {
     invariant(client);
 
-    if (auto session = client->session()) {
-        serializeHostAndPortToBSONOCSF(session->remote(), kSourceEndpointField, builder);
+    if (auto attrs = rpc::AuditClientAttrs::get(client)) {
+        {
+            // Serialize the dst_endpoint field
+            BSONObjBuilder dstBuilder = builder->subobjStart(kDestinationEndpointField);
+            serializeHostAndPortToBSONOCSF(attrs->getLocal(), &dstBuilder);
+        }
 
-        const auto local = [&] {
-            if (auto asio = dynamic_cast<transport::CommonAsioSession*>(session.get())) {
-                auto local = asio->localAddr();
-                invariant(local.isValid());
-                return local;
-            } else {
-                return SockAddr{};
+        {
+            // Serialize the src_endpoint field
+            BSONObjBuilder srcBuilder = builder->subobjStart(kSourceEndpointField);
+            serializeHostAndPortToBSONOCSF(attrs->getRemote(), &srcBuilder);
+            if (auto intermediates = attrs->getProxiedEndpoints(); !intermediates.empty()) {
+                BSONArrayBuilder intermediatesBuilder(
+                    srcBuilder.subarrayStart(kIntermediateEndpointsField));
+                for (const auto& intermediate : intermediates) {
+                    BSONObjBuilder arrValue = intermediatesBuilder.subobjStart();
+                    serializeHostAndPortToBSONOCSF(intermediate, &arrValue);
+                }
             }
-        }();
-
-        serializeSockAddrToBSONOCSF(local, kDestinationEndpointField, builder);
+        }
     }
 }
 

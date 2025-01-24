@@ -30,6 +30,7 @@
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_test_fixture.h"
+#include "mongo/rpc/metadata/audit_client_attrs.h"
 #include "mongo/transport/mock_session.h"
 #include "mongo/transport/transport_layer_mock.h"
 #include "mongo/unittest/assert.h"
@@ -130,6 +131,11 @@ public:
  * that they exist in the log object.
  */
 void checkPartialLogLine(BSONObj& log, const BSONObj& matchFields) {
+    LOGV2(9792000,
+          "Asserting fields from log have all fields from matchFields.",
+          "log"_attr = log,
+          "matchFields"_attr = matchFields);
+
     for (const auto field : matchFields) {
         if (!log.hasField(field.fieldNameStringData())) {
             LOGV2(8307601,
@@ -137,7 +143,6 @@ void checkPartialLogLine(BSONObj& log, const BSONObj& matchFields) {
                   "fieldname"_attr = field.fieldNameStringData());
         }
         ASSERT(log.hasField(field.fieldNameStringData()));
-
 
         const auto logElem = log.getField(field.fieldNameStringData());
         if (logElem.toString() != field.toString()) {
@@ -183,6 +188,9 @@ public:
         Client::releaseCurrent();
         Client::setCurrent(getService()->makeClient("session", session));
         opCtx = makeOperationContext();
+
+        rpc::AuditClientAttrs attrs{HostAndPort(), HostAndPort()};
+        rpc::AuditClientAttrs::set(Client::getCurrent(), attrs);
 
         // Ensure we are not a replica set so we can get DDL auditing by
         // creating a default ReplSettings.
@@ -310,8 +318,8 @@ TEST_F(AuditOCSFTest, auditOCSFBuildNetwork) {
         auto obj = builder.obj();
         checkPartialLogLine(
             obj,
-            fromjson(
-                "{ src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: {} }"));
+            fromjson("{ src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
+                     "interface_name: 'unix', ip: 'anonymous' } }"));
     }
 }
 
@@ -446,8 +454,8 @@ TEST_F(AuditOCSFTest, auditOCSFBuildDevice) {
 TEST_F(AuditMongoTest, basicLogClientMetadataMongo) {
     logClientMetadata(getClient());
     auto expectedOutputMongo =
-        "{ atype: 'clientMetadata', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: {}, result: 0 }";
+        "{ atype: 'clientMetadata', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: {}, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -457,7 +465,7 @@ TEST_F(AuditOCSFTest, basicLogClientMetadataOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 4, class_uid: 4001, severity_id: 1, type_uid: "
         "400199, actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, "
-        "dst_endpoint: {} }";
+        "dst_endpoint: { interface_name: 'unix', ip: 'anonymous' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -465,8 +473,9 @@ TEST_F(AuditOCSFTest, basicLogClientMetadataOCSF) {
 TEST_F(AuditMongoTest, basicLogAuthenticationMongo) {
     logAuthentication(getClient(), kAuthEvent);
     auto expectedOutputMongo =
-        "{ atype: 'authenticate', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { user: 'user', db: 'test', mechanism: 'SCRAM-SHA256' }, result: 0 }";
+        "{ atype: 'authenticate', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { user: 'user', db: 'test', mechanism: 'SCRAM-SHA256' }, "
+        "result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -476,8 +485,8 @@ TEST_F(AuditOCSFTest, basicLogAuthenticationOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3002, severity_id: 1, type_uid: 300201, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, user: { type_id: 1, name: 'test.user' }, auth_protocol: 'SCRAM-SHA256', unmapped: "
-        "{ atype: 'authenticate' } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, user: { type_id: 1, name: 'test.user' }, "
+        "auth_protocol: 'SCRAM-SHA256', unmapped: { atype: 'authenticate' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -486,8 +495,8 @@ TEST_F(AuditOCSFTest, basicLogAuthenticationOCSF) {
 TEST_F(AuditMongoTest, basicLogCommandAuthzCheckMongo) {
     logCommandAuthzCheck(getClient(), {}, CommandInterfaceMock(), ErrorCodes::BadValue);
     auto expectedOutputMongo =
-        "{ atype: 'authCheck', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { command: 'command', ns: 'test.coll', args: {} }, result: 2 }";
+        "{ atype: 'authCheck', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { command: 'command', ns: 'test.coll', args: {} }, result: 2 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -497,8 +506,8 @@ TEST_F(AuditOCSFTest, basicLogCommandAuthzCheckOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 0, category_uid: 6, class_uid: 6003, severity_id: 1, type_uid: 600300, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, api: { operation: 'command', request: { uid: 'test.coll' }, response: { code: 2, "
-        "error: 'BadValue' } }, unmapped: { args: {} } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, api: { operation: 'command', request: { uid: "
+        "'test.coll' }, response: { code: 2, error: 'BadValue' } }, unmapped: { args: {} } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -506,9 +515,9 @@ TEST_F(AuditOCSFTest, basicLogCommandAuthzCheckOCSF) {
 TEST_F(AuditMongoTest, basicLogKillCursorsAuthzCheckMongo) {
     logKillCursorsAuthzCheck(getClient(), kNamespaceString, 100ll, ErrorCodes::BadValue);
     auto expectedOutputMongo =
-        "{ atype: 'authCheck', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { command: 'killCursors', ns: 'test.coll', args: { killCursors: 'coll', "
-        "cursorId: 100 } }, result: 2 }";
+        "{ atype: 'authCheck', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { command: 'killCursors', ns: 'test.coll', args: { killCursors: "
+        "'coll', cursorId: 100 } }, result: 2 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -518,9 +527,9 @@ TEST_F(AuditOCSFTest, basicLogKillCursorsAuthzCheckOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 6, class_uid: 6003, severity_id: 1, type_uid: "
         "600399, actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, "
-        "dst_endpoint: {}, api: { operation: 'killCursors', request: { uid: 'test.coll' }, "
-        "response: { code: 2, error: 'BadValue' } }, unmapped: { args: { killCursors: 'coll', "
-        "cursorId: 100 } } }";
+        "dst_endpoint: { interface_name: 'unix', ip: 'anonymous' }, api: { operation: "
+        "'killCursors', request: { uid: 'test.coll' }, response: { code: 2, error: 'BadValue' } }, "
+        "unmapped: { args: { killCursors: 'coll', cursorId: 100 } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -528,9 +537,9 @@ TEST_F(AuditOCSFTest, basicLogKillCursorsAuthzCheckOCSF) {
 TEST_F(AuditMongoTest, basicLogCreateUserMongo) {
     logCreateUser(getClient(), kUserName, false, &kCustomData, kRolesVector, boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'createUser', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { user: 'user', db: 'test', customData: {}, roles: [ { role: 'role', db: "
-        "'test' } ] }, result: 0 }";
+        "{ atype: 'createUser', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { user: 'user', db: 'test', customData: {}, roles: [ { role: "
+        "'role', db: 'test' } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
     ASSERT(AuditDeduplicationMongo::wasOperationAlreadyAudited(getClient()));
@@ -550,8 +559,8 @@ TEST_F(AuditOCSFTest, basicLogCreateUserOCSF) {
 TEST_F(AuditMongoTest, basicLogDropUserMongo) {
     logDropUser(getClient(), kUserName);
     auto expectedOutputMongo =
-        "{ atype: 'dropUser', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { user: 'user', db: 'test' }, result: 0 }";
+        "{ atype: 'dropUser', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { user: 'user', db: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -568,8 +577,8 @@ TEST_F(AuditOCSFTest, basicLogDropUserOCSF) {
 TEST_F(AuditMongoTest, basicLogDropAllUsersFromDatabaseMongo) {
     logDropAllUsersFromDatabase(getClient(), kDatabaseName);
     auto expectedOutputMongo =
-        "{ atype: 'dropAllUsersFromDatabase', local: {}, remote: { unix: 'anonymous' }, users: "
-        "[], roles: [], param: { db: 'test' }, result: 0 }";
+        "{ atype: 'dropAllUsersFromDatabase', local: { unix: 'anonymous' }, remote: { unix: "
+        "'anonymous' }, users: [], roles: [], param: { db: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -587,9 +596,9 @@ TEST_F(AuditOCSFTest, basicLogDropAllUsersFromDatabaseOCSF) {
 TEST_F(AuditMongoTest, basicLogUpdateUserMongo) {
     logUpdateUser(getClient(), kUserName, false, {}, &kRolesVector, boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'updateUser', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { user: 'user', db: 'test', passwordChanged: false, roles: [ { role: "
-        "'role', db: 'test' } ] }, result: 0 }";
+        "{ atype: 'updateUser', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { user: 'user', db: 'test', passwordChanged: false, roles: [ "
+        "{ role: 'role', db: 'test' } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -607,9 +616,9 @@ TEST_F(AuditOCSFTest, basicLogUpdateUserOCSF) {
 TEST_F(AuditMongoTest, basicLogGrantRolesToUserMongo) {
     logGrantRolesToUser(getClient(), kUserName, kRolesVector);
     auto expectedOutputMongo =
-        "{ atype: 'grantRolesToUser', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { user: 'user', db: 'test', roles: [ { role: 'role', db: 'test' } ] "
-        "}, result: 0 }";
+        "{ atype: 'grantRolesToUser', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { user: 'user', db: 'test', roles: [ { role: 'role', db: "
+        "'test' } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -627,9 +636,9 @@ TEST_F(AuditOCSFTest, basicLogGrantRolesToUserOCSF) {
 TEST_F(AuditMongoTest, basicLogRevokeRolesFromUserMongo) {
     logRevokeRolesFromUser(getClient(), kUserName, kRolesVector);
     auto expectedOutputMongo =
-        "{ atype: 'revokeRolesFromUser', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { user: 'user', db: 'test', roles: [ { role: 'role', db: 'test' } ] "
-        "}, result: 0 }";
+        "{ atype: 'revokeRolesFromUser', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { user: 'user', db: 'test', roles: [ { role: 'role', db: "
+        "'test' } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -647,9 +656,10 @@ TEST_F(AuditOCSFTest, basicLogRevokeRolesFromUserOCSF) {
 TEST_F(AuditMongoTest, basicLogCreateRoleMongo) {
     logCreateRole(getClient(), kRoleName, {}, kPrivilegeVector, boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'createRole', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { role: 'role', db: 'test', roles: [], privileges: [ { resource: { db: '', "
-        "collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] }, result: 0 }";
+        "{ atype: 'createRole', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { role: 'role', db: 'test', roles: [], privileges: [ { "
+        "resource: { db: '', collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] }, "
+        "result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -668,9 +678,9 @@ TEST_F(AuditOCSFTest, basicLogCreateRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogUpdateRoleMongo) {
     logUpdateRole(getClient(), kRoleName, &kRolesVector, &kPrivilegeVector, boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'updateRole', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { role: 'role', db: 'test', roles: [ { role: 'role', db: 'test' } ], "
-        "privileges: [ { resource: { db: '', collection: '' }, actions: [ "
+        "{ atype: 'updateRole', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { role: 'role', db: 'test', roles: [ { role: 'role', db: "
+        "'test' } ], privileges: [ { resource: { db: '', collection: '' }, actions: [ "
         "'refineCollectionShardKey' ] } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
@@ -690,8 +700,8 @@ TEST_F(AuditOCSFTest, basicLogUpdateRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogDropRoleMongo) {
     logDropRole(getClient(), kRoleName);
     auto expectedOutputMongo =
-        "{ atype: 'dropRole', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { role: 'role', db: 'test' }, result: 0 }";
+        "{ atype: 'dropRole', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { role: 'role', db: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -708,8 +718,8 @@ TEST_F(AuditOCSFTest, basicLogDropRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogDropAllRolesFromDatabaseMongo) {
     logDropAllRolesFromDatabase(getClient(), kDatabaseName);
     auto expectedOutputMongo =
-        "{ atype: 'dropAllRolesFromDatabase', local: {}, remote: { unix: 'anonymous' }, users: "
-        "[], roles: [], param: { db: 'test' }, result: 0 }";
+        "{ atype: 'dropAllRolesFromDatabase', local: { unix: 'anonymous' }, remote: { unix: "
+        "'anonymous' }, users: [], roles: [], param: { db: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -726,9 +736,9 @@ TEST_F(AuditOCSFTest, basicLogDropAllRolesFromDatabaseOCSF) {
 TEST_F(AuditMongoTest, basicLogGrantRolesToRoleMongo) {
     logGrantRolesToRole(getClient(), kRoleName, kRolesVector);
     auto expectedOutputMongo =
-        "{ atype: 'grantRolesToRole', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { role: 'role', db: 'test', roles: [ { role: 'role', db: 'test' } ] "
-        "}, result: 0 }";
+        "{ atype: 'grantRolesToRole', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { role: 'role', db: 'test', roles: [ { role: 'role', db: "
+        "'test' } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -746,9 +756,9 @@ TEST_F(AuditOCSFTest, basicLogGrantRolesToRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogRevokeRolesFromRoleMongo) {
     logRevokeRolesFromRole(getClient(), kRoleName, kRolesVector);
     auto expectedOutputMongo =
-        "{ atype: 'revokeRolesFromRole', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { role: 'role', db: 'test', roles: [ { role: 'role', db: 'test' } ] "
-        "}, result: 0 }";
+        "{ atype: 'revokeRolesFromRole', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { role: 'role', db: 'test', roles: [ { role: 'role', db: "
+        "'test' } ] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -766,9 +776,10 @@ TEST_F(AuditOCSFTest, basicLogRevokeRolesFromRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogGrantPrivilegesToRoleMongo) {
     logGrantPrivilegesToRole(getClient(), kRoleName, kPrivilegeVector);
     auto expectedOutputMongo =
-        "{ atype: 'grantPrivilegesToRole', local: {}, remote: { unix: 'anonymous' }, users: "
-        "[], roles: [], param: { role: 'role', db: 'test', privileges: [ { resource: { db: '', "
-        "collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] }, result: 0 }";
+        "{ atype: 'grantPrivilegesToRole', local: { unix: 'anonymous' }, remote: { unix: "
+        "'anonymous' }, users: [], roles: [], param: { role: 'role', db: 'test', privileges: [ { "
+        "resource: { db: '', collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] }, "
+        "result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -787,9 +798,10 @@ TEST_F(AuditOCSFTest, basicLogGrantPrivilegesToRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogRevokePrivilegesFromRoleMongo) {
     logRevokePrivilegesFromRole(getClient(), kRoleName, kPrivilegeVector);
     auto expectedOutputMongo =
-        "{ atype: 'revokePrivilegesFromRole', local: {}, remote: { unix: 'anonymous' }, users: "
-        "[], roles: [], param: { role: 'role', db: 'test', privileges: [ { resource: { db: '', "
-        "collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] }, result: 0 }";
+        "{ atype: 'revokePrivilegesFromRole', local: { unix: 'anonymous' }, remote: { unix: "
+        "'anonymous' }, users: [], roles: [], param: { role: 'role', db: 'test', privileges: [ { "
+        "resource: { db: '', collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] }, "
+        "result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -808,9 +820,9 @@ TEST_F(AuditOCSFTest, basicLogRevokePrivilegesFromRoleOCSF) {
 TEST_F(AuditMongoTest, basicLogReplSetReconfigMongo) {
     logReplSetReconfig(getClient(), &kOldReplsetConfig, &kNewReplsetConfig);
     auto expectedOutputMongo =
-        "{ atype: 'replSetReconfig', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { old: { _id: 'ABCD', members: [ 'a' ] }, new: { _id: 'ABCD', "
-        "members: [ 'a', 'b' ] } }, result: 0 }";
+        "{ atype: 'replSetReconfig', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { old: { _id: 'ABCD', members: [ 'a' ] }, new: { _id: "
+        "'ABCD', members: [ 'a', 'b' ] } }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -828,8 +840,8 @@ TEST_F(AuditOCSFTest, basicLogReplSetReconfigOCSF) {
 TEST_F(AuditMongoTest, basicLogApplicationMessageMongo) {
     logApplicationMessage(getClient(), "Test Application Message.");
     auto expectedOutputMongo =
-        "{ atype: 'applicationMessage', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { msg: 'Test Application Message.' }, result: 0 }";
+        "{ atype: 'applicationMessage', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { msg: 'Test Application Message.' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -852,8 +864,8 @@ TEST_F(AuditMongoTest, basicLogStartupOptionsMongo) {
 
     logStartupOptions(getClient(), moe::Environment().toBSON());
     auto expectedOutputMongo =
-        "{ atype: 'startup', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { startupOptions: {}, initialClusterServerParameters: [ { _id: "
+        "{ atype: 'startup', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { startupOptions: {}, initialClusterServerParameters: [ { _id: "
         "'addOrRemoveShardInProgress', clusterParameterTime: Timestamp(0, 0), inProgress: false }, "
         "{ _id: 'changeStreamOptions', clusterParameterTime: Timestamp(0, 0), preAndPostImages: { "
         "expireAfterSeconds: 'off' } }, { _id: 'changeStreams', clusterParameterTime: Timestamp(0, "
@@ -920,8 +932,8 @@ TEST_F(AuditOCSFTest, basicLogStartupOptionsOCSF) {
 TEST_F(AuditMongoTest, basicLogShutdownMongo) {
     logShutdown(getClient());
     auto expectedOutputMongo =
-        "{ atype: 'shutdown', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: {}, result: 0 }";
+        "{ atype: 'shutdown', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: {}, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -938,9 +950,9 @@ TEST_F(AuditOCSFTest, basicLogShutdownOCSF) {
 TEST_F(AuditMongoTest, basicLogLogoutMongo) {
     logLogout(getClient(), "Kill the test!", kUsersBefore, kUsersAfter, boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'logout', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { reason: 'Kill the test!', initialUsers: [ { user: 'john', database: 'test' } "
-        "], updatedUsers: [] }, result: 0 }";
+        "{ atype: 'logout', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { reason: 'Kill the test!', initialUsers: [ { user: 'john', "
+        "database: 'test' } ], updatedUsers: [] }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -950,7 +962,7 @@ TEST_F(AuditOCSFTest, basicLogLogoutOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 2, category_uid: 3, class_uid: 3002, severity_id: 1, type_uid: 300202, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, message: 'Reason: Kill the test!' }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, message: 'Reason: Kill the test!' }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -966,9 +978,9 @@ TEST_F(AuditMongoTest, basicLogCreateIndexMongo) {
                    "FAILED",
                    ErrorCodes::IndexAlreadyExists);
     auto expectedOutputMongo =
-        "{ atype: 'createIndex', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { ns: 'test.coll', indexName: 'test.id', indexSpec: { id: 1, name: "
-        "'test.id' }, indexBuildState: 'FAILED' }, result: 68 }";
+        "{ atype: 'createIndex', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.coll', indexName: 'test.id', indexSpec: { id: 1, "
+        "name: 'test.id' }, indexBuildState: 'FAILED' }, result: 68 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -991,8 +1003,8 @@ TEST_F(AuditOCSFTest, basicLogCreateIndexOCSF) {
 TEST_F(AuditMongoTest, basicLogCreateCollectionMongo) {
     logCreateCollection(getClient(), kNamespaceString);
     auto expectedOutputMongo =
-        "{ atype: 'createCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test.coll' }, result: 0 }";
+        "{ atype: 'createCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.coll' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1002,7 +1014,8 @@ TEST_F(AuditOCSFTest, basicLogCreateCollectionOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.coll', type: 'create_collection' } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "'create_collection' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1014,9 +1027,9 @@ TEST_F(AuditMongoTest, basicLogCreateViewMongo) {
                   BSONArray(),
                   ErrorCodes::InvalidViewDefinition);
     auto expectedOutputMongo =
-        "{ atype: 'createCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test.view', viewOn: 'test.coll', pipeline: [] }, result: 182 "
-        "}";
+        "{ atype: 'createCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.view', viewOn: 'test.coll', pipeline: [] }, "
+        "result: 182 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1030,8 +1043,8 @@ TEST_F(AuditOCSFTest, basicLogCreateViewOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.coll', type: 'collection' }, entity_result: { name: "
-        "'test.view', type: 'create_view', data: {} } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "'collection' }, entity_result: { name: 'test.view', type: 'create_view', data: {} } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1039,8 +1052,8 @@ TEST_F(AuditOCSFTest, basicLogCreateViewOCSF) {
 TEST_F(AuditMongoTest, basicLogImportCollectionMongo) {
     logImportCollection(getClient(), kNamespaceString);
     auto expectedOutputMongo =
-        "{ atype: 'importCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test.coll' }, result: 0 }";
+        "{ atype: 'importCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.coll' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1050,7 +1063,8 @@ TEST_F(AuditOCSFTest, basicLogImportCollectionOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 3, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300403, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.coll', type: 'import_collection' } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "'import_collection' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1058,8 +1072,8 @@ TEST_F(AuditOCSFTest, basicLogImportCollectionOCSF) {
 TEST_F(AuditMongoTest, basicLogCreateDatabaseMongo) {
     logCreateDatabase(getClient(), kDatabaseName);
     auto expectedOutputMongo =
-        "{ atype: 'createDatabase', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test' }, result: 0 }";
+        "{ atype: 'createDatabase', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1069,7 +1083,8 @@ TEST_F(AuditOCSFTest, basicLogCreateDatabaseOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test', type: 'create_database' } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test', type: "
+        "'create_database' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1077,8 +1092,8 @@ TEST_F(AuditOCSFTest, basicLogCreateDatabaseOCSF) {
 TEST_F(AuditMongoTest, basicLogDropIndexMongo) {
     logDropIndex(getClient(), "test.id", kNamespaceString);
     auto expectedOutputMongo =
-        "{ atype: 'dropIndex', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { ns: 'test.coll', indexName: 'test.id' }, result: 0 }";
+        "{ atype: 'dropIndex', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { ns: 'test.coll', indexName: 'test.id' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1088,7 +1103,8 @@ TEST_F(AuditOCSFTest, basicLogDropIndexOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.id@test.coll', type: 'drop_index' } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.id@test.coll', type: "
+        "'drop_index' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1096,8 +1112,8 @@ TEST_F(AuditOCSFTest, basicLogDropIndexOCSF) {
 TEST_F(AuditMongoTest, basicLogDropCollectionMongo) {
     logDropCollection(getClient(), kNamespaceString);
     auto expectedOutputMongo =
-        "{ atype: 'dropCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test.coll' }, result: 0 }";
+        "{ atype: 'dropCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.coll' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1107,7 +1123,8 @@ TEST_F(AuditOCSFTest, basicLogDropCollectionOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.coll', type: 'drop_collection' } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "'drop_collection' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1119,9 +1136,9 @@ TEST_F(AuditMongoTest, basicLogDropViewMongo) {
                 {},
                 ErrorCodes::CommandNotSupportedOnView);
     auto expectedOutputMongo =
-        "{ atype: 'dropCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test.view', viewOn: 'test.coll', pipeline: [] }, result: 166 "
-        "}";
+        "{ atype: 'dropCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.view', viewOn: 'test.coll', pipeline: [] }, "
+        "result: 166 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1135,8 +1152,9 @@ TEST_F(AuditOCSFTest, basicLogDropViewOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.coll', type: 'collection' }, entity_result: { name: "
-        "'test.view', type: 'drop_view' }, comment: { pipeline: [] } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "'collection' }, entity_result: { name: 'test.view', type: 'drop_view' }, comment: { "
+        "pipeline: [] } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1144,8 +1162,8 @@ TEST_F(AuditOCSFTest, basicLogDropViewOCSF) {
 TEST_F(AuditMongoTest, basicLogDropDatabaseMongo) {
     logDropDatabase(getClient(), kDatabaseName);
     auto expectedOutputMongo =
-        "{ atype: 'dropDatabase', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { ns: 'test' }, result: 0 }";
+        "{ atype: 'dropDatabase', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1154,8 +1172,9 @@ TEST_F(AuditOCSFTest, basicLogDropDatabaseOCSF) {
     logDropDatabase(getClient(), kDatabaseName);
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test', type: 'drop_database' } }";
+        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
+        "interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test', type: 'drop_database' "
+        "} }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1163,8 +1182,8 @@ TEST_F(AuditOCSFTest, basicLogDropDatabaseOCSF) {
 TEST_F(AuditMongoTest, basicLogRenameCollectionMongo) {
     logRenameCollection(getClient(), kNamespaceStringAlt, kNamespaceString);
     auto expectedOutputMongo =
-        "{ atype: 'renameCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { old: 'test.view', new: 'test.coll' }, result: 0 }";
+        "{ atype: 'renameCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { old: 'test.view', new: 'test.coll' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1173,8 +1192,9 @@ TEST_F(AuditOCSFTest, basicLogRenameCollectionOCSF) {
     logRenameCollection(getClient(), kNamespaceStringAlt, kNamespaceString);
     auto expectedOutputOCSF =
         "{ activity_id: 3, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300403, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, entity: { name: 'test.view', type: 'rename_collection_source' }, entity_result: { "
+        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
+        "interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.view', type: "
+        "'rename_collection_source' }, entity_result: { "
         "name: 'test.coll', type: 'rename_collection_destination' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1183,8 +1203,8 @@ TEST_F(AuditOCSFTest, basicLogRenameCollectionOCSF) {
 TEST_F(AuditMongoTest, basicLogEnableShardingMongo) {
     logEnableSharding(getClient(), "test");
     auto expectedOutputMongo =
-        "{ atype: 'enableSharding', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test' }, result: 0 }";
+        "{ atype: 'enableSharding', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1201,8 +1221,8 @@ TEST_F(AuditOCSFTest, basicLogEnableShardingOCSF) {
 TEST_F(AuditMongoTest, basicLogAddShardMongo) {
     logAddShard(getClient(), "newShard", "rs1://localhost:27017,localhost:27018,localhost:27019");
     auto expectedOutputMongo =
-        "{ atype: 'addShard', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "param: { shard: 'newShard', connectionString: "
+        "{ atype: 'addShard', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], param: { shard: 'newShard', connectionString: "
         "'rs1://localhost:27017,localhost:27018,localhost:27019' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
@@ -1221,8 +1241,8 @@ TEST_F(AuditOCSFTest, basicLogAddShardOCSF) {
 TEST_F(AuditMongoTest, basicLogRemoveShardMongo) {
     logRemoveShard(getClient(), "newShard");
     auto expectedOutputMongo =
-        "{ atype: 'removeShard', local: {}, remote: { unix: 'anonymous' }, users: [], roles: "
-        "[], param: { shard: 'newShard' }, result: 0 }";
+        "{ atype: 'removeShard', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { shard: 'newShard' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1243,9 +1263,9 @@ TEST_F(AuditMongoTest, basicLogShardCollectionMongo) {
                             << "DOB"),
                        true);
     auto expectedOutputMongo =
-        "{ atype: 'shardCollection', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { ns: 'test.coll', key: { key: 'DOB' }, options: { unique: true } "
-        "}, result: 0 }";
+        "{ atype: 'shardCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
+        "users: [], roles: [], param: { ns: 'test.coll', key: { key: 'DOB' }, options: { unique: "
+        "true } }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1270,8 +1290,9 @@ TEST_F(AuditMongoTest, basicLogRefineCollectionShardKeyMongo) {
                                 BSON("key"
                                      << "age"));
     auto expectedOutputMongo =
-        "{ atype: 'refineCollectionShardKey',local: {}, remote: { unix: 'anonymous' }, users: "
-        "[], roles: [], param: { ns: 'test.coll', key: { key: 'age' } }, result: 0 }";
+        "{ atype: 'refineCollectionShardKey',local: { unix: 'anonymous' }, remote: { unix: "
+        "'anonymous' }, users: [], roles: [], param: { ns: 'test.coll', key: { key: 'age' } }, "
+        "result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1292,9 +1313,9 @@ TEST_F(AuditOCSFTest, basicLogRefineCollectionShardKeyOCSF) {
 TEST_F(AuditMongoTest, basicLogInsertOperationMongo) {
     logInsertOperation(getClient(), kNamespaceStringPrivilege, BSON("foo" << 1));
     auto expectedOutputMongo =
-        "{ atype: 'directAuthMutation',local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { document: { foo: 1 }, ns: 'admin.system.users', operation: "
-        "'insert' }, result: 0 }";
+        "{ atype: 'directAuthMutation',local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { document: { foo: 1 }, ns: 'admin.system.users', "
+        "operation: 'insert' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1304,8 +1325,8 @@ TEST_F(AuditOCSFTest, basicLogInsertOperationOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3001, severity_id: 5, type_uid: 300101, "
         "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, unmapped: { atype: 'directAuthMutation', directAuthMutation: { namespace: "
-        "'admin.system.users', document: { foo: 1 } } } }";
+        "{ interface_name: 'unix', ip: 'anonymous' }, unmapped: { atype: 'directAuthMutation', "
+        "directAuthMutation: { namespace: 'admin.system.users', document: { foo: 1 } } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1315,8 +1336,8 @@ TEST_F(AuditMongoTest, basicLogUpdateOperationMongo) {
                        kNamespaceStringPrivilege,
                        BSON("old" << BSON("foo" << 1) << "new" << BSON("foo" << 2)));
     auto expectedOutputMongo =
-        "{ atype: 'directAuthMutation', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { document: { old: { foo: 1 }, new: { foo: 2 } }, ns: "
+        "{ atype: 'directAuthMutation', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { document: { old: { foo: 1 }, new: { foo: 2 } }, ns: "
         "'admin.system.users', operation: 'update' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
@@ -1329,8 +1350,9 @@ TEST_F(AuditOCSFTest, basicLogUpdateOperationOCSF) {
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 3, class_uid: 3001, severity_id: 5, type_uid: "
         "300199, actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, "
-        "dst_endpoint: {}, unmapped: { atype: 'directAuthMutation', directAuthMutation: { "
-        "namespace: 'admin.system.users', document: { old: { foo: 1 }, new: { foo: 2 } } } } }";
+        "dst_endpoint: { interface_name: 'unix', ip: 'anonymous' }, unmapped: { atype: "
+        "'directAuthMutation', directAuthMutation: { namespace: 'admin.system.users', document: { "
+        "old: { foo: 1 }, new: { foo: 2 } } } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1338,9 +1360,9 @@ TEST_F(AuditOCSFTest, basicLogUpdateOperationOCSF) {
 TEST_F(AuditMongoTest, basicLogRemoveOperationMongo) {
     logRemoveOperation(getClient(), kNamespaceStringPrivilege, BSON("foo" << 2));
     auto expectedOutputMongo =
-        "{ atype: 'directAuthMutation', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { document: { foo: 2 }, ns: 'admin.system.users', operation: "
-        "'remove' }, result: 0 }";
+        "{ atype: 'directAuthMutation', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { document: { foo: 2 }, ns: 'admin.system.users', "
+        "operation: 'remove' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
 }
@@ -1349,8 +1371,9 @@ TEST_F(AuditOCSFTest, basicLogRemoveOperationOCSF) {
     logRemoveOperation(getClient(), kNamespaceStringPrivilege, BSON("foo" << 2));
     auto expectedOutputOCSF =
         "{ activity_id: 6, category_uid: 3, class_uid: 3001, severity_id: 5, type_uid: 300106, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{}, unmapped: { atype: 'directAuthMutation', directAuthMutation: { namespace: "
+        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
+        "interface_name: 'unix', ip: 'anonymous' }, unmapped: { atype: 'directAuthMutation', "
+        "directAuthMutation: { namespace: "
         "'admin.system.users', document: { foo: 2 } } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1359,8 +1382,8 @@ TEST_F(AuditOCSFTest, basicLogRemoveOperationOCSF) {
 TEST_F(AuditMongoTest, basicLogGetClusterParameterMongo) {
     logGetClusterParameter(getClient(), "replication.localPingThresholdMs");
     auto expectedOutputMongo =
-        "{ atype: 'getClusterParameter', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { requestedClusterServerParameters: "
+        "{ atype: 'getClusterParameter', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { requestedClusterServerParameters: "
         "'replication.localPingThresholdMs' }, result: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputMongo));
@@ -1382,8 +1405,8 @@ TEST_F(AuditMongoTest, basicLogSetClusterParameterMongo) {
                            BSON("replication.localPingThresholdMs" << 100),
                            boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'setClusterParameter', local: {}, remote: { unix: 'anonymous' }, users: [], "
-        "roles: [], param: { originalClusterServerParameter: { "
+        "{ atype: 'setClusterParameter', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' "
+        "}, users: [], roles: [], param: { originalClusterServerParameter: { "
         "'replication.localPingThresholdMs': 1 }, updatedClusterServerParameter: { "
         "'replication.localPingThresholdMs': 100 } }, result: 0 }";
     BSONObj log = getLastNormalized();
@@ -1412,8 +1435,8 @@ TEST_F(AuditMongoTest, basicLogUpdateCachedClusterParameterMongo) {
                                          << "localhost2"),
                                     boost::none);
     auto expectedOutputMongo =
-        "{ atype: 'updateCachedClusterServerParameter', local: {}, remote: { unix: 'anonymous' "
-        "}, users: [], roles: [], param: { originalClusterServerParameter: { "
+        "{ atype: 'updateCachedClusterServerParameter', local: { unix: 'anonymous' }, remote: { "
+        "unix: 'anonymous' }, users: [], roles: [], param: { originalClusterServerParameter: { "
         "'security.sasl.hostName': 'localhost' }, updatedClusterServerParameter: { "
         "'security.sasl.hostName': 'localhost2' } }, result: 0 }";
     BSONObj log = getLastNormalized();
@@ -1439,8 +1462,8 @@ TEST_F(AuditOCSFTest, basicLogUpdateCachedClusterParameterOCSF) {
 TEST_F(AuditMongoTest, basicLogRotateLogMongo) {
     logRotateLog(getClient(), Status::OK(), {}, "_new.log");
     auto expectedOutputMongo =
-        "{ atype: 'rotateLog', local: {}, remote: { unix: 'anonymous' }, users: [], roles: [], "
-        "result: 0 }";
+        "{ atype: 'rotateLog', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, users: "
+        "[], roles: [], result: 0 }";
     auto param_field =
         "{logRotationStatus: { status: 'OK', rotatedLogPath: '_new.log', errors: [] } }";
     BSONObj log = getLastNormalized();

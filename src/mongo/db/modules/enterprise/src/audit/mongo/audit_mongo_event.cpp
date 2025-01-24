@@ -10,6 +10,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
+#include "mongo/rpc/metadata/audit_client_attrs.h"
 #include "mongo/transport/asio/asio_session_impl.h"
 
 namespace mongo {
@@ -29,6 +30,7 @@ constexpr auto kATypeField = "atype"_sd;
 constexpr auto kTimestampField = "ts"_sd;
 constexpr auto kLocalEndpointField = "local"_sd;
 constexpr auto kRemoteEndpointField = "remote"_sd;
+constexpr auto kIntermediateEndpointsField = "intermediates"_sd;
 constexpr auto kTenantField = "tenant"_sd;
 constexpr auto kUsersField = "users"_sd;
 constexpr auto kRolesField = "roles"_sd;
@@ -42,15 +44,14 @@ constexpr auto kPortField = "port"_sd;
 constexpr auto kUnixField = "unix"_sd;
 constexpr auto kAnonymous = "anonymous"_sd;
 
-void serializeHostAndPort(const HostAndPort& hp, StringData fieldName, BSONObjBuilder* builder) {
-    BSONObjBuilder bob(builder->subobjStart(fieldName));
+void serializeHostAndPortToBSONMongo(const HostAndPort& hp, BSONObjBuilder* bob) {
     if (hp.hasPort()) {
-        bob.append(kIPField, hp.host());
-        bob.append(kPortField, hp.port());
+        bob->append(kIPField, hp.host());
+        bob->append(kPortField, hp.port());
     } else if (auto path = hp.host(); !path.empty()) {
-        bob.append(kUnixField, path);
+        bob->append(kUnixField, path);
     } else {
-        bob.append(kUnixField, kAnonymous);
+        bob->append(kUnixField, kAnonymous);
     }
 }
 }  // namespace
@@ -112,23 +113,30 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
             auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
             remoteBob.appendBool(kIsSystemUser, true);
         }
-    } else if (auto session = client->session()) {
-        const auto local = [&] {
-            if (auto asio = dynamic_cast<transport::CommonAsioSession*>(session.get())) {
-                auto local = asio->localAddr();
-                invariant(local.isValid());
-                return local;
-            } else {
-                // No local SockAddr available, just serialize out an empty `local: {}`.
-                return SockAddr{};
+    } else if (auto attrs = rpc::AuditClientAttrs::get(client)) {
+        {
+            // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
+            BSONObjBuilder localBuilder(builder->subobjStart(kLocalEndpointField));
+            serializeHostAndPortToBSONMongo(attrs->getLocal(), &localBuilder);
+        }
+
+        {
+            // intermediates: [{ip: '192.168.1.1', port: "8000"}, {...}]
+            if (auto intermediates = attrs->getProxiedEndpoints(); !intermediates.empty()) {
+                BSONArrayBuilder intermediatesArrBuilder(
+                    builder->subarrayStart(kIntermediateEndpointsField));
+                for (const auto& intermediate : intermediates) {
+                    BSONObjBuilder intermediateBuilder(intermediatesArrBuilder.subobjStart());
+                    serializeHostAndPortToBSONMongo(intermediate, &intermediateBuilder);
+                }
             }
-        }();
+        }
 
-        // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
-        local.serializeToBSON(kLocalEndpointField, builder);
-
-        // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
-        serializeHostAndPort(session->remote(), kRemoteEndpointField, builder);
+        {
+            // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
+            BSONObjBuilder remoteBuilder(builder->subobjStart(kRemoteEndpointField));
+            serializeHostAndPortToBSONMongo(attrs->getRemote(), &remoteBuilder);
+        }
     }
 
     if (AuthorizationSession::exists(client)) {
