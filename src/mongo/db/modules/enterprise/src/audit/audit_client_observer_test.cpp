@@ -35,19 +35,17 @@ void enableAuditing() {
 
     // Validate initial state.
     ASSERT_EQ(am->isEnabled(), true);
-
-    // Manually register the AuditClientObserver. There is no way to set auditLog.destination
-    // before the unit test runs all global initializers, which means that auditing is initially
-    // disabled. This causes the ServiceContext CAR responsible for registering the
-    // AuditClientObserver to get skipped. So we do it here instead.
-    getGlobalServiceContext()->registerClientObserver(std::make_unique<AuditClientObserver>());
 }
 
 class AuditUserAttrsTest : public AuthorizationSessionTestFixture {
 protected:
-    explicit AuditUserAttrsTest(Options options = Options{})
+    explicit AuditUserAttrsTest(Options options = makeOptions())
         : AuthorizationSessionTestFixture(std::move(options)) {
         enableAuditing();
+    }
+
+    static Options makeOptions() {
+        return Options{}.addClientObserver(std::make_unique<AuditClientObserver>());
     }
 };
 
@@ -108,6 +106,12 @@ protected:
         ASSERT_OK(_tla->start());
 
         enableAuditing();
+
+        // Manually register the AuditClientObserver. There is no way to set auditLog.destination
+        // before the unit test runs all global initializers, which means that auditing is initially
+        // disabled. This causes the ServiceContext CAR responsible for registering the
+        // AuditClientObserver to get skipped. So we do it here instead.
+        getServiceContext()->registerClientObserver(std::make_unique<AuditClientObserver>());
 
         _threadPool.startup();
     }
