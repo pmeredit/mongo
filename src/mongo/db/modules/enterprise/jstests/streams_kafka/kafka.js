@@ -93,7 +93,7 @@ const connectionRegistry = [
         type: 'kafka',
         options: {
             bootstrapServers: kafkaUri,
-            configurations: {
+            configuration: {
                 'compression.type': 'gzip',
             }
         },
@@ -103,7 +103,7 @@ const connectionRegistry = [
         type: 'kafka',
         options: {
             bootstrapServers: kafkaUri,
-            configurations: {
+            configuration: {
                 'group.id': groupIdFromConnectionValue,
             }
         },
@@ -113,7 +113,7 @@ const connectionRegistry = [
         type: 'kafka',
         options: {
             bootstrapServers: kafkaUri,
-            configurations: {
+            configuration: {
                 'auto.offset.reset': 'earliest',
             }
         },
@@ -123,7 +123,7 @@ const connectionRegistry = [
         type: 'kafka',
         options: {
             bootstrapServers: kafkaUri,
-            configurations: {
+            configuration: {
                 'auto.offset.reset': 'latest',
             }
         },

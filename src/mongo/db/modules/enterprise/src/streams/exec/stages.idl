@@ -235,7 +235,7 @@ structs:
                 description: "Pre-shared 32-byte (AES-256) key for GWProxy authentication for VPC peering sessions."
                 type: string
                 optional: true
-            configurations:
+            configuration:
                 description: "Kafka config values that let users customize their kafka source and/or sink."
                 type: object
                 optional: true

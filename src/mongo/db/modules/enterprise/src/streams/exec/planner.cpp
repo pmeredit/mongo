@@ -686,7 +686,7 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
 
-    internalOptions.configurations = baseOptions.getConfigurations();
+    internalOptions.configurations = baseOptions.getConfiguration();
 
     std::visit(
         OverloadedVisitor{
@@ -1149,8 +1149,8 @@ void Planner::planEmitSink(const BSONObj& spec) {
             if (options.getTestOnlyPartition()) {
                 kafkaEmitOptions.testOnlyPartition = *options.getTestOnlyPartition();
             }
-            if (baseOptions.getConfigurations()) {
-                kafkaEmitOptions.configurations = *baseOptions.getConfigurations();
+            if (baseOptions.getConfiguration()) {
+                kafkaEmitOptions.configurations = *baseOptions.getConfiguration();
             }
 
             sinkOperator =
