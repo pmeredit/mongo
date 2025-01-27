@@ -48,6 +48,7 @@
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
@@ -2458,8 +2459,20 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
         KafkaConnectionOptions options1{"localhost:9092"};
         options1.setIsTestKafka(true);
         _context->isEphemeral = false;
+
+        HttpsConnectionOptions httpsConnOptions{"https://mongodb.com"};
         _context->connections = stdx::unordered_map<std::string, Connection>{
-            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
+            {"https1", Connection{"https1", ConnectionTypeEnum::HTTPS, httpsConnOptions.toBSON()}}};
+
+        _context->dlq = std::make_unique<NoOpDeadLetterQueue>(_context.get());
+        mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+        featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
+        StreamProcessorFeatureFlags spFeatureFlags{
+            featureFlagsMap,
+            std::chrono::time_point<std::chrono::system_clock>{
+                std::chrono::system_clock::now().time_since_epoch()}};
+        _context->featureFlags->updateFeatureFlags(spFeatureFlags);
         auto bson = parsePipeline(userPipeline);
 
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
@@ -2516,6 +2529,59 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
     ])",
                    "StreamProcessorInvalidOptions: Cannot use $text in $match stage in Atlas "
                    "Stream Processing.");
+
+    // This test fails because $validate.validationAction=dlq but no dlq has been defined
+    runFailureTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $validate: {
+                validator: {},
+                validationAction: "dlq"
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+                   "StreamProcessorInvalidOptions: DLQ must be specified if "
+                   "$validate.validationAction is dlq");
+
+
+    // This test fails because $https.onError=dlq but no dlq has been defined
+    runFailureTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $https: {
+                connectionName: "https1",
+                as: "response",
+                onError: "dlq"
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+                   "StreamProcessorInvalidOptions: DLQ must be specified if $https.onError is dlq");
 }
 
 TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {

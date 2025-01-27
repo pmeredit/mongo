@@ -9,13 +9,11 @@ import {listStreamProcessors} from 'src/mongo/db/modules/enterprise/jstests/stre
 
 // Start a streamProcessor.
 const sp = getDefaultSp();
-const spName = "sampleWithDlq";
-const inputColl = db.getSiblingDB(test.dbName)[test.inputCollName];
 const outputColl = db.getSiblingDB(test.dbName)[test.outputCollName];
-inputColl.drop();
 outputColl.drop();
-sp.createStreamProcessor(spName, [
-    {$source: {connectionName: test.atlasConnection, db: test.dbName, coll: test.inputCollName}},
+
+const results = sp.process([
+    {$source: {documents: [{_id: 1}]}},
     {$validate: {validator: {$expr: {$gt: ['$fullDocument._id', 9]}}, validationAction: 'dlq'}},
     {
         $merge: {
@@ -23,20 +21,9 @@ sp.createStreamProcessor(spName, [
         }
     },
 ]);
-sp[spName].start();
-
-// Start a sample session.
-const cursorId = sp[spName].startSample()["id"];
-
-// Insert a doc that will be DLQ-ed in the $validate stage.
-const doc = {
-    _id: 1
-};
-inputColl.insertOne(doc);
 
 // Verify the DLQ-ed message shows up in the sample stream.
 assert.soon(() => {
-    const results = sp[spName].getNextSample(cursorId);
     if (results.length == 1) {
         const result = results[0];
         assert(result.hasOwnProperty("_dlqMessage"));
@@ -48,8 +35,5 @@ assert.soon(() => {
 
     return false;
 });
-
-// Stop the streamProcessor.
-sp[spName].stop();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

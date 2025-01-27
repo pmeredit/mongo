@@ -81,6 +81,7 @@
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
@@ -234,7 +235,9 @@ void enforceStageConstraints(const std::string& name, PipelineType pipelineType)
 }
 
 // Constructs ValidateOperator::Options.
-ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj bsonOptions) {
+ValidateOperator::Options makeValidateOperatorOptions(Context* context,
+                                                      BSONObj bsonOptions,
+                                                      bool shouldValidateDLQ) {
     auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
 
     std::unique_ptr<MatchExpression> validator;
@@ -249,10 +252,11 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
         validator = std::make_unique<AlwaysTrueMatchExpression>();
     }
 
-    if (options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                str::stream() << "DLQ must be specified if validation action is dlq.",
-                bool(context->dlq));
+    if (shouldValidateDLQ &&
+        options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq &&
+        dynamic_cast<NoOpDeadLetterQueue*>(context->dlq.get())) {
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  str::stream() << "DLQ must be specified if $validate.validationAction is dlq");
     }
 
     return {std::move(validator), options.getValidationAction()};
@@ -1685,6 +1689,12 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
         .onError = parsedOperatorOptions.getOnError(),
     };
 
+    if (shouldValidateDLQ() && options.onError == mongo::OnErrorEnum::DLQ &&
+        dynamic_cast<NoOpDeadLetterQueue*>(_context->dlq.get())) {
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  str::stream() << "DLQ must be specified if $https.onError is dlq");
+    }
+
     if (const auto& payloadPipeline = parsedOperatorOptions.getPayload(); payloadPipeline) {
         std::vector<mongo::BSONObj> stages;
         stages.reserve(payloadPipeline->size());
@@ -1990,7 +2000,8 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 optimizedPipeline.push_back(serialize(stage));
                 auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(stage.get());
                 dassert(specificSource);
-                auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
+                auto options = makeValidateOperatorOptions(
+                    _context, specificSource->bsonOptions(), shouldValidateDLQ());
                 auto oper = std::make_unique<ValidateOperator>(_context, std::move(options));
                 oper->setOperatorId(_nextOperatorId++);
                 appendOperator(std::move(oper));
@@ -2423,5 +2434,9 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
         uasserted(ErrorCodes::StreamProcessorInvalidOptions,
                   "resumeFromCheckpoint must be false to remove a window from a stream processor");
     }
+}
+
+bool Planner::shouldValidateDLQ() {
+    return !_context->isEphemeral && _options.planningUserPipeline;
 }
 };  // namespace streams

@@ -296,6 +296,7 @@ mongo_cc_library(
         "mongocxx_utils.h",
         "mongodb_dead_letter_queue.h",
         "mongodb_process_interface.h",
+        "noop_dead_letter_queue.h",
         "noop_sink_operator.h",
         "operator.h",
         "operator_dag.h",

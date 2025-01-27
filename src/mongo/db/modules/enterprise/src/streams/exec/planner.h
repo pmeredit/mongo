@@ -188,6 +188,9 @@ private:
     // prepending a dummy limit operator.
     bool shouldPrependDummyLimit(mongo::Pipeline* innerPipeline);
 
+    // Returns true if the pipeline is not ephemeral and planningUserPipeline is true.
+    bool shouldValidateDLQ();
+
     Context* _context{nullptr};
     Options _options;
     // True if a window has been planned.
