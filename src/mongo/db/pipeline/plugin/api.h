@@ -1,21 +1,31 @@
 #include <stddef.h>
 
+namespace mongo {
+
 extern "C" {
     enum MongoDBPluginVersion {
         MONGODB_PLUGIN_VERSION_0 = 0,
     };
 
     enum MongoDBAggregationStageGetNextResult {
-        GET_NEXT_ADVANCED = 0;
-        GET_NEXT_EOF = -1;
-        GET_NEXT_PAUSE_EXECUTION = -2;
-    }
+        GET_NEXT_ADVANCED = 0,
+        GET_NEXT_EOF = -1,
+        GET_NEXT_PAUSE_EXECUTION = -2,
+    };
 
     // An aggregation stage provided by the plugin.
-    struct mongdb_aggregation_stage {
-        // Id to provide as a form of RTTI. Should be uniqueley assigned.
-        size_t id;
-
+    //
+    // To implement an aggregation stage, create a new struct where this is the _first_ member:
+    //
+    // ```c
+    // struct MyAggregationStage {
+    //   mongodb_aggregation_stage stage;
+    //   // other state goes here.
+    // }
+    // ```
+    //
+    // Your aggregation stage parser will heap allocate a `MyAggregationStage` and return it as a `mongodb_aggregation_stage*`.
+    struct mongodb_aggregation_stage {
         // Get the next result from stage and typically filling (result, result_len). Memory pointed to by result is
         // owned by the stage and only valid until the next call on stage.
         //
@@ -27,17 +37,16 @@ extern "C" {
         // Any positive value indicates an error. (result, result_len) will be filled with a utf8 string describing
         // the error.
         int (*get_next)(mongodb_aggregation_stage* stage, char** result, size_t* result_len);
-        
+
         // Close this stage and free any memory assoicated with it. It is an error to use stage after closing.
-        void (*close)(mongdb_aggregation_stage* stage);
+        void (*close)(mongodb_aggregation_stage* stage);
 
         // TODO: some way to get data from another stage.
         // * Could be a function that accepts a function pointer that the stage may store and invoke
         // * Could be a raw function pointer set by the caller that the stage may use to fetch data.
-    }
+    };
 
-    // XXX need to handle errors
-    typedef mongodb_parse_aggregation_stage int(*)(char bson_type, char* bson_value, size_t bson_value_len, mongodb_aggregation_stage** stage, char** error, size_t* error_len);
+    typedef int (*mongodb_parse_aggregation_stage)(char bson_type, char* bson_value, size_t bson_value_len, mongodb_aggregation_stage** stage, char** error, size_t* error_len);
 
     // The plugin portal allows plugin functionality to register with the server.
     struct mongodb_plugin_portal {
@@ -55,3 +64,5 @@ extern "C" {
     // Returns 0 on success. On any other value (error, error_len) should be filled with a useful status message.
     int mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal, char** error, size_t* error_len);
 }
+
+}  // namespace mongo
