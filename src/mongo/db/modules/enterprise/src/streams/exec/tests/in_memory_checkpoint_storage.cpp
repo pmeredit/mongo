@@ -3,7 +3,7 @@
  */
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "mongo/bson/simple_bsonobj_comparator.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stats_utils.h"

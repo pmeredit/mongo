@@ -3,7 +3,7 @@
  */
 
 #include "streams/exec/concurrent_checkpoint_monitor.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 using namespace mongo;
 
