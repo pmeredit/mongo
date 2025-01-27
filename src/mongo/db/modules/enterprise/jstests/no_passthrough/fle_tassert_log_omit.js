@@ -63,8 +63,8 @@ function runTest(conn, restartFn) {
         assert(diagnostics.length > 0, "Failed to find relevant ScopedDebugInfo log line");
 
         // Log lines should not contain the command contents. There may be multiple ScopedDebugInfo
-        // log lines, and that each one can contain >1 commandDiagnostic entries.
-        assert(diagnostics.every(line => line.includes("commandDiagnostics: omitted") &&
+        // log lines, and each one can contain multiple entries depending on the available printers.
+        assert(diagnostics.every(line => line.includes("curOpDiagnostics: omitted") &&
                                      !line.includes("opDescription")),
                "Found a log line containing command diagnostics, when none were expected " +
                    tojson(diagnostics));
