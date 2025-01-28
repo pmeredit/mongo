@@ -1,9 +1,9 @@
-#include "src/mongo/db/pipeline/plugin/api.h"
+#include "mongo/db/pipeline/plugin/api.h"
 
 #include <memory>
 #include <string>
 
-#include "src/mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/document_source.h"
 
 namespace mongo {
 
@@ -13,13 +13,13 @@ struct c_plugin_echo_aggregation_stage {
     std::string document;
     bool exhausted;
 
-    static const char kStageName[] = "$cecho";
+    static constexpr char kStageName[] = "$echoC";
 };
 
-const char kNotADocument[] = "$cecho argument must be document typed.";
+const char kNotADocument[] = "$echoC argument must be document typed.";
 
 int c_plugin_echo_aggregation_stage_get_next(mongodb_aggregation_stage* stage,
-                                             char** result,
+                                             const char** result,
                                              size_t* result_len) {
     auto echo_stage = (c_plugin_echo_aggregation_stage*)stage;
     if (echo_stage->exhausted) {
@@ -39,10 +39,10 @@ void c_plugin_echo_aggregation_stage_close(mongodb_aggregation_stage* stage) {
 }
 
 int c_plugin_echo_aggregation_stage_parse(char bson_type,
-                                          char* bson_value,
+                                          const char* bson_value,
                                           size_t bson_value_len,
                                           mongodb_aggregation_stage** stage,
-                                          char** error,
+                                          const char** error,
                                           size_t* error_len) {
     if (bson_type != 3) {  // embedded document
         *error = (char*)kNotADocument;
@@ -66,14 +66,10 @@ int c_plugin_echo_aggregation_stage_parse(char bson_type,
 
 extern "C" {
 
-int mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal,
-                              char** error,
-                              size_t* error_len) {
-    return plugin_portal->add_aggregation_stage(c_plugin_echo_aggregation_stage::kStageName,
-                                                sizeof(c_plugin_echo_aggregation_stage::kStageName),
-                                                c_plugin_echo_aggregation_stage_parse,
-                                                error,
-                                                error_len);
+void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal) {
+    plugin_portal->add_aggregation_stage(c_plugin_echo_aggregation_stage::kStageName,
+                                         sizeof(c_plugin_echo_aggregation_stage::kStageName),
+                                         c_plugin_echo_aggregation_stage_parse);
 }
 }
 

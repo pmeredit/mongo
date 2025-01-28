@@ -38,7 +38,7 @@ struct mongodb_aggregation_stage {
     //
     // Any positive value indicates an error. (result, result_len) will be filled with a utf8 string
     // describing the error.
-    int (*get_next)(mongodb_aggregation_stage* stage, char** result, size_t* result_len);
+    int (*get_next)(mongodb_aggregation_stage* stage, const char** result, size_t* result_len);
 
     // Close this stage and free any memory assoicated with it. It is an error to use stage after
     // closing.
@@ -50,10 +50,10 @@ struct mongodb_aggregation_stage {
 };
 
 typedef int (*mongodb_parse_aggregation_stage)(char bson_type,
-                                               char* bson_value,
+                                               const char* bson_value,
                                                size_t bson_value_len,
                                                mongodb_aggregation_stage** stage,
-                                               char** error,
+                                               const char** error,
                                                size_t* error_len);
 
 // The plugin portal allows plugin functionality to register with the server.
@@ -61,24 +61,17 @@ struct mongodb_plugin_portal {
     // Supported version of the plugin API.
     int version;
 
-    // Invoke to add an aggregation stage.
-    //
-    // Returns 0 on success. On any other value (error, error_len) should be filled with a useful
-    // status message.
-    int (*add_aggregation_stage)(const char* name,
-                                 size_t name_len,
-                                 mongodb_parse_aggregation_stage parser,
-                                 char** error,
-                                 size_t* error_len);
+    // Invoke to add an aggregation stage. The `parser` function is responsible for parsing the
+    // stage from a bson value and creating a mongodb_aggregation_stage object.
+    void (*add_aggregation_stage)(const char* name,
+                                  size_t name_len,
+                                  mongodb_parse_aggregation_stage parser);
 };
 
 // Invoked when a plugin is loaded to allow the plugin to register services.
 //
-// Returns 0 on success. On any other value (error, error_len) should be filled with a useful status
-// message.
-int mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal,
-                              char** error,
-                              size_t* error_len);
+// A function with this signature would be called in each plugin shared object loaded.
+void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal);
 }
 
 }  // namespace mongo
