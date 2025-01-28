@@ -1721,7 +1721,6 @@ TEST_F(PlannerTest, ExecutionPlan) {
         // Setup the context.
         auto context = get<0>(getTestContext(nullptr));
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-        featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
         StreamProcessorFeatureFlags spFeatureFlags{
             featureFlagsMap,
             std::chrono::time_point<std::chrono::system_clock>{
@@ -2467,7 +2466,6 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
 
         _context->dlq = std::make_unique<NoOpDeadLetterQueue>(_context.get());
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-        featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
         StreamProcessorFeatureFlags spFeatureFlags{
             featureFlagsMap,
             std::chrono::time_point<std::chrono::system_clock>{
@@ -2672,37 +2670,11 @@ TEST_F(PlannerTest, HttpsFailsWithoutFeatureFlag) {
 }
 
 /**
-Parse a pipeline containing $https in it. Verify that it still fails when the feature flag is
-defined but set to false.
-*/
-TEST_F(PlannerTest, HttpsWithFalseFeatureFlag) {
-    std::string pipeline = R"(
-[
-    { $https: {} }
-]
-    )";
-    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(false);
-    StreamProcessorFeatureFlags spFeatureFlags{
-        featureFlagsMap,
-        std::chrono::time_point<std::chrono::system_clock>{
-            std::chrono::system_clock::now().time_since_epoch()}};
-    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
-
-    ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
-                                DBException,
-                                ErrorCodes::StreamProcessorInvalidOptions,
-                                "StreamProcessorInvalidOptions: Unsupported stage: $https");
-}
-
-/**
-Parse a pipeline containing $https in it, the expected feature flag, but missing required
-arguments.
+Parse a pipeline containing $https in it, but missing required arguments.
 */
 TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{
@@ -2781,7 +2753,6 @@ the expected feature flag.
 TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{

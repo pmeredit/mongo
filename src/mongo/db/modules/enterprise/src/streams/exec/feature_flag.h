@@ -54,7 +54,6 @@ public:
     static const FeatureFlagDefinition kSourceBufferMinPageSize;
     static const FeatureFlagDefinition kSourceBufferMaxPageSize;
     static const FeatureFlagDefinition kTestOnlyStringType;
-    static const FeatureFlagDefinition kEnableHttpsOperator;
     static const FeatureFlagDefinition kHttpsRateLimitPerSecond;
     static const FeatureFlagDefinition kKafkaProduceTimeout;
     static const FeatureFlagDefinition kUseWatchToInitClusterChangestream;

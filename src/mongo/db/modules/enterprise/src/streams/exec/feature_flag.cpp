@@ -157,9 +157,6 @@ const FeatureFlagDefinition FeatureFlags::kTestOnlyStringType{
     mongo::Value{std::string("string")},
     {}};
 
-const FeatureFlagDefinition FeatureFlags::kEnableHttpsOperator{
-    "enableHttpsOperator", "If true, the $https operator is enabled.", mongo::Value(false), {}};
-
 const FeatureFlagDefinition FeatureFlags::kHttpsRateLimitPerSecond{
     "httpsRateLimitPerSecond",
     "Specifies rate limit to be used by $https",
@@ -272,7 +269,6 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
     {FeatureFlags::kSourceBufferMinPageSize.name, FeatureFlags::kSourceBufferMinPageSize},
     {FeatureFlags::kSourceBufferMaxPageSize.name, FeatureFlags::kSourceBufferMaxPageSize},
-    {FeatureFlags::kEnableHttpsOperator.name, FeatureFlags::kEnableHttpsOperator},
     {FeatureFlags::kHttpsRateLimitPerSecond.name, FeatureFlags::kHttpsRateLimitPerSecond},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
     {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},

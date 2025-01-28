@@ -2049,14 +2049,6 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kHttps: {
-                auto enabled = _context->featureFlags
-                    ? _context->featureFlags
-                          ->getFeatureFlagValue(FeatureFlags::kEnableHttpsOperator)
-                          .getBool()
-                    : boost::none;
-                uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                        "Unsupported stage: $https",
-                        enabled && *enabled);
                 optimizedPipeline.push_back(serialize(stage));
                 auto httpsSource = dynamic_cast<DocumentSourceHttpsStub*>(stage.get());
                 tassert(9502902, "Expected stage to be a https document source.", httpsSource);
