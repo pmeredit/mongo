@@ -763,7 +763,7 @@ void updateShardingMetadata(OperationContext* opCtx,
     LOGV2(9106004, "Dropping config.cache.databases");
     fassert(
         8291411,
-        storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
+        storageInterface->dropCollection(opCtx, NamespaceString::kConfigCacheDatabasesNamespace));
 }
 
 void dropNonRestoredClusterParameters(OperationContext* opCtx,

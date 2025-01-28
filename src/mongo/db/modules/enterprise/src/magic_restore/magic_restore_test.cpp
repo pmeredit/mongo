@@ -732,7 +732,7 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataShard) {
     // collections need to exist even if we don't check them (as updateShardingMetadata calls
     // updateShardNameMetadata).
     for (const auto& nss : {NamespaceString::kShardConfigCollectionsNamespace,
-                            NamespaceString::kShardConfigDatabasesNamespace,
+                            NamespaceString::kConfigCacheDatabasesNamespace,
                             NamespaceString::kServerConfigurationNamespace,
                             NamespaceString::kTransactionCoordinatorsNamespace,
                             NamespaceString::kMigrationCoordinatorsNamespace,
@@ -773,7 +773,7 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataShard) {
 
     ASSERT_EQUALS(
         ErrorCodes::NamespaceNotFound,
-        storage->getCollectionUUID(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
+        storage->getCollectionUUID(opCtx, NamespaceString::kConfigCacheDatabasesNamespace));
 
     auto docs = getDocuments(opCtx, storage, NamespaceString::kServerConfigurationNamespace);
     ASSERT_EQ(2, docs.size());
