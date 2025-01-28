@@ -6,7 +6,7 @@
  *     requires_persistence,
  *     requires_wiredtiger,
  *     requires_replication,
- *     requires_fcv_81,
+ *     requires_fcv_80,
  * ]
  */
 

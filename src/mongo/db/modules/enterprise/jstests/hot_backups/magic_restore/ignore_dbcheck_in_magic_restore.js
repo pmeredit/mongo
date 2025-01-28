@@ -4,7 +4,7 @@
  * @tags: [
  *     requires_persistence,
  *     requires_wiredtiger,
- *     requires_fcv_81,
+ *     requires_fcv_80,
  *     incompatible_with_windows_tls
  * ]
  */
