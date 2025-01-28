@@ -1,4 +1,4 @@
-#include "src/mongo/db/pipeline/plugin/document_source_plugin.h"
+#include "mongo/db/pipeline/document_source_plugin.h"
 
 #include "mongo/base/init.h"  // IWYU pragma: keep
 

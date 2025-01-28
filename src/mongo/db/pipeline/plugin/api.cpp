@@ -3,8 +3,6 @@
 #include <memory>
 #include <string>
 
-#include "mongo/db/pipeline/document_source.h"
-
 namespace mongo {
 
 namespace {
