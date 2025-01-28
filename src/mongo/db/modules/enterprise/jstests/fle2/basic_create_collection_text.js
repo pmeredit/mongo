@@ -3,6 +3,7 @@
  *
  * @tags: [
  *   featureFlagQETextSearchPreview,
+ *   requires_fcv_81
  * ]
  */
 import {
