@@ -2,6 +2,7 @@ import {
     listStreamProcessors,
     startStreamProcessor,
     stopStreamProcessor,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
@@ -91,6 +92,7 @@ const uri = 'mongodb://' + db.getMongo().host;
 let startCmd = {
     streams_startStreamProcessor: '',
     tenantId: TEST_TENANT_ID,
+    projectId: TEST_PROJECT_ID,
     name: spName,
     processorId: spName,
     pipeline: pipeline,

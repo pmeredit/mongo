@@ -11,6 +11,7 @@ import {
     listStreamProcessors,
     sampleUntil,
     stopStreamProcessor,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID,
     waitForCount
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -721,6 +722,7 @@ function testAfterInvalidate() {
         name: spName,
         processorId: spName,
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         pipeline: [
             {
                 $source: {
@@ -799,7 +801,8 @@ function testAfterInvalidateWithFullDocumentOnly() {
         streams_startStreamProcessor: '',
         name: spName,
         processorId: spName,
-        tenantId: "testTenant",
+        tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         pipeline: [
             {
                 $source: {

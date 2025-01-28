@@ -17,6 +17,7 @@ import {
     makeRandomString,
     sampleUntil,
     sanitizeDoc,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID,
     waitForCount,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -235,6 +236,7 @@ function makeMongoToKafkaStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: name,
         pipeline: [
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
@@ -294,6 +296,7 @@ function makeKafkaToMongoStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicNameForProcessorId}`,
         pipeline: pipeline.length ? pipeline : [
             {
@@ -1487,6 +1490,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         const startCmd = {
             streams_startStreamProcessor: '',
             tenantId: TEST_TENANT_ID,
+            projectId: TEST_PROJECT_ID,
             name: `${kafkaToMongoNamePrefix}-${topicName1}`,
             pipeline: [
                 {
@@ -1661,6 +1665,7 @@ function kafkaMultiTopicCheckpointTest(kafka, numPartitions) {
     const startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicName1}`,
         pipeline: [
             {
@@ -1852,6 +1857,7 @@ function kafkaStartAtEarliestTest(setInOperator = true, connName = kafkaPlaintex
     const startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicName1}`,
         pipeline: [
             {
@@ -1931,6 +1937,7 @@ function testPartitionIdleTimeout() {
     assert.commandWorked(db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: kafkaToMongoName,
         pipeline: [
             {
@@ -2006,6 +2013,7 @@ function testKafkaAsyncError() {
     assert.commandWorked(db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: kafkaToMongoName,
         pipeline: [
             {

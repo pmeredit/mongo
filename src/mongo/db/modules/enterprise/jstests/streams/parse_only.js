@@ -3,7 +3,10 @@
  *  featureFlagStreams,
  * ]
  */
-import {TEST_TENANT_ID} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    TEST_PROJECT_ID,
+    TEST_TENANT_ID
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const uri = 'mongodb://' + db.getMongo().host;
 const connectionRegistry = [
@@ -27,6 +30,7 @@ function test({pipeline, dlq, expectedConnectionNames}) {
     const command = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: 'test_name',
         pipeline: pipeline,
         connections: connectionRegistry,
@@ -186,6 +190,7 @@ function missingConnectionName() {
     const command = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: 'test_name',
         pipeline: [
             {$source: {topic: "foo"}},
@@ -207,6 +212,7 @@ function badSourceSpec() {
     const command = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: 'test_name',
         pipeline: [
             {$source: "foo"},

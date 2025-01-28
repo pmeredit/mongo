@@ -6,6 +6,7 @@ import {
 } from 'jstests/core/timeseries/libs/timeseries_writes_util.js';
 
 export const TEST_TENANT_ID = 'testTenant';
+export const TEST_PROJECT_ID = 'testProject';
 // TODO: Rename following variables to use UPPER_SNAKE_CASE naming pattern.
 export const connectionName = 'db1';
 export const dbName = jsTestName();
@@ -145,6 +146,7 @@ export function startStreamProcessor(spName, pipeline, assertWorked = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: pipeline,

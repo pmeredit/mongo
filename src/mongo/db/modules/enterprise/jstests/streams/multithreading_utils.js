@@ -1,7 +1,10 @@
 import {
     getCallerName,
 } from 'jstests/core/timeseries/libs/timeseries_writes_util.js';
-import {TEST_TENANT_ID} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    TEST_PROJECT_ID,
+    TEST_TENANT_ID
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 export const dbNamePrefix = jsTestName();  // for multithreading usage this is not the final dbname
 
@@ -31,6 +34,7 @@ function startStreamProcessor(pipeline, spName, threadId) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${spName}${threadId}`,
         processorId: spName,
         pipeline: pipeline,

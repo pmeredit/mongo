@@ -30,6 +30,7 @@ class SourceBufferManager;
 // Encapsulates the top-level state of a stream processor.
 struct Context {
     std::string tenantId;
+    std::string projectId;
     std::string streamName;
     boost::optional<std::string> instanceName;
     std::string streamProcessorId;

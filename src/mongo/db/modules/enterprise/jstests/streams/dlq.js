@@ -13,6 +13,7 @@ import {
     listStreamProcessors,
     stopStreamProcessor,
     sanitizeDoc,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
@@ -32,6 +33,7 @@ function startStreamProcessor(pipeline) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: processorName,
         processorId: 'mergeTest1',
         pipeline: pipeline,

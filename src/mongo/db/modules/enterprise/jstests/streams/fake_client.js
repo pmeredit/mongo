@@ -7,7 +7,10 @@ import {Thread} from "jstests/libs/parallelTester.js";
 import {
     flushUntilStopped
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
-import {TEST_TENANT_ID} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    TEST_PROJECT_ID,
+    TEST_TENANT_ID
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 // StreamProcessor and Streams classes are used to make the
 // client javascript look like the syntax spec.
@@ -20,6 +23,7 @@ export class StreamProcessor {
                 dbForTest,
                 isRunningOnAtlasStreamProcessor = false) {
         this._tenantId = tenantId;
+        this._projectId = tenantId;
         this._name = name;
         this._pipeline = pipeline;
         this._connectionRegistry = connectionRegistry;
@@ -39,6 +43,7 @@ export class StreamProcessor {
         return {
             streams_startStreamProcessor: '',
             tenantId: this._tenantId,
+            projectId: this._projectId,
             name: this._processorId,
             processorId: this._name,
             pipeline: this._pipeline,

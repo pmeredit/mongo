@@ -12,6 +12,7 @@ import {
     listStreamProcessors,
     makeRandomString,
     stopStreamProcessor,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
@@ -35,6 +36,7 @@ function badDBSourceStartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -73,6 +75,7 @@ function badDBSourceStartErrorWithStartAtOperationTime() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -108,6 +111,7 @@ function badKafkaSourceStartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -161,6 +165,7 @@ function badMergeStartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -215,6 +220,7 @@ function badMerge_WithOn_StartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -267,6 +273,7 @@ function badMongoDLQAsyncError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -324,6 +331,7 @@ function badKafkaEmit() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -354,6 +362,7 @@ function badKafkaEmit() {
     result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: "sp2",
         processorId: "sp2",
         pipeline: [
@@ -434,6 +443,7 @@ function changeSourceFailsAfterSuccesfulStart() {
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -528,6 +538,7 @@ function mergeFailsWithFullQueue() {
     assert.commandWorked(mongostream.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -616,6 +627,7 @@ function startFailedStreamProcessor() {
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -659,6 +671,7 @@ function startFailedStreamProcessor() {
     let result = assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -692,6 +705,7 @@ function unparseableMongocxxUri() {
     const result = db.runCommand({
         streams_startStreamProcessor: "Test roll back random",
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [

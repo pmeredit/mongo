@@ -836,6 +836,9 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     auto context = std::make_unique<Context>();
     context->tenantId = tenantId;
+    if (request.getProjectId()) {
+        context->projectId = request.getProjectId()->toString();
+    }
     context->streamName = name;
     context->streamProcessorId = request.getProcessorId().toString();
 
