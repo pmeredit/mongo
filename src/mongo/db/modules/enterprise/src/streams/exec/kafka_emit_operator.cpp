@@ -163,7 +163,7 @@ boost::optional<std::string> KafkaEmitOperator::Connector::getVerboseCallbackErr
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
-    _deliveryCb = std::make_unique<DeliveryReportCallback>(_context);
+    _deliveryCb = std::make_unique<DeliveryReportCallback>(_context, &_metrics);
 
     auto setConf = [confPtr = conf.get(), this](const std::string& confName,
                                                 auto confValue,
@@ -619,6 +619,12 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
                                   nullptr /* Per-message opaque value passed to delivery report */);
     };
     auto deadline = Date_t::now() + Milliseconds{getKafkaProduceTimeoutMs(_context->featureFlags)};
+
+    if (_metrics.use()) {
+        _metrics.queueCount->incBy(1);
+        _metrics.queueByteSize->incBy(docSize);
+    }
+
     auto err = pollAndProduce();
     while (err == RdKafka::ERR__QUEUE_FULL && Date_t::now() < deadline) {
         tryLog(9604800, [&](int logID) {
@@ -632,6 +638,10 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     // If there is no error, we will need to clean up the header ourselves. Otherwise, the API above
     // has already freed up the headers for us.
     if (err != RdKafka::ERR_NO_ERROR) {
+        if (_metrics.use()) {
+            _metrics.queueCount->incBy(-1);
+            _metrics.queueByteSize->incBy(-1 * docSize);
+        }
         if (headers != nullptr) {
             delete headers;
         }
@@ -654,6 +664,24 @@ void KafkaEmitOperator::doStart() {
     options.kafkaResolveCallback = _resolveCbImpl;
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
+}
+
+void KafkaEmitOperator::registerMetrics(MetricManager* metricManager) {
+    if (_useDeliveryCallback) {
+        // We rely on delivery callback for accurate metrics.
+        _metrics.maxLatency =
+            metricManager->registerIntGauge("kafka_emit_max_latency_micros",
+                                            "Max latency according to rdkafka in micros",
+                                            getDefaultMetricLabels(_context));
+        _metrics.queueByteSize =
+            metricManager->registerIntGauge("kafka_emit_queue_byte_size",
+                                            "Byte size in rdkafka producer queue",
+                                            getDefaultMetricLabels(_context));
+        _metrics.queueCount =
+            metricManager->registerIntGauge("kafka_emit_queue_count",
+                                            "Count of events in rdkafka producer queue",
+                                            getDefaultMetricLabels(_context));
+    }
 }
 
 void KafkaEmitOperator::doStop() {
@@ -719,6 +747,20 @@ void KafkaEmitOperator::DeliveryReportCallback::dr_cb(RdKafka::Message& message)
         _status = Status{
             ErrorCodes::StreamProcessorKafkaConnectionError,
             fmt::format("Kafka $emit encountered error {}: {}", message.err(), message.errstr())};
+    }
+
+    if (_metrics->use()) {
+        int64_t latency = message.latency();
+        if (latency != -1) {
+            // dr_cb runs on the single thead that calls poll, so it's fine to do this check and set
+            // non-atomically.
+            int64_t maxLatency = _metrics->maxLatency->value();
+            if (latency > maxLatency) {
+                _metrics->maxLatency->set(latency);
+            }
+        }
+        _metrics->queueCount->incBy(-1);
+        _metrics->queueByteSize->incBy(-1 * message.len());
     }
 }
 

@@ -175,6 +175,15 @@ function stopStreamProcessor(name, alreadyFlushedIds = [], skipCheckpointFlush =
     }
 }
 
+function getKafkaEmitMetrics(processorId) {
+    return sp.metrics()['gauges']
+        .filter(m => m.name == "kafka_emit_queue_byte_size" || m.name == "kafka_emit_queue_count" ||
+                    m.name == "kafka_emit_max_latency_micros")
+        .filter((m) => {
+            return m.labels.some(l => l.key === "processor_id" && l.value === processorId);
+        });
+}
+
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
 function makeMongoToKafkaStartCmd({
     collName,
@@ -2043,13 +2052,24 @@ function testKafkaAsyncError() {
     // Crash the Kafka broker.
     kafkaThatWillFail.stop();
 
+    let queueMetricsAppeared = false;
     assert.soon(() => {
         // Kafka $emit errors are detected during flush. Write some data so checkpoints and
         // flushes happen and we detect the error.
         sourceColl1.insert({a: 1});
+
+        // Validate the queue metrics show as non zero.
+        if (!queueMetricsAppeared) {
+            const queueMetrics = getKafkaEmitMetrics(startCmd.processorId);
+            if (queueMetrics.filter(m => m.value > 0).length == 3) {
+                queueMetricsAppeared = true;
+            } else {
+                return false;
+            }
+        }
+
         let result = listStreamProcessors();
         let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
-        jsTestLog(mongoToKafka);
         return mongoToKafka.status == "error" &&
             mongoToKafka.error.reason.includes("Kafka $emit encountered error");
 

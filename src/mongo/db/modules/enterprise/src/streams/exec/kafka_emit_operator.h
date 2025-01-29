@@ -109,6 +109,8 @@ protected:
     // Here we flush those messages.
     void doFlush() override;
 
+    void registerMetrics(MetricManager* metricManager) override;
+
 private:
     static constexpr double kTryLogRate{1.0 / 60};
 
@@ -155,10 +157,26 @@ private:
         ConnectionStatus _connectionStatus;
     };
 
+    // Metrics specific to librdkafka producer queue.
+    struct ProducerQueueMetrics {
+        // Returns true if metrics should be used.
+        bool use() {
+            return queueCount && queueByteSize && maxLatency;
+        }
+
+        // The number of events in librdkafka's producer queue.
+        std::shared_ptr<IntGauge> queueCount;
+        // The number of bytes in librdkafka's producer queue.
+        std::shared_ptr<IntGauge> queueByteSize;
+        // The max latency of message delivery according to librdkafka.
+        std::shared_ptr<IntGauge> maxLatency;
+    };
+
     // Used to detect connection/timeout errors in sending a message to Kafka.
     class DeliveryReportCallback : public RdKafka::DeliveryReportCb {
     public:
-        DeliveryReportCallback(Context* context) : _context(context) {}
+        DeliveryReportCallback(Context* context, ProducerQueueMetrics* metrics)
+            : _context(context), _metrics(metrics) {}
 
         // Callback function invoked by librdkafka.
         void dr_cb(RdKafka::Message& message) override;
@@ -168,6 +186,12 @@ private:
 
     private:
         Context* _context{nullptr};
+
+        // Metrics on queue size.
+        ProducerQueueMetrics* _metrics{nullptr};
+
+        // Max latency of event delivery (according to librdkafka).
+        int64_t _maxLatencyMicros{0};
 
         // Protects the members below.
         mutable mongo::stdx::mutex _mutex;
@@ -218,5 +242,7 @@ private:
     mongo::stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
     // timer used for log rate limiting
     Timer _timer{};
+    // Metrics about queue size and latency.
+    ProducerQueueMetrics _metrics;
 };
 }  // namespace streams
