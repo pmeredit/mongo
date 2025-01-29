@@ -44,7 +44,7 @@ int c_plugin_echo_aggregation_stage_parse(char bson_type,
                                           size_t* error_len) {
     if (bson_type != 3) {  // embedded document
         *error = (char*)kNotADocument;
-        *error_len = sizeof(kNotADocument);
+        *error_len = sizeof(kNotADocument) - 1;
         return 1;
     }
 

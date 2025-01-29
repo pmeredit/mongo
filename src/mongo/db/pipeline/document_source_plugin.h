@@ -47,7 +47,6 @@ public:
 
     Value serialize(const SerializationOptions& opts) const override {
         // XXX this needs to call into the plugin.
-        fassert(123456, false);
         return Value();
     }
 
