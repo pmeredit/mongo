@@ -3,8 +3,6 @@
 #include <memory>
 #include <string>
 
-namespace mongo {
-
 namespace {
 struct c_plugin_echo_aggregation_stage {
     mongodb_aggregation_stage stage;
@@ -71,6 +69,5 @@ void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal) {
                                          sizeof(c_plugin_echo_aggregation_stage::kStageName) - 1,
                                          c_plugin_echo_aggregation_stage_parse);
 }
-}
 
-}  // namespace mongo
+}  // extern "C"

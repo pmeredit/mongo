@@ -1,7 +1,5 @@
 #include <stddef.h>
 
-namespace mongo {
-
 extern "C" {
 enum MongoDBPluginVersion {
     MONGODB_PLUGIN_VERSION_0 = 0,
@@ -72,6 +70,5 @@ struct mongodb_plugin_portal {
 //
 // A function with this signature would be called in each plugin shared object loaded.
 void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal);
-}
 
-}  // namespace mongo
+}  // extern "C"

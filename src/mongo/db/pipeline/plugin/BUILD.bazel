@@ -1,8 +1,26 @@
 load("//bazel:mongo_src_rules.bzl", "mongo_cc_library")
+load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_library")
 
 mongo_cc_library(
     name = "plugin",
     visibility = ["//visibility:public"],
     hdrs = [ "api.h" ],
     srcs = [ "api.cpp" ],
+)
+
+rust_bindgen_library(
+    name = "plugin_api_bindgen",
+    cc_lib = ":plugin",
+    header = ":api.h",
+    bindgen_flags = [
+        # Override ABI to C-unwind.
+        # This allows us to safely call back into C++ code that may throw
+        "--override-abi",
+        ".*=C-unwind",
+    ],
+    clang_flags = [
+        "-x",
+        "c++",
+    ],
+    merge_cc_lib_objects_into_rlib = False,
 )
