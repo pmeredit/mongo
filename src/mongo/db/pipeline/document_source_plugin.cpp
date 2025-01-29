@@ -1,6 +1,9 @@
 #include "mongo/db/pipeline/document_source_plugin.h"
 
+#include <cstdint>
+
 #include "mongo/base/init.h"  // IWYU pragma: keep
+#include "mongo/bson/bsonobj.h"
 
 namespace mongo {
 
@@ -33,6 +36,17 @@ static void add_aggregation_stage(const char* name,
         boost::none);
 }
 
+static bool is_valid_bson_document(const char* bson_value, size_t bson_value_len) {
+    if (bson_value_len < BSONObj::kMinBSONLength) {
+        return false;
+    }
+
+    // Decode the value in little-endian order.
+    int32_t document_len = (int32_t)bson_value[0] | ((int32_t)bson_value[1] << 8) |
+        ((int32_t)bson_value[2] << 16) | ((int32_t)bson_value[3] << 24);
+    return document_len >= 0 && (size_t)document_len == bson_value_len;
+}
+
 MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
                           ("BeginDocumentSourceRegistration"),
                           ("EndDocumentSourceRegistration"))
@@ -49,9 +63,10 @@ DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
     int code = _plugin_stage->get_next(_plugin_stage.get(), &result, &result_len);
     switch (code) {
         case GET_NEXT_ADVANCED:
-            // XXX BSONObj() accepts a raw pointer without a length which gives me the ick.
-            // Confirm that the 32-bit value at the start of result matches result_len before
-            // currying this into a Document.
+            // Ensure that the result buffer contains a document bound to result_len.
+            tassert(123456,
+                    str::stream() << "plugin returned an invalid BSONObj.",
+                    is_valid_bson_document(result, result_len));
             return GetNextResult(Document(BSONObj(result)));
         case GET_NEXT_EOF:
             return GetNextResult::makeEOF();
