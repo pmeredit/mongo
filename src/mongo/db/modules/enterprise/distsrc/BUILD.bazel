@@ -1,0 +1,6 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "enterprise_license_files",
+    srcs = glob(["*"]),
+)
