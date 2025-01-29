@@ -3,4 +3,4 @@ coll.drop();
 
 const input = { "c": "C!" }
 
-assert.eq(coll.aggregate([{"$echoC": input}]).toArray(), [input])
+assert.eq(coll.aggregate([{$echoC: input}]).toArray(), [input]);

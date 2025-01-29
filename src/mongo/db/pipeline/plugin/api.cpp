@@ -65,8 +65,10 @@ int c_plugin_echo_aggregation_stage_parse(char bson_type,
 extern "C" {
 
 void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal) {
+    // Register kStageName - 1 bytes to avoid including the null terminator.
+    // Note that this is still a valid c string which is often assumed throughout mongod.
     plugin_portal->add_aggregation_stage(c_plugin_echo_aggregation_stage::kStageName,
-                                         sizeof(c_plugin_echo_aggregation_stage::kStageName),
+                                         sizeof(c_plugin_echo_aggregation_stage::kStageName) - 1,
                                          c_plugin_echo_aggregation_stage_parse);
 }
 }

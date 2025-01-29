@@ -33,7 +33,7 @@ static void add_aggregation_stage(const char* name,
         boost::none);
 }
 
-MONGO_INITIALIZER_GENERAL(addToDoSourceParserMap_plugin,
+MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
                           ("BeginDocumentSourceRegistration"),
                           ("EndDocumentSourceRegistration"))
 (InitializerContext*) {
