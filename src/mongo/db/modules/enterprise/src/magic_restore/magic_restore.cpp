@@ -564,6 +564,19 @@ void updateShardNameMetadata(OperationContext* opCtx,
                 fassert(8256803, status);
             }
 
+            // If a movePrimary operation has entered the critical section, update fields in the
+            // critical section document to reflect the new shard name.
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kCollectionCriticalSectionsNamespace,
+                BSON("reason.command"
+                     << "movePrimary"
+                     << "reason.to" << srcShardName),
+                {BSON("$set" << BSON("reason.to" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(9031701, status);
+            }
+
             renameLocalReshardingMetadataCollections(
                 opCtx, storageInterface, reshardingMetadataColls, srcShardName, dstShardName);
         }
