@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stddef.h>
 
 extern "C" {
@@ -65,10 +67,5 @@ struct mongodb_plugin_portal {
                                   size_t name_len,
                                   mongodb_parse_aggregation_stage parser);
 };
-
-// Invoked when a plugin is loaded to allow the plugin to register services.
-//
-// A function with this signature would be called in each plugin shared object loaded.
-void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal);
 
 }  // extern "C"

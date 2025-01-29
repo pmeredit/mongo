@@ -1,7 +1,11 @@
-#include "mongo/db/pipeline/plugin/api.h"
+#include "mongo/db/pipeline/plugin/c_plugin.h"
 
 #include <memory>
 #include <string>
+
+#include "mongo/db/pipeline/plugin/api.h"
+
+namespace mongo {
 
 namespace {
 struct c_plugin_echo_aggregation_stage {
@@ -60,9 +64,7 @@ int c_plugin_echo_aggregation_stage_parse(char bson_type,
 }
 }  // namespace
 
-extern "C" {
-
-void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal) {
+void initialize_c_plugins(mongodb_plugin_portal* plugin_portal) {
     // Register kStageName - 1 bytes to avoid including the null terminator.
     // Note that this is still a valid c string which is often assumed throughout mongod.
     plugin_portal->add_aggregation_stage(c_plugin_echo_aggregation_stage::kStageName,
@@ -70,4 +72,4 @@ void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal) {
                                          c_plugin_echo_aggregation_stage_parse);
 }
 
-}  // extern "C"
+}  // namespace mongo

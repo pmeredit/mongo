@@ -4,6 +4,7 @@
 
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/pipeline/plugin/plugin.h"
 
 namespace mongo {
 
