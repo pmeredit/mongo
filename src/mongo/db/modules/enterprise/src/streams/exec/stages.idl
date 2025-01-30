@@ -579,7 +579,7 @@ structs:
         strict: true
         fields:
             boundary:
-                description: "String representing how window boundaries are determined. Should be one of 'eventTime' and 'processingTime'."
+                description: "String representing how window boundaries are determined."
                 type: WindowBoundary
                 default: eventTime
             interval:
@@ -610,6 +610,10 @@ structs:
         description: "$sessionWindow stage options"
         strict: true
         fields:
+            boundary:
+                description: "String representing how window boundaries are determined."
+                type: WindowBoundary
+                default: eventTime
             gap:
                 description: "Defines the gap between sessions."
                 type: StreamTimeDuration

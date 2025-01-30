@@ -17,6 +17,7 @@ structs:
         strict: false
         fields:
             eventTimeMs:
+                cpp_name: timestampMs
                 type: safeInt64
 
     CheckpointSummaryStats:

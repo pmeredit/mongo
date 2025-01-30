@@ -337,7 +337,12 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
 int64_t parseAllowedLateness(
     const boost::optional<std::variant<std::int32_t, StreamTimeDuration>>& param,
     mongo::WindowBoundaryEnum windowBoundary = mongo::WindowBoundaryEnum::eventTime) {
-    if (windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+    bool isProcessingTimeWindow = windowBoundary == mongo::WindowBoundaryEnum::processingTime;
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify allowed lateness value for a processing time window",
+            !(param && isProcessingTimeWindow));
+
+    if (isProcessingTimeWindow) {
         return 0;
     }
     // From the spec, 3 seconds is the default allowed lateness.
@@ -367,8 +372,16 @@ int64_t parseAllowedLateness(
 }
 
 boost::optional<int64_t> parseIdleTimeout(
-    const boost::optional<std::variant<int32_t, StreamTimeDuration>>& param) {
+    const boost::optional<std::variant<int32_t, StreamTimeDuration>>& param,
+    mongo::WindowBoundaryEnum windowBoundary = mongo::WindowBoundaryEnum::eventTime) {
+    bool isProcessingTimeWindow = windowBoundary == mongo::WindowBoundaryEnum::processingTime;
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify idle timeout value for a processing time window",
+            !(param && isProcessingTimeWindow));
     int64_t idleTimeoutMs = 0;
+    if (isProcessingTimeWindow) {
+        return idleTimeoutMs;
+    }
     if (!param) {
         return boost::none;
     }
@@ -553,14 +566,28 @@ mongo::WindowBoundaryEnum Planner::getValidWindowBoundary(auto options) {
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "Processing time windows are not supported",
                 enabled && *enabled);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot specify allowed lateness value for a processing time window",
-                !options.getAllowedLateness());
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot specify idle timeout value for a processing time window",
-                !options.getIdleTimeout());
     }
     return boundary;
+}
+
+bool isProcessingTimeWindow(const BSONObj& stage) {
+    std::variant<TumblingWindowOptions, HoppingWindowOptions, SessionWindowOptions> opts;
+    std::string firstElementFieldName = stage.firstElementFieldName();
+    if (firstElementFieldName == kTumblingWindowStageName) {
+        opts = TumblingWindowOptions::parse(IDLParserContext{kTumblingWindowStageName},
+                                            stage.getField(kTumblingWindowStageName).Obj());
+    } else if (firstElementFieldName == kHoppingWindowStageName) {
+        opts = HoppingWindowOptions::parse(IDLParserContext{kHoppingWindowStageName},
+                                           stage.getField(kHoppingWindowStageName).Obj());
+    } else {
+        opts = SessionWindowOptions::parse(IDLParserContext{kSessionWindowStageName},
+                                           stage.getField(kSessionWindowStageName).Obj());
+    }
+    return std::visit(OverloadedVisitor{[](auto windowOptions) -> bool {
+                          return bool(windowOptions.getBoundary() ==
+                                      mongo::WindowBoundaryEnum::processingTime);
+                      }},
+                      opts);
 }
 
 void Planner::appendOperator(std::unique_ptr<Operator> oper) {
@@ -1307,7 +1334,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     WindowAssigner::Options windowingOptions;
     windowingOptions.windowBoundary = getValidWindowBoundary(options);
 
-    tassert(9940801, "Operators shouldn't be empty", !_operators.empty());
+    tassert(ErrorCodes::InternalError, "Operators shouldn't be empty", !_operators.empty());
     if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
         src->setWindowBoundary(windowingOptions.windowBoundary);
     }
@@ -1319,8 +1346,8 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs =
         parseAllowedLateness(options.getAllowedLateness(), windowingOptions.windowBoundary);
-    windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
-
+    windowingOptions.idleTimeoutMs =
+        parseIdleTimeout(options.getIdleTimeout(), windowingOptions.windowBoundary);
     _windowPlanningInfo.emplace();
     _windowPlanningInfo->stubDocumentSource = source;
     _windowPlanningInfo->windowAssigner =
@@ -1397,9 +1424,11 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     WindowAssigner::Options windowingOptions;
     windowingOptions.windowBoundary = getValidWindowBoundary(options);
 
+    tassert(ErrorCodes::InternalError, "Operators shouldn't be empty", !_operators.empty());
     if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
         src->setWindowBoundary(windowingOptions.windowBoundary);
     }
+
     windowingOptions.size = windowInterval.getSize();
     windowingOptions.sizeUnit = windowInterval.getUnit();
     windowingOptions.slide = hopInterval.getSize();
@@ -1408,7 +1437,8 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs =
         parseAllowedLateness(options.getAllowedLateness(), windowingOptions.windowBoundary);
-    windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
+    windowingOptions.idleTimeoutMs =
+        parseIdleTimeout(options.getIdleTimeout(), windowingOptions.windowBoundary);
     // TODO: what about offset.
 
     _windowPlanningInfo.emplace();
@@ -2130,16 +2160,19 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
 
         // We only use watermarks when the pipeline contains a window stage.
         bool useWatermarks{false};
-        // We only send idle watermarks if the window idleTimeout is set.
+        // We only send idle watermarks if the window idleTimeout is set or if the window is a
+        // processing time window.
         bool sendIdleMessages{false};
         for (const BSONObj& stage : bsonPipeline) {
             const auto& name = stage.firstElementFieldNameStringData();
             if (isWindowStage(name)) {
                 useWatermarks = true;
                 auto windowOptions = stage.getField(name);
+
                 sendIdleMessages = windowOptions.type() == BSONType::Object &&
                     (windowOptions.Obj().hasElement(HoppingWindowOptions::kIdleTimeoutFieldName) ||
-                     windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName));
+                     windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName) ||
+                     isProcessingTimeWindow(stage));
                 break;
             }
         }

@@ -85,8 +85,10 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
     if (getOptions().sendIdleMessages && emptyBatch) {
         // If _options.sendIdleMessages is set, always send a kIdle watermark when
         // there are no docs in the batch.
+        int64_t curTime = getRealOrMockedCurTimeMillis64();
         StreamControlMsg msg{.watermarkMsg =
-                                 WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
+                                 WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle,
+                                                     .watermarkTimestampMs = curTime}};
         _lastControlMsg = msg;
         sendControlMsg(0, std::move(msg));
     }

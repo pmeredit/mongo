@@ -4,8 +4,6 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
-#include "mongo/util/timer.h"
-#include "streams/util/exception.h"
 #include <boost/optional/optional.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/document/value.hpp>
@@ -33,6 +31,8 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/time_support.h"
+#include "mongo/util/timer.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
@@ -45,6 +45,7 @@
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
+#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -588,8 +589,10 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         if (_options.sendIdleMessages && _isIdle.load()) {
             // If _options.sendIdleMessages is set, send a kIdle watermark when
             // there are 0 docs in the batch and the background thread has set _isIdle.
-            StreamControlMsg msg{
-                .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
+            int64_t curTime = curTimeMillis64();
+            StreamControlMsg msg{.watermarkMsg =
+                                     WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle,
+                                                         .watermarkTimestampMs = curTime}};
             _lastControlMsg = msg;
             sendControlMsg(0, std::move(msg));
         }
@@ -768,21 +771,25 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc,
                                                        const Document& fullDocument) {
     mongo::Date_t ts;
-    if (_options.timestampExtractor) {
-        ts = _options.timestampExtractor->extractTimestamp(fullDocument);
-    } else if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
-               !wallTime.missing()) {
-        uassert(7926400,
-                "Change event's wall time was not a date",
-                wallTime.getType() == BSONType::Date);
-        ts = wallTime.getDate();
+    if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+        ts = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
     } else {
-        auto clusterTime = changeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
-        uassert(7926401, "Change event did not have clusterTime", !clusterTime.missing());
-        uassert(7926402,
-                "clusterTime for change event was not a timestamp",
-                clusterTime.getType() == BSONType::bsonTimestamp);
-        ts = Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
+        if (_options.timestampExtractor) {
+            ts = _options.timestampExtractor->extractTimestamp(fullDocument);
+        } else if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
+                   !wallTime.missing()) {
+            uassert(7926400,
+                    "Change event's wall time was not a date",
+                    wallTime.getType() == BSONType::Date);
+            ts = wallTime.getDate();
+        } else {
+            auto clusterTime = changeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
+            uassert(7926401, "Change event did not have clusterTime", !clusterTime.missing());
+            uassert(7926402,
+                    "clusterTime for change event was not a timestamp",
+                    clusterTime.getType() == BSONType::bsonTimestamp);
+            ts = Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
+        }
     }
 
     if (_watermarkGenerator) {
@@ -840,7 +847,7 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     streamDoc.streamMeta.setSource(std::move(streamMetaSource));
     streamDoc.onMetaUpdate(_context);
 
-    streamDoc.minProcessingTimeMs = curTimeMillis64();
+    streamDoc.minProcessingTimeMs = ts.toMillisSinceEpoch();
     streamDoc.minDocTimestampMs = ts.toMillisSinceEpoch();
     streamDoc.maxDocTimestampMs = ts.toMillisSinceEpoch();
     return streamDoc;
@@ -853,7 +860,7 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
         if (_state.getWatermark()) {
             // All watermarks start as active when restoring from a checkpoint.
             WatermarkControlMsg watermark{WatermarkStatus::kActive,
-                                          _state.getWatermark()->getEventTimeMs()};
+                                          _state.getWatermark()->getTimestampMs()};
             _watermarkGenerator =
                 std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
                                                             nullptr /* combiner */,

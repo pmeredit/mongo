@@ -118,16 +118,23 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
 
     // Organize docs according to the window(s) the doc belongs to.
     // First, sort the documents by timestamp.
-    std::sort(
-        dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
-            return lhs.minDocTimestampMs < rhs.minDocTimestampMs;
-        });
+    // TODO(SERVER-99893): Add source logic to validate timestamps are monotonically increasing
+    if (!options.windowAssigner->hasProcessingTimeWindowBoundary()) {
+        std::sort(
+            dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
+                return lhs.minDocTimestampMs < rhs.minDocTimestampMs;
+            });
+    }
 
     int64_t nextWindowStartDocIdx{0};
     int64_t endTs = dataMsg.docs.back().minDocTimestampMs;
     int64_t nextWindowStartTs =
         options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minDocTimestampMs);
 
+    tassert(9843000,
+            "Docs should not be DLQed in processing time mode",
+            nextWindowStartTs >= _minWindowStartTime ||
+                !options.windowAssigner->hasProcessingTimeWindowBoundary());
     // DLQ docs that are too late to fit in any open window.
     if (nextWindowStartTs < _minWindowStartTime) {
         nextWindowStartTs = _minWindowStartTime;
@@ -158,6 +165,9 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
             // This doc and following docs in the sorted batch are not late.
             break;
         }
+        tassert(9843001,
+                "Shouldn't get to the point of DLQing a doc in processing time mode",
+                !options.windowAssigner->hasProcessingTimeWindowBoundary());
         sendLateDocDlqMessage(dataMsg.docs[i], minEligibleStartTime);
     }
 
@@ -500,46 +510,53 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         tassert(8318506,
                 "Expected a watermarkStatus of kIdle",
                 watermark.watermarkStatus == WatermarkStatus::kIdle);
-        if (!assigner.hasIdleTimeout()) {
-            // User has not set an idle timeout, so we don't do anything for idle messages.
-            return;
+        if (options.windowAssigner->hasProcessingTimeWindowBoundary()) {
+            inputWatermarkTime = watermark.watermarkTimestampMs;
         }
-
-        auto now = Date_t::now().toMillisSinceEpoch();
-        if (!_idleStartTime) {
-            // Start the idle time counter and return.
-            _idleStartTime = now;
-        }
-
-        auto duration = now - *_idleStartTime;
-        if (!assigner.hasIdleTimeoutElapsed(duration)) {
-            // The idle timeout hasn't occured, return.
-            return;
-        }
-
-        if (_windows.empty()) {
-            // There are no open windows so we do nothing with idleness, return.
-            return;
-        }
-
-        // The idle timeout has occured.
-        boost::optional<int64_t> maxWindowEndToClose;
-        for (auto windowIt = _windows.rbegin(); windowIt != _windows.rend(); ++windowIt) {
-            // We close all windows with a "remaining time" less than the idle duration.
-            // "remaining time" is the window end minus the last observed event time watermark.
-            auto windowEndTime = assigner.getWindowEndTime(windowIt->first);
-            auto remainingTime = windowEndTime - _maxReceivedWatermarkMs;
-            if (duration >= remainingTime) {
-                // We want to close this window, and all windows before it.
-                maxWindowEndToClose = windowEndTime;
-                break;
+        // Event time idle timeout logic
+        else {
+            if (!assigner.hasIdleTimeout()) {
+                // User has not set an idle timeout, so we don't do
+                // anything for idle messages.
+                return;
             }
+
+            auto now = Date_t::now().toMillisSinceEpoch();
+            if (!_idleStartTime) {
+                // Start the idle time counter and return.
+                _idleStartTime = now;
+            }
+
+            auto duration = now - *_idleStartTime;
+            if (!assigner.hasIdleTimeoutElapsed(duration)) {
+                // The idle timeout hasn't occurred, return.
+                return;
+            }
+
+            if (_windows.empty()) {
+                // There are no open windows so we do nothing with idleness, return.
+                return;
+            }
+
+            // The idle timeout has occurred.
+            boost::optional<int64_t> maxWindowEndToClose;
+            for (auto windowIt = _windows.rbegin(); windowIt != _windows.rend(); ++windowIt) {
+                // We close all windows with a "remaining time" less than the idle duration.
+                // "remaining time" is the window end minus the last observed event time watermark.
+                auto windowEndTime = assigner.getWindowEndTime(windowIt->first);
+                auto remainingTime = windowEndTime - _maxReceivedWatermarkMs;
+                if (duration >= remainingTime) {
+                    // We want to close this window, and all windows before it.
+                    maxWindowEndToClose = windowEndTime;
+                    break;
+                }
+            }
+            if (!maxWindowEndToClose) {
+                // Idle duration is not large enough to close any open windows.
+                return;
+            }
+            inputWatermarkTime = *maxWindowEndToClose;
         }
-        if (!maxWindowEndToClose) {
-            // Idle duration is not large enough to close any open windows.
-            return;
-        }
-        inputWatermarkTime = *maxWindowEndToClose;
     }
 
     auto windowIt = _windows.begin();
