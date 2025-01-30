@@ -1146,6 +1146,13 @@ runChangeStreamSourceTestFailOnStart(
     ["StreamProcessorUserError"],
 );
 
+// Should fail due to an invalid fieldPath
+runChangeStreamSourceTestFailOnStart(
+    {config: {pipeline: [{$addFields: {documentKey: "$documentKey.$thisIsInvalid"}}]}},
+    ErrorCodes.StreamProcessorInvalidOptions,
+    ["StreamProcessorUserError"],
+);
+
 function runChangeStreamSourceTestFailOnInsert(sourceSpecOverrides, expectedErrCode, isUserError) {
     clearState();
 
@@ -1171,6 +1178,24 @@ function runChangeStreamSourceTestFailOnInsert(sourceSpecOverrides, expectedErrC
 // Should fail on write due to modifying changestream resume token
 runChangeStreamSourceTestFailOnInsert(
     {config: {pipeline: [{$replaceRoot: {newRoot: {_id: 123}}}]}},
+    ErrorCodes.StreamProcessorInvalidOptions,
+    true,
+);
+
+// Should fail on write due to invalid js
+runChangeStreamSourceTestFailOnInsert(
+    {
+        config: {
+            "pipeline": [{
+                "$addFields": {
+                    "foo": {
+                        "$function":
+                            {"args": [], "body": "function(doc) { return doc_typo; }", "lang": "js"}
+                    }
+                }
+            }]
+        }
+    },
     ErrorCodes.StreamProcessorInvalidOptions,
     true,
 );

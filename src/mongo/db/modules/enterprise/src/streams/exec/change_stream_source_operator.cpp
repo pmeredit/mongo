@@ -72,6 +72,7 @@ static constexpr char kErrorCodeFieldName[] = "code";
 // Arbitrary error codes for invalid changestream aggregation pipelines
 static constexpr ErrorCodes::Error kEmptyPipelineErrorCode{40323};
 static constexpr ErrorCodes::Error kUnrecognizedPipelineStageNameErrorCode{40324};
+static constexpr ErrorCodes::Error kInvalidFieldPathNameErrorCode{16410};
 
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
@@ -458,6 +459,10 @@ void ChangeStreamSourceOperator::fetchLoop() {
             // number of fields
         case kUnrecognizedPipelineStageNameErrorCode:
             // Caused by a source pipeline aggregation having a unrecognized stage
+        case kInvalidFieldPathNameErrorCode:
+            // Caused by a source pipeline aggregation having an invalid fieldPath
+        case ErrorCodes::JSInterpreterFailure:
+            // Caused by a source pipeline aggregation $function stage having invalid js
         case ErrorCodes::ChangeStreamFatalError:
             // Caused by a source pipeline aggregation attempting to modify an incoming doc's _id
             // field
