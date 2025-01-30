@@ -466,6 +466,19 @@ void updateShardNameMetadata(OperationContext* opCtx,
                                                                      << dstShardName)),
                          Timestamp(0)},
                         std::vector<BSONObj>{BSON("src.id" << srcShardName)} /* arrayFilters */));
+
+            // Update primaryShard in config.system.sharding_ddl_coordinators for createDatabase
+            // operations.
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kShardingDDLCoordinatorsNamespace,
+                BSON("_id.operationType"
+                     << "createDatabase"
+                     << "primaryShard" << srcShardName) /* query */,
+                {BSON("$set" << BSON("primaryShard" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(9928200, status);
+            }
         }
 
         if (isShard(restoreConfig)) {

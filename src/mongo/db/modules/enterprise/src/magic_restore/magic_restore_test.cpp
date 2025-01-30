@@ -893,6 +893,8 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
         opCtx, NamespaceString::kTransactionCoordinatorsNamespace, CollectionOptions{}));
     ASSERT_OK(storage->createCollection(
         opCtx, NamespaceString::kConfigReshardingOperationsNamespace, CollectionOptions{}));
+    ASSERT_OK(storage->createCollection(
+        opCtx, NamespaceString::kShardingDDLCoordinatorsNamespace, CollectionOptions{}));
 
     // Multiple documents with primary backupShard0 and backupShard1, see mapping below.
     ASSERT_OK(storage->insertDocuments(opCtx,
@@ -979,6 +981,15 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
                    << "donorShards" << BSON_ARRAY(BSON("id" << backupShard2)) << "recipientShards"
                    << BSON_ARRAY(BSON("id" << backupShard2) << BSON("id" << backupShard1)))}}));
 
+    ASSERT_OK(
+        storage->insertDocuments(opCtx,
+                                 NamespaceString::kShardingDDLCoordinatorsNamespace,
+                                 {
+                                     InsertStatement{BSON("_id" << BSON("operationType"
+                                                                        << "createDatabase")
+                                                                << "primaryShard" << backupShard0)},
+                                 }));
+
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(magic_restore::NodeTypeEnum::kDedicatedConfigServer);
 
@@ -1052,6 +1063,10 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
                       BSON_ARRAY(BSON("id" << backupShard2)));
     ASSERT_BSONOBJ_EQ(docs[1].getObjectField("recipientShards"),
                       BSON_ARRAY(BSON("id" << backupShard2) << BSON("id" << restoreShard1)));
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kShardingDDLCoordinatorsNamespace);
+    ASSERT_EQ(1, docs.size());
+    ASSERT_EQ(docs[0].getStringField("primaryShard"), restoreShard0);
 }
 
 // Test of updateShardNameMetadata for magic_restore::NodeTypeEnum::kShard.
