@@ -229,7 +229,9 @@ const excludedCollections = [
     `cache.chunks.db.system.resharding.${collUuid}`,
     // config.placementHistory is re-inserted when movePrimary completes on the restored cluster.
     "placementHistory",
-    "system.sharding_ddl_coordinators"
+    "system.sharding_ddl_coordinators",
+    // Renaming shards affects the "primary" field of documents in 'config.shard.databases'.
+    "shard.databases"
 ];
 
 primary = configUtils.rst.getPrimary();
