@@ -70,6 +70,8 @@ void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDoc
 Executor::Executor(Context* context, Options options)
     : _context(context),
       _options(std::move(options)),
+      _idleSleeper(Sleeper::Options{.minSleep = Milliseconds{1},
+                                    .maxSleep = Milliseconds{_options.sourceIdleSleepDurationMs}}),
       _testOnlyDocsQueue(decltype(_testOnlyDocsQueue)::Options{
           .maxQueueDepth = static_cast<size_t>(_options.testOnlyDocsQueueMaxSizeBytes)}) {
     auto labels = getDefaultMetricLabels(_context);
@@ -635,18 +637,18 @@ void Executor::runLoop() {
         RunStatus status = runOnce();
         _runOnceCounter->increment(1);
         switch (status) {
-            case RunStatus::kActive:
+            case RunStatus::kActive: {
+                _idleSleeper.reset();
                 if (_options.sourceNotIdleSleepDurationMs) {
                     stdx::this_thread::sleep_for(
                         stdx::chrono::milliseconds(_options.sourceNotIdleSleepDurationMs));
                 }
                 break;
+            }
             case RunStatus::kIdle:
                 // No docs were flushed in this run, so sleep a little before starting
                 // the next run.
-                // TODO: add jitter
-                stdx::this_thread::sleep_for(
-                    stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
+                _idleSleeper.sleep();
                 break;
             case RunStatus::kShuttingDown:
                 // During shutdown we've written the final checkpoint and we're waiting for

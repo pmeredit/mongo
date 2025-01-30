@@ -1069,8 +1069,11 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
 
         auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
         ASSERT(processorInfo->checkpointCoordinator);
-        ASSERT_EQ(stdx::chrono::milliseconds{expectedIntervalMs},
-                  getCheckpointInterval(processorInfo));
+        setLastCheckpointSize(processorInfo, 0);
+        auto actual = getCheckpointInterval(processorInfo);
+        // Manifest file takes up a few bytes, so if one is written, the next checkpoint interval
+        // will be slightly longer.
+        ASSERT(std::abs((actual - stdx::chrono::milliseconds{expectedIntervalMs}).count()) < 20);
 
         setLastCheckpointSize(processorInfo, 100_MiB);
         // set this to force another checkpoint

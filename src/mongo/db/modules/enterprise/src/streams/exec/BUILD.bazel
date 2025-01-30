@@ -314,6 +314,7 @@ mongo_cc_library(
         "set_operator.h",
         "single_document_transformation_operator.h",
         "sink_operator.h",
+        "sleeper.h",
         "sort_operator.h",
         "source_operator.h",
         "stats_utils.h",

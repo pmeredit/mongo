@@ -24,6 +24,7 @@
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/sleeper.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/util/metric_manager.h"
@@ -137,6 +138,7 @@ private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
     friend class StreamManagerTest;
+    friend class ExecutorTest;
 
     enum class RunStatus {
         kActive,
@@ -202,6 +204,8 @@ private:
     boost::optional<CheckpointId> _lastCheckpointId;
     bool _connected{false};
 
+    // Utility used to sleep when the source is idle.
+    Sleeper _idleSleeper;
 
     // The last snapshot of the stats after a batch is finished.
     // NOTE: This and other stats like _kafkaConsumerPartitionStates might be retrieved
