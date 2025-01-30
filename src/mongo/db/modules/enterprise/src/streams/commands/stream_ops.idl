@@ -363,6 +363,9 @@ structs:
                 type: array<HistogramMetricValue>
                 optional: true
 
+#        description: "Response message for streams_dumpStackTraces command"
+#        is_command_reply: true
+
     UpdateFeatureFlagsReply:
         description: "Response message for UpdateFeatureFlagsCommand."
         is_command_reply: true
@@ -794,6 +797,17 @@ commands:
                 type: bool
                 default: false
 
+#    streams_dumpStackTraces:
+#        description: "Command to get mongostreams to log a stack trace of all threads. This command currently has some issues and so must be used only as a last resort means."
+#        strict: false
+#        cpp_name: DumpStackTracesCommand
+#        command_name: streams_dumpStackTraces
+#        api_version: ""
+#        namespace: ignored
+#        reply_type: DumpStackTracesReply
+#        access_check:
+#            none: true
+
     streams_sendEvent:
         description: "Called by the streams Agent to notify mongostream of an important event."
         strict: false
@@ -814,6 +828,10 @@ commands:
             checkpointFlushedEvent:
                 description: "A checkpoint flushed event."
                 type: CheckpointFlushedEvent
+                optional: true
+            dumpStackTrace:
+                description: "Get mongostreams to log stack trace of all threads"
+                type: bool
                 optional: true
 
     streams_updateFeatureFlags:

@@ -26,6 +26,7 @@
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/processinfo.h"
 #include "mongo/util/scopeguard.h"
+#include "mongo/util/stacktrace.h"
 #include "mongo/util/str.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/change_stream_source_operator.h"
@@ -57,12 +58,17 @@
 #include "streams/exec/util.h"
 #include "streams/management/stream_manager.h"
 
+namespace mongo {
+#if defined(MONGO_STACKTRACE_CAN_DUMP_ALL_THREADS)
+void printAllThreadStacksBlocking();
+#endif
+}  // namespace mongo
+
 using namespace mongo;
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
-
 namespace {
 
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
@@ -1872,6 +1878,16 @@ GetMetricsReply StreamManager::getMetrics() {
     return reply;
 }
 
+void StreamManager::dumpStackTraces() {
+#if defined(MONGO_STACKTRACE_CAN_DUMP_ALL_THREADS)
+    LOGV2_INFO(9620111, "dumpStackTraces start - Getting stack trace of all threads");
+    printAllThreadStacksBlocking();
+    LOGV2_INFO(9620112, "dumpStackTraces done");
+#else
+    LOGV2_INFO(9620113, "dumpStackTraces functionality not available.");
+#endif
+}
+
 mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
     const mongo::UpdateFeatureFlagsCommand& request) {
     LockLogger lk("updateFeatureFlags", _mutex, "", "", request.getTenantId().toString());
@@ -1984,8 +2000,13 @@ void StreamManager::stopAllStreamProcessors() {
 
 mongo::SendEventReply StreamManager::sendEvent(const mongo::SendEventCommand& request) {
     uassert(mongo::ErrorCodes::InternalError,
-            "Expected checkpointFlushed command",
-            request.getCheckpointFlushedEvent());
+            "Expected either checkpointFlushed command or dumpStackTrace command",
+            (bool)request.getCheckpointFlushedEvent() != (bool)request.getDumpStackTrace());
+
+    if (request.getDumpStackTrace()) {
+        dumpStackTraces();
+        return {};
+    }
 
     LockLogger lk("sendEvent",
                   _mutex,

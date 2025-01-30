@@ -110,6 +110,12 @@ public:
     // metrics
     mongo::GetMetricsReply getExternalMetrics();
 
+    // Causes a stack trace of all threads to be logged.
+    // This internally uses the mongod stack tracing functionality which currently has some issues.
+    // So this feature should only be used as a last means resort. Please see SERVER-90755 for more
+    // details.
+    void dumpStackTraces();
+
     // Stops all the running streamProcessors and shuts down the StreamManager.
     // Called while processing a SIGTERM from Kubernetes in the Atlas Stream Processing service.
     void shutdown();
