@@ -11,9 +11,9 @@
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_from_accumulator_quantile.h"
+#include "mongo/db/pipeline/expression_sharding.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
-#include "mongo/s/commands/sharding_expressions.h"
 #include "query_analysis.h"
 
 namespace mongo {

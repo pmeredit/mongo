@@ -36,7 +36,6 @@ mongo_cc_library(
         "query_analysis.h",
         "resolved_encryption_info.h",
         "//src/mongo/db/pipeline:pipeline_metadata_tree.h",
-        "//src/mongo/s/commands:sharding_expressions.h",
     ],
     tags = [
         "mongo_crypt",
@@ -52,6 +51,7 @@ mongo_cc_library(
         "//src/mongo/db:query_exec",
         "//src/mongo/db:query_expressions",
         "//src/mongo/db:shard_role_api",
+        "//src/mongo/db:sharding_expressions",
         "//src/mongo/db/commands:create_command",
         "//src/mongo/db/commands/query_cmd:bulk_write_common",
         "//src/mongo/db/pipeline",
