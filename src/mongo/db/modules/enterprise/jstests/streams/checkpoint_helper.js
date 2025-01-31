@@ -192,10 +192,12 @@ export function commonTest({
     assert.soon(() => { return test.stats().dlqMessageCount == expectedDlq.length; },
                 "waiting for expected DLQ stats",
                 10 * 1000);
-    assert(resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
-                     expectedDlq,
-                     true /* verbose */,
-                     ["_id"]));
+    assert.soon(() => {
+        return resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
+                         expectedDlq,
+                         true /* verbose */,
+                         ["_id"]);
+    });
 
     test.stop();
 }

@@ -34,7 +34,7 @@ public:
     void sleep() {
         mongo::stdx::this_thread::sleep_for(
             mongo::stdx::chrono::milliseconds{getSleepTime().count()});
-        ++_count;
+        _count = std::min(_count + 1, 16);
     }
 
     void reset() {
@@ -42,8 +42,7 @@ public:
     }
 
     mongo::Milliseconds getSleepTime() {
-        return std::min(_options.maxSleep,
-                        _options.minSleep * static_cast<int>(std::pow(2, _count)));
+        return std::min(_options.maxSleep, _options.minSleep * (1 << _count));
     }
 
 private:
