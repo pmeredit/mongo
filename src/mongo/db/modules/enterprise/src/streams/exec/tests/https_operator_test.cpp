@@ -608,8 +608,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             "should make a POST request with payload pipeline",
             [&] {
                 auto rawPipeline = std::vector<mongo::BSONObj>{
-                    fromjson(
-                        R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }}, { $project: { include: 1 }})"),
+                    fromjson(R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }})"),
                 };
                 auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
                 pipeline->optimizePipeline();
@@ -1356,8 +1355,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQInnerPayloadDoc) {
     StringData uri{"http://localhost:10000/"};
 
     auto rawPipeline = std::vector<mongo::BSONObj>{
-        fromjson(
-            R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }}, { $project: { include: 1 }})"),
+        fromjson(R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }})"),
     };
     auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
     pipeline->optimizePipeline();
