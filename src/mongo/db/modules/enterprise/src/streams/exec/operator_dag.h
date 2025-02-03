@@ -87,6 +87,10 @@ public:
         return _options.needsWindowReplay;
     }
 
+    // Returns true if this DAG should report e2e latency.
+    // Returns false if there is a window in the DAG.
+    bool shouldReportLatency();
+
 private:
     friend class OperatorDagTest;
     Options _options;

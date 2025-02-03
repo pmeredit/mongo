@@ -28,7 +28,7 @@ namespace streams {
 // instance.
 class MongoDBProcessInterface : public mongo::MongoProcessInterface {
 public:
-    MongoDBProcessInterface(const streams::MongoCxxClientOptions& options);
+    MongoDBProcessInterface(const MongoCxxClientOptions& options);
 
     // Test-only constructor.
     MongoDBProcessInterface();

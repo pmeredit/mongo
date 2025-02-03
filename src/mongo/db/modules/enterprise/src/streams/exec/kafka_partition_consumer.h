@@ -211,8 +211,8 @@ private:
     // This should only be updated under the `_finalizedDocBatch` mutex.
     OperatorStats _stats;
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-    std::unique_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
-    std::unique_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
+    std::unique_ptr<KafkaConnectAuthCallback> _connectCbImpl;
+    std::unique_ptr<KafkaResolveCallback> _resolveCbImpl;
 };
 
 }  // namespace streams

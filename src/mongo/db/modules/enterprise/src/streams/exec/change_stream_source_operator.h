@@ -111,6 +111,14 @@ private:
         int64_t byteSize{0};
     };
 
+    struct ChangeStreamEventTimestamp {
+        // Wall time from the change stream event.
+        mongo::Date_t wallTimeOrOperationTime;
+        // Assigned timestamp for the event, depends on $source.timeField and
+        // window processing time versus event time.
+        mongo::Date_t assignedTimestamp;
+    };
+
     void doStart() override;
     void doStop() override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
@@ -133,8 +141,8 @@ private:
     DocBatch getDocuments();
 
     // Utility to obtain a timestamp from 'changeEventObj'.
-    mongo::Date_t getTimestamp(const mongo::Document& changeEventObj,
-                               const mongo::Document& fullDocument);
+    ChangeStreamEventTimestamp getTimestamp(const mongo::Document& changeEventObj,
+                                            const mongo::Document& fullDocument);
 
     // Utility to convert 'changeStreamObj' into a StreamDocument.
     boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);

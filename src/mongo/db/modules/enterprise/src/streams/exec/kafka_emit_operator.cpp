@@ -20,6 +20,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_utils.h"
+#include "streams/exec/latency_collector.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/util/exception.h"
@@ -603,20 +604,23 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
 
     RdKafka::Headers* headers = createKafkaHeaders(streamDoc, topicName);
 
+    auto callbackMsg = std::make_unique<DeliveryReportCallback::CallbackMessage>();
     auto pollAndProduce = [&]() {
         // Call poll to serve any queued delivery callbacks.
         // We use a 0 timeout_ms for a non-blocking call.
         _producer->poll(0 /* timeout_ms */);
-        return _producer->produce(topicName,
-                                  _outputPartition,
-                                  flags,
-                                  const_cast<char*>(docAsStr.c_str()),
-                                  docSize,
-                                  keyPointer,
-                                  keyLength,
-                                  0 /* timestamp */,
-                                  headers,
-                                  nullptr /* Per-message opaque value passed to delivery report */);
+        callbackMsg->latencyInfo = LatencyCollector::LatencyInfo::makeBeforeWrite(streamDoc);
+        return _producer->produce(
+            topicName,
+            _outputPartition,
+            flags,
+            const_cast<char*>(docAsStr.c_str()),
+            docSize,
+            keyPointer,
+            keyLength,
+            0 /* timestamp */,
+            headers,
+            callbackMsg.get() /* Per-message opaque value passed to delivery report */);
     };
     auto deadline = Date_t::now() + Milliseconds{getKafkaProduceTimeoutMs(_context->featureFlags)};
 
@@ -648,6 +652,11 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         uasserted(
             ErrorCodes::StreamProcessorKafkaConnectionError,
             kafkaErrToString("Failed to emit to topic {} due to error"_format(topicName), err));
+    }
+
+    if (_useDeliveryCallback) {
+        // If produce succeeds, the delivery callback cleans this up.
+        std::ignore = callbackMsg.release();
     }
 }
 
@@ -738,6 +747,10 @@ void KafkaEmitOperator::doFlush() {
 }
 
 void KafkaEmitOperator::DeliveryReportCallback::dr_cb(RdKafka::Message& message) {
+    // Note: is invoked by the thread that calls poll, which is the Executor thread.
+    // If this changes, make sure that the below code won't cause any thread safety
+    // issues (they currently won't).
+
     if (message.err()) {
         LOGV2_INFO(8853604,
                    "KafkaEmitOperator encountered delivery error",
@@ -747,6 +760,16 @@ void KafkaEmitOperator::DeliveryReportCallback::dr_cb(RdKafka::Message& message)
         _status = Status{
             ErrorCodes::StreamProcessorKafkaConnectionError,
             fmt::format("Kafka $emit encountered error {}: {}", message.err(), message.errstr())};
+    }
+
+    if (message.msg_opaque()) {
+        // Use a unique_ptr to cleanup the callback msg memory.
+        std::unique_ptr<CallbackMessage> msg{static_cast<CallbackMessage*>(message.msg_opaque())};
+        if (!message.err() && _context->latencyCollector) {
+            // Report latency in success cases.
+            msg->latencyInfo.commitTime = Milliseconds{Date_t::now().toMillisSinceEpoch()};
+            _context->latencyCollector->add(std::move(msg->latencyInfo));
+        }
     }
 
     if (_metrics->use()) {

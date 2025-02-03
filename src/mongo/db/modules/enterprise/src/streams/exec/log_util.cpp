@@ -44,4 +44,10 @@ std::string stopReasonToString(StopReason stopReason) {
     }
 }
 
+mongo::BSONObj toBSON(const LoggingContext& loggingContext) {
+    return BSON("streamProcessorName" << loggingContext.streamProcessorName << "streamProcessorId"
+                                      << loggingContext.streamProcessorId << "tenantId"
+                                      << loggingContext.tenantId);
+}
+
 }  // namespace streams

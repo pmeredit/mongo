@@ -18,6 +18,7 @@
 #include "mongo/util/debug_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_event_callback.h"
@@ -705,14 +706,17 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Messa
             sourceDoc.headers.emplace_back(std::move(header));
         }
     }
-    // TODO: https://jira.mongodb.org/browse/STREAMS-245
-    // We should clarify the behavior here later. For now,
-    // we let either MSG_TIMESTAMP_CREATE_TIME or MSG_TIMESTAMP_LOG_APPEND_TIME
-    // take the sourceDoc.logAppendTimeMs, and thus the official _ts of the document.
+
     if (message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME ||
         message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME) {
         sourceDoc.logAppendTimeMs = message.timestamp().timestamp;
+    } else {
+        // Fall back to processor wall time in this case.
+        // We have yet to see this case in prod or elsewhere.
+        dassert(message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_NOT_AVAILABLE);
+        sourceDoc.logAppendTimeMs = curTimeMillis64();
     }
+
     return sourceDoc;
 }
 

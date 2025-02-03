@@ -1112,6 +1112,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         processorInfo->shouldStartDuringValidate = true;
     }
 
+    if (processorInfo->operatorDag->shouldReportLatency()) {
+        processorInfo->context->latencyCollector =
+            std::make_unique<LatencyCollector>(processorInfo->context->toLoggingContext());
+    }
+
     if (checkpointEnabled) {
         bool shouldCreateRestorer = bool(processorInfo->context->restoreCheckpointId) &&
             (!isValidateOnlyRequest(request) || processorInfo->shouldStartDuringValidate);

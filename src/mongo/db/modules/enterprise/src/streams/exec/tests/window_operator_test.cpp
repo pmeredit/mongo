@@ -2336,11 +2336,11 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         }
         ASSERT_GT(actualInput.size(), 0);
         // Determine the last watermark from the input events.
-        int64_t lastWatermarkTime = *actualInput.back().logAppendTimeMs - 1;
+        int64_t lastWatermarkTime = actualInput.back().logAppendTimeMs - 1;
         // Based on the watermark, determine the windows expected to close.
         std::vector<int64_t> expectedWindowStartTimes;
         for (const auto& input : actualInput) {
-            auto startTime = windowAssigner->toOldestWindowStartTime(*input.logAppendTimeMs);
+            auto startTime = windowAssigner->toOldestWindowStartTime(input.logAppendTimeMs);
             auto endTime = startTime + toMillis(size, unit);
             if (lastWatermarkTime >= endTime &&
                 (expectedWindowStartTimes.empty() ||

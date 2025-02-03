@@ -720,6 +720,20 @@ mongo_cc_unit_test(
 )
 
 mongo_cc_unit_test(
+    name = "latency_collector_test",
+    srcs = [
+        "latency_collector_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_second_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
     name = "mongocxx_util_test",
     srcs = [
         "mongocxx_util_test.cpp",

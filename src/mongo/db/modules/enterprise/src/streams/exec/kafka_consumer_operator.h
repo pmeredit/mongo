@@ -227,8 +227,8 @@ private:
         // Used to retrieve error details
         std::unique_ptr<KafkaEventCallback> _eventCallback;
         // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-        std::shared_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
-        std::shared_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
+        std::shared_ptr<KafkaResolveCallback> _resolveCbImpl;
+        std::shared_ptr<KafkaConnectAuthCallback> _connectCbImpl;
         // KafkaConsumer instance used to determine the topic/partition map for the topics we
         // will be subscribing to
         std::unique_ptr<RdKafka::KafkaConsumer> _consumer;

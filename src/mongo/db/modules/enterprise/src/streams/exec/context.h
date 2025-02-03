@@ -18,6 +18,8 @@
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/latency_collector.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
@@ -88,6 +90,11 @@ struct Context {
     // metadata, i.e. {$meta: "stream"}
     bool shouldUseDocumentMetadataFields{false};
 
+    // Collects latency information and emits logs/metrics.
+    // Only set if the sink should actually report e2e latency metrics. Not set if there is a window
+    // in the pipeline.
+    std::unique_ptr<LatencyCollector> latencyCollector;
+
     mongo::BSONObj toBSON() const;
 
     // For non sink stages, add metadata when there is explicit dependency of metadata in the
@@ -100,6 +107,12 @@ struct Context {
     // pipeline but the user has requested the metadata.
     bool shouldProjectStreamMetaInSinkStage() {
         return projectStreamMeta && streamMetaFieldName && !projectStreamMetaPriorToSinkStage;
+    }
+
+    LoggingContext toLoggingContext() {
+        return LoggingContext{.streamProcessorName = streamName,
+                              .streamProcessorId = streamProcessorId,
+                              .tenantId = tenantId};
     }
 
     ~Context();

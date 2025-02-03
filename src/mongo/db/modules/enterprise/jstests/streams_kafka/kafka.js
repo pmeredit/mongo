@@ -413,6 +413,49 @@ function insertData(coll, count = null, begIdx = 0) {
     return input;
 }
 
+function validateLatencyLogs() {
+    // Validate the latency log messages are showing up.
+    const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+    const line = findMatchingLogLine(log, {id: 9961300});
+    const entry = JSON.parse(line)["attr"];
+    const hasFields = (obj, fields) => {
+        for (const field of fields) {
+            assert(obj.hasOwnProperty(field));
+        }
+    };
+    const fieldsGteZero = (obj, fields) => {
+        for (const field of fields) {
+            assert.gte(obj[field], 0);
+        }
+    };
+    const fieldsGtZero = (obj, fields) => {
+        for (const field of fields) {
+            assert.gt(obj[field], 0);
+        }
+    };
+    hasFields(entry, [
+        "maxDeltas",
+        "context",
+    ]);
+    hasFields(entry["context"], [
+        "streamProcessorName",
+        "streamProcessorId",
+        "tenantId",
+    ]);
+    fieldsGteZero(entry["maxDeltas"], [
+        "maxReadDelta",
+        "maxWriteDelta",
+        "maxCommitDelta",
+        "maxOverallDelta",
+    ]);
+    fieldsGtZero(entry["maxDeltas"], [
+        "maxReadDeltaSourceTime",
+        "maxWriteDeltaSourceTime",
+        "maxCommitDeltaSourceTime",
+        "maxOverallDeltaSourceTime",
+    ]);
+}
+
 // Use a streamProcessor to write data from the source collection changestream to a Kafka topic.
 // Then use another streamProcessor to write data from the Kafka topic to a sink collection.
 // Verify the data in the sink collection equals to data originally inserted into the source
@@ -484,6 +527,8 @@ function mongoToKafkaToMongo({
     } else {
         // Verify output shows up in the sink collection as expected.
         waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
+        validateLatencyLogs();
+
         let results = sinkColl1.find({}).sort({a: 1}).toArray();
         let output = [];
         for (let i = 0; i < results.length; i++) {

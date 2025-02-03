@@ -51,6 +51,8 @@ BSONObj StreamDataMsg::toBSONForLogging() const {
         BSONObjBuilder docBuilder;
         docBuilder.append("doc", doc.doc.toBson());
         docBuilder.append("meta", doc.streamMeta.toBSON());
+        docBuilder.append("eventTime", Date_t::fromMillisSinceEpoch(doc.minDocTimestampMs));
+        docBuilder.append("sourceTime", Date_t::fromMillisSinceEpoch(doc.sourceTimestampMs));
         auto obj = docBuilder.obj();
         size += obj.objsize();
         if (size > maxLogSize) {

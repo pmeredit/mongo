@@ -52,7 +52,7 @@ struct KafkaSourceDocument {
     int64_t messageSizeBytes{0};
 
     // The log append time of this document.
-    boost::optional<int64_t> logAppendTimeMs{0};
+    int64_t logAppendTimeMs{0};
 
     // The key of the Kafka message.
     boost::optional<std::vector<uint8_t>> key;
@@ -100,6 +100,10 @@ struct StreamDocument {
     // The maximum timestamp of input documents consumed to produce
     // the document above.
     int64_t maxDocTimestampMs{-1};
+
+    // The wall time the event was written to the source.
+    // Not maintained across a $group/$sort inside a window.
+    int64_t sourceTimestampMs{-1};
 
     // only set for session windows
     boost::optional<int32_t> windowId{-1};

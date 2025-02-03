@@ -5,6 +5,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
+#include "streams/exec/window_aware_operator.h"
 
 namespace streams {
 
@@ -33,6 +34,15 @@ SourceOperator* OperatorDag::source() const {
 SinkOperator* OperatorDag::sink() const {
     tassert(ErrorCodes::InternalError, "_operators is empty", !_operators.empty());
     return dynamic_cast<SinkOperator*>(_operators.back().get());
+}
+
+bool OperatorDag::shouldReportLatency() {
+    for (const auto& i : _operators) {
+        if (dynamic_cast<WindowAwareOperator*>(i.get())) {
+            return false;
+        }
+    }
+    return true;
 }
 
 };  // namespace streams

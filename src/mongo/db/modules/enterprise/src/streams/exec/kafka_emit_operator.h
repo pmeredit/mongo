@@ -14,6 +14,7 @@
 #include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_resolve_callback.h"
+#include "streams/exec/latency_collector.h"
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/stages_gen.h"
@@ -175,6 +176,11 @@ private:
     // Used to detect connection/timeout errors in sending a message to Kafka.
     class DeliveryReportCallback : public RdKafka::DeliveryReportCb {
     public:
+        // Delivery callback message.
+        struct CallbackMessage {
+            LatencyCollector::LatencyInfo latencyInfo;
+        };
+
         DeliveryReportCallback(Context* context, ProducerQueueMetrics* metrics)
             : _context(context), _metrics(metrics) {}
 

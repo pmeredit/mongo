@@ -13,6 +13,15 @@ namespace streams {
 
 struct Context;
 
+// LoggingContext is used for LOGV2 when you don't have access to a full Context.
+struct LoggingContext {
+    std::string streamProcessorName;
+    std::string streamProcessorId;
+    std::string tenantId;
+};
+
+mongo::BSONObj toBSON(const LoggingContext& loggingContext);
+
 // A convenience macro to assert during checkpoint read operations.
 // TODO(SERVER-78501): Add specific error codes in checkpoint assertions.
 #define CHECKPOINT_RECOVERY_ASSERT(checkpointId, operatorId, msg, assertion)                     \

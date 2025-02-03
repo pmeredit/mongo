@@ -1117,12 +1117,12 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     boost::optional<StreamDocument> streamDoc;
     try {
         mongo::Date_t eventTimestamp;
+        int64_t logAppendTimeMs{sourceDoc.logAppendTimeMs};
         if (_options.timestampExtractor) {
             eventTimestamp =
                 _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
         } else {
-            dassert(sourceDoc.logAppendTimeMs);
-            eventTimestamp = Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
+            eventTimestamp = Date_t::fromMillisSinceEpoch(logAppendTimeMs);
         }
         // Now we are destroying sourceDoc.doc, make sure that no exceptions related to
         // processing this document get thrown after this point.
@@ -1189,6 +1189,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         streamDoc->minProcessingTimeMs = curTimeMillis64();
         streamDoc->minDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
         streamDoc->maxDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
+        streamDoc->sourceTimestampMs = logAppendTimeMs;
     } catch (const std::exception& e) {
         LOGV2_ERROR(74675,
                     "{topicName}: encountered exception while processing a source "

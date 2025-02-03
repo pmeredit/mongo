@@ -768,32 +768,35 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 //
 // Then, does additional work to generate a watermark. Throws if a timestamp could not be
 // obtained.
-mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc,
-                                                       const Document& fullDocument) {
-    mongo::Date_t ts;
-    if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
-        ts = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+ChangeStreamSourceOperator::ChangeStreamEventTimestamp ChangeStreamSourceOperator::getTimestamp(
+    const Document& changeEventDoc, const Document& fullDocument) {
+    ChangeStreamEventTimestamp ts;
+    if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
+        !wallTime.missing()) {
+        uassert(7926400,
+                "Change event's wall time was not a date",
+                wallTime.getType() == BSONType::Date);
+        ts.wallTimeOrOperationTime = wallTime.getDate();
     } else {
-        if (_options.timestampExtractor) {
-            ts = _options.timestampExtractor->extractTimestamp(fullDocument);
-        } else if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
-                   !wallTime.missing()) {
-            uassert(7926400,
-                    "Change event's wall time was not a date",
-                    wallTime.getType() == BSONType::Date);
-            ts = wallTime.getDate();
-        } else {
-            auto clusterTime = changeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
-            uassert(7926401, "Change event did not have clusterTime", !clusterTime.missing());
-            uassert(7926402,
-                    "clusterTime for change event was not a timestamp",
-                    clusterTime.getType() == BSONType::bsonTimestamp);
-            ts = Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
-        }
+        auto clusterTime = changeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
+        uassert(7926401, "Change event did not have clusterTime", !clusterTime.missing());
+        uassert(7926402,
+                "clusterTime for change event was not a timestamp",
+                clusterTime.getType() == BSONType::bsonTimestamp);
+        ts.wallTimeOrOperationTime =
+            Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
+    }
+
+    if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+        ts.assignedTimestamp = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+    } else if (_options.timestampExtractor) {
+        ts.assignedTimestamp = _options.timestampExtractor->extractTimestamp(fullDocument);
+    } else {
+        ts.assignedTimestamp = ts.wallTimeOrOperationTime;
     }
 
     if (_watermarkGenerator) {
-        _watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
+        _watermarkGenerator->onEvent(ts.assignedTimestamp.toMillisSinceEpoch());
     }
 
     return ts;
@@ -802,7 +805,7 @@ mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEve
 boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     mongo::BSONObj changeStreamObj) {
     Document changeEventDoc(std::move(changeStreamObj));
-    mongo::Date_t ts;
+    ChangeStreamEventTimestamp ts;
 
     // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and
     // return.
@@ -835,21 +838,22 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     // Add 'ts' to 'mutableChangeEvent', overwriting 'timestampOutputFieldName' if it already
     // exists.
     if (_options.timestampOutputFieldName) {
-        mutableChangeEvent[*_options.timestampOutputFieldName] = Value(ts);
+        mutableChangeEvent[*_options.timestampOutputFieldName] = Value(ts.assignedTimestamp);
     }
     StreamDocument streamDoc(mutableChangeEvent.freeze());
 
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Atlas);
     if (_context->shouldUseDocumentMetadataFields) {
-        streamMetaSource.setTs(ts);
+        streamMetaSource.setTs(ts.assignedTimestamp);
     }
     streamDoc.streamMeta.setSource(std::move(streamMetaSource));
     streamDoc.onMetaUpdate(_context);
 
-    streamDoc.minProcessingTimeMs = ts.toMillisSinceEpoch();
-    streamDoc.minDocTimestampMs = ts.toMillisSinceEpoch();
-    streamDoc.maxDocTimestampMs = ts.toMillisSinceEpoch();
+    streamDoc.minProcessingTimeMs = curTimeMillis64();
+    streamDoc.minDocTimestampMs = ts.assignedTimestamp.toMillisSinceEpoch();
+    streamDoc.sourceTimestampMs = ts.wallTimeOrOperationTime.toMillisSinceEpoch();
+    streamDoc.maxDocTimestampMs = ts.assignedTimestamp.toMillisSinceEpoch();
     return streamDoc;
 }
 
