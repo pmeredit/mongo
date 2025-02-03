@@ -4,7 +4,7 @@ load("@rules_rust//rust:defs.bzl", "rust_library")
 
 rust_library(
     name = "rust_plugin",
-    srcs = ["src/lib.rs"],
+    srcs = glob(["src/*.rs"]),
     deps = [
         "@plugin_crates//:bson",
         "//src/mongo/db/pipeline/plugin:plugin_api_bindgen",

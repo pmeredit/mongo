@@ -2,6 +2,8 @@
 // The entry point is an exported function called from a .cpp file.
 #![allow(dead_code)]
 
+pub mod crust;
+
 use std::num::NonZero;
 use std::os::raw::{c_char, c_int};
 
@@ -29,8 +31,8 @@ pub trait AggregationStage: Sized {
 
     /// Get the C API bindings for this stage.
     ///
-    /// You almost always want to generate this using the `generate_stage_api_impls` and
-    /// `generate_stage_api` macros.
+    /// You almost always want to generate this using the `generate_stage_api!` macro, returning
+    /// the `API` constant from the generate module.
     fn api() -> mongodb_aggregation_stage;
 
     /// Create a new stage from a document containing the stage definition.
@@ -68,15 +70,13 @@ impl<S: AggregationStage> std::ops::DerefMut for PluginAggregationStage<S> {
     }
 }
 
-// NB: this works but it is incredibly annoying, and that's without even adding uses outside of
-// the crate. At the very least we will probably want to reimport all the symbols into a module
-// so that they can be consistently referenced.
-macro_rules! generate_stage_api_impls {
+/// For an `AggregationStage` used with `PluginAggregationStage` generate ABI compatible functions
+/// and a `mongodb_aggregation_stage` constant.
+macro_rules! generate_stage_api {
     ($agg_stage:ident, $mod_name:ident) => {
         mod $mod_name {
             use super::$agg_stage;
-            use crate::*;
-            use plugin_api_bindgen::*;
+            use plugin_api_bindgen::mongodb_aggregation_stage;
             use std::os::raw::{c_char, c_int};
 
             pub unsafe extern "C-unwind" fn get_next(
@@ -84,41 +84,17 @@ macro_rules! generate_stage_api_impls {
                 result: *mut *const c_char,
                 result_len: *mut usize,
             ) -> c_int {
-                let rust_stage = (stage as *mut PluginAggregationStage<$agg_stage>)
-                    .as_mut()
-                    .expect("non-null stage pointer");
-                match rust_stage.get_next() {
-                    None => {
-                        *result = std::ptr::null();
-                        *result_len = 0;
-                        MongoDBAggregationStageGetNextResult_GET_NEXT_EOF
-                    }
-                    Some(GetNextResult::PauseExecution) => {
-                        *result = std::ptr::null();
-                        *result_len = 0;
-                        MongoDBAggregationStageGetNextResult_GET_NEXT_PAUSE_EXECUTION
-                    }
-                    Some(GetNextResult::Advanced(doc)) => {
-                        *result = doc.as_bytes().as_ptr() as *const c_char;
-                        *result_len = doc.as_bytes().len();
-                        MongoDBAggregationStageGetNextResult_GET_NEXT_ADVANCED
-                    }
-                }
+                crate::crust::get_next::<$agg_stage>(stage, result, result_len)
             }
 
             pub unsafe extern "C-unwind" fn close(stage: *mut mongodb_aggregation_stage) {
-                let rust_stage = Box::from_raw(stage as *mut PluginAggregationStage<$agg_stage>);
-                drop(rust_stage);
+                crate::crust::close::<$agg_stage>(stage)
             }
-        }
-    };
-}
 
-macro_rules! generate_stage_api {
-    ($agg_stage:ident, $mod_name:ident) => {
-        ::plugin_api_bindgen::mongodb_aggregation_stage {
-            get_next: Some($mod_name::get_next),
-            close: Some($mod_name::close),
+            pub const API: mongodb_aggregation_stage = mongodb_aggregation_stage {
+                get_next: Some(get_next),
+                close: Some(close),
+            };
         }
     };
 }
@@ -211,7 +187,7 @@ impl AggregationStage for EchoOxide {
     }
 
     fn api() -> mongodb_aggregation_stage {
-        generate_stage_api!(EchoOxide, echo_oxide)
+        echo_oxide::API
     }
 
     fn new(stage_definition: &RawDocument) -> Result<Self, Error> {
@@ -231,7 +207,7 @@ impl AggregationStage for EchoOxide {
     }
 }
 
-generate_stage_api_impls!(EchoOxide, echo_oxide);
+generate_stage_api!(EchoOxide, echo_oxide);
 
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
