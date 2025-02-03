@@ -3,6 +3,7 @@
  */
 #include "streams/exec/kafka_consumer_operator.h"
 
+#include <bsoncxx/json.hpp>
 #include <chrono>
 #include <fmt/format.h>
 #include <rdkafka.h>
@@ -26,6 +27,7 @@
 #include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
@@ -1066,10 +1068,9 @@ KafkaConsumerOperator::deserializeKafkaKey(std::vector<std::uint8_t> key,
             return deserializedKey;
         }
         case KafkaKeyFormatEnum::Json: {
-            auto keyStr = StringData{reinterpret_cast<const char*>(key.data()),
-                                     static_cast<size_t>(key.size())};
+            bsoncxx::stdx::string_view view{reinterpret_cast<const char*>(key.data()), key.size()};
             try {
-                BSONObj deserializedKey = fromjson(keyStr);
+                BSONObj deserializedKey = fromBsoncxxDocument(bsoncxx::from_json(view));
                 return deserializedKey;
             } catch (std::exception&) {
                 return key;

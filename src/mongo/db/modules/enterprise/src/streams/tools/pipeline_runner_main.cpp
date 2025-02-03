@@ -38,7 +38,8 @@ using namespace streams;
 BSONObj readBsonFromJsonFile(std::string fileName) {
     std::ifstream infile(fileName.c_str());
     std::string data((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
-    return fromjson(data);
+    bsoncxx::stdx::string_view view{reinterpret_cast<const char*>(data.c_str()), data.size()};
+    return fromBsoncxxDocument(bsoncxx::from_json(view));
 }
 
 std::unique_ptr<KafkaConsumerOperator> createKafkaConsumerOperator(
