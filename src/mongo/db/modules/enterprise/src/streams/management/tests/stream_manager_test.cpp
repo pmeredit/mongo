@@ -156,6 +156,18 @@ public:
         info->context->checkpointStorage->_lastCheckpointSizeBytes = bytes;
     }
 
+    void waitForLastCheckpointSize(StreamManager::StreamProcessorInfo* info) {
+        auto deadline = Date_t::now() + Minutes{1};
+        while (Date_t::now() < deadline) {
+            stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
+            if (info->context->checkpointStorage->_lastCheckpointSizeBytes > 0) {
+                return;
+            }
+            stdx::this_thread::sleep_for(std::chrono::milliseconds{100});
+        }
+        ASSERT(false);
+    }
+
     void setLastCheckpointTime(
         StreamManager::StreamProcessorInfo* info,
         mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
@@ -1069,11 +1081,12 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
 
         auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
         ASSERT(processorInfo->checkpointCoordinator);
-        setLastCheckpointSize(processorInfo, 0);
         auto actual = getCheckpointInterval(processorInfo);
         // Manifest file takes up a few bytes, so if one is written, the next checkpoint interval
         // will be slightly longer.
         ASSERT(std::abs((actual - stdx::chrono::milliseconds{expectedIntervalMs}).count()) < 20);
+        // wait for at least one checkpoint
+        waitForLastCheckpointSize(processorInfo);
 
         setLastCheckpointSize(processorInfo, 100_MiB);
         // set this to force another checkpoint
