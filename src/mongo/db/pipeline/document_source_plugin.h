@@ -23,6 +23,8 @@ public:
         return _id;
     }
 
+    void setSource(DocumentSource* source) override;
+
     GetNextResult doGetNext() override;
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
@@ -35,7 +37,7 @@ public:
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return StageConstraints(StreamType::kStreaming,
-                                PositionRequirement::kFirst,
+                                PositionRequirement::kNone,
                                 HostTypeRequirement::kAnyShard,
                                 DiskUseRequirement::kNoDiskUse,
                                 FacetRequirement::kNotAllowed,
@@ -57,11 +59,15 @@ private:
     DocumentSourcePlugin& operator=(const DocumentSourcePlugin&) = delete;
     DocumentSourcePlugin&& operator=(DocumentSourcePlugin&&) = delete;
 
+    friend int source_get_next(void* source_ptr, const unsigned char** result, size_t* len);
+
     struct PluginStageDeleter {
         void operator()(mongodb_aggregation_stage* stage) {
             stage->close(stage);
         }
     };
+
+    int sourceGetNext(const unsigned char** result, size_t* len);
 
     // NB: the stage name could be stored statically, but I would have to add it to the C plugin
     // interface. I could re-use the name that is passed to the constructor but that is sketchy
@@ -70,6 +76,7 @@ private:
     std::string _stage_name;
     Id _id;
     std::unique_ptr<mongodb_aggregation_stage, PluginStageDeleter> _plugin_stage;
+    BSONObj _source_doc;
 };
 
 }  // namespace mongo

@@ -8,10 +8,10 @@
 
 namespace mongo {
 
-static void add_aggregation_stage(const char* name,
+static void add_aggregation_stage(const unsigned char* name,
                                   size_t name_len,
                                   mongodb_parse_aggregation_stage parser) {
-    auto name_sd = StringData(name, name_len);
+    auto name_sd = StringData(reinterpret_cast<const char*>(name), name_len);
     auto id = DocumentSource::allocateId(name_sd);
     LiteParsedDocumentSource::registerParser(name_sd.toString(),
                                              LiteParsedDocumentSourceDefault::parse,
@@ -22,22 +22,24 @@ static void add_aggregation_stage(const char* name,
         [id, parser](BSONElement specElem, const boost::intrusive_ptr<ExpressionContext>& expCtx)
             -> boost::intrusive_ptr<DocumentSource> {
             mongodb_aggregation_stage* stage = nullptr;
-            const char* error = nullptr;
+            const unsigned char* error = nullptr;
             size_t error_len = 0;
-            int code = parser((char)specElem.type(),
-                              specElem.value(),
+            int code = parser(static_cast<char>(specElem.type()),
+                              reinterpret_cast<const unsigned char*>(specElem.value()),
                               specElem.valuesize(),
                               &stage,
                               &error,
                               &error_len);
-            uassert(code, str::stream() << StringData(error, error_len), code == 0);
+            uassert(code,
+                    str::stream() << StringData(reinterpret_cast<const char*>(error), error_len),
+                    code == 0);
             return boost::intrusive_ptr(
                 new DocumentSourcePlugin(specElem.fieldNameStringData(), expCtx, id, stage));
         },
         boost::none);
 }
 
-static bool is_valid_bson_document(const char* bson_value, size_t bson_value_len) {
+static bool is_valid_bson_document(const unsigned char* bson_value, size_t bson_value_len) {
     if (bson_value_len < BSONObj::kMinBSONLength) {
         return false;
     }
@@ -58,8 +60,36 @@ MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
     mongodb_initialize_plugin(&portal);
 }
 
+int source_get_next(void* source_ptr, const unsigned char** result, size_t* len) {
+    return reinterpret_cast<DocumentSourcePlugin*>(source_ptr)->sourceGetNext(result, len);
+}
+
+void DocumentSourcePlugin::setSource(DocumentSource* source) {
+    pSource = source;
+    _plugin_stage->set_source(_plugin_stage.get(), this, &source_get_next);
+}
+
+int DocumentSourcePlugin::sourceGetNext(const unsigned char** result, size_t* len) {
+    GetNextResult get_next_result = pSource->getNext();
+    switch (get_next_result.getStatus()) {
+        case GetNextResult::ReturnStatus::kAdvanced:
+            _source_doc = get_next_result.releaseDocument().toBson();
+            *result = reinterpret_cast<const unsigned char*>(_source_doc.objdata());
+            *len = _source_doc.objsize();
+            return GET_NEXT_ADVANCED;
+        case GetNextResult::ReturnStatus::kEOF:
+            *result = nullptr;
+            *len = 0;
+            return GET_NEXT_EOF;
+        case GetNextResult::ReturnStatus::kPauseExecution:
+            *result = nullptr;
+            *len = 0;
+            return GET_NEXT_PAUSE_EXECUTION;
+    }
+}
+
 DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
-    const char* result = nullptr;
+    const unsigned char* result = nullptr;
     size_t result_len = 0;
     int code = _plugin_stage->get_next(_plugin_stage.get(), &result, &result_len);
     switch (code) {
@@ -68,13 +98,15 @@ DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
             tassert(123456,
                     str::stream() << "plugin returned an invalid BSONObj.",
                     is_valid_bson_document(result, result_len));
-            return GetNextResult(Document(BSONObj(result)));
+            return GetNextResult(Document(BSONObj(reinterpret_cast<const char*>(result))));
         case GET_NEXT_EOF:
             return GetNextResult::makeEOF();
         case GET_NEXT_PAUSE_EXECUTION:
             return GetNextResult::makePauseExecution();
         default:
-            uassert(code, str::stream() << StringData(result, result_len), false);
+            uassert(code,
+                    str::stream() << StringData(reinterpret_cast<const char*>(result), result_len),
+                    false);
             return GetNextResult::makeEOF();
     }
 }

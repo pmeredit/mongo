@@ -7,11 +7,18 @@ enum MongoDBPluginVersion {
     MONGODB_PLUGIN_VERSION_0 = 0,
 };
 
-enum MongoDBAggregationStageGetNextResult {
+enum mongodb_get_next_result {
     GET_NEXT_ADVANCED = 0,
     GET_NEXT_EOF = -1,
     GET_NEXT_PAUSE_EXECUTION = -2,
 };
+
+// A function to get data from a source stage.
+//
+// Return codes <= 0 are a mongodb_get_next_result, codes > 0 are errors.
+// On GET_NEXT_ADVANCED (*result, *len) are filled with a BSON document, on error (result, len) may
+// be filled with a utf8 error string. On non-zero codes (result, len) may be set to (NULL, 0).
+typedef int (*mongodb_source_get_next)(void* source_ptr, const unsigned char** result, size_t* len);
 
 // An aggregation stage provided by the plugin.
 //
@@ -38,22 +45,25 @@ struct mongodb_aggregation_stage {
     //
     // Any positive value indicates an error. (result, result_len) will be filled with a utf8 string
     // describing the error.
-    int (*get_next)(mongodb_aggregation_stage* stage, const char** result, size_t* result_len);
+    int (*get_next)(mongodb_aggregation_stage* stage,
+                    const unsigned char** result,
+                    size_t* result_len);
 
-    // Close this stage and free any memory assoicated with it. It is an error to use stage after
+    // Set a source pointer and a source function for intermediate stages.
+    void (*set_source)(mongodb_aggregation_stage* stage,
+                       void* source_ptr,
+                       mongodb_source_get_next source_get_next);
+
+    // Close this stage and free any memory associated with it. It is an error to use stage after
     // closing.
     void (*close)(mongodb_aggregation_stage* stage);
-
-    // TODO: some way to get data from another stage.
-    // * Could be a function that accepts a function pointer that the stage may store and invoke
-    // * Could be a raw function pointer set by the caller that the stage may use to fetch data.
 };
 
-typedef int (*mongodb_parse_aggregation_stage)(char bson_type,
-                                               const char* bson_value,
+typedef int (*mongodb_parse_aggregation_stage)(unsigned char bson_type,
+                                               const unsigned char* bson_value,
                                                size_t bson_value_len,
                                                mongodb_aggregation_stage** stage,
-                                               const char** error,
+                                               const unsigned char** error,
                                                size_t* error_len);
 
 // The plugin portal allows plugin functionality to register with the server.
@@ -63,7 +73,7 @@ struct mongodb_plugin_portal {
 
     // Invoke to add an aggregation stage. The `parser` function is responsible for parsing the
     // stage from a bson value and creating a mongodb_aggregation_stage object.
-    void (*add_aggregation_stage)(const char* name,
+    void (*add_aggregation_stage)(const unsigned char* name,
                                   size_t name_len,
                                   mongodb_parse_aggregation_stage parser);
 };

@@ -13,22 +13,22 @@ struct c_plugin_echo_aggregation_stage {
     std::string document;
     bool exhausted;
 
-    static constexpr char kStageName[] = "$echoC";
+    static constexpr unsigned char kStageName[] = "$echoC";
 };
 
-const char kNotADocument[] = "$echoC argument must be document typed.";
+constexpr unsigned char kNotADocument[] = "$echoC argument must be document typed.";
 
 int c_plugin_echo_aggregation_stage_get_next(mongodb_aggregation_stage* stage,
-                                             const char** result,
+                                             const unsigned char** result,
                                              size_t* result_len) {
     auto echo_stage = (c_plugin_echo_aggregation_stage*)stage;
     if (echo_stage->exhausted) {
-        return MongoDBAggregationStageGetNextResult::GET_NEXT_EOF;
+        return mongodb_get_next_result::GET_NEXT_EOF;
     }
-    *result = echo_stage->document.data();
+    *result = (const unsigned char*)echo_stage->document.data();
     *result_len = echo_stage->document.size();
     echo_stage->exhausted = true;
-    return MongoDBAggregationStageGetNextResult::GET_NEXT_ADVANCED;
+    return mongodb_get_next_result::GET_NEXT_ADVANCED;
 }
 
 void c_plugin_echo_aggregation_stage_close(mongodb_aggregation_stage* stage) {
@@ -38,14 +38,14 @@ void c_plugin_echo_aggregation_stage_close(mongodb_aggregation_stage* stage) {
     ptr = nullptr;
 }
 
-int c_plugin_echo_aggregation_stage_parse(char bson_type,
-                                          const char* bson_value,
+int c_plugin_echo_aggregation_stage_parse(unsigned char bson_type,
+                                          const unsigned char* bson_value,
                                           size_t bson_value_len,
                                           mongodb_aggregation_stage** stage,
-                                          const char** error,
+                                          const unsigned char** error,
                                           size_t* error_len) {
     if (bson_type != 3) {  // embedded document
-        *error = (char*)kNotADocument;
+        *error = (unsigned char*)kNotADocument;
         *error_len = sizeof(kNotADocument) - 1;
         return 1;
     }
@@ -53,7 +53,7 @@ int c_plugin_echo_aggregation_stage_parse(char bson_type,
     auto echo_stage = std::make_unique<c_plugin_echo_aggregation_stage>();
     echo_stage->stage.get_next = &c_plugin_echo_aggregation_stage_get_next;
     echo_stage->stage.close = &c_plugin_echo_aggregation_stage_close;
-    echo_stage->document = std::string(bson_value, bson_value_len);
+    echo_stage->document = std::string((const char*)bson_value, bson_value_len);
     echo_stage->exhausted = false;
 
     // leak the value to the caller as a mongodb_aggregation_stage*.

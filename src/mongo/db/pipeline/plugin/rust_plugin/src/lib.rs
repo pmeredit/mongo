@@ -4,10 +4,10 @@
 
 pub mod crust;
 
+use std::ffi::{c_int, c_void};
 use std::num::NonZero;
-use std::os::raw::{c_char, c_int};
 
-use bson::raw::{RawDocument, RawDocumentBuf};
+use bson::{to_raw_document_buf, Document, RawDocument, RawDocumentBuf};
 
 use plugin_api_bindgen::{mongodb_aggregation_stage, mongodb_plugin_portal};
 
@@ -19,6 +19,42 @@ pub struct Error {
 pub enum GetNextResult<'a> {
     Advanced(&'a RawDocument),
     PauseExecution,
+}
+
+pub struct AggregationSource {
+    ptr: *mut c_void,
+    get_next_fn: plugin_api_bindgen::mongodb_source_get_next,
+}
+
+impl AggregationSource {
+    pub fn new(ptr: *mut c_void, get_next_fn: plugin_api_bindgen::mongodb_source_get_next) -> Self {
+        Self { ptr, get_next_fn }
+    }
+
+    pub fn get_next(&mut self) -> Option<GetNextResult<'_>> {
+        let mut result_ptr = std::ptr::null();
+        let mut result_len = 0usize;
+        let code = unsafe {
+            self.get_next_fn.expect("non-null")(self.ptr, &mut result_ptr, &mut result_len)
+        };
+        // XXX must handle errors.
+        assert!(code <= 0);
+        match code {
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF => None,
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION => {
+                Some(GetNextResult::PauseExecution)
+            }
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED => {
+                Some(GetNextResult::Advanced(
+                    RawDocument::from_bytes(unsafe {
+                        std::slice::from_raw_parts(result_ptr, result_len)
+                    })
+                    .unwrap(),
+                ))
+            }
+            _ => unimplemented!(),
+        }
+    }
 }
 
 /// Trait for a stage in a MongoDB aggregation pipeline.
@@ -40,6 +76,9 @@ pub trait AggregationStage: Sized {
     ///   $echo: {<contents of stage_definition}
     fn new(stage_definition: &RawDocument) -> Result<Self, Error>;
 
+    /// Set a source for this stage. Used by intermediate stages to fetch documents to transform.
+    fn set_source(&mut self, source: AggregationSource);
+
     /// Get the next result from this stage.
     /// If this returns `None`, this will return an EOF signal upstream, but IIRC there is no
     /// guarantee that this method will not be called again.
@@ -48,6 +87,15 @@ pub trait AggregationStage: Sized {
     // the EOF enum type.
     fn get_next(&mut self) -> Option<GetNextResult<'_>>;
 }
+
+// ALTERNATIVE DESIGN FOR PluginAggregationStage:
+// * Make AggregationStage trait object-safe.
+// * PluginAggregationStage accepts Box<dyn AggregationStage>
+//
+// + There's no need to generate extern ABI bindings since there is only one struct shape.
+// + No opportunity to mess up the extern ABI bindings.
+// - Calls go through double indirection (C function pointer -> vtable -> actual call).
+// - Registration becomes a bit more complicated.
 
 /// Wrapper around an [AggregationStage] that binds to the C plugin API.
 #[repr(C)]
@@ -76,15 +124,23 @@ macro_rules! generate_stage_api {
     ($agg_stage:ident, $mod_name:ident) => {
         mod $mod_name {
             use super::$agg_stage;
-            use plugin_api_bindgen::mongodb_aggregation_stage;
-            use std::os::raw::{c_char, c_int};
+            use plugin_api_bindgen::{mongodb_aggregation_stage, mongodb_source_get_next};
+            use std::ffi::{c_int, c_void};
 
             pub unsafe extern "C-unwind" fn get_next(
                 stage: *mut mongodb_aggregation_stage,
-                result: *mut *const c_char,
+                result: *mut *const u8,
                 result_len: *mut usize,
             ) -> c_int {
                 crate::crust::get_next::<$agg_stage>(stage, result, result_len)
+            }
+
+            pub unsafe extern "C-unwind" fn set_source(
+                stage: *mut mongodb_aggregation_stage,
+                source_ptr: *mut c_void,
+                source_get_next: mongodb_source_get_next,
+            ) {
+                crate::crust::set_source::<$agg_stage>(stage, source_ptr, source_get_next)
             }
 
             pub unsafe extern "C-unwind" fn close(stage: *mut mongodb_aggregation_stage) {
@@ -93,6 +149,7 @@ macro_rules! generate_stage_api {
 
             pub const API: mongodb_aggregation_stage = mongodb_aggregation_stage {
                 get_next: Some(get_next),
+                set_source: Some(set_source),
                 close: Some(close),
             };
         }
@@ -101,18 +158,18 @@ macro_rules! generate_stage_api {
 
 impl<S: AggregationStage> PluginAggregationStage<S> {
     pub unsafe extern "C-unwind" fn parse_external(
-        bson_type: i8,
-        bson_value: *const c_char,
+        bson_type: u8,
+        bson_value: *const u8,
         bson_value_len: usize,
         stage: *mut *mut mongodb_aggregation_stage,
-        error: *mut *const c_char,
+        error: *mut *const u8,
         error_len: *mut usize,
     ) -> c_int {
         if bson_type != 3 {
             // 3 is embedded document
             // XXX FIXME should include stage name!
             let static_err = "stage argument must be document typed.";
-            *error = static_err.as_bytes().as_ptr() as *const c_char;
+            *error = static_err.as_bytes().as_ptr();
             *error_len = static_err.as_bytes().len();
             return 1;
         }
@@ -131,7 +188,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
             Err(Error { code, message }) => {
                 // TODO: fix the leak. We can either provide a way to free this or stash it in
                 // thread local memory until the next call.
-                *error = message.as_bytes().as_ptr() as *const i8;
+                *error = message.as_bytes().as_ptr();
                 *error_len = message.len();
                 std::mem::forget(message);
                 code.into()
@@ -168,7 +225,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         let stage_name = S::name();
         unsafe {
             (*plugin_portal).add_aggregation_stage.expect("add stage")(
-                stage_name.as_bytes().as_ptr() as *const c_char,
+                stage_name.as_bytes().as_ptr(),
                 stage_name.as_bytes().len(),
                 Some(Self::parse_external),
             );
@@ -197,6 +254,10 @@ impl AggregationStage for EchoOxide {
         })
     }
 
+    fn set_source(&mut self, _source: AggregationSource) {
+        // Do nothing
+    }
+
     fn get_next(&mut self) -> Option<GetNextResult<'_>> {
         if self.exhausted {
             None
@@ -209,8 +270,53 @@ impl AggregationStage for EchoOxide {
 
 generate_stage_api!(EchoOxide, echo_oxide);
 
+struct AddSomeCrabs {
+    source: Option<AggregationSource>,
+    last_document: RawDocumentBuf,
+}
+
+impl AggregationStage for AddSomeCrabs {
+    fn name() -> &'static str {
+        "$addSomeCrabs"
+    }
+
+    fn api() -> mongodb_aggregation_stage {
+        add_some_crabs::API
+    }
+
+    fn new(_stage_definition: &RawDocument) -> Result<Self, Error> {
+        Ok(Self {
+            source: None,
+            last_document: RawDocumentBuf::new(),
+        })
+    }
+
+    fn set_source(&mut self, source: AggregationSource) {
+        self.source = Some(source);
+    }
+
+    fn get_next(&mut self) -> Option<GetNextResult<'_>> {
+        assert!(self.source.is_some());
+        let source = self.source.as_mut()?;
+        // XXX handle errors.
+        match source.get_next()? {
+            GetNextResult::PauseExecution => Some(GetNextResult::PauseExecution),
+            GetNextResult::Advanced(input_doc) => {
+                let mut doc = Document::try_from(input_doc).unwrap();
+                // TODO: you should be able to control the number of crabs.
+                doc.insert("some_crabs", "🦀🦀🦀");
+                self.last_document = to_raw_document_buf(&doc).unwrap();
+                Some(GetNextResult::Advanced(self.last_document.as_ref()))
+            }
+        }
+    }
+}
+
+generate_stage_api!(AddSomeCrabs, add_some_crabs);
+
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
 unsafe extern "C-unwind" fn initialize_rust_plugins(plugin_portal: *mut mongodb_plugin_portal) {
     PluginAggregationStage::<EchoOxide>::register(plugin_portal);
+    PluginAggregationStage::<AddSomeCrabs>::register(plugin_portal);
 }
