@@ -2528,6 +2528,9 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
                    "StreamProcessorInvalidOptions: Cannot use $text in $match stage in Atlas "
                    "Stream Processing.");
 
+    /*
+    // TODO(SERVER-99672): Enable these tests.
+
     // This test fails because $validate.validationAction=dlq but no dlq has been defined
     runFailureTest(R"(
     [
@@ -2580,6 +2583,8 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
         }
     ])",
                    "StreamProcessorInvalidOptions: DLQ must be specified if $https.onError is dlq");
+
+    */
 }
 
 TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {

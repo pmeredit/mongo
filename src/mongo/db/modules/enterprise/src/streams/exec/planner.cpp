@@ -2462,6 +2462,7 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
 }
 
 bool Planner::shouldValidateDLQ() {
-    return !_context->isEphemeral && _options.planningUserPipeline;
+    // TODO(SERVER-99672): Figure out a safe way to ship this.
+    return false && !_context->isEphemeral && _options.planningUserPipeline;
 }
 };  // namespace streams
