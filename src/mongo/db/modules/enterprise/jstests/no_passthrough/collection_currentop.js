@@ -24,9 +24,9 @@ async function bgRunCmdFunc(command) {
     if (command.hasOwnProperty('find')) {
         client.getDB().erunCommand(command);
     } else {
-        client.getDB().erunCommand({find: edb.basic.getName(), filter: {}});
+        client.getDB().erunCommand({find: edb.basic.getName(), filter: command});
         let resultFind =
-            client.getDB().erunCommand({find: edb.basic.getName(), filter: {}, batchSize: 1});
+            client.getDB().erunCommand({find: edb.basic.getName(), filter: command, batchSize: 0});
 
         assert.eq(resultFind.ok, 1, " RESULT: " + tojson(resultFind));
         let cid = resultFind.cursor.id;
@@ -156,7 +156,8 @@ function runTest(conn) {
     assert.commandWorked(edb.basic.einsert({first: "mark", count: 6}));
 
     // Verify currentOp on encrypted collection returns redacted information for find command.
-    runCommentParamTest(conn, {coll: edb.basic, command: {find: edb.basic.getName(), filter: {}}});
+    runCommentParamTest(
+        conn, {coll: edb.basic, command: {find: edb.basic.getName(), filter: {"first": "mark"}}});
 
     // Verify currentOp on encrypted collection returns redacted information for getMore command.
     runCommentParamTest(conn, {coll: edb.basic, command: {"first": "mark"}});

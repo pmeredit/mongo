@@ -205,7 +205,7 @@ function runTest(conn) {
 
     client.runEncryptionOperation(
         () => { assert.eq(edb.badlog.find({last: "marco"}).itcount(), 1); });
-    assertOnlyReadsChanged(db);
+    assertNoCountersChanged(db);
     assert.eq(db.goodlog.find({last: "marco"}).itcount(), 1);
     assertNoCountersChanged(db);
 
@@ -238,7 +238,7 @@ function runTest(conn) {
 
     client.runEncryptionOperation(
         () => { assert.eq(edb.badlog.find({last: "markus"}).itcount(), 1); });
-    assertOnlyReadsChanged(db);
+    assertNoCountersChanged(db);
     assert.eq(db.goodlog.find({last: "markus"}).itcount(), 1);
     assertNoCountersChanged(db);
 
@@ -279,7 +279,7 @@ function runTest(conn) {
     assertNoCountersChanged(db);
 
     client.runEncryptionOperation(() => { assert.eq(edb.badlog.find({}).itcount(), 0); });
-    assertOnlyReadsChanged(db);
+    assertNoCountersChanged(db);
     assert.eq(db.goodlog.find({}).itcount(), 0);
     assertNoCountersChanged(db);
 

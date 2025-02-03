@@ -17,6 +17,9 @@
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 import {getPlanCacheKeyFromShape} from "jstests/libs/query/analyze_plan.js";
+import {QuerySettingsIndexHintsTests} from "jstests/libs/query/query_settings_index_hints_tests.js";
+
+(function() {
 
 // Asserts the number of expected documents and cached plans are found.
 function assertDocumentAndPlanEntryCount(
@@ -55,6 +58,12 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
         {"fields": [{"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}}]}
 }));
 
+if (!QuerySettingsIndexHintsTests.shouldCheckPlanCache(
+        dbTest, {aggregate: "basic", pipeline: [{"$match": {_id: 0}}]})) {
+    jsTest.log("Skipping collection_plan_cache_stats.js");
+    return;
+}
+
 // Clear plan cache and wait to prevent race conditions.
 assert.commandWorked(dbTest.runCommand({planCacheClear: "basic"}));
 sleep(1500);
@@ -82,12 +91,12 @@ assertDocumentAndPlanEntryCount({a: 1, b: 1, d: 1}, dbTest.basic, 1, 1);
 assert.commandWorked(dbTest.runCommand({planCacheClear: "basic"}));
 sleep(1500);
 
-// Run three distinct query shapes on the encrypted client and verify planCacheStats returns 0. This
-// is because even though the query does not use encryption, the shell appends
-// "encryptionInformation" which in turn filters the plans.
-assertEncryptedDocumentAndPlanEntryCount({a: 1, b: 1}, edb.basic, 3, 0);
-assertEncryptedDocumentAndPlanEntryCount({a: 1, b: 1, c: 1}, edb.basic, 2, 0);
-assertEncryptedDocumentAndPlanEntryCount({a: 1, b: 1, d: 1}, edb.basic, 1, 0);
+// Run three distinct query shapes on the encrypted client and verify planCacheStats is incremented.
+// Because the query does not use encryption, "encryptionInformation" is not appended, so the plans
+// are cached.
+assertEncryptedDocumentAndPlanEntryCount({a: 1, b: 1}, edb.basic, 3, 1);
+assertEncryptedDocumentAndPlanEntryCount({a: 1, b: 1, c: 1}, edb.basic, 2, 1);
+assertEncryptedDocumentAndPlanEntryCount({a: 1, b: 1, d: 1}, edb.basic, 1, 1);
 
 // Clear plan cache and wait to prevent race conditions.
 assert.commandWorked(dbTest.runCommand({planCacheClear: "basic"}));
@@ -100,3 +109,4 @@ assert.eq(3, edb.basic.ecount({"first": "mark", a: 1, b: 1}));
 assert.eq(2, edb.basic.ecount({"first": "mark", a: 1, b: 1, c: 1}));
 assert.eq(1, edb.basic.ecount({"first": "mark", a: 1, b: 1, d: 1}));
 assert.eq(0, dbTest.basic.aggregate([{$planCacheStats: {}}]).itcount());
+})();

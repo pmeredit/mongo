@@ -76,8 +76,11 @@ function runTest(conn, restartFn) {
     // Avoid running these test cases on mongos, since the required failpoints do not exist there.
     if (!FixtureHelpers.isMongos(db)) {
         // GetMore
-        const {cursor} =
-            assert.commandWorked(client.getDB().erunCommand({find: collName, batchSize: 0}));
+        // Insert a matching document so that the cursor is not null
+        assert.commandWorked(
+            client.getDB().erunCommand({insert: collName, documents: [query], ordered: false}));
+        const {cursor} = assert.commandWorked(
+            client.getDB().erunCommand({find: collName, filter: query, batchSize: 0}));
         runEncryptedCommandAndCheckLog({
             failpoint: planExecutorAlwaysFails,
             description: "getMore",

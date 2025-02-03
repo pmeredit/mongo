@@ -15,6 +15,7 @@ import {ShardingTest} from "jstests/libs/shardingtest.js";
 const testDBName = "test";
 let logCountCheck = 1;
 let explainLogCountCheck = 1;
+let badLogCountCheck = 0;
 
 const good_ns = "test.goodlog";
 const bad_coll_ns = "badlog";
@@ -56,7 +57,6 @@ function assertLogCountAllowList(db, filter, count) {
 function assertNoBadLogs(db) {
     const dbName = db.getName();
 
-    assertLogCountAllowList(db, {"ns": `${dbName}.${bad_coll_ns}`}, 0);
     assertLogCountAllowList(db, {"ns": `${dbName}.enxcol_.${bad_coll_ns}.esc`}, 0);
     assertLogCountAllowList(db, {"ns": `${dbName}.enxcol_.${bad_coll_ns}.ecoc`}, 0);
 }
@@ -65,6 +65,9 @@ function checkLogCounts(db) {
     print(`Checking logs: ${logCountCheck}`);
 
     assertNoBadLogs(db);
+
+    const dbName = db.getName();
+    assertLogCountAllowList(db, {"ns": `${dbName}.${bad_coll_ns}`}, badLogCountCheck);
     assertLogCountAllowList(db, {"ns": good_ns}, logCountCheck);
 
     logCountCheck++;
@@ -116,6 +119,7 @@ function checkExplainLogCounts(db) {
 function runTest(conn, alt_conn) {
     logCountCheck = 1;
     explainLogCountCheck = 1;
+    badLogCountCheck = 0;
 
     let db = conn.getDB(testDBName);
     db.dropDatabase();
@@ -223,8 +227,11 @@ function runTest(conn, alt_conn) {
 
     checkLogCounts(db);
 
+    // Queries which don't need encryption placeholders are treated as normal operations for log
+    // emission purposes.
     client.runEncryptionOperation(
         () => { assert.eq(edb.badlog.find({last: "marco"}).itcount(), 1); });
+    badLogCountCheck++;
     assert.eq(db.goodlog.find({last: "marco"}).itcount(), 1);
 
     checkLogCounts(db);
@@ -259,6 +266,7 @@ function runTest(conn, alt_conn) {
 
     client.runEncryptionOperation(
         () => { assert.eq(edb.badlog.find({last: "markus"}).itcount(), 1); });
+    badLogCountCheck++;
     assert.eq(db.goodlog.find({last: "markus"}).itcount(), 1);
 
     checkLogCounts(db);
@@ -299,6 +307,7 @@ function runTest(conn, alt_conn) {
     checkLogCounts(db);
 
     client.runEncryptionOperation(() => { assert.eq(edb.badlog.find({}).itcount(), 0); });
+    badLogCountCheck++;
     assert.eq(db.goodlog.find({}).itcount(), 0);
 
     checkLogCounts(db);
