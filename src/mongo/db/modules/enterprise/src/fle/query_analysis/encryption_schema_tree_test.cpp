@@ -3376,11 +3376,10 @@ TEST_F(EncryptionSchemaTreeTest, CanAffixLiteralsToEncryptedNodesButNotToNotEncr
         type: "object",
         properties: {
             a: {
-                    encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                        bsonType: "int"
-                    }
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                    bsonType: "int"
                 }
             }
         }
@@ -4633,7 +4632,7 @@ TEST_F(EncryptionSchemaTreeTest, QueryAnalysisParams_ExtractAndParseSingleSchema
                                     }
                                 }
                         },
-                        "isRemoteSchema": false }
+                        "isRemoteSchema": false
            }
     )"),
         .namespaceToEncryptedFieldsMap =

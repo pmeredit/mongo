@@ -857,7 +857,6 @@ TEST_F(WindowOperatorTest, CountStage) {
         {$count: "value"}
       ]
     }}
-]
     )"));
 
         StreamDataMsg inputs{.docs =
@@ -923,7 +922,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
         if (kDebugBuild) {
             // Use fewer documents in dev builds so the tests don't take too long to run.
             pipeline[3] = fromjson(R"(
-            { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } },
+            { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } }
         )");
             expectedNumDocs = 100'000;
         }
@@ -1573,7 +1572,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
             docs.emplace_back(std::move(sourceDoc));
         }
         KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"}))");
+        sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"})");
         docs.emplace_back(std::move(sourceDoc));
         consumers[0]->addDocuments(std::move(docs));
 
