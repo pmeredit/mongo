@@ -11,16 +11,29 @@ use bson::{to_raw_document_buf, Document, RawDocument, RawDocumentBuf};
 
 use plugin_api_bindgen::{mongodb_aggregation_stage, mongodb_plugin_portal};
 
+#[derive(Debug)]
 pub struct Error {
     pub code: NonZero<i32>,
     pub message: String,
 }
 
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        std::write!(f, "Plugin error code {}: {}", self.code.get(), self.message)
+    }
+}
+
+// TODO: add a map() fn that only maps over the Advanced state.
+#[derive(Debug)]
 pub enum GetNextResult<'a> {
     Advanced(&'a RawDocument),
     PauseExecution,
+    EOF,
 }
 
+/// Represents an input for an aggregation stage.
 pub struct AggregationSource {
     ptr: *mut c_void,
     get_next_fn: plugin_api_bindgen::mongodb_source_get_next,
@@ -31,28 +44,33 @@ impl AggregationSource {
         Self { ptr, get_next_fn }
     }
 
-    pub fn get_next(&mut self) -> Option<GetNextResult<'_>> {
+    pub fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         let mut result_ptr = std::ptr::null();
         let mut result_len = 0usize;
         let code = unsafe {
             self.get_next_fn.expect("non-null")(self.ptr, &mut result_ptr, &mut result_len)
         };
-        // XXX must handle errors.
-        assert!(code <= 0);
         match code {
-            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF => None,
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF => Ok(GetNextResult::EOF),
             plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION => {
-                Some(GetNextResult::PauseExecution)
+                Ok(GetNextResult::PauseExecution)
             }
             plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED => {
-                Some(GetNextResult::Advanced(
+                Ok(GetNextResult::Advanced(
                     RawDocument::from_bytes(unsafe {
                         std::slice::from_raw_parts(result_ptr, result_len)
                     })
                     .unwrap(),
                 ))
             }
-            _ => unimplemented!(),
+            _ => Err(Error {
+                code: NonZero::new(code).unwrap(),
+                message: std::str::from_utf8(unsafe {
+                    std::slice::from_raw_parts(result_ptr, result_len)
+                })
+                .unwrap()
+                .to_owned(),
+            }),
         }
     }
 }
@@ -80,12 +98,8 @@ pub trait AggregationStage: Sized {
     fn set_source(&mut self, source: AggregationSource);
 
     /// Get the next result from this stage.
-    /// If this returns `None`, this will return an EOF signal upstream, but IIRC there is no
-    /// guarantee that this method will not be called again.
-    // TODO: this needs refining. There's no way to an express an error happening during this
-    // operation or upstream. Might be better to do Result<GetNextResult<'_>, Error> and add back
-    // the EOF enum type.
-    fn get_next(&mut self) -> Option<GetNextResult<'_>>;
+    /// This may contain a document or another stream marker, including EOF.
+    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error>;
 }
 
 // ALTERNATIVE DESIGN FOR PluginAggregationStage:
@@ -102,6 +116,8 @@ pub trait AggregationStage: Sized {
 pub struct PluginAggregationStage<S: AggregationStage> {
     stage_api: mongodb_aggregation_stage,
     stage_impl: S,
+    // This is a place to put errors or other things that might leak.
+    buf: Vec<u8>,
 }
 
 impl<S: AggregationStage> std::ops::Deref for PluginAggregationStage<S> {
@@ -179,6 +195,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                 let plugin_stage = Box::new(Self {
                     stage_api: S::api(),
                     stage_impl,
+                    buf: vec![],
                 });
                 *stage = Box::into_raw(plugin_stage) as *mut mongodb_aggregation_stage;
                 *error = std::ptr::null();
@@ -258,13 +275,13 @@ impl AggregationStage for EchoOxide {
         // Do nothing
     }
 
-    fn get_next(&mut self) -> Option<GetNextResult<'_>> {
-        if self.exhausted {
-            None
+    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
+        Ok(if self.exhausted {
+            GetNextResult::EOF
         } else {
             self.exhausted = true;
-            Some(GetNextResult::Advanced(&self.document))
-        }
+            GetNextResult::Advanced(&self.document)
+        })
     }
 }
 
@@ -295,19 +312,21 @@ impl AggregationStage for AddSomeCrabs {
         self.source = Some(source);
     }
 
-    fn get_next(&mut self) -> Option<GetNextResult<'_>> {
-        assert!(self.source.is_some());
-        let source = self.source.as_mut()?;
-        // XXX handle errors.
-        match source.get_next()? {
-            GetNextResult::PauseExecution => Some(GetNextResult::PauseExecution),
+    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
+        let source = self
+            .source
+            .as_mut()
+            .expect("intermediate stage must have source");
+        let source_result = source.get_next()?;
+        match source_result {
             GetNextResult::Advanced(input_doc) => {
                 let mut doc = Document::try_from(input_doc).unwrap();
                 // TODO: you should be able to control the number of crabs.
                 doc.insert("some_crabs", "🦀🦀🦀");
                 self.last_document = to_raw_document_buf(&doc).unwrap();
-                Some(GetNextResult::Advanced(self.last_document.as_ref()))
+                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
             }
+            _ => Ok(source_result),
         }
     }
 }

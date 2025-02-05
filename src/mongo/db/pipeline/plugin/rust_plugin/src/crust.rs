@@ -16,20 +16,27 @@ pub unsafe fn get_next<S: AggregationStage>(
         .as_mut()
         .expect("non-null stage pointer");
     match rust_stage.get_next() {
-        None => {
+        Ok(GetNextResult::EOF) => {
             *result = std::ptr::null();
             *result_len = 0;
             mongodb_get_next_result_GET_NEXT_EOF
         }
-        Some(GetNextResult::PauseExecution) => {
+        Ok(GetNextResult::PauseExecution) => {
             *result = std::ptr::null();
             *result_len = 0;
             mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION
         }
-        Some(GetNextResult::Advanced(doc)) => {
+        Ok(GetNextResult::Advanced(doc)) => {
             *result = doc.as_bytes().as_ptr();
             *result_len = doc.as_bytes().len();
             mongodb_get_next_result_GET_NEXT_ADVANCED
+        }
+        Err(super::Error { code, message }) => {
+            // XXX we leak memory right here. this memory needs to be owned by the stage.
+            rust_stage.buf = message.into_bytes();
+            *result = rust_stage.buf.as_ptr();
+            *result_len = rust_stage.buf.len();
+            code.get()
         }
     }
 }
