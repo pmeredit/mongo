@@ -8,6 +8,7 @@
 #include <chrono>
 #include <fmt/format.h>
 #include <iostream>
+#include <memory>
 #include <rdkafkacpp.h>
 #include <string>
 #include <utility>
@@ -100,15 +101,13 @@ public:
         httpsConnWithFragment.setOptions(httpsConnOptionsWithFragment.toBSON());
         httpsConnWithFragment.setType(ConnectionTypeEnum::HTTPS);
 
-        _context->connections = {
-            {atlasConn.getName().toString(), atlasConn},
-            {httpsConn.getName().toString(), httpsConn},
-            {httpsConnWithQuery.getName().toString(), httpsConnWithQuery},
-            {httpsConnWithFragment.getName().toString(), httpsConnWithFragment},
-        };
+        std::vector<Connection> connectionsVector{
+            atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment};
 
-        auto inMemoryConnection = testInMemoryConnectionRegistry();
-        _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+        auto inMemoryConnection = testInMemoryConnections();
+        connectionsVector.insert(
+            connectionsVector.end(), inMemoryConnection.begin(), inMemoryConnection.end());
+        _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(std::vector<BSONObj> rawPipeline) {
@@ -386,10 +385,9 @@ TEST_F(PlannerTest, MergeStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{atlasConn.getName().toString(), atlasConn}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(atlasConn);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     std::vector<BSONObj> rawPipeline{
         getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
@@ -417,10 +415,9 @@ TEST_F(PlannerTest, LookUpStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{atlasConn.getName().toString(), atlasConn}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(atlasConn);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     auto addFieldsObj = fromjson("{ $addFields: { leftKey: 5 } }");
     auto lookupObj = fromjson(R"(
@@ -578,7 +575,7 @@ TEST_F(PlannerTest, LookUpStageParsing) {
 }
 
 TEST_F(PlannerTest, WindowStageParsing) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     {
         auto windowObj = fromjson(R"(
@@ -665,7 +662,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
 }
 
 TEST_F(PlannerTest, WindowStageParsingUnnested) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     {
         auto windowObj = fromjson(R"(
@@ -804,12 +801,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     kafka3.setOptions(options3.toBSON());
     kafka3.setType(ConnectionTypeEnum::Kafka);
 
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1},
-                                                     {kafka2.getName().toString(), kafka2},
-                                                     {kafka3.getName().toString(), kafka3}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    std::vector connectionsVector{kafka1, kafka2, kafka3};
+    auto inMemConnections = testInMemoryConnections();
+    connectionsVector.insert(
+        connectionsVector.end(), inMemConnections.begin(), inMemConnections.end());
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
     _context->streamProcessorId = streamProcessorId;
 
     struct ExpectedResults {
@@ -1022,8 +1018,8 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     options.setUri(kUriString);
     changeStreamConn.setOptions(options.toBSON());
     changeStreamConn.setType(mongo::ConnectionTypeEnum::Atlas);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {changeStreamConn.getName().toString(), changeStreamConn}};
+    _context->connections =
+        std::make_unique<ConnectionCollection>(std::vector<Connection>{changeStreamConn});
 
     struct ExpectedResults {
         std::string expectedUri;
@@ -1141,7 +1137,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
 }
 
 TEST_F(PlannerTest, EphemeralSink) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), /*options*/ {});
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
@@ -1195,10 +1191,9 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
 
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(kafka1);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -1269,10 +1264,9 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonCanonical) {
     })")));
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(kafka1);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -1322,10 +1316,9 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonRelaxed) {
     })")));
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(kafka1);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -1364,7 +1357,7 @@ TEST_F(PlannerTest, OperatorId) {
         int32_t expectedMainOperators{0};
     };
     auto innerTest = [&](TestSpec spec) {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         Planner planner(_context.get(), {});
         std::vector<BSONObj> pipeline{spec.pipeline};
         auto dag = planner.plan(pipeline);
@@ -1498,12 +1491,11 @@ TEST_F(PlannerTest, OperatorId) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-        {"atlas1",
-         Connection{"atlas1",
-                    ConnectionTypeEnum::Atlas,
-                    AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+        Connection{"atlas1",
+                   ConnectionTypeEnum::Atlas,
+                   AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}});
     Planner planner(_context.get(), Planner::Options{});
     auto dag = planner.plan(bson);
     ASSERT_EQ(0, dag->operators()[0]->getOperatorId());
@@ -1543,8 +1535,8 @@ TEST_F(PlannerTest, NotAllowedInMainPipelineErrorMessage) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1580,8 +1572,8 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1614,8 +1606,8 @@ TEST_F(PlannerTest, LookupFromDoesNotExist) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1655,8 +1647,8 @@ TEST_F(PlannerTest, LookupStagingWithPipeline) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1692,8 +1684,8 @@ TEST_F(PlannerTest, LookupStagingWithPipelineMissingDocuments) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1731,10 +1723,10 @@ TEST_F(PlannerTest, ExecutionPlan) {
         options1.setIsTestKafka(true);
         AtlasConnectionOptions options2{"mongodb://localhost:270"};
         HttpsConnectionOptions options3{"https://localhost:12345"};
-        context->connections = stdx::unordered_map<std::string, Connection>{
-            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-            {"atlas1", Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()}},
-            {"https1", Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()}}};
+        context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+            Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+            Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
+            Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()}});
 
         Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
@@ -2460,9 +2452,9 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
         _context->isEphemeral = false;
 
         HttpsConnectionOptions httpsConnOptions{"https://mongodb.com"};
-        _context->connections = stdx::unordered_map<std::string, Connection>{
-            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-            {"https1", Connection{"https1", ConnectionTypeEnum::HTTPS, httpsConnOptions.toBSON()}}};
+        _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+            Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+            Connection{"https1", ConnectionTypeEnum::HTTPS, httpsConnOptions.toBSON()}});
 
         _context->dlq = std::make_unique<NoOpDeadLetterQueue>(_context.get());
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
@@ -2591,8 +2583,8 @@ TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {
     Planner planner(_context.get(), Planner::Options{});
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
     auto bson = parsePipeline(R"(
     [
         {
@@ -2625,8 +2617,8 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
     Planner planner(_context.get(), Planner::Options{});
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
     auto bson = parsePipeline(R"(
     [
         {

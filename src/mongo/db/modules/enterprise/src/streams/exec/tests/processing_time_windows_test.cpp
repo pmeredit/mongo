@@ -2,6 +2,7 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <memory>
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
@@ -40,9 +41,8 @@ public:
         atlasConn.setOptions(atlasConnOptions.toBSON());
         atlasConn.setType(ConnectionTypeEnum::Atlas);
 
-        _context->connections = {
-            {atlasConn.getName().toString(), atlasConn},
-        };
+        _context->connections =
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{atlasConn});
     }
 
     std::string makePipelineStr(std::string windowStr) {
@@ -209,9 +209,9 @@ $hoppingWindow: {
 TEST_F(ProcessingTimeWindowsTest, WindowsClosingAsExpected) {
     auto innerTest = [&](std::string windowPipeline) {
         setupFFTest();
-        auto prevConnections = _context->connections;
-        _context->connections = testInMemoryConnectionRegistry();
-        ScopeGuard guard([&] { _context->connections = prevConnections; });
+        auto prevConnections = std::move(_context->connections);
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
+        ScopeGuard guard([&] { _context->connections = std::move(prevConnections); });
         Planner planner(_context.get(), {});
         std::string pipeline = R"(
     [

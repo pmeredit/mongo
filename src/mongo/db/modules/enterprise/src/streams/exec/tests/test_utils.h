@@ -14,6 +14,7 @@
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/stages_gen.h"
+#include <memory>
 
 namespace mongo {
 class ConcurrentMemoryAggregator;
@@ -54,10 +55,10 @@ mongo::BSONObj getTestSourceSpec();
 std::vector<mongo::BSONObj> parseBsonVector(std::string json);
 
 // Returns a connections map with a Kafka where isTest = true.
-mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRegistry();
+std::unique_ptr<ConnectionCollection> testKafkaConnections();
 
 // Returns a connections map with an in-memory source connection.
-mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectionRegistry();
+std::vector<mongo::Connection> testInMemoryConnections();
 
 // Returns a $source syntax BSONObj that will use a KafkaConsumer with FakeKafkaPartitionConsumers.
 mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);

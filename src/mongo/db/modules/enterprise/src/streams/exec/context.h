@@ -16,6 +16,7 @@
 #include "mongo/stdx/unordered_map.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/concurrent_checkpoint_monitor.h"
+#include "streams/exec/connection_collection.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/latency_collector.h"
 #include "streams/exec/log_util.h"
@@ -37,7 +38,7 @@ struct Context {
     boost::optional<std::string> instanceName;
     std::string streamProcessorId;
     boost::optional<std::string> kafkaConsumerGroup;
-    mongo::stdx::unordered_map<std::string, mongo::Connection> connections;
+    std::unique_ptr<ConnectionCollection> connections;
     std::string clientName;
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;

@@ -8,6 +8,7 @@
 #include <exception>
 #include <fmt/format.h>
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "mongo/bson/bsonelement.h"
@@ -434,7 +435,7 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
     auto svcCtx = qtServiceContext.getServiceContext();
 
     auto [context, _] = getTestContext(svcCtx);
-    context->connections = testInMemoryConnectionRegistry();
+    context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
@@ -612,7 +613,7 @@ void BatchSizeBenchmark::runBatchSizeBenchmark(benchmark::State& state,
     auto svcCtx = qtServiceContext.getServiceContext();
 
     auto [context, _] = getTestContext(svcCtx);
-    context->connections = testInMemoryConnectionRegistry();
+    context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 

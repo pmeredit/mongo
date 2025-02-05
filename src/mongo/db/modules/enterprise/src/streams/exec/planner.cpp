@@ -982,9 +982,9 @@ void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleM
 
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid connectionName in " << kSourceStageName << " " << sourceSpec,
-            _context->connections.contains(connectionName));
+            _context->connections->contains(connectionName));
 
-    const auto& connection = _context->connections.at(connectionName);
+    const auto& connection = _context->connections->at(connectionName);
     switch (connection.getType()) {
         case ConnectionTypeEnum::Kafka: {
             auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
@@ -1027,9 +1027,9 @@ void Planner::planMergeSink(const BSONObj& spec) {
 
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connection name " << connectionName,
-            _context->connections.contains(connectionName));
+            _context->connections->contains(connectionName));
 
-    const auto& connection = _context->connections.at(connectionName);
+    const auto& connection = _context->connections->at(connectionName);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Only atlas merge connection type is currently supported",
             connection.getType() == ConnectionTypeEnum::Atlas);
@@ -1110,8 +1110,8 @@ void Planner::planEmitSink(const BSONObj& spec) {
         // 'connectionName' must be in '_context->connections'.
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
-                _context->connections.contains(connectionName));
-        auto connection = _context->connections.at(connectionName);
+                _context->connections->contains(connectionName));
+        auto connection = _context->connections->at(connectionName);
         if (connection.getType() == ConnectionTypeEnum::Kafka) {
             auto baseOptions = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                              connection.getOptions());
@@ -1602,9 +1602,9 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
 
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Unknown connection name " << connectionName,
-                _context->connections.contains(connectionName));
+                _context->connections->contains(connectionName));
 
-        const auto& connection = _context->connections.at(connectionName);
+        const auto& connection = _context->connections->at(connectionName);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Only atlas connection type is currently supported for $lookup",
                 connection.getType() == ConnectionTypeEnum::Atlas);
@@ -1706,8 +1706,8 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
                           << kHttpsStageName,
-            _context->connections.contains(connectionNameField));
-    const auto& connection = _context->connections.at(connectionNameField);
+            _context->connections->contains(connectionNameField));
+    const auto& connection = _context->connections->at(connectionNameField);
     auto connOptions = HttpsConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                      connection.getOptions());
 

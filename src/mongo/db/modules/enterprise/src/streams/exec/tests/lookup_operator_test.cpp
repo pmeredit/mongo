@@ -2,13 +2,14 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/util/timer.h"
 #include <fmt/format.h>
+#include <memory>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/util/timer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -50,8 +51,9 @@ TEST_F(LookUpOperatorTest, LocalTest) {
     AtlasConnectionOptions atlasConnOptions{std::getenv("LOOKUP_TEST_MONGODB_URI")};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    _context->connections = testInMemoryConnectionRegistry();
-    _context->connections.insert(std::make_pair(atlasConn.getName().toString(), atlasConn));
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(atlasConn);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     NamespaceString fromNs =
         NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
@@ -110,7 +112,7 @@ TEST_F(LookUpOperatorTest, LocalTest) {
 
 // Executes a collectionless $lookup with $documents
 TEST_F(LookUpOperatorTest, LocalTestCollectionlessLookupWithDocuments) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     auto lookupObj = fromjson(R"(
 {
   $lookup: {

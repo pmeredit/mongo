@@ -3,6 +3,9 @@
  */
 
 #include "streams/exec/tests/test_utils.h"
+
+#include <memory>
+
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/net/http_client_mock.h"
@@ -95,19 +98,19 @@ std::vector<BSONObj> parseBsonVector(std::string json) {
     return parsePipelineFromBSON(inputBson["pipeline"]);
 }
 
-mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRegistry() {
+std::unique_ptr<ConnectionCollection> testKafkaConnections() {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    return {{"kafka1", connection}};
+    return std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
 }
 
 
-mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectionRegistry() {
+std::vector<mongo::Connection> testInMemoryConnections() {
     mongo::Connection connection(std::string(kTestMemoryConnectionName),
                                  mongo::ConnectionTypeEnum::InMemory,
                                  /* options */ mongo::BSONObj());
-    return {{std::string(kTestMemoryConnectionName), connection}};
+    return {connection};
 }
 
 mongo::BSONObj testKafkaSourceSpec(int partitionCount) {

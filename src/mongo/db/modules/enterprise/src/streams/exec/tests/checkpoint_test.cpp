@@ -105,7 +105,7 @@ public:
 
         _props.context->checkpointStorage->registerMetrics(executor->getMetricManager());
         _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
-        _props.context->connections = testKafkaConnectionRegistry();
+        _props.context->connections = testKafkaConnections();
         Planner planner(_props.context.get(), {});
         _props.dag = planner.plan(bsonVector);
         _props.context->executionPlan = _props.dag->optimizedPipeline();
@@ -214,7 +214,7 @@ public:
         startCheckpointRestore(checkpointId);
 
         _props.context->restoreCheckpointId = checkpointId;
-        _props.context->connections = testKafkaConnectionRegistry();
+        _props.context->connections = testKafkaConnections();
 
         Planner::Options plannerOptions{.planningUserPipeline = false};
         Planner planner(_props.context.get(), plannerOptions);

@@ -38,7 +38,7 @@ protected:
 TEST_F(OutputSamplerTest, Basic) {
     std::vector<BSONObj> rawPipeline{getTestSourceSpec(), getTestMemorySinkSpec()};
 
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), {});
     std::unique_ptr<OperatorDag> dag = planner.plan(rawPipeline);
     dag->start();

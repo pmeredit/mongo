@@ -9,8 +9,10 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/thread.h"
@@ -33,6 +35,7 @@
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tenant_feature_flags.h"
+#include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
 #include "streams/util/concurrent_memory_aggregator.h"
@@ -1797,6 +1800,116 @@ TEST_F(StreamManagerTest, ParseOnlyMode_Https) {
     ASSERT_EQUALS("__testMemory", parseConnections->at(0).getName());
     ASSERT_EQUALS("connName1", parseConnections->at(1).getName());
     ASSERT_EQUALS("__noopSink", parseConnections->at(2).getName());
+}
+
+TEST_F(StreamManagerTest, UpdateConnections_ShouldFailOnUnsupportedTypes) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    std::string spName("sp");
+
+    StartStreamProcessorCommand startRequest;
+    startRequest.setTenantId(StringData(kTestTenantId1));
+    startRequest.setName(spName);
+    startRequest.setProcessorId(spName);
+    startRequest.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+
+    std::vector<Connection> connections{
+        {kTestKafkaConnectionName.toString(), ConnectionTypeEnum::Kafka, BSONObj{}},
+        {kTestAtlasConnectionName.toString(), ConnectionTypeEnum::Atlas, BSONObj{}},
+        {kTestSampleSolarConnectionName.toString(), ConnectionTypeEnum::SampleSolar, BSONObj{}},
+        {kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}},
+        {kTestHttpsConnectionName.toString(), ConnectionTypeEnum::HTTPS, BSONObj{}}};
+    startRequest.setConnections(connections);
+    startRequest.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest);
+
+    ScopeGuard guard{[&] {
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
+    }};
+
+    UpdateConnectionCommand updateRequest;
+    updateRequest.setTenantId(kTestTenantId1);
+    updateRequest.setProcessorName(spName);
+
+    for (const auto& connection : connections) {
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS_CODE(streamManager->updateConnection(updateRequest),
+                           DBException,
+                           ErrorCodes::InternalErrorNotSupported);
+    }
+}
+
+TEST_F(StreamManagerTest, UpdateConnections_ShouldValidateProperly) {
+    mongo::streams::gStreamsAllowMultiTenancy = true;
+    ScopeGuard disallowMultiTenancyGuard{
+        [&] { mongo::streams::gStreamsAllowMultiTenancy = false; }};
+
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    std::string spName1{"sp1"};
+    std::string spName2{"sp2"};
+
+    StartStreamProcessorCommand startRequest1;
+    startRequest1.setTenantId(StringData(kTestTenantId1));
+    startRequest1.setName(spName1);
+    startRequest1.setProcessorId(spName1);
+    startRequest1.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+
+    Connection connection{
+        kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}};
+    startRequest1.setConnections({connection});
+    startRequest1.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest1);
+
+    ScopeGuard stopSP1Guard{
+        [&] { stopStreamProcessor(streamManager.get(), kTestTenantId1, spName1); }};
+
+    // Invalid tenant ID
+    {
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId("tenant3");
+        updateRequest.setProcessorName(spName1);
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS(streamManager->updateConnection(updateRequest), DBException);
+    }
+
+    // Non-existent SP
+    {
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId(kTestTenantId1);
+        updateRequest.setProcessorName("nonexistent-sp");
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS(streamManager->updateConnection(updateRequest), DBException);
+    }
+
+    // Incorrect tenant ID
+    StartStreamProcessorCommand startRequest2;
+    startRequest2.setTenantId(StringData(kTestTenantId2));
+    startRequest2.setName(spName2);
+    startRequest2.setProcessorId(spName2);
+    startRequest2.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    startRequest2.setConnections({connection});
+    startRequest2.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest2);
+
+    ScopeGuard stopSP2Guard{
+        [&] { stopStreamProcessor(streamManager.get(), kTestTenantId2, spName2); }};
+
+    {
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId(kTestTenantId1);
+        updateRequest.setProcessorName(spName2);
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS(streamManager->updateConnection(updateRequest), DBException);
+    }
 }
 
 }  // namespace streams

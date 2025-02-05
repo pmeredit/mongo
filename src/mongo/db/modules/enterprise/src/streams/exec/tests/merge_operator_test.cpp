@@ -706,8 +706,9 @@ TEST_F(MergeOperatorTest, LocalTest) {
     AtlasConnectionOptions atlasConnOptions{std::getenv("MERGE_TEST_MONGODB_URI")};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    _context->connections = testInMemoryConnectionRegistry();
-    _context->connections.insert(std::make_pair(atlasConn.getName().toString(), atlasConn));
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(atlasConn);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     NamespaceString fromNs =
         NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");

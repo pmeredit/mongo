@@ -73,7 +73,7 @@ protected:
     std::vector<Document> getStreamingPipelineResults(const string& bsonPipeline,
                                                       const vector<StreamDocument>& streamDocs,
                                                       boost::optional<size_t> expectedNumDlqDocs) {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         Planner planner(_context.get(), {});
 
         // Get the user pipeline vector

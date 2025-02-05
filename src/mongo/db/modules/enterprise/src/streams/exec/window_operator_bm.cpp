@@ -33,7 +33,8 @@ public:
             setGlobalServiceContext(std::move(service));
             _metricManager = std::make_unique<MetricManager>();
             _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
-            _context->connections = testInMemoryConnectionRegistry();
+            _context->connections =
+                std::make_unique<ConnectionCollection>(testInMemoryConnections());
         }
 
         _noopSink = std::make_unique<NoOpSinkOperator>(_context.get());

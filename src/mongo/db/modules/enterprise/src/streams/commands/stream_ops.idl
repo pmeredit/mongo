@@ -370,6 +370,10 @@ structs:
         description: "Response message for UpdateFeatureFlagsCommand."
         is_command_reply: true
 
+    UpdateConnectionReply:
+        description: "Response message for UpdateConnections."
+        is_command_reply: true
+
     CheckpointFlushedReply:
         description: "Response message for SendEventCommand's for checkpoint flush events."
         strict: false
@@ -850,6 +854,27 @@ commands:
                 type: object
         access_check:
             none: true
+
+    streams_updateConnection:
+        description: "Command to update connection details for stream processors running"
+        cpp_name: UpdateConnectionCommand
+        command_name: streams_updateConnection
+        api_version: ""
+        namespace: ignored
+        reply_type: UpdateConnectionReply
+        fields:
+            tenantId:
+                description: "Tenant id."
+                type: string
+            processorName:
+                description: "Name of the stream processor."
+                type: string
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+            connection:
+                description: "Connection to be updated."
+                type: Connection
 
     streams_testOnlyGetFeatureFlags:
         description: "get feature flags for the stream processing instance"

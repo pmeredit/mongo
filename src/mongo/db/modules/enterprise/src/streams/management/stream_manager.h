@@ -128,6 +128,9 @@ public:
     mongo::UpdateFeatureFlagsReply updateFeatureFlags(
         const mongo::UpdateFeatureFlagsCommand& request);
 
+    // Updates connection information at the SP level
+    mongo::UpdateConnectionReply updateConnection(const mongo::UpdateConnectionCommand& request);
+
     // Gets feature flags for the tenant or stream processor (used by js tests.)
     mongo::GetFeatureFlagsReply testOnlyGetFeatureFlags(
         const mongo::GetFeatureFlagsCommand& request);

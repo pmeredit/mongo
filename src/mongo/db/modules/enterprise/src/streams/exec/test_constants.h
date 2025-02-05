@@ -15,5 +15,7 @@ constexpr auto kTestLogConnectionName = "__testLog"_sd;
 constexpr auto kTestMemoryConnectionName = "__testMemory"_sd;
 constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 constexpr auto kTestHttpsConnectionName = "__testHttps"_sd;
+constexpr auto kTestAtlasConnectionName = "__testAtlas"_sd;
+constexpr auto kTestSampleSolarConnectionName = "__testSampleSolar"_sd;
 
 };  // namespace streams

@@ -271,6 +271,7 @@ structs:
     Connection:
         description: "Connection registry information."
         strict: true
+        generate_comparison_operators: true
         fields:
             name:
                 description: "Name of this connection."

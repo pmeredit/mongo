@@ -5,6 +5,7 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/stdx/chrono.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
@@ -82,8 +84,8 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
         // The Agent supplies us with the connections, so this is an InternalError.
         uassert(mongo::ErrorCodes::InternalError,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
-                context->connections.contains(connectionName));
-        const auto& connection = context->connections.at(connectionName);
+                context->connections->contains(connectionName));
+        const auto& connection = context->connections->at(connectionName);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "DLQ must be an Atlas collection",
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);
@@ -917,15 +919,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             context->tenantId.find('/') == std::string::npos &&
                 context->streamProcessorId.find('/') == std::string::npos);
 
-    for (const auto& connection : request.getConnections()) {
-        uassert(mongo::ErrorCodes::InternalError,
-                "Connection names must be unique",
-                !context->connections.contains(connection.getName().toString()));
-        auto ownedConnection = Connection(
-            connection.getName().toString(), connection.getType(), connection.getOptions().copy());
-        context->connections.emplace(
-            std::make_pair(connection.getName(), std::move(ownedConnection)));
-    }
+    context->connections = std::make_unique<ConnectionCollection>(request.getConnections());
 
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
@@ -1916,6 +1910,31 @@ mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
         }
     }
     return mongo::UpdateFeatureFlagsReply{};
+}
+
+mongo::UpdateConnectionReply StreamManager::updateConnection(
+    const mongo::UpdateConnectionCommand& request) {
+    auto connection = request.getConnection();
+    switch (auto type = connection.getType()) {
+        // Supported types will be added progressively
+        default:
+            uasserted(ErrorCodes::InternalErrorNotSupported,
+                      fmt::format("Updating {} connection type is not supported",
+                                  ConnectionType_serializer(type)));
+    }
+
+    LockLogger lk("updateConnection",
+                  _mutex,
+                  request.getProcessorName().toString(),
+                  request.getProcessorId().toString(),
+                  request.getTenantId().toString());
+    assertTenantIdIsValid(lk.getLock(), request.getTenantId());
+
+    auto spInfo = getProcessorInfo(
+        lk.getLock(), request.getTenantId().toString(), request.getProcessorName().toString());
+    spInfo->context->connections->update(std::move(connection));
+
+    return mongo::UpdateConnectionReply{};
 }
 
 mongo::GetFeatureFlagsReply StreamManager::testOnlyGetFeatureFlags(

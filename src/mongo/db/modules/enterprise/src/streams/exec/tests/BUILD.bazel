@@ -881,3 +881,16 @@ mongo_cc_unit_test(
         "//src/third_party/aws-sdk",
     ],
 )
+
+mongo_cc_unit_test(
+    name = "connection_collection_test",
+    srcs = [
+        "connection_collection_test.cpp",
+    ],
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_fourth_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
