@@ -54,6 +54,13 @@ static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
 
 class StreamManagerTest : public AggregationContextFixture {
 public:
+    // Struct used by various StreamManagerTest utility methods to identify a processor.
+    struct ProcessorDetails {
+        StreamManager* streamManager{nullptr};
+        std::string tenantId;
+        std::string name;
+    };
+
     std::unique_ptr<StreamManager> createStreamManager(StreamManager::Options options) {
         auto streamManager =
             std::make_unique<StreamManager>(getServiceContext(), std::move(options));
@@ -135,7 +142,12 @@ public:
                                                                std::string tenantId,
                                                                std::string name) {
         stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
-        return streamManager->getProcessorInfo(lk, tenantId, name);
+        return getStreamProcessorInfo(lk, {streamManager, tenantId, name});
+    }
+
+    StreamManager::StreamProcessorInfo* getStreamProcessorInfo(WithLock lk,
+                                                               ProcessorDetails details) {
+        return details.streamManager->getProcessorInfo(lk, details.tenantId, details.name);
     }
 
     void insert(StreamManager* streamManager,
@@ -151,14 +163,18 @@ public:
         spInfo->executor->runOnce();
     }
 
-    void setLastCheckpointSize(StreamManager::StreamProcessorInfo* info, int64_t bytes) {
+    void setLastCheckpointSize(ProcessorDetails details, int64_t bytes) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
         info->context->checkpointStorage->_lastCheckpointSizeBytes = bytes;
     }
 
-    void waitForLastCheckpointSize(StreamManager::StreamProcessorInfo* info) {
+    void waitForLastCheckpointSize(ProcessorDetails details) {
         auto deadline = Date_t::now() + Minutes{1};
         while (Date_t::now() < deadline) {
+            stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+            auto info = getStreamProcessorInfo(lk, details);
             stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
             if (info->context->checkpointStorage->_lastCheckpointSizeBytes > 0) {
                 return;
@@ -169,27 +185,30 @@ public:
     }
 
     void setLastCheckpointTime(
-        StreamManager::StreamProcessorInfo* info,
+        ProcessorDetails details,
         mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
         info->checkpointCoordinator->_lastCheckpointTimestamp = time;
     }
 
-    mongo::stdx::chrono::time_point<system_clock> getLastCheckpointTime(
-        StreamManager::StreamProcessorInfo* info) {
+    mongo::stdx::chrono::time_point<system_clock> getLastCheckpointTime(ProcessorDetails details) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         return info->checkpointCoordinator->_lastCheckpointTimestamp;
     }
 
-    void setUncheckpointedState(StreamManager::StreamProcessorInfo* info,
-                                bool uncheckpointedState) {
+    void setUncheckpointedState(ProcessorDetails details, bool uncheckpointedState) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         info->executor->_uncheckpointedState.store(uncheckpointedState);
     }
 
-    void waitForCheckpointInterval(StreamManager::StreamProcessorInfo* info,
-                                   Milliseconds expected) {
+    void waitForCheckpointInterval(ProcessorDetails details, Milliseconds expected) {
         auto deadline = Date_t::now() + Minutes{1};
         while (Date_t::now() < deadline) {
-            auto actual = Milliseconds{getCheckpointInterval(info).count()};
+            auto actual = Milliseconds{getCheckpointInterval(details).count()};
             std::cout << "actual: " << actual << std::endl;
             if (expected == actual) {
                 return;
@@ -248,15 +267,27 @@ public:
         return streamManager->_numStreamProcessorsByStatusGauges;
     }
 
-    void updateContextFeatureFlags(StreamManager::StreamProcessorInfo* processorInfo,
+
+    std::string getWriteRootDir(ProcessorDetails details) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto processorInfo = getStreamProcessorInfo(lk, details);
+        return dynamic_cast<LocalDiskCheckpointStorage*>(
+                   processorInfo->context->checkpointStorage.get())
+            ->writeRootDir();
+    }
+
+    void updateContextFeatureFlags(ProcessorDetails details,
                                    std::shared_ptr<TenantFeatureFlags> featureFlags) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto processorInfo = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
         processorInfo->executor->_tenantFeatureFlagsUpdate = std::move(featureFlags);
         processorInfo->executor->updateContextFeatureFlags();
     }
 
-    std::chrono::milliseconds getCheckpointInterval(
-        StreamManager::StreamProcessorInfo* processorInfo) {
+    std::chrono::milliseconds getCheckpointInterval(ProcessorDetails details) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto processorInfo = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
         return std::chrono::milliseconds(processorInfo->checkpointCoordinator->_interval.count());
     }
@@ -1079,44 +1110,40 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         ASSERT(streamProcessorExists(
             streamManager.get(), kTestTenantId1, request.getName().toString()));
 
-        auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
-        ASSERT(processorInfo->checkpointCoordinator);
-        auto actual = getCheckpointInterval(processorInfo);
+        ProcessorDetails details = {streamManager.get(), kTestTenantId1, "name1"};
+        auto actual = getCheckpointInterval(details);
         // Manifest file takes up a few bytes, so if one is written, the next checkpoint interval
         // will be slightly longer.
         ASSERT(std::abs((actual - stdx::chrono::milliseconds{expectedIntervalMs}).count()) < 20);
         // wait for at least one checkpoint
-        waitForLastCheckpointSize(processorInfo);
+        waitForLastCheckpointSize(details);
 
-        setLastCheckpointSize(processorInfo, 100_MiB);
+        setLastCheckpointSize(details, 100_MiB);
         // set this to force another checkpoint
-        setLastCheckpointTime(processorInfo,
-                              stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
-        setUncheckpointedState(processorInfo, true);
+        setLastCheckpointTime(details, stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
+        setUncheckpointedState(details, true);
         // since the last checkpoint was 100MB, after a runOnce call in the executor background
         // thread, the checkpoint interval should increase to 60 minutes.
-        waitForCheckpointInterval(processorInfo, Milliseconds{Minutes{60}});
+        waitForCheckpointInterval(details, Milliseconds{Minutes{60}});
 
         mongo::BSONObj featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: 50000}}}");
         std::shared_ptr<TenantFeatureFlags> tFeatureFlags =
             std::make_shared<TenantFeatureFlags>(featureFlags);
-        updateContextFeatureFlags(processorInfo, tFeatureFlags);
-        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
+        updateContextFeatureFlags(details, tFeatureFlags);
+        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(details));
 
         featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: \"60000\"}}}");
         tFeatureFlags = std::make_shared<TenantFeatureFlags>(featureFlags);
         try {
-            updateContextFeatureFlags(processorInfo, tFeatureFlags);
+            updateContextFeatureFlags(details, tFeatureFlags);
         } catch (const DBException& ex) {
             ASSERT_EQ(ex.code(), 9273401);
         }
-        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
+        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(details));
 
-        std::string writeRootDir = dynamic_cast<LocalDiskCheckpointStorage*>(
-                                       processorInfo->context->checkpointStorage.get())
-                                       ->writeRootDir();
+        std::string writeRootDir = getWriteRootDir(details);
         stdx::thread flusherThread([&]() {
             flushUntilStopped(writeRootDir,
                               streamManager.get(),
@@ -1321,8 +1348,8 @@ TEST_F(StreamManagerTest, Start_ShouldCorrectlyInitCheckpointCoordinatorAfterChe
             streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
     });
 
-    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
-    ASSERT_LT(getLastCheckpointTime(processorInfo), afterCheckpointCommitTs);
+    ASSERT_LT(getLastCheckpointTime({streamManager.get(), kTestTenantId1, spName}),
+              afterCheckpointCommitTs);
 }
 
 TEST_F(StreamManagerTest,
@@ -1387,8 +1414,8 @@ TEST_F(StreamManagerTest,
             streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
     });
 
-    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
-    ASSERT_GT(getLastCheckpointTime(processorInfo), beforeSPStartTs);
+    ASSERT_GT(getLastCheckpointTime({streamManager.get(), kTestTenantId1, spName}),
+              beforeSPStartTs);
 }
 
 TEST_F(StreamManagerTest, MemoryTracking) {
