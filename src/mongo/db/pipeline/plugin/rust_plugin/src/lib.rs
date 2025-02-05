@@ -2,14 +2,14 @@
 // The entry point is an exported function called from a .cpp file.
 #![allow(dead_code)]
 
-pub mod crust;
-
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
 
 use bson::{to_raw_document_buf, Document, RawDocument, RawDocumentBuf};
 
-use plugin_api_bindgen::{mongodb_aggregation_stage, mongodb_plugin_portal};
+use plugin_api_bindgen::{
+    mongodb_aggregation_stage, mongodb_plugin_portal, mongodb_source_get_next,
+};
 
 #[derive(Debug)]
 pub struct Error {
@@ -83,12 +83,6 @@ pub trait AggregationStage: Sized {
     /// Return the name of this aggregation stage, useful for registration.
     fn name() -> &'static str;
 
-    /// Get the C API bindings for this stage.
-    ///
-    /// You almost always want to generate this using the `generate_stage_api!` macro, returning
-    /// the `API` constant from the generate module.
-    fn api() -> mongodb_aggregation_stage;
-
     /// Create a new stage from a document containing the stage definition.
     /// The stage definition is a document value associated with the stage name, e.g.
     ///   $echo: {<contents of stage_definition}
@@ -101,15 +95,6 @@ pub trait AggregationStage: Sized {
     /// This may contain a document or another stream marker, including EOF.
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error>;
 }
-
-// ALTERNATIVE DESIGN FOR PluginAggregationStage:
-// * Make AggregationStage trait object-safe.
-// * PluginAggregationStage accepts Box<dyn AggregationStage>
-//
-// + There's no need to generate extern ABI bindings since there is only one struct shape.
-// + No opportunity to mess up the extern ABI bindings.
-// - Calls go through double indirection (C function pointer -> vtable -> actual call).
-// - Registration becomes a bit more complicated.
 
 /// Wrapper around an [AggregationStage] that binds to the C plugin API.
 #[repr(C)]
@@ -134,46 +119,19 @@ impl<S: AggregationStage> std::ops::DerefMut for PluginAggregationStage<S> {
     }
 }
 
-/// For an `AggregationStage` used with `PluginAggregationStage` generate ABI compatible functions
-/// and a `mongodb_aggregation_stage` constant.
-macro_rules! generate_stage_api {
-    ($agg_stage:ident, $mod_name:ident) => {
-        mod $mod_name {
-            use super::$agg_stage;
-            use plugin_api_bindgen::{mongodb_aggregation_stage, mongodb_source_get_next};
-            use std::ffi::{c_int, c_void};
-
-            pub unsafe extern "C-unwind" fn get_next(
-                stage: *mut mongodb_aggregation_stage,
-                result: *mut *const u8,
-                result_len: *mut usize,
-            ) -> c_int {
-                crate::crust::get_next::<$agg_stage>(stage, result, result_len)
-            }
-
-            pub unsafe extern "C-unwind" fn set_source(
-                stage: *mut mongodb_aggregation_stage,
-                source_ptr: *mut c_void,
-                source_get_next: mongodb_source_get_next,
-            ) {
-                crate::crust::set_source::<$agg_stage>(stage, source_ptr, source_get_next)
-            }
-
-            pub unsafe extern "C-unwind" fn close(stage: *mut mongodb_aggregation_stage) {
-                crate::crust::close::<$agg_stage>(stage)
-            }
-
-            pub const API: mongodb_aggregation_stage = mongodb_aggregation_stage {
-                get_next: Some(get_next),
-                set_source: Some(set_source),
-                close: Some(close),
-            };
-        }
-    };
-}
-
 impl<S: AggregationStage> PluginAggregationStage<S> {
-    pub unsafe extern "C-unwind" fn parse_external(
+    pub fn register(plugin_portal: *mut mongodb_plugin_portal) {
+        let stage_name = S::name();
+        unsafe {
+            (*plugin_portal).add_aggregation_stage.expect("add stage")(
+                stage_name.as_bytes().as_ptr(),
+                stage_name.as_bytes().len(),
+                Some(Self::parse_external),
+            );
+        }
+    }
+
+    unsafe extern "C-unwind" fn parse_external(
         bson_type: u8,
         bson_value: *const u8,
         bson_value_len: usize,
@@ -193,7 +151,11 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         match Self::parse(doc_bytes) {
             Ok(stage_impl) => {
                 let plugin_stage = Box::new(Self {
-                    stage_api: S::api(),
+                    stage_api: mongodb_aggregation_stage {
+                        get_next: Some(Self::get_next),
+                        set_source: Some(Self::set_source),
+                        close: Some(Self::close),
+                    },
                     stage_impl,
                     buf: vec![],
                 });
@@ -214,7 +176,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     }
 
     /// Parse a generic [AggregationStage] from raw bson document bytes.
-    pub fn parse(bson_doc_bytes: &[u8]) -> Result<S, Error> {
+    fn parse(bson_doc_bytes: &[u8]) -> Result<S, Error> {
         let doc = RawDocument::from_bytes(bson_doc_bytes).map_err(|e| {
             let message = if let Some(key) = e.key() {
                 format!(
@@ -238,15 +200,54 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         S::new(doc)
     }
 
-    pub fn register(plugin_portal: *mut mongodb_plugin_portal) {
-        let stage_name = S::name();
-        unsafe {
-            (*plugin_portal).add_aggregation_stage.expect("add stage")(
-                stage_name.as_bytes().as_ptr(),
-                stage_name.as_bytes().len(),
-                Some(Self::parse_external),
-            );
+    unsafe extern "C-unwind" fn get_next(
+        stage: *mut mongodb_aggregation_stage,
+        result: *mut *const u8,
+        result_len: *mut usize,
+    ) -> c_int {
+        let rust_stage = (stage as *mut PluginAggregationStage<S>)
+            .as_mut()
+            .expect("non-null stage pointer");
+        match rust_stage.get_next() {
+            Ok(GetNextResult::EOF) => {
+                *result = std::ptr::null();
+                *result_len = 0;
+                plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF
+            }
+            Ok(GetNextResult::PauseExecution) => {
+                *result = std::ptr::null();
+                *result_len = 0;
+                plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION
+            }
+            Ok(GetNextResult::Advanced(doc)) => {
+                *result = doc.as_bytes().as_ptr();
+                *result_len = doc.as_bytes().len();
+                plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED
+            }
+            Err(Error { code, message }) => {
+                // XXX we leak memory right here. this memory needs to be owned by the stage.
+                rust_stage.buf = message.into_bytes();
+                *result = rust_stage.buf.as_ptr();
+                *result_len = rust_stage.buf.len();
+                code.get()
+            }
         }
+    }
+
+    unsafe extern "C-unwind" fn set_source(
+        stage: *mut mongodb_aggregation_stage,
+        source_ptr: *mut c_void,
+        source_get_next: mongodb_source_get_next,
+    ) {
+        let rust_stage = (stage as *mut PluginAggregationStage<S>)
+            .as_mut()
+            .expect("non-null stage pointer");
+        rust_stage.set_source(AggregationSource::new(source_ptr, source_get_next))
+    }
+
+    unsafe extern "C-unwind" fn close(stage: *mut mongodb_aggregation_stage) {
+        let rust_stage = Box::from_raw(stage as *mut PluginAggregationStage<S>);
+        drop(rust_stage);
     }
 }
 
@@ -258,10 +259,6 @@ struct EchoOxide {
 impl AggregationStage for EchoOxide {
     fn name() -> &'static str {
         "$echoOxide"
-    }
-
-    fn api() -> mongodb_aggregation_stage {
-        echo_oxide::API
     }
 
     fn new(stage_definition: &RawDocument) -> Result<Self, Error> {
@@ -285,8 +282,6 @@ impl AggregationStage for EchoOxide {
     }
 }
 
-generate_stage_api!(EchoOxide, echo_oxide);
-
 struct AddSomeCrabs {
     source: Option<AggregationSource>,
     last_document: RawDocumentBuf,
@@ -295,10 +290,6 @@ struct AddSomeCrabs {
 impl AggregationStage for AddSomeCrabs {
     fn name() -> &'static str {
         "$addSomeCrabs"
-    }
-
-    fn api() -> mongodb_aggregation_stage {
-        add_some_crabs::API
     }
 
     fn new(_stage_definition: &RawDocument) -> Result<Self, Error> {
@@ -330,8 +321,6 @@ impl AggregationStage for AddSomeCrabs {
         }
     }
 }
-
-generate_stage_api!(AddSomeCrabs, add_some_crabs);
 
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
