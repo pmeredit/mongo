@@ -6,8 +6,8 @@
 
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/framework.h"
-#include "mongo/util/chunked_memory_aggregator.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
+#include "streams/util/chunked_memory_aggregator.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/exception.h"
 
 using namespace mongo;

@@ -6,13 +6,13 @@
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/group_processor.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/window_assigner.h"
 #include "streams/exec/window_aware_operator.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace mongo {
 class DocumentSourceGroup;

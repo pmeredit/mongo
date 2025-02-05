@@ -12,7 +12,6 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -27,6 +26,7 @@
 #include "streams/exec/unflushed_state_container.h"
 #include "streams/exec/watermark_combiner.h"
 #include "streams/exec/watermark_generator.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace mongo {
 class KafkaSourceCheckpointState;

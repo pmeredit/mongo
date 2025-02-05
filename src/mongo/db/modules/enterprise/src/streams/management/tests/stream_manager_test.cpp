@@ -17,7 +17,6 @@
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/processinfo.h"
 #include "mongo/util/scopeguard.h"
@@ -36,6 +35,7 @@
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"
 

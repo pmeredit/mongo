@@ -12,15 +12,20 @@ exports_files(
 mongo_cc_library(
     name = "streams_util",
     srcs = [
+        "chunked_memory_aggregator.cpp",
+        "concurrent_memory_aggregator.cpp",
         "exception.cpp",
         "metric_manager.cpp",
         "metrics.cpp",
     ],
     hdrs = [
+        "chunked_memory_aggregator.h",
+        "concurrent_memory_aggregator.h",
         "exception.h",
         "metric_manager.h",
         "metrics.h",
         "units.h",
+        "//src/mongo/db/memory_tracking:memory_usage_tracker.h",
         "//src/mongo/util:histogram.h",
     ],
     visibility = ["//visibility:public"],

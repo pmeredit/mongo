@@ -9,7 +9,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/periodic_runner.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
@@ -24,6 +23,7 @@
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/management/container_stats.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {

@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "mongo/util/timer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/chunked_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {

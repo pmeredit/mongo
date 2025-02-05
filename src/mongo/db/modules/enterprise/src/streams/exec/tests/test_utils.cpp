@@ -5,7 +5,6 @@
 #include "streams/exec/tests/test_utils.h"
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
@@ -14,6 +13,7 @@
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/test_constants.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 
 using namespace mongo;
 

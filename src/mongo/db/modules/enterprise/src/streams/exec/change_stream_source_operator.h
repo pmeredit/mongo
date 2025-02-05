@@ -19,7 +19,6 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -29,6 +28,7 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace streams {
 /**

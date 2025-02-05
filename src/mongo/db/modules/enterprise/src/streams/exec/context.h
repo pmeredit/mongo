@@ -14,7 +14,6 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -23,6 +22,7 @@
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace streams {
 

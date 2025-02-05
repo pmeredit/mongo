@@ -9,7 +9,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/common_gen.h"
@@ -19,6 +18,7 @@
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 
 using namespace mongo;

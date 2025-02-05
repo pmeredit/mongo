@@ -6,13 +6,13 @@
 
 #include <boost/optional.hpp>
 
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/util/chunked_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 

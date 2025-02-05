@@ -6,11 +6,11 @@
 
 #include "mongo/db/exec/sort_executor.h"
 #include "mongo/db/index/sort_key_generator.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/window_assigner.h"
 #include "streams/exec/window_aware_operator.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace mongo {
 class DocumentSourceSort;

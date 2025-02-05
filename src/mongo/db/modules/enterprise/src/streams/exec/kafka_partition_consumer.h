@@ -15,12 +15,12 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/message.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace streams {
 
