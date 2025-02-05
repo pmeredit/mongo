@@ -5,6 +5,11 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {
+    cursorEntryValidator,
+    cursorSizeValidator,
+    summaryFieldsValidator
+} from "jstests/libs/bulk_write_utils.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 const UNSATISFIABLE_WC = {
@@ -72,6 +77,18 @@ function runCommonTestSetup(fixture, plainDbName, fleDbName) {
 function runCommandOnBothDB(cmd, plainDb, fleDb) {
     let pres = plainDb.runCommand(cmd);
     let eres = fleDb.erunCommand(cmd);
+    print("Unencrypted result: " + tojson(pres));
+    print("Encrypted result: " + tojson(eres));
+    return {pres: pres, eres: eres};
+}
+
+function runBulkWriteCommandOnBothDB(plainDb, fleDb, collName, plainCmd, fleCmd) {
+    const pcmd =
+        Object.assign({bulkWrite: 1, nsInfo: [{ns: `${plainDb.getName()}.${collName}`}]}, plainCmd);
+    const ecmd = Object.assign({bulkWrite: 1, nsInfo: [{ns: `${fleDb.getName()}.${collName}`}]},
+                               fleCmd ? fleCmd : plainCmd);
+    const pres = plainDb.adminCommand(pcmd);
+    const eres = fleDb.eadminCommand(ecmd);
     print("Unencrypted result: " + tojson(pres));
     print("Encrypted result: " + tojson(eres));
     return {pres: pres, eres: eres};
@@ -415,6 +432,136 @@ function runShardedFindAndModifyTests(fixture) {
     assert.eq(eres.lastErrorObject.updatedExisting, false);
 }
 
+function runShardedBulkWriteUpdateTests(fixture) {
+    const plainDbName = "plaindb_bulkupdate";
+    const fleDbName = "fledb_bulkupdate";
+    const eclient = runCommonTestSetup(fixture, plainDbName, fleDbName);
+    const fleDb = eclient.getDB();
+    const plainDb = fixture.s.getDB(plainDbName);
+
+    // Test update where one or more shards are read, but only one is written to.
+    print("BULK UPDATE: single write shard commit");
+    let cmd = {
+        bulkWrite: 1,
+        ops: [{update: 0, filter: {first: "fredo"}, updateMods: {$set: {first: "clemenza"}}}],
+        writeConcern: UNSATISFIABLE_WC
+    };
+    let {pres, eres} = runBulkWriteCommandOnBothDB(plainDb, fleDb, collName, cmd);
+    assert.eq(0, plainDb[collName].countDocuments({first: "clemenza"}));
+    assert.eq(0, fleDb[collName].ecount({first: "clemenza"}));
+    eclient.assertEncryptedCollectionCounts(collName, 7, 7, 7);
+    cursorSizeValidator(pres, 1);
+    cursorSizeValidator(eres, 1);
+
+    // TODO: SERVER-98557 UnsatisfiableWriteConcern is being reported in writeErrors instead of
+    // writeConcernError
+    let expectedSummaryCounts =
+        {nErrors: 1, nInserted: 0, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0};
+    let expectedCursorCounts =
+        {ok: 0, idx: 0, n: 0, nModified: 0, code: ErrorCodes.UnsatisfiableWriteConcern};
+    summaryFieldsValidator(pres, expectedSummaryCounts);
+    summaryFieldsValidator(eres, expectedSummaryCounts);
+    cursorEntryValidator(pres.cursor.firstBatch[0], expectedCursorCounts);
+    cursorEntryValidator(eres.cursor.firstBatch[0], expectedCursorCounts);
+    assert(!pres.hasOwnProperty("writeConcernError"));
+    assert(!eres.hasOwnProperty("writeConcernError"));
+
+    // Test update targeted to single shard; the update goes through in both cases
+    print("BULK UPDATE: single shard commit");
+    cmd = {
+        bulkWrite: 1,
+        ops: [{update: 0, filter: {_id: 101}, updateMods: {$set: {first: "clemenza"}}}],
+        writeConcern: UNSATISFIABLE_WC
+    };
+    ({pres, eres} = runBulkWriteCommandOnBothDB(plainDb, fleDb, collName, cmd));
+    assert.commandFailedWithCode(pres, ErrorCodes.UnsatisfiableWriteConcern);
+    assert.commandFailedWithCode(eres, ErrorCodes.UnsatisfiableWriteConcern);
+    assert.eq(1, plainDb[collName].countDocuments({first: "clemenza"}));
+    assert.eq(1, fleDb[collName].ecount({first: "clemenza"}));
+    eclient.assertEncryptedCollectionCounts(collName, 7, 8, 8);
+    cursorSizeValidator(pres, 1);
+    cursorSizeValidator(eres, 1);
+
+    expectedSummaryCounts =
+        {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0};
+    expectedCursorCounts = {ok: 1, idx: 0, n: 1, nModified: 1};
+    summaryFieldsValidator(pres, expectedSummaryCounts);
+    summaryFieldsValidator(eres, expectedSummaryCounts);
+    cursorEntryValidator(pres.cursor.firstBatch[0], expectedCursorCounts);
+    cursorEntryValidator(eres.cursor.firstBatch[0], expectedCursorCounts);
+    assert(pres.hasOwnProperty("writeConcernError"));
+    assert(eres.hasOwnProperty("writeConcernError"));
+
+    // Test update on multiple shards; the update goes through in both cases.
+    print("BULK UPDATE: multiple write shards");
+    ({pres, eres} =
+         runBulkWriteCommandOnBothDB(plainDb,
+                                     fleDb,
+                                     collName,
+                                     {
+                                         bulkWrite: 1,
+                                         ops: [{
+                                             update: 0,
+                                             filter: {$or: [{first: "sonny"}, {first: "vito"}]},
+                                             updateMods: {$set: {first: "tessio"}},
+                                             multi: true
+                                         }],
+                                         writeConcern: UNSATISFIABLE_WC
+                                     },
+                                     {
+                                         bulkWrite: 1,
+                                         ops: [{
+                                             update: 0,
+                                             filter: {first: "sonny"},
+                                             updateMods: {$set: {first: "tessio"}},
+                                         }],
+                                         writeConcern: UNSATISFIABLE_WC
+                                     }));
+    assert.commandFailedWithCode(pres, ErrorCodes.UnsatisfiableWriteConcern);
+    assert.commandFailedWithCode(eres, ErrorCodes.UnsatisfiableWriteConcern);
+    assert.eq(2, plainDb[collName].countDocuments({first: "tessio"}));
+    assert.eq(1, fleDb[collName].ecount({first: "tessio"}));
+    eclient.assertEncryptedCollectionCounts(collName, 7, 9, 9);
+    cursorSizeValidator(pres, 1);
+    cursorSizeValidator(eres, 1);
+
+    summaryFieldsValidator(
+        pres, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 2, nModified: 2, nUpserted: 0});
+    summaryFieldsValidator(
+        eres, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
+    cursorEntryValidator(pres.cursor.firstBatch[0], {ok: 1, idx: 0, n: 2, nModified: 2});
+    cursorEntryValidator(eres.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
+    assert(pres.hasOwnProperty("writeConcernError"));
+    assert(eres.hasOwnProperty("writeConcernError"));
+
+    // Test no-op update
+    print("BULK UPDATE: read only");
+    cmd = {
+        bulkWrite: 1,
+        ops: [{update: 0, filter: {first: "apollonia"}, updateMods: {$set: {second: "barzini"}}}],
+        writeConcern: UNSATISFIABLE_WC
+    };
+    ({pres, eres} = runBulkWriteCommandOnBothDB(plainDb, fleDb, collName, cmd));
+    eclient.assertEncryptedCollectionCounts(collName, 7, 9, 9);
+    cursorSizeValidator(pres, 1);
+    cursorSizeValidator(eres, 1);
+
+    // TODO: SERVER-98557 unencrypted case report UnsatisfiableWriteConcern in writeErrors
+    // instead of a writeConcernError
+    expectedCursorCounts =
+        {ok: 0, idx: 0, n: 0, nModified: 0, code: ErrorCodes.UnsatisfiableWriteConcern};
+    summaryFieldsValidator(
+        pres, {nErrors: 1, nInserted: 0, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
+    summaryFieldsValidator(
+        eres, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
+    cursorEntryValidator(
+        pres.cursor.firstBatch[0],
+        {ok: 0, idx: 0, n: 0, nModified: 0, code: ErrorCodes.UnsatisfiableWriteConcern});
+    cursorEntryValidator(eres.cursor.firstBatch[0], {ok: 1, idx: 0, n: 0, nModified: 0});
+    assert(!pres.hasOwnProperty("writeConcernError"));
+    assert(eres.hasOwnProperty("writeConcernError"));
+}
+
 jsTestLog("Sharding: Testing FLE2 write concern errors");
 {
     const st = new ShardingTest({
@@ -427,5 +574,6 @@ jsTestLog("Sharding: Testing FLE2 write concern errors");
     runShardedDeleteTests(st);
     runShardedUpdateTests(st);
     runShardedFindAndModifyTests(st);
+    runShardedBulkWriteUpdateTests(st);
     st.stop();
 }
