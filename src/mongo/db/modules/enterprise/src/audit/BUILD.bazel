@@ -285,7 +285,7 @@ mongo_cc_unit_test(
         "//src/mongo/transport:test_fixtures.h",
         "//src/mongo/unittest:join_thread.h",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         ":audit_config",
         ":audit_enc_comp_manager",

@@ -65,7 +65,7 @@ mongo_cc_unit_test(
         "kmip_request_test.cpp",
         "kmip_response_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     target_compatible_with = select({
         "//bazel/config:enterprise_feature_audit_enabled": [],
         "//bazel/config:enterprise_feature_encryptdb_enabled": [],

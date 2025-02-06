@@ -37,7 +37,7 @@ mongo_cc_unit_test(
         "stream_manager_test.cpp",
     ],
     copts = MONGOCXX_COPTS,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db:service_context",
@@ -57,7 +57,7 @@ mongo_cc_unit_test(
         "container_stats_utils_test.cpp",
     ],
     copts = MONGOCXX_COPTS,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",
@@ -71,7 +71,7 @@ mongo_cc_unit_test(
         "container_stats_test.cpp",
     ],
     copts = MONGOCXX_COPTS,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",

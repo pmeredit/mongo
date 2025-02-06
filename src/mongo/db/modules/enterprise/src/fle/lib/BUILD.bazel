@@ -24,7 +24,7 @@ mongo_cc_unit_test(
     local_defines = [
         "MONGO_CRYPT_SUPPORT_STATIC",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     target_compatible_with = select({
         "//bazel/config:shared_archive_enabled": ["@platforms//:incompatible"],
         "//conditions:default": [],

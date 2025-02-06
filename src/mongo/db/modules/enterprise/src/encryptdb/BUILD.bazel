@@ -187,7 +187,7 @@ mongo_cc_unit_test(
         "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
         "//conditions:default": [],
     }),
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":encryptdb",
         ":keystore_metadata",
@@ -215,7 +215,7 @@ mongo_cc_unit_test(
         "@platforms//os:macos": ["DISABLE_GCM_TESTVECTORS"],
         "//conditions:default": [],
     }),
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     target_compatible_with = select({
         "//bazel/config:ubsan_enabled": ["@platforms//:incompatible"],
         "//conditions:default": [],

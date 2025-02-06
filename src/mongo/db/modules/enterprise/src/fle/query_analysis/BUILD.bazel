@@ -81,7 +81,7 @@ mongo_cc_unit_test(
         "fle_test_fixture.h",
         "query_analysis_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":query_analysis",
         "//src/mongo/db:service_context_non_d",
