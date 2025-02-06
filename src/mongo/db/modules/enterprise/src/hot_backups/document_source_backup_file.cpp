@@ -207,7 +207,7 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
       _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
 Value DocumentSourceBackupFile::serialize(const SerializationOptions& opts) const {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+    if (!opts.isReplacingLiteralsWithRepresentativeValues()) {
         return Value(Document{{kStageName, _backupFileSpec.toBSON(opts)}});
     }
 
