@@ -234,17 +234,18 @@ const excludedCollections = [
     "shard.databases"
 ];
 
+// Ensure the config.collection_critical_sections collection is empty on both shards,
+// indicating that the critical section has been exited and movePrimary has completed.
+assert.soon(() => {
+    return shardingRestoreTest.getShardRestoreTests().every((restoreTest) => {
+        const primary = restoreTest.rst.getPrimary();
+        return primary.getDB("config").getCollection("collection_critical_sections").count() === 0;
+    });
+});
+shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
+
 primary = configUtils.rst.getPrimary();
 const configDB = primary.getDB("config");
-
-// Ensure the primary shard has changed to shard1, indicating that the movePrimary completed.
-let dbInfo;
-assert.soon(() => {
-    dbInfo = configDB.getCollection("databases").findOne({_id: "db"});
-    return dbInfo.primary === jsTestName() + '-dst-rs1';
-}, dbInfo);
-
-shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
 
 jsTestLog("Checking sharding renames on the config server");
 const shards = configDB.getCollection("shards").find().sort({"_id": 1}).toArray();
