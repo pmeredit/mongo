@@ -88,6 +88,7 @@
 #include "streams/exec/project_operator.h"
 #include "streams/exec/redact_operator.h"
 #include "streams/exec/replace_root_operator.h"
+#include "streams/exec/s3_emit_operator.h"
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
@@ -1186,6 +1187,15 @@ void Planner::planEmitSink(const BSONObj& spec) {
 
             sinkOperator =
                 std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
+            sinkOperator->setOperatorId(_nextOperatorId++);
+        } else if (connection.getType() == ConnectionTypeEnum::S3) {
+            bool featureFlag =
+                *_context->featureFlags->getFeatureFlagValue(FeatureFlags::kEnableS3Emit).getBool();
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "Creating a S3 $emit stage is not yet supported",
+                    featureFlag);
+
+            sinkOperator = std::make_unique<S3EmitOperator>(_context, S3EmitOperator::Options{});
             sinkOperator->setOperatorId(_nextOperatorId++);
         } else {
             // $emit to TimeSeries collection

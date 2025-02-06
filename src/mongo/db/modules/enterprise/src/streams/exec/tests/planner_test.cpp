@@ -1713,6 +1713,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         // Setup the context.
         auto context = get<0>(getTestContext(nullptr));
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+        featureFlagsMap.emplace(std::make_pair(FeatureFlags::kEnableS3Emit.name, true));
         StreamProcessorFeatureFlags spFeatureFlags{
             featureFlagsMap,
             std::chrono::time_point<std::chrono::system_clock>{
@@ -1726,7 +1727,12 @@ TEST_F(PlannerTest, ExecutionPlan) {
         context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
             Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
             Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
-            Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()}});
+            Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()},
+            Connection{
+                "s3Bucket1",
+                ConnectionTypeEnum::S3,
+                options3.toBSON()}  // TODO(SERVER-99973): Use S3ConnectionOptions when available
+        });
 
         Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
@@ -2410,6 +2416,39 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
     ])",
               {"ChangeStreamConsumerOperator", "AddFieldsOperator", "MergeOperator"});
+
+    // Ensure the planner is properly planning a S3EmitOperator
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $addFields: {
+                a: {
+                    $and: [
+                        true,
+                        false,
+                        true,
+                        false
+                    ]
+                }
+            }
+        },
+        {
+            $emit: {
+              connectionName: "s3Bucket1"
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator",
+               "AddFieldsOperator",
+               "S3EmitOperator"});  // TODO(SERVER-99973) update $emit definition when required
+                                    // fields are added
 
 #if LIBCURL_VERSION_NUM >= 0x074e00
     innerTest(R"(

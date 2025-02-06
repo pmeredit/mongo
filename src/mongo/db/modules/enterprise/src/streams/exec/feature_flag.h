@@ -69,6 +69,7 @@ public:
     static const FeatureFlagDefinition kProcessingTimeWindows;
     static const FeatureFlagDefinition kOldStreamMeta;
     static const FeatureFlagDefinition kEnableMetadataRefreshInterval;
+    static const FeatureFlagDefinition kEnableS3Emit;
 };
 
 }  // namespace streams

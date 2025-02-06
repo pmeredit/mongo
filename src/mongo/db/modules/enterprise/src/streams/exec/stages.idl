@@ -33,6 +33,7 @@ enums:
             SampleSolar: "sample_solar"
             InMemory: "in_memory"
             HTTPS: "https"
+            S3: "s3"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"

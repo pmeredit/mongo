@@ -255,6 +255,12 @@ const FeatureFlagDefinition FeatureFlags::kEnableMongoCxxMonitoring{
     mongo::Value(false),
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kEnableS3Emit{
+    "enableS3Emit",
+    "If true, the planner will allow users to create a $emit operator that writes to S3",
+    mongo::Value(false),
+    {}};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -276,7 +282,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kOldStreamMeta.name, FeatureFlags::kOldStreamMeta},
     {FeatureFlags::kEnableMetadataRefreshInterval.name,
      FeatureFlags::kEnableMetadataRefreshInterval},
-    {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring}};
+    {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring},
+    {FeatureFlags::kEnableS3Emit.name, FeatureFlags::kEnableS3Emit}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);
