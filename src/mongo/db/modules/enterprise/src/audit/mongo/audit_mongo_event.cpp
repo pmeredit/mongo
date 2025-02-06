@@ -122,7 +122,7 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
 
         {
             // intermediates: [{ip: '192.168.1.1', port: "8000"}, {...}]
-            if (auto intermediates = attrs->getProxiedEndpoints(); !intermediates.empty()) {
+            if (auto intermediates = attrs->getProxies(); !intermediates.empty()) {
                 BSONArrayBuilder intermediatesArrBuilder(
                     builder->subarrayStart(kIntermediateEndpointsField));
                 for (const auto& intermediate : intermediates) {

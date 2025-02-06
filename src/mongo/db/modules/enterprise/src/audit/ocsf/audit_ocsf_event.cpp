@@ -130,7 +130,7 @@ void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* bu
             // Serialize the src_endpoint field
             BSONObjBuilder srcBuilder = builder->subobjStart(kSourceEndpointField);
             serializeHostAndPortToBSONOCSF(attrs->getRemote(), &srcBuilder);
-            if (auto intermediates = attrs->getProxiedEndpoints(); !intermediates.empty()) {
+            if (auto intermediates = attrs->getProxies(); !intermediates.empty()) {
                 BSONArrayBuilder intermediatesBuilder(
                     srcBuilder.subarrayStart(kIntermediateEndpointsField));
                 for (const auto& intermediate : intermediates) {

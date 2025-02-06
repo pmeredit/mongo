@@ -127,7 +127,7 @@ protected:
                                      const rpc::AuditClientAttrs& oldAttrs) {
         ASSERT_EQ(newAttrs.getLocal().toString(), oldAttrs.getLocal().toString());
         ASSERT_EQ(newAttrs.getRemote().toString(), oldAttrs.getRemote().toString());
-        ASSERT_EQ(newAttrs.getProxiedEndpoints(), oldAttrs.getProxiedEndpoints());
+        ASSERT_EQ(newAttrs.getProxies(), oldAttrs.getProxies());
     }
 
 protected:
@@ -199,7 +199,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
         ASSERT_EQ(auditClientAttrs->getRemote().toString(), st.session()->remote().toString());
         ASSERT_EQ(auditClientAttrs->getRemote().toString(),
                   st.session()->getSourceRemoteEndpoint().toString());
-        ASSERT_EQ(auditClientAttrs->getProxiedEndpoints(), std::vector<HostAndPort>{});
+        ASSERT_EQ(auditClientAttrs->getProxies(), std::vector<HostAndPort>{});
 
         // Propagate AuditClientAttrs to another thread via ForwardableOperationMetadata.
         auto onBackgroundThreadComplete = std::make_shared<Notification<void>>();
@@ -266,7 +266,7 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
         ASSERT_NE(auditClientAttrs->getRemote().toString(), st.session()->remote().toString());
         ASSERT_EQ(auditClientAttrs->getRemote().toString(),
                   st.session()->getSourceRemoteEndpoint().toString());
-        ASSERT_EQ(auditClientAttrs->getProxiedEndpoints(),
+        ASSERT_EQ(auditClientAttrs->getProxies(),
                   std::vector<HostAndPort>{st.session()->getProxiedDstEndpoint().value()});
 
         // Propagate AuditClientAttrs to another thread via ForwardableOperationMetadata.
@@ -317,6 +317,114 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
     onStartSession->get();
 }
 
-}  // namespace
+TEST_F(AuditClientAttrsTestFixture, SerializationAndDeserialization) {
+    const HostAndPort local("127.0.0.1", 27017);
+    const HostAndPort remote("192.168.1.1", 12345);
+    std::vector<HostAndPort> proxies = {HostAndPort("10.0.0.1", 8080),
+                                        HostAndPort("10.0.0.2", 8080)};
 
+    rpc::AuditClientAttrs attrs(local, remote, proxies);
+    BSONObj serialized = attrs.toBSON();
+    ASSERT_EQ(serialized["local"].str(), local.toString());
+    ASSERT_EQ(serialized["remote"].str(), remote.toString());
+
+    BSONElement proxiesElement = serialized["proxies"];
+    ASSERT_TRUE(proxiesElement.isABSONObj());
+    auto proxiesArr = proxiesElement.Array();
+
+    ASSERT_EQ(proxiesArr.size(), proxies.size());
+    for (size_t i = 0; i < proxiesArr.size(); ++i) {
+        ASSERT_EQ(proxiesArr[i].str(), proxies[i].toString());
+    }
+
+    auto parsed = rpc::AuditClientAttrs(serialized);
+
+    ASSERT_EQ(parsed.getLocal(), attrs.getLocal());
+    ASSERT_EQ(parsed.getRemote(), attrs.getRemote());
+    ASSERT_EQ(parsed.getProxies(), attrs.getProxies());
+}
+
+TEST_F(AuditClientAttrsTestFixture, SerializationValidation) {
+    BSONObj missingLocal = BSON("remote"
+                                << "192.168.1.1:12345"
+                                << "proxies" << BSONArray());
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingLocal),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.local' is missing but a required field");
+
+    BSONObj missingRemote = BSON("local"
+                                 << "127.0.0.1:27017"
+                                 << "proxies" << BSONArray());
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingRemote),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.remote' is missing but a required field");
+
+    BSONObj missingProxies = BSON("local"
+                                  << "127.0.0.1:27017"
+                                  << "remote"
+                                  << "192.168.1.1:12345");
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingProxies),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.proxies' is missing but a required field");
+
+    BSONObj invalidLocalType = BSON("local" << 12345 << "remote"
+                                            << "192.168.1.1:12345"
+                                            << "proxies" << BSONArray());
+    ASSERT_THROWS_CODE(
+        rpc::AuditClientAttrs(invalidLocalType), AssertionException, ErrorCodes::TypeMismatch);
+
+    BSONObj invalidHostPort = BSON("local"
+                                   << "invalid:host:port"
+                                   << "remote"
+                                   << "192.168.1.1:12345"
+                                   << "proxies" << BSONArray());
+    ASSERT_THROWS_CODE(
+        rpc::AuditClientAttrs(invalidHostPort), AssertionException, ErrorCodes::FailedToParse);
+
+    BSONArrayBuilder proxiesArr;
+    proxiesArr.append("10.0.0.1:8080");
+    proxiesArr.append(12345);  // Invalid type
+    BSONObj invalidProxyElement = BSON("local"
+                                       << "127.0.0.1:27017"
+                                       << "remote"
+                                       << "192.168.1.1:12345"
+                                       << "proxies" << proxiesArr.arr());
+    ASSERT_THROWS_CODE(
+        rpc::AuditClientAttrs(invalidProxyElement), AssertionException, ErrorCodes::TypeMismatch);
+
+    BSONObjBuilder duplicateBuilder;
+    duplicateBuilder.append("local", "127.0.0.1:27017");
+    duplicateBuilder.append("local", "127.0.0.1:27018");  // Duplicate
+    duplicateBuilder.append("remote", "192.168.1.1:12345");
+    duplicateBuilder.appendArray("proxies", BSONArray());
+    ASSERT_THROWS_CODE_AND_WHAT(rpc::AuditClientAttrs(duplicateBuilder.obj()),
+                                AssertionException,
+                                ErrorCodes::IDLDuplicateField,
+                                "BSON field 'AuditClientAttrsBase.local' is a duplicate field");
+}
+
+TEST_F(AuditClientAttrsTestFixture, EmptyProxies) {
+    const HostAndPort local("127.0.0.1", 27017);
+    const HostAndPort remote("192.168.1.1", 12345);
+    std::vector<HostAndPort> emptyProxies;
+
+    rpc::AuditClientAttrs attrs(local, remote, emptyProxies);
+    BSONObj serialized = attrs.toBSON();
+
+    ASSERT_TRUE(serialized.hasField("proxies"));
+    auto proxiesElem = serialized["proxies"];
+    ASSERT_EQ(proxiesElem.type(), BSONType::Array);
+    ASSERT_EQ(proxiesElem.Array().size(), 0);
+
+    auto parsed = rpc::AuditClientAttrs(serialized);
+    ASSERT_EQ(parsed.getProxies().size(), 0);
+}
+
+}  // namespace
 }  // namespace mongo::audit
