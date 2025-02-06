@@ -8,7 +8,6 @@ mongo_cc_library(
     srcs = [ "plugin.cpp" ],
     deps = [
         ":api",
-        ":c_plugin",
         "//src/mongo/db/pipeline/plugin/rust_plugin",
     ],
 )
@@ -17,13 +16,6 @@ mongo_cc_library(
     name = "api",
     visibility = ["//visibility:public"],
     hdrs = [ "api.h" ],
-)
-
-mongo_cc_library(
-    name = "c_plugin",
-    hdrs = ["c_plugin.h"],
-    srcs = ["c_plugin.cpp"],
-    deps = [":api"],
 )
 
 rust_bindgen_library(

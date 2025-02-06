@@ -1,7 +1,5 @@
 #include "mongo/db/pipeline/plugin/plugin.h"
 
-#include "mongo/db/pipeline/plugin/c_plugin.h"
-
 extern "C" {
 
 extern void initialize_rust_plugins(mongodb_plugin_portal* plugin_portal);
@@ -12,7 +10,6 @@ extern void initialize_rust_plugins(mongodb_plugin_portal* plugin_portal);
 // TODO: extend this to allow passing arguments during plugin initialization. This could be used
 // to enable features or specify remote backends.
 void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal) {
-    mongo::initialize_c_plugins(plugin_portal);
     initialize_rust_plugins(plugin_portal);
 }
 

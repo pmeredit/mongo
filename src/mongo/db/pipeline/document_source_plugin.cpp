@@ -21,12 +21,12 @@ static void add_aggregation_stage(const unsigned char* name,
         name_sd.toString(),
         [id, parser](BSONElement specElem, const boost::intrusive_ptr<ExpressionContext>& expCtx)
             -> boost::intrusive_ptr<DocumentSource> {
+            BSONObj stage_def = specElem.wrap();
             mongodb_aggregation_stage* stage = nullptr;
             const unsigned char* error = nullptr;
             size_t error_len = 0;
-            int code = parser(static_cast<char>(specElem.type()),
-                              reinterpret_cast<const unsigned char*>(specElem.value()),
-                              specElem.valuesize(),
+            int code = parser(reinterpret_cast<const unsigned char*>(stage_def.objdata()),
+                              stage_def.objsize(),
                               &stage,
                               &error,
                               &error_len);

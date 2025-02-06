@@ -5,7 +5,7 @@
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
 
-use bson::{to_raw_document_buf, Document, RawDocument, RawDocumentBuf};
+use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf};
 
 use plugin_api_bindgen::{
     mongodb_aggregation_stage, mongodb_plugin_portal, mongodb_source_get_next,
@@ -15,13 +15,50 @@ use plugin_api_bindgen::{
 pub struct Error {
     pub code: NonZero<i32>,
     pub message: String,
+    pub source: Option<Box<dyn std::error::Error + 'static>>,
 }
 
-impl std::error::Error for Error {}
+impl Error {
+    pub fn new(code: i32, message: String) -> Self {
+        Self {
+            code: NonZero::new(code).unwrap(),
+            message,
+            source: None,
+        }
+    }
+
+    pub fn with_source(
+        code: i32,
+        message: String,
+        source: Box<dyn std::error::Error + 'static>,
+    ) -> Self {
+        Self {
+            code: NonZero::new(code).unwrap(),
+            message,
+            source: Some(source),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source.as_ref().map(|e| e.as_ref())
+    }
+}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        std::write!(f, "Plugin error code {}: {}", self.code.get(), self.message)
+        if let Some(source) = self.source.as_ref() {
+            std::write!(
+                f,
+                "Plugin error code {}: {} (source: {})",
+                self.code.get(),
+                self.message,
+                source
+            )
+        } else {
+            std::write!(f, "Plugin error code {}: {}", self.code.get(), self.message)
+        }
     }
 }
 
@@ -63,14 +100,12 @@ impl AggregationSource {
                     .unwrap(),
                 ))
             }
-            _ => Err(Error {
-                code: NonZero::new(code).unwrap(),
-                message: std::str::from_utf8(unsafe {
-                    std::slice::from_raw_parts(result_ptr, result_len)
-                })
-                .unwrap()
-                .to_owned(),
-            }),
+            _ => Err(Error::new(
+                code,
+                std::str::from_utf8(unsafe { std::slice::from_raw_parts(result_ptr, result_len) })
+                    .unwrap()
+                    .to_owned(),
+            )),
         }
     }
 }
@@ -84,9 +119,8 @@ pub trait AggregationStage: Sized {
     fn name() -> &'static str;
 
     /// Create a new stage from a document containing the stage definition.
-    /// The stage definition is a document value associated with the stage name, e.g.
-    ///   $echo: {<contents of stage_definition}
-    fn new(stage_definition: &RawDocument) -> Result<Self, Error>;
+    /// The stage definition is a bson value associated with the stage name.
+    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error>;
 
     /// Set a source for this stage. Used by intermediate stages to fetch documents to transform.
     fn set_source(&mut self, source: AggregationSource);
@@ -132,23 +166,13 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     }
 
     unsafe extern "C-unwind" fn parse_external(
-        bson_type: u8,
-        bson_value: *const u8,
-        bson_value_len: usize,
+        stage_bson_ptr: *const u8,
+        stage_bson_len: usize,
         stage: *mut *mut mongodb_aggregation_stage,
         error: *mut *const u8,
         error_len: *mut usize,
     ) -> c_int {
-        if bson_type != 3 {
-            // 3 is embedded document
-            // XXX FIXME should include stage name!
-            let static_err = "stage argument must be document typed.";
-            *error = static_err.as_bytes().as_ptr();
-            *error_len = static_err.as_bytes().len();
-            return 1;
-        }
-        let doc_bytes = std::slice::from_raw_parts(bson_value as *const u8, bson_value_len);
-        match Self::parse(doc_bytes) {
+        match Self::parse(unsafe { std::slice::from_raw_parts(stage_bson_ptr, stage_bson_len) }) {
             Ok(stage_impl) => {
                 let plugin_stage = Box::new(Self {
                     stage_api: mongodb_aggregation_stage {
@@ -164,7 +188,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                 *error_len = 0;
                 0
             }
-            Err(Error { code, message }) => {
+            Err(Error { code, message, .. }) => {
                 // TODO: fix the leak. We can either provide a way to free this or stash it in
                 // thread local memory until the next call.
                 *error = message.as_bytes().as_ptr();
@@ -178,26 +202,32 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     /// Parse a generic [AggregationStage] from raw bson document bytes.
     fn parse(bson_doc_bytes: &[u8]) -> Result<S, Error> {
         let doc = RawDocument::from_bytes(bson_doc_bytes).map_err(|e| {
-            let message = if let Some(key) = e.key() {
-                format!(
-                    "Error parsing stage definition for {}: {:?} (key={})",
-                    S::name(),
-                    e.kind,
-                    key
-                )
-            } else {
-                format!(
-                    "Error parsing stage definition for {}: {:?}",
-                    S::name(),
-                    e.kind
-                )
-            };
-            Error {
-                code: NonZero::new(1).unwrap(),
-                message,
-            }
+            Error::with_source(
+                1,
+                format!("Error parsing stage definition for {}", S::name()),
+                Box::new(e),
+            )
         })?;
-        S::new(doc)
+        let element = doc
+            .iter()
+            .next()
+            .map(|el| {
+                el.map_err(|e| {
+                    Error::with_source(
+                        1,
+                        format!("Error parsing stage definition for {}", S::name()),
+                        Box::new(e),
+                    )
+                })
+            })
+            .unwrap_or(Err(Error::new(
+                1,
+                format!(
+                    "Error parsing stage defintion for {}: no stage definition element present",
+                    S::name()
+                ),
+            )))?;
+        S::new(element.1)
     }
 
     unsafe extern "C-unwind" fn get_next(
@@ -224,7 +254,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                 *result_len = doc.as_bytes().len();
                 plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED
             }
-            Err(Error { code, message }) => {
+            Err(Error { code, message, .. }) => {
                 // XXX we leak memory right here. this memory needs to be owned by the stage.
                 rust_stage.buf = message.into_bytes();
                 *result = rust_stage.buf.as_ptr();
@@ -261,9 +291,18 @@ impl AggregationStage for EchoOxide {
         "$echoOxide"
     }
 
-    fn new(stage_definition: &RawDocument) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+        let document = match stage_definition {
+            RawBsonRef::Document(doc) => doc.to_owned(),
+            _ => {
+                return Err(Error::new(
+                    1,
+                    format!("$echoOxide stage definition must contain a document."),
+                ))
+            }
+        };
         Ok(Self {
-            document: stage_definition.to_owned(),
+            document,
             exhausted: false,
         })
     }
@@ -283,6 +322,7 @@ impl AggregationStage for EchoOxide {
 }
 
 struct AddSomeCrabs {
+    crabs: String,
     source: Option<AggregationSource>,
     last_document: RawDocumentBuf,
 }
@@ -292,8 +332,20 @@ impl AggregationStage for AddSomeCrabs {
         "$addSomeCrabs"
     }
 
-    fn new(_stage_definition: &RawDocument) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+        let num_crabs = match stage_definition {
+            RawBsonRef::Int32(i) if i > 0 => i as usize,
+            RawBsonRef::Int64(i) if i > 0 => i as usize,
+            RawBsonRef::Double(i) if i >= 1.0 && i.fract() == 0.0 => i as usize,
+            _ => {
+                return Err(Error::new(
+                    1,
+                    "$addSomeCrabs should be followed with a positive integer value.".into(),
+                ))
+            }
+        };
         Ok(Self {
+            crabs: String::from_iter(std::iter::repeat('🦀').take(num_crabs)),
             source: None,
             last_document: RawDocumentBuf::new(),
         })
@@ -313,7 +365,7 @@ impl AggregationStage for AddSomeCrabs {
             GetNextResult::Advanced(input_doc) => {
                 let mut doc = Document::try_from(input_doc).unwrap();
                 // TODO: you should be able to control the number of crabs.
-                doc.insert("some_crabs", "🦀🦀🦀");
+                doc.insert("someCrabs", self.crabs.clone());
                 self.last_document = to_raw_document_buf(&doc).unwrap();
                 Ok(GetNextResult::Advanced(self.last_document.as_ref()))
             }

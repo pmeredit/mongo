@@ -59,9 +59,8 @@ struct mongodb_aggregation_stage {
     void (*close)(mongodb_aggregation_stage* stage);
 };
 
-typedef int (*mongodb_parse_aggregation_stage)(unsigned char bson_type,
-                                               const unsigned char* bson_value,
-                                               size_t bson_value_len,
+typedef int (*mongodb_parse_aggregation_stage)(const unsigned char* stage_bson,
+                                               size_t stage_bson_len,
                                                mongodb_aggregation_stage** stage,
                                                const unsigned char** error,
                                                size_t* error_len);
