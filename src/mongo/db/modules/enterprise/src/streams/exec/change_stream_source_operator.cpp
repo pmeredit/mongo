@@ -213,22 +213,12 @@ mongo::Seconds ChangeStreamSourceOperator::getChangeStreamLag() const {
         return mongo::Seconds{0};
     }
 
-    const auto& streamPoint = *_latestResumeToken;
     auto opLogLatestTs = _changestreamOperationTime.load().count();
 
     unsigned delta = 0;
-
-    if (const BSONObj* resumeToken = std::get_if<mongo::BSONObj>(&streamPoint)) {
-        unsigned tokenSecs = ResumeToken::parse(*resumeToken).getClusterTime().getSecs();
-        if (opLogLatestTs > tokenSecs) {
-            delta = opLogLatestTs - tokenSecs;
-        }
-    } else if (const mongo::Timestamp* ts = std::get_if<mongo::Timestamp>(&streamPoint)) {
-        if (opLogLatestTs > ts->getSecs()) {
-            delta = opLogLatestTs - ts->getSecs();
-        }
-    } else {
-        tasserted(9043601, "Unexpected resume token type");
+    unsigned tokenSecs = ResumeToken::parse(*_latestResumeToken).getClusterTime().getSecs();
+    if (opLogLatestTs > tokenSecs) {
+        delta = opLogLatestTs - tokenSecs;
     }
     return mongo::Seconds{delta};
 }
@@ -559,8 +549,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
 
     // Regardless of whether we have new input documents, update latest resumeToken
     if (batch.lastResumeToken) {
-        _latestResumeToken =
-            std::variant<mongo::BSONObj, mongo::Timestamp>((*batch.lastResumeToken));
+        _latestResumeToken = *batch.lastResumeToken;
     }
 
     // Refresh flag value for staleness monitorPeriod
@@ -724,12 +713,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         }
     }
 
-    // Return early if we didn't read a change event or resume token.
-    if (!changeEvent && !eventResumeToken) {
-        _isIdle.store(true);
-        return false;
-    }
-
     {
         stdx::lock_guard<stdx::mutex> lock(_mutex);
         const auto capacity = _options.maxNumDocsToReturn;
@@ -739,24 +722,28 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
             _changeEvents.emplace(capacity);
         }
+
         auto& activeBatch = _changeEvents.back();
-        if (changeEvent) {
-            int docSize = activeBatch.pushDoc(std::move(*changeEvent));
-            _queueSizeGauge->incBy(1);
-            _queueByteSizeGauge->incBy(docSize);
-            _consumerStats += {.memoryUsageBytes = docSize};
-            // We saw a change event, so mark isIdle false.
-            _isIdle.store(false);
-        } else {
-            // We did not see a change event, so mark isIdle as true.
-            _isIdle.store(true);
-        }
         if (eventResumeToken) {
             activeBatch.lastResumeToken = std::move(*eventResumeToken);
         }
+
+        if (!changeEvent) {
+            // We did not see a change event, so mark isIdle as true.
+            LOGV2_DEBUG(9596400, 5, "Marking changestream as idle", "context"_attr = _context);
+            _isIdle.store(true);
+            return false;
+        }
+
+        int docSize = activeBatch.pushDoc(std::move(*changeEvent));
+        _queueSizeGauge->incBy(1);
+        _queueByteSizeGauge->incBy(docSize);
+        _consumerStats += {.memoryUsageBytes = docSize};
+        // We saw a change event, so mark isIdle false.
+        _isIdle.store(false);
     }
 
-    return bool(changeEvent);
+    return true;
 }
 
 // Obtain the 'ts' field from either:

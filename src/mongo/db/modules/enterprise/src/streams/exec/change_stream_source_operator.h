@@ -245,7 +245,7 @@ private:
     bool _resumeTokenAdvancedSinceLastCheckpoint{false};
 
     // This is the resume token corresponding to the point where we are in the change stream.
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _latestResumeToken;
+    boost::optional<mongo::BSONObj> _latestResumeToken;
     // This is the timestamp of the last event in the oplog in the server. This is updated
     // from the auxiliary event fetching thread each time we get a new event on the change stream.
     mongo::Atomic<mongo::Seconds> _changestreamOperationTime;

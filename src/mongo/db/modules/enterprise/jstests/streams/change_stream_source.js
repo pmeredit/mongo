@@ -5,6 +5,7 @@
  *  featureFlagStreams,
  * ]
  */
+import {findMatchingLogLine} from "jstests/libs/log.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     getStats,
@@ -997,6 +998,29 @@ function testChangeStreamSourceLagStat() {
 }
 
 testChangeStreamSourceLagStat();
+
+function testChangeStreamIdleMarking() {
+    clearState();
+    db.setLogLevel(5, "streams");
+
+    const processorName = "changeStreamSourceProcessor";
+    createChangestreamSourceProcessor(processorName);
+
+    const processor = sp[processorName];
+    let startResult = processor.start({featureFlags: {}, shouldStartSample: true});
+    assert.commandWorked(startResult);
+
+    assert.soon(() => {
+        const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+        const line = findMatchingLogLine(log, {id: 9596400});
+        return line != null;
+    });
+
+    stopStreamProcessor(processorName);
+    clearState();
+}
+
+testChangeStreamIdleMarking();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.
