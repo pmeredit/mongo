@@ -1119,40 +1119,56 @@ function testChangeStreamOnTimeseries() {
 
     const processorName = "changeStreamSourceProcessor";
     const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
-    const startResult = processor.start({featureFlags: {}, shouldStartSample: true}, false);
-    assert.commandFailedWithCode(startResult, ErrorCodes.StreamProcessorInvalidOptions);
-    assert.eq(startResult.errorLabels[0], "StreamProcessorUserError");
+    processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert.soon(() => {
+        let listResult = listStreamProcessors();
+        assert.eq(listResult["ok"], 1, listResult);
+        let mySp = listResult.streamProcessors[0];
+        assert.eq(mySp.name, processorName);
+        if (mySp.status == "error") {
+            assert.eq(mySp.error.code, ErrorCodes.StreamProcessorInvalidOptions);
+            assert.eq(mySp.error.userError, true);
+            return true;
+        }
+        return false;
+    });
 }
 
 testChangeStreamOnTimeseries();
 
-function runChangeStreamSourceTestFailOnStart(
-    sourceSpecOverrides, expectedErrCode, expectedErrLabels = []) {
+function runChangeStreamSourceTestFailOnStart(sourceSpecOverrides, expectedErrCode, isUserError) {
     clearState();
 
     const processorName = "changeStreamSourceProcessor";
     const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
 
-    let startResult = processor.start({featureFlags: {}, shouldStartSample: true}, false);
-    assert.commandFailedWithCode(startResult, expectedErrCode);
-    assert.eq(startResult.errorLabels.length, expectedErrLabels.length);
-    for (const label of expectedErrLabels) {
-        startResult.errorLabels.includes(label);
-    }
+    processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert.soon(() => {
+        let listResult = listStreamProcessors();
+        assert.eq(listResult["ok"], 1, listResult);
+        let mySp = listResult.streamProcessors[0];
+        assert.eq(mySp.name, processorName);
+        if (mySp.status == "error") {
+            assert.eq(mySp.error.code, expectedErrCode);
+            assert.eq(mySp.error.userError, isUserError);
+            return true;
+        }
+        return false;
+    });
 }
 
 // Should fail due to unsupported operator in the source's aggregation pipeline
 runChangeStreamSourceTestFailOnStart(
     {config: {pipeline: [{$someStageThatDoesNotExist: {}}]}},
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
 );
 
 // Should fail due to empty stage specification in source's aggregation pipeline
 runChangeStreamSourceTestFailOnStart(
     {config: {pipeline: [{}]}},
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
 );
 
 // Should fail due to stage specification having more than one field in source's aggregation
@@ -1167,14 +1183,14 @@ runChangeStreamSourceTestFailOnStart(
         }
     },
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
 );
 
 // Should fail due to an invalid fieldPath
 runChangeStreamSourceTestFailOnStart(
     {config: {pipeline: [{$addFields: {documentKey: "$documentKey.$thisIsInvalid"}}]}},
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
 );
 
 function runChangeStreamSourceTestFailOnInsert(sourceSpecOverrides, expectedErrCode, isUserError) {
