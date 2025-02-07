@@ -37,6 +37,12 @@ void enableAuditing() {
     ASSERT_EQ(am->isEnabled(), true);
 }
 
+int findFreePort() {
+    asio::io_service service;
+    asio::ip::tcp::acceptor acceptor(service, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), 0));
+    return acceptor.local_endpoint().port();
+}
+
 class AuditUserAttrsTest : public AuthorizationSessionTestFixture {
 protected:
     explicit AuditUserAttrsTest(Options options = makeOptions())
@@ -62,9 +68,6 @@ using namespace transport;
 
 // Constants representing where the TransportLayer is actually listening.
 constexpr auto kTestHostName = "127.0.0.1"_sd;
-constexpr auto kTestMainPort = 22000;
-constexpr auto kTestRouterPort = 22001;
-constexpr auto kTestLoadBalancerPort = 22002;
 
 // Constant representing a proxy protocol header.
 constexpr auto kProxyProtocolHeader = "PROXY TCP4 10.122.9.63 54.225.237.121 1000 3000\r\n"_sd;
@@ -96,8 +99,9 @@ protected:
         params.noUnixSocket = true;
         params.bind_ips = {kTestHostName.toString()};
         AsioTransportLayer::Options opts(&params);
-        opts.port = kTestMainPort;
-        opts.loadBalancerPort = kTestLoadBalancerPort;
+
+        _testLoadBalancerPort = findFreePort();
+        opts.loadBalancerPort = _testLoadBalancerPort;
 
         auto sessionManager = std::make_unique<test::MockSessionManager>();
         _sessionManager = sessionManager.get();
@@ -114,6 +118,7 @@ protected:
         getServiceContext()->registerClientObserver(std::make_unique<AuditClientObserver>());
 
         _threadPool.startup();
+        _testMainPort = _tla->listenerPort();
     }
 
     ~AuditClientAttrsTestFixture() override {
@@ -134,6 +139,8 @@ protected:
     std::unique_ptr<AsioTransportLayer> _tla;
     test::MockSessionManager* _sessionManager;
     ThreadPool _threadPool;
+    int _testMainPort;
+    int _testLoadBalancerPort;
 
 private:
     std::shared_ptr<void> _disableTfo = tfo::setConfigForTest(0, 0, 0, 1024, Status::OK());
@@ -181,7 +188,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
     _sessionManager->setOnStartSession([&](test::SessionThread& st) {
         // Check that the session contains the expected values.
         ASSERT_EQ(st.session()->local().host(), kTestHostName);
-        ASSERT_EQ(st.session()->local().port(), kTestMainPort);
+        ASSERT_EQ(st.session()->local().port(), _testMainPort);
         ASSERT_TRUE(st.session()->local().isLocalHost());
         ASSERT_FALSE(st.session()->isFromRouterPort());
         ASSERT_FALSE(st.session()->isFromLoadBalancer());
@@ -234,7 +241,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
 
     // Connect to the main port that _tla is listening on.
     auto swSession = _tla->connect(
-        {kTestHostName.toString(), kTestMainPort}, ConnectSSLMode::kDisableSSL, Seconds{10}, {});
+        {kTestHostName.toString(), _testMainPort}, ConnectSSLMode::kDisableSSL, Seconds{10}, {});
     ASSERT_OK(swSession);
 
     onStartSession->get();
@@ -248,7 +255,7 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
     _sessionManager->setOnStartSession([&](test::SessionThread& st) {
         // Check that the session contains the expected values.
         ASSERT_EQ(st.session()->local().host(), kTestHostName);
-        ASSERT_EQ(st.session()->local().port(), kTestLoadBalancerPort);
+        ASSERT_EQ(st.session()->local().port(), _testLoadBalancerPort);
         ASSERT_TRUE(st.session()->local().isLocalHost());
         ASSERT_FALSE(st.session()->isFromRouterPort());
         ASSERT_TRUE(st.session()->isFromLoadBalancer());
@@ -307,7 +314,7 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
     asio::ip::tcp::socket sock{ctx};
     std::error_code ec;
     ec = sock.connect(asio::ip::tcp::endpoint(asio::ip::make_address(kTestHostName.toString()),
-                                              kTestLoadBalancerPort),
+                                              _testLoadBalancerPort),
                       ec);
     ASSERT_FALSE(ec) << errorMessage(ec);
 
