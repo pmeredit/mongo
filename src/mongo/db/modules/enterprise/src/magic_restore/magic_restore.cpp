@@ -712,14 +712,16 @@ void updateShardingMetadata(OperationContext* opCtx,
     mongo::ShardIdentity previousShardIdentity = getShardIdentity(opCtx, storageInterface);
 
     if (isConfig(restoreConfig)) {
-        // Acquire the collection lock in IX mode, in case we have to perform updates.
-        AutoGetCollection autoColl(
-            opCtx, NamespaceString::kConfigReshardingOperationsNamespace, MODE_IX);
-        if (autoColl.getCollection() && !autoColl->isEmpty(opCtx)) {
-            // Set the resharding state to "aborting" for any in-progress resharding operations. We
-            // do this regardless of if there is a shard rename.
-            LOGV2(87429, "Aborting any in-progress resharding operations.");
-            fassert(8756802,
+        {
+            // Acquire the collection lock in IX mode, in case we have to perform updates.
+            AutoGetCollection autoColl(
+                opCtx, NamespaceString::kConfigReshardingOperationsNamespace, MODE_IX);
+            if (autoColl.getCollection() && !autoColl->isEmpty(opCtx)) {
+                // Set the resharding state to "aborting" for any in-progress resharding operations.
+                // We do this regardless of if there is a shard rename.
+                LOGV2(87429, "Aborting any in-progress resharding operations.");
+                fassert(
+                    8756802,
                     storageInterface->updateDocuments(
                         opCtx,
                         NamespaceString::kConfigReshardingOperationsNamespace,
@@ -732,6 +734,7 @@ void updateShardingMetadata(OperationContext* opCtx,
                                                             << "errmsg"
                                                             << "aborted by automated restore"))),
                          Timestamp(0)}));
+            }
         }
 
         // Drop config.placementHistory.
