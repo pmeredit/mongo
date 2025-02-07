@@ -2009,7 +2009,12 @@ void StreamManager::stopAllStreamProcessors() {
     LOGV2_INFO(75914, "Stopping all stream processors");
     for (auto& stopCommand : stopCommands) {
         try {
-            stopCommand.setTimeout(Seconds{3 * 60});
+            stopCommand.setTimeout(Seconds{6 * 60});
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+            // Use a smaller timeout here so failed jstests with checkpoint enabled don't hang for
+            // too long.
+            stopCommand.setTimeout(Seconds{10});
+#endif
             stopStreamProcessor(stopCommand, StopReason::Shutdown);
         } catch (const DBException& ex) {
             LOGV2_WARNING(75906,
@@ -2020,6 +2025,7 @@ void StreamManager::stopAllStreamProcessors() {
                           "exception"_attr = ex.reason());
         }
     }
+    LOGV2_INFO(10055200, "Stopped all stream processors");
 }
 
 mongo::SendEventReply StreamManager::sendEvent(const mongo::SendEventCommand& request) {
