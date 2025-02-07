@@ -2135,6 +2135,25 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     return result;
 }
 
+void checkSourceOptionsAndProcessingTimeWindowCompatibility(bool isProcessingTimeWindow,
+                                                            auto sourceOptions) {
+    bool hasTimeField = sourceOptions.type() == BSONType::Object &&
+        (sourceOptions.Obj().hasElement(GeneratedDataSourceOptions::kTimeFieldFieldName) ||
+         sourceOptions.Obj().hasElement(ChangeStreamSourceOptions::kTimeFieldFieldName) ||
+         sourceOptions.Obj().hasElement(KafkaSourceOptions::kTimeFieldFieldName));
+    bool hasTsFieldName = sourceOptions.type() == BSONType::Object &&
+        (sourceOptions.Obj().hasElement(GeneratedDataSourceOptions::kTsFieldNameFieldName) ||
+         sourceOptions.Obj().hasElement(ChangeStreamSourceOptions::kTsFieldNameFieldName) ||
+         sourceOptions.Obj().hasElement(KafkaSourceOptions::kTsFieldNameFieldName));
+
+    uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify timeField with processing time window",
+            !(hasTimeField && isProcessingTimeWindow));
+    uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify tsFieldName with processing time window",
+            !(hasTsFieldName && isProcessingTimeWindow));
+}
+
 std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
     _context->projectStreamMeta = getOldStreamMetaEnabled(_context->featureFlags);
 
@@ -2173,19 +2192,23 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
         // We only send idle watermarks if the window idleTimeout is set or if the window is a
         // processing time window.
         bool sendIdleMessages{false};
+        bool processingTimeWindow{false};
         for (const BSONObj& stage : bsonPipeline) {
             const auto& name = stage.firstElementFieldNameStringData();
             if (isWindowStage(name)) {
                 useWatermarks = true;
                 auto windowOptions = stage.getField(name);
+                processingTimeWindow = isProcessingTimeWindow(stage);
 
                 sendIdleMessages = windowOptions.type() == BSONType::Object &&
                     (windowOptions.Obj().hasElement(HoppingWindowOptions::kIdleTimeoutFieldName) ||
                      windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName) ||
-                     isProcessingTimeWindow(stage));
+                     processingTimeWindow);
                 break;
             }
         }
+        auto sourceOptions = sourceSpec.getField(sourceSpec.firstElementFieldNameStringData());
+        checkSourceOptionsAndProcessingTimeWindowCompatibility(processingTimeWindow, sourceOptions);
 
         // Create the source operator
         optimizedPipeline.push_back(sourceSpec);

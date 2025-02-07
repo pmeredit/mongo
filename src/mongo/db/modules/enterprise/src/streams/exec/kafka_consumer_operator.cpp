@@ -16,6 +16,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/text.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -899,9 +900,10 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 if (totalNumInputDocs == 0 && _options.sendIdleMessages) {
                     // If _options.sendIdleMessages is set, always send a kIdle watermark when
                     // there are 0 docs read from the source.
-                    newControlMsg =
-                        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                             .watermarkStatus = WatermarkStatus::kIdle}};
+                    int64_t curTime = curTimeMillis64();
+                    newControlMsg = StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                                         .watermarkStatus = WatermarkStatus::kIdle,
+                                                         .watermarkTimestampMs = curTime}};
                 }
             }
 
@@ -1116,13 +1118,14 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 
     boost::optional<StreamDocument> streamDoc;
     try {
-        mongo::Date_t eventTimestamp;
+        mongo::Date_t ts;
         int64_t logAppendTimeMs{sourceDoc.logAppendTimeMs};
-        if (_options.timestampExtractor) {
-            eventTimestamp =
-                _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
+        if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+            ts = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+        } else if (_options.timestampExtractor) {
+            ts = _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
         } else {
-            eventTimestamp = Date_t::fromMillisSinceEpoch(logAppendTimeMs);
+            ts = Date_t::fromMillisSinceEpoch(logAppendTimeMs);
         }
         // Now we are destroying sourceDoc.doc, make sure that no exceptions related to
         // processing this document get thrown after this point.
@@ -1133,7 +1136,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         sourceDoc.doc = boost::none;
         BSONObjBuilder objBuilder(std::move(bsonDoc));
         if (_options.timestampOutputFieldName) {
-            objBuilder.appendDate(*_options.timestampOutputFieldName, eventTimestamp);
+            objBuilder.appendDate(*_options.timestampOutputFieldName, ts);
         }
         StreamMetaSource streamMetaSource;
         streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
@@ -1167,7 +1170,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         streamMetaSource.setKey(std::move(key));
         streamMetaSource.setHeaders(std::move(sourceDoc.headers));
         if (_context->shouldUseDocumentMetadataFields) {
-            streamMetaSource.setTs(eventTimestamp);
+            streamMetaSource.setTs(ts);
         }
         StreamMeta streamMeta;
         streamMeta.setSource(std::move(streamMetaSource));
@@ -1186,9 +1189,11 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             mutableDoc.metadata().setStream(Value(streamDoc->streamMeta.toBSON()));
             streamDoc->doc = mutableDoc.freeze();
         }
-        streamDoc->minProcessingTimeMs = curTimeMillis64();
-        streamDoc->minDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
-        streamDoc->maxDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
+        streamDoc->minProcessingTimeMs =
+            (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) ? ts.toMillisSinceEpoch()
+                                                                           : curTimeMillis64();
+        streamDoc->minDocTimestampMs = ts.toMillisSinceEpoch();
+        streamDoc->maxDocTimestampMs = ts.toMillisSinceEpoch();
         streamDoc->sourceTimestampMs = logAppendTimeMs;
     } catch (const std::exception& e) {
         LOGV2_ERROR(74675,

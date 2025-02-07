@@ -107,6 +107,66 @@ $tumblingWindow: {
                                 expectedWhat);
 }
 
+TEST_F(ProcessingTimeWindowsTest, TumblingWindowIncompatibleOptionsTimeField) {
+    setupFFTest();
+    Planner planner(_context.get(), Planner::Options());
+    std::string timeFieldSourceStr = R"([
+{
+    $source: {
+        connectionName: "atlas",
+        timeField: "timeFieldName"
+    }
+},)";
+    std::string tumblingWindowStr = R"(
+{
+$tumblingWindow: {
+    boundary: "processingTime",
+    interval: {size: 5, unit: "second"},
+    pipeline: []
+}
+},
+    )";
+    auto bson = parsePipeline(timeFieldSourceStr + tumblingWindowStr + _mergeStr);
+    const auto expectedWhat =
+        "StreamProcessorInvalidOptions: Cannot specify timeField with processing "
+        "time window";
+
+    ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                AssertionException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                expectedWhat);
+}
+
+TEST_F(ProcessingTimeWindowsTest, TumblingWindowIncompatibleOptionsTsFieldName) {
+    setupFFTest();
+    Planner planner(_context.get(), Planner::Options());
+    std::string timeFieldSourceStr = R"([
+{
+    $source: {
+        connectionName: "atlas",
+        tsFieldName: "timeFieldName"
+    }
+},)";
+    std::string tumblingWindowStr = R"(
+{
+$tumblingWindow: {
+    boundary: "processingTime",
+    interval: {size: 5, unit: "second"},
+    pipeline: []
+}
+},
+    )";
+    auto bson = parsePipeline(timeFieldSourceStr + tumblingWindowStr + _mergeStr);
+    const auto expectedWhat =
+        "StreamProcessorInvalidOptions: Cannot specify tsFieldName with processing "
+        "time window";
+
+    ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                AssertionException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                expectedWhat);
+}
+
 TEST_F(ProcessingTimeWindowsTest, TumblingWindowIncompatibleOptionsIdleTimeout) {
     setupFFTest();
     Planner planner(_context.get(), Planner::Options());
