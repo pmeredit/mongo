@@ -340,13 +340,13 @@ public:
                    "streamProcessorId"_attr = _streamProcessorId,
                    "tenantId"_attr = _tenantId);
     }
-    stdx::lock_guard<stdx::mutex>& getLock() {
+    stdx::unique_lock<stdx::mutex>& getLock() {
         return _guard;
     }
 
 private:
     std::string _source;
-    stdx::lock_guard<stdx::mutex> _guard;
+    stdx::unique_lock<stdx::mutex> _guard;
     std::string _streamProcessorName;
     std::string _streamProcessorId;
     std::string _tenantId;
@@ -1782,6 +1782,9 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
 
     ListStreamProcessorsReply reply;
     reply.setStreamProcessors(std::move(streamProcessors));
+
+    _cvListCalled.notify_one();
+
     return reply;
 }
 
@@ -2025,8 +2028,22 @@ void StreamManager::stopAllStreamProcessors() {
                           "exception"_attr = ex.reason());
         }
     }
+
     LOGV2_INFO(10055200, "Stopped all stream processors");
+    {
+        // Wait for a list request to come through. During k8s shutdown, this allows the Agent to
+        // use list and realize all processors have shutdown, before the mongostream process dies.
+        // This helps avoid Agent waiting on a request timeout from a shutdown mongostream.
+        // This wait is best effort so spurious wakeups are fine, and it's fine if the final list
+        // request comes in before we shutdown, then mongostream just waits 5 extra seconds before
+        // it dies.
+        auto deadline = Date_t::now() + Seconds{5};
+        LockLogger lk("stopAllStreamProcessorsWaitingForList", _mutex);
+        _cvListCalled.wait_until(lk.getLock(), deadline.toSystemTimePoint());
+    }
+    LOGV2_INFO(10055201, "mongostream shutting down");
 }
+
 
 mongo::SendEventReply StreamManager::sendEvent(const mongo::SendEventCommand& request) {
     uassert(mongo::ErrorCodes::InternalError,

@@ -278,6 +278,8 @@ private:
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::stdx::mutex _mutex;
+    // signaled after a listStreamProcessors request is processed
+    mongo::stdx::condition_variable _cvListCalled;
     // The thread-safe concurrency monitor shared across all checkpoint coordinators/executors
     std::shared_ptr<ConcurrentCheckpointController> _concurrentCheckpointController;
     // The callback that `_memoryAggregator` invokes when the memory usage increases.
