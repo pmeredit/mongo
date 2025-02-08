@@ -1119,19 +1119,29 @@ function testChangeStreamOnTimeseries() {
 
     const processorName = "changeStreamSourceProcessor";
     const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
-    processor.start({featureFlags: {}, shouldStartSample: true}, false);
-    assert.soon(() => {
-        let listResult = listStreamProcessors();
-        assert.eq(listResult["ok"], 1, listResult);
-        let mySp = listResult.streamProcessors[0];
-        assert.eq(mySp.name, processorName);
-        if (mySp.status == "error") {
-            assert.eq(mySp.error.code, ErrorCodes.StreamProcessorInvalidOptions);
-            assert.eq(mySp.error.userError, true);
-            return true;
-        }
-        return false;
-    });
+    let res = processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert(res.hasOwnProperty("ok"));
+    if (res["ok"] == 0) {
+        // command failed.
+        assert.commandFailedWithCode(res, ErrorCodes.StreamProcessorInvalidOptions);
+    } else {
+        // command succeeded. So will have to confirm that SP eventually errs out
+        assert.soon(() => {
+            let listResult = listStreamProcessors();
+            assert.eq(listResult["ok"], 1, listResult);
+            if (listResult.hasOwnProperty("streamProcessors") &&
+                listResult.streamProcessors.length == 1) {
+                let mySp = listResult.streamProcessors[0];
+                assert.eq(mySp.name, processorName);
+                if (mySp.status == "error") {
+                    assert.eq(mySp.error.code, ErrorCodes.StreamProcessorInvalidOptions);
+                    assert.eq(mySp.error.userError, true);
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
 }
 
 testChangeStreamOnTimeseries();
@@ -1142,19 +1152,29 @@ function runChangeStreamSourceTestFailOnStart(sourceSpecOverrides, expectedErrCo
     const processorName = "changeStreamSourceProcessor";
     const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
 
-    processor.start({featureFlags: {}, shouldStartSample: true}, false);
-    assert.soon(() => {
-        let listResult = listStreamProcessors();
-        assert.eq(listResult["ok"], 1, listResult);
-        let mySp = listResult.streamProcessors[0];
-        assert.eq(mySp.name, processorName);
-        if (mySp.status == "error") {
-            assert.eq(mySp.error.code, expectedErrCode);
-            assert.eq(mySp.error.userError, isUserError);
-            return true;
-        }
-        return false;
-    });
+    let res = processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert(res.hasOwnProperty("ok"));
+    if (res["ok"] == 0) {
+        // command failed.
+        assert.commandFailedWithCode(res, expectedErrCode);
+    } else {
+        // command succeeded. So will have to confirm that SP eventually errs out
+        assert.soon(() => {
+            let listResult = listStreamProcessors();
+            assert.eq(listResult["ok"], 1, listResult);
+            if (listResult.hasOwnProperty("streamProcessors") &&
+                listResult.streamProcessors.length == 1) {
+                let mySp = listResult.streamProcessors[0];
+                assert.eq(mySp.name, processorName);
+                if (mySp.status == "error") {
+                    assert.eq(mySp.error.code, expectedErrCode);
+                    assert.eq(mySp.error.userError, isUserError);
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
 }
 
 // Should fail due to unsupported operator in the source's aggregation pipeline
