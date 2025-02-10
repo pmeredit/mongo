@@ -2014,9 +2014,11 @@ void StreamManager::stopAllStreamProcessors() {
         try {
             stopCommand.setTimeout(Seconds{6 * 60});
 #ifdef MONGO_CONFIG_DEBUG_BUILD
-            // Use a smaller timeout here so failed jstests with checkpoint enabled don't hang for
-            // too long.
-            stopCommand.setTimeout(Seconds{10});
+            if (mongo::getTestCommandsEnabled()) {
+                // Use a smaller timeout here so failed jstests with checkpoint enabled don't hang
+                // for too long.
+                stopCommand.setTimeout(Seconds{10});
+            }
 #endif
             stopStreamProcessor(stopCommand, StopReason::Shutdown);
         } catch (const DBException& ex) {
