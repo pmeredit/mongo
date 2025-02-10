@@ -20,10 +20,6 @@
 
 #include "mongo/base/initializer.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_component_settings.h"
-#include "mongo/logv2/log_manager.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/util/net/hostname_canonicalization.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"

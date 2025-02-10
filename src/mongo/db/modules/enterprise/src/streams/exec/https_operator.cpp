@@ -26,8 +26,6 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/json.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"

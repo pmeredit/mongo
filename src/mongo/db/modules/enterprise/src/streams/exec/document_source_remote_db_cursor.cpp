@@ -15,7 +15,6 @@
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/mongocxx_utils.h"
