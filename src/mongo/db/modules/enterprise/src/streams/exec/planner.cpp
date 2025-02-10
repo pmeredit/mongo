@@ -1513,6 +1513,10 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
 
     SessionWindowAssigner::Options windowingOptions(WindowAssigner::Options{});
 
+    windowingOptions.windowBoundary = getValidWindowBoundary(options);
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot use processing time with session window",
+            windowingOptions.windowBoundary != mongo::WindowBoundaryEnum::processingTime);
     windowingOptions.gapSize = gap.getSize();
     windowingOptions.gapUnit = gap.getUnit();
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
