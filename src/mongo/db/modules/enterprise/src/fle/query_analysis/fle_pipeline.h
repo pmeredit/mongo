@@ -40,7 +40,15 @@ public:
     }
 
     void serialize(BSONArrayBuilder* arr) const {
-        for (auto&& stage : _parsedPipeline->serialize()) {
+        // The stages within the FLEPipeline are serialized in the context of the query analysis
+        // library, which requires special consideration. For example, the serialization of an
+        // aggregation stage might rely on FCV gating to conditionally serialize certain fields,
+        // however FCV gating is not supported when running the query analysis library. Toggling
+        // 'serializeForQueryAnalysis' here serves as a way to guard FCV gated code which would
+        // otherwise conditionally serialize certain information if it was running on the mongod
+        // server.
+        SerializationOptions opts{.serializeForQueryAnalysis = true};
+        for (auto&& stage : _parsedPipeline->serialize(opts)) {
             invariant(stage.getType() == BSONType::Object);
             arr->append(stage.getDocument().toBson());
         }
