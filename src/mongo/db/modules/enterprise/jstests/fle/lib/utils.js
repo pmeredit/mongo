@@ -63,7 +63,10 @@ export function generateSchemaV1(fieldMap) {
             bsonType: pathSpec["bsonType"],
             algorithm: kRandomAlgo
         };
-        if (pathSpec.hasOwnProperty("queries") && pathSpec.queries !== []) {
+        // TODO(SERVER-100572): Fix length check, this currently will always return true
+        // even if length is zero.
+        // eslint-disable-next-line
+        if (pathSpec.hasOwnProperty("queries") && pathSpec.queries.length !== []) {
             fle1Spec.algorithm = kDeterministicAlgo;
         }
         currentLevel[pathElements[pathElements.length - 1]] = {encrypt: fle1Spec};

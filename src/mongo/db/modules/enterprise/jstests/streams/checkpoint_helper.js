@@ -977,7 +977,6 @@ export function checkpointInTheMiddleTest(
         writeBsonArrayToFile(intermediateStateDumpDir + "/inputDocs.bson", inputDocs);
         // eslint-disable-next-line
         writeBsonArrayToFile(intermediateStateDumpDir + "/expectedResults.bson", originalResults);
-        // eslint-disable-next-line
         copyDir(test2.spWriteDir + "/" + id, intermediateStateDumpDir);
     }
     // Run the streamProcessor.

@@ -638,7 +638,6 @@ function resumeFromCheckpointVersion2(numPartitions) {
 
     const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
     mkdir(destDir);
-    // eslint-disable-next-line
     copyDir(srcDir, destDir);
 
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
@@ -758,7 +757,6 @@ function resumeFromCheckpointVersion3(numPartitions) {
 
     const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
     mkdir(destDir);
-    // eslint-disable-next-line
     copyDir(srcDir, destDir);
 
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
@@ -875,7 +873,6 @@ function resumeFromCheckpointVersion4(numPartitions) {
 
     const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
     mkdir(destDir);
-    // eslint-disable-next-line
     copyDir(srcDir, destDir);
 
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
