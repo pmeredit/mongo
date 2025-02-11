@@ -20,20 +20,27 @@ enum mongodb_get_next_result {
 // be filled with a utf8 error string. On non-zero codes (result, len) may be set to (NULL, 0).
 typedef int (*mongodb_source_get_next)(void* source_ptr, const unsigned char** result, size_t* len);
 
-// An aggregation stage provided by the plugin.
+struct mongodb_aggregation_stage_vt;
+/// An opaque type to be used with a C++ style polymorphic object.
+struct mongodb_aggregation_stage {
+    const mongodb_aggregation_stage_vt* vtable;
+};
+
+// Vtable for an aggregation stage provided by the plugin.
 //
-// To implement an aggregation stage, create a new struct where this is the _first_ member:
+// To implement an aggregation stage, create a new struct where a pointer to this is the _first_
+// member:
 //
 // ```c
 // struct MyAggregationStage {
-//   mongodb_aggregation_stage stage;
+//   const mongodb_aggregation_stage_vt* vtable;
 //   // other state goes here.
 // }
 // ```
 //
 // Your aggregation stage parser will heap allocate a `MyAggregationStage` and return it as a
 // `mongodb_aggregation_stage*`.
-struct mongodb_aggregation_stage {
+struct mongodb_aggregation_stage_vt {
     // Get the next result from stage and typically filling (result, result_len). Memory pointed to
     // by result is owned by the stage and only valid until the next call on stage.
     //
@@ -58,7 +65,6 @@ struct mongodb_aggregation_stage {
     // closing.
     void (*close)(mongodb_aggregation_stage* stage);
 };
-
 typedef int (*mongodb_parse_aggregation_stage)(const unsigned char* stage_bson,
                                                size_t stage_bson_len,
                                                mongodb_aggregation_stage** stage,

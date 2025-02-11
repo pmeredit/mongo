@@ -63,7 +63,7 @@ private:
 
     struct PluginStageDeleter {
         void operator()(mongodb_aggregation_stage* stage) {
-            stage->close(stage);
+            stage->vtable->close(stage);
         }
     };
 

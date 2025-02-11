@@ -66,7 +66,7 @@ int source_get_next(void* source_ptr, const unsigned char** result, size_t* len)
 
 void DocumentSourcePlugin::setSource(DocumentSource* source) {
     pSource = source;
-    _plugin_stage->set_source(_plugin_stage.get(), this, &source_get_next);
+    _plugin_stage->vtable->set_source(_plugin_stage.get(), this, &source_get_next);
 }
 
 int DocumentSourcePlugin::sourceGetNext(const unsigned char** result, size_t* len) {
@@ -91,7 +91,7 @@ int DocumentSourcePlugin::sourceGetNext(const unsigned char** result, size_t* le
 DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
     const unsigned char* result = nullptr;
     size_t result_len = 0;
-    int code = _plugin_stage->get_next(_plugin_stage.get(), &result, &result_len);
+    int code = _plugin_stage->vtable->get_next(_plugin_stage.get(), &result, &result_len);
     switch (code) {
         case GET_NEXT_ADVANCED:
             // Ensure that the result buffer contains a document bound to result_len.

@@ -8,7 +8,8 @@ use std::num::NonZero;
 use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf};
 
 use plugin_api_bindgen::{
-    mongodb_aggregation_stage, mongodb_plugin_portal, mongodb_source_get_next,
+    mongodb_aggregation_stage, mongodb_aggregation_stage_vt, mongodb_plugin_portal,
+    mongodb_source_get_next,
 };
 
 #[derive(Debug)]
@@ -133,7 +134,7 @@ pub trait AggregationStage: Sized {
 /// Wrapper around an [AggregationStage] that binds to the C plugin API.
 #[repr(C)]
 pub struct PluginAggregationStage<S: AggregationStage> {
-    stage_api: mongodb_aggregation_stage,
+    vtable: &'static mongodb_aggregation_stage_vt,
     stage_impl: S,
     // This is a place to put errors or other things that might leak.
     buf: Vec<u8>,
@@ -154,6 +155,12 @@ impl<S: AggregationStage> std::ops::DerefMut for PluginAggregationStage<S> {
 }
 
 impl<S: AggregationStage> PluginAggregationStage<S> {
+    const VTABLE: mongodb_aggregation_stage_vt = mongodb_aggregation_stage_vt {
+        get_next: Some(Self::get_next),
+        set_source: Some(Self::set_source),
+        close: Some(Self::close),
+    };
+
     pub fn register(plugin_portal: *mut mongodb_plugin_portal) {
         let stage_name = S::name();
         unsafe {
@@ -175,11 +182,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         match Self::parse(unsafe { std::slice::from_raw_parts(stage_bson_ptr, stage_bson_len) }) {
             Ok(stage_impl) => {
                 let plugin_stage = Box::new(Self {
-                    stage_api: mongodb_aggregation_stage {
-                        get_next: Some(Self::get_next),
-                        set_source: Some(Self::set_source),
-                        close: Some(Self::close),
-                    },
+                    vtable: &Self::VTABLE,
                     stage_impl,
                     buf: vec![],
                 });
