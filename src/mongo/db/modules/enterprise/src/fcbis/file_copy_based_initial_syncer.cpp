@@ -38,6 +38,18 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
 
 namespace mongo {
+namespace {
+StorageEngine::TimestampMonitor::TimestampListener kCollectionCatalogCleanupTimestampListener(
+    StorageEngine::TimestampMonitor::TimestampType::kOldest,
+    [](OperationContext* opCtx, Timestamp timestamp) {
+        if (CollectionCatalog::latest(opCtx)->catalogIdTracker().dirty(timestamp)) {
+            CollectionCatalog::write(opCtx, [timestamp](CollectionCatalog& catalog) {
+                catalog.catalogIdTracker().cleanup(timestamp);
+            });
+        }
+    });
+}  // namespace
+
 namespace repl {
 using startup_recovery::StartupRecoveryMode;
 
@@ -1680,6 +1692,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
             // Clear the cached oplog pointer in the service context.
             repl::clearLocalOplogPtr(opCtx->getServiceContext());
         });
+    catalog::initializeCollectionCatalog(opCtx, opCtx->getServiceContext()->getStorageEngine());
     opCtx->getServiceContext()->getStorageEngine()->notifyStorageStartupRecoveryComplete();
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 
@@ -2034,7 +2047,7 @@ void FileCopyBasedInitialSyncer::_runPostReplicationStartupStorageInitialization
         TransactionParticipant::getOldestActiveTimestamp);
 
     // This handles dropping of drop-pending collections.
-    storageEngine->startTimestampMonitor();
+    storageEngine->startTimestampMonitor({&kCollectionCatalogCleanupTimestampListener});
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
