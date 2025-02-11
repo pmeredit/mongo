@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "streams/exec/constants.h"
@@ -73,6 +72,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->streamMetaFieldName = "_stream_meta";
     context->featureFlags = StreamProcessorFeatureFlags{{}, Date_t::now()};
     context->concurrentCheckpointController = std::make_shared<ConcurrentCheckpointController>(1);
+    context->region = "us-east-1";
 
     return std::make_tuple(std::move(context), std::move(executor));
 }

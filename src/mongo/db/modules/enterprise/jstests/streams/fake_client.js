@@ -310,6 +310,7 @@ export let sp = new Streams(TEST_TENANT_ID, []);
 export const test = {
     atlasConnection: "StreamsAtlasConnection",
     kafkaConnection: "StreamsKafkaConnection",
+    awsIAMLambdaConnection: "StreamsAWSIAMLambdaConnection",
     dbName: "test",
     inputCollName: "testin",
     outputCollName: "testout",
@@ -328,6 +329,16 @@ export function getDefaultSp() {
             name: test.kafkaConnection,
             type: 'kafka',
             options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+        },
+        {
+            name: test.awsIAMLambdaConnection,
+            type: 'aws_iam_lambda',
+            options: {
+                accessKey: "myAccessKey",
+                accessSecret: "myAccessSecret",
+                sessionToken: "mySessionToken",
+                expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+            }
         },
     ]);
 }

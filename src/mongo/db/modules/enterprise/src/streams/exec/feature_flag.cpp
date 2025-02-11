@@ -7,7 +7,6 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/value.h"
-#include "mongo/db/feature_flag.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/operator.h"
@@ -223,6 +222,18 @@ const FeatureFlagDefinition FeatureFlags::kEnableMetadataRefreshInterval{
     "If true, enable librdakfka's metadata refresh interval.",
     mongo::Value(true)};
 
+
+const FeatureFlagDefinition FeatureFlags::kEnableExternalFunctionOperator{
+    "enableExternalFunctionOperator",
+    "If true, the $externalFunction operator is enabled.",
+    mongo::Value(false),
+    {}};
+
+const FeatureFlagDefinition FeatureFlags::kExternalFunctionRateLimitPerSecond{
+    "externalFunctionRateLimitPerSecond",
+    "Specifies rate limit to be used by $externalFunction",
+    mongo::Value::createIntOrLong(10L * 1000)};
+
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};
@@ -283,7 +294,11 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableMetadataRefreshInterval.name,
      FeatureFlags::kEnableMetadataRefreshInterval},
     {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring},
-    {FeatureFlags::kEnableS3Emit.name, FeatureFlags::kEnableS3Emit}};
+    {FeatureFlags::kEnableS3Emit.name, FeatureFlags::kEnableS3Emit},
+    {FeatureFlags::kEnableExternalFunctionOperator.name,
+     FeatureFlags::kEnableExternalFunctionOperator},
+    {FeatureFlags::kExternalFunctionRateLimitPerSecond.name,
+     FeatureFlags::kExternalFunctionRateLimitPerSecond}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);

@@ -4,7 +4,6 @@
 
 #include "streams/exec/planner.h"
 
-#include <any>
 #include <boost/none.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <memory>
@@ -21,33 +20,26 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/oid.h"
-#include "mongo/db/change_stream_options_gen.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/feature_flag.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/db/pipeline/document_source_add_fields.h"
-#include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
-#include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_redact.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
-#include "mongo/db/query/stage_types.h"
 #include "mongo/db/service_context.h"
-#include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/database_name_util.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/serialization_context.h"
@@ -56,15 +48,15 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
-#include "streams/exec/delayed_watermark_generator.h"
+#include "streams/exec/document_source_external_function_stub.h"
 #include "streams/exec/document_source_https_stub.h"
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
+#include "streams/exec/external_function_operator.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/feedable_pipeline.h"
-#include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/https_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -72,7 +64,6 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
-#include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/lookup_operator.h"
@@ -156,6 +147,7 @@ enum class StageType {
     kLimit,
     kEmit,
     kHttps,
+    kExternalFunction,
 };
 
 // Encapsulates traits of a stage.
@@ -165,8 +157,8 @@ struct StageTraits {
     bool allowedInMainPipeline{false};
     // Whether the stage is allowed in the inner pipeline of a window stage.
     bool allowedInWindowPipeline{false};
-    // Whether the stage is allowed in the inner pipeline of a https stage.
-    bool allowedInHttpsPipeline{false};
+    // Whether the stage is allowed in the inner pipeline of a https or externalFunction stage.
+    bool allowedInPayloadPipeline{false};
 };
 
 mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
@@ -192,12 +184,13 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$limit", {StageType::kLimit, false, true, false}},
         {"$emit", {StageType::kEmit, true, false, false}},
         {"$https", {StageType::kHttps, true, true, false}},
+        {"$externalFunction", {StageType::kExternalFunction, true, true, false}},
     };
 
 enum class PipelineType {
     kMain,
     kWindow,
-    kHttps,
+    kPayloadPipeline,
 };
 
 // Verifies that a stage specified in the input pipeline is a valid stage.
@@ -225,12 +218,12 @@ void enforceStageConstraints(const std::string& name, PipelineType pipelineType)
                               << " stage is not permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInWindowPipeline);
             break;
-        case PipelineType::kHttps:
+        case PipelineType::kPayloadPipeline:
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << name
                                   << " stage is not permitted in the payload (inner pipeline) of "
-                                     "an https stage",
-                    stageInfo.allowedInHttpsPipeline);
+                                     "an https or externalFunction stage",
+                    stageInfo.allowedInPayloadPipeline);
             break;
     }
 }
@@ -1745,7 +1738,7 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
         stages.reserve(payloadPipeline->size());
         for (auto& stageObj : *payloadPipeline) {
             std::string stageName(stageObj.firstElementFieldNameStringData());
-            enforceStageConstraints(stageName, PipelineType::kHttps);
+            enforceStageConstraints(stageName, PipelineType::kPayloadPipeline);
             stages.emplace_back(std::move(stageObj).getOwned());
         }
 
@@ -1813,6 +1806,66 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     }
 
     auto oper = std::make_unique<HttpsOperator>(_context, std::move(options));
+    oper->setOperatorId(_nextOperatorId++);
+    appendOperator(std::move(oper));
+}
+
+void Planner::planExternalFunction(DocumentSourceExternalFunctionStub* docSource) {
+    _context->projectStreamMetaPriorToSinkStage = true;
+
+    auto parsedOperatorOptions = ExternalFunctionOptions::parse(
+        IDLParserContext("externalFunction"), docSource->bsonOptions());
+    auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
+                          << kExternalFunctionStageName,
+            _context->connections->contains(connectionNameField));
+
+    Aws::Client::ClientConfiguration clientConfig;
+    clientConfig.region = _context->region;
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            str::stream() << kExternalFunctionStageName << "does not support non-AWS region '"
+                          << clientConfig.region,
+            isAWSRegion(clientConfig.region));
+    if (getTestCommandsEnabled()) {
+        clientConfig.endpointOverride = "http://localhost:9000";
+    }
+
+    ExternalFunctionOperator::Options options{
+        .lambdaClient = std::make_unique<AWSLambdaClient>(
+            std::make_shared<AWSCredentialsProvider>(_context, connectionNameField), clientConfig),
+        .functionName = parsedOperatorOptions.getFunctionName().toString(),
+        .execution = parsedOperatorOptions.getExecution(),
+        .onError = parsedOperatorOptions.getOnError(),
+    };
+
+    if (options.execution == mongo::ExternalFunctionExecutionEnum::Sync) {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "BSON field 'externalFunction.as' is missing but a required field",
+                parsedOperatorOptions.getAs());
+
+        options.as = parsedOperatorOptions.getAs()->toString();
+    } else {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "BSON field 'externalFunction.as' is not supported with "
+                "'externalFunction.execution: async'",
+                !parsedOperatorOptions.getAs());
+    }
+
+    if (const auto& payloadPipeline = parsedOperatorOptions.getPayload(); payloadPipeline) {
+        std::vector<mongo::BSONObj> stages;
+        stages.reserve(payloadPipeline->size());
+        for (auto& stageObj : *payloadPipeline) {
+            std::string stageName(stageObj.firstElementFieldNameStringData());
+            enforceStageConstraints(stageName, PipelineType::kPayloadPipeline);
+            stages.emplace_back(std::move(stageObj).getOwned());
+        }
+
+        auto [pipeline, pipelineRewriter] = preparePipeline(std::move(stages));
+        options.payloadPipeline = FeedablePipeline{std::move(pipeline)};
+    }
+
+    auto oper = std::make_unique<ExternalFunctionOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 }
@@ -2100,6 +2153,24 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 planHttps(httpsSource);
                 break;
             }
+            case StageType::kExternalFunction: {
+                auto enabled = _context->featureFlags
+                    ? _context->featureFlags
+                          ->getFeatureFlagValue(FeatureFlags::kEnableExternalFunctionOperator)
+                          .getBool()
+                    : boost::none;
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                        "Unsupported stage: $externalFunction",
+                        enabled && *enabled);
+                optimizedPipeline.push_back(serialize(stage));
+                auto externalfunctionSource =
+                    dynamic_cast<DocumentSourceExternalFunctionStub*>(stage.get());
+                tassert(9929400,
+                        "Expected stage to be an external function document source.",
+                        externalfunctionSource);
+                planExternalFunction(externalfunctionSource);
+                break;
+            }
             default:
                 MONGO_UNREACHABLE;
         }
@@ -2335,7 +2406,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             if (spec[kDocumentsField].missing()) {
                 addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
             }
-        } else if (isEmitStage(stageName) || isHttpsStage(stageName)) {
+        } else if (isEmitStage(stageName) || isPayloadStage(stageName)) {
             auto spec = getSpecDoc(stageName, stage);
             addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
         } else if (isMergeStage(stageName)) {

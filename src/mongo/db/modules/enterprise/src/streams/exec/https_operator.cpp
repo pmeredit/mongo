@@ -18,13 +18,12 @@
 #include <string>
 
 #include "mongo/base/error_codes.h"
-#include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/json.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
@@ -42,7 +41,6 @@
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
-#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -132,7 +130,7 @@ void HttpsOperator::registerMetrics(MetricManager* metricManager) {
 HttpsOperator::HttpsOperator(Context* context, HttpsOperator::Options options)
     : Operator(context, 1, 1),
       _options(std::move(options)),
-      _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
+      _rateLimitPerSec{getHttpsRateLimitPerSec(*context->featureFlags)},
       _rateLimiter{_rateLimitPerSec, &_options.timer},
       _cidrDenyList{parseCidrDenyList()} {
     tassert(
@@ -199,7 +197,7 @@ void HttpsOperator::doOnDataMsg(int32_t inputIdx,
     int64_t numDlqBytes{0};
 
     // If the rate limit per second feature flag is updated, update rate limiter accordingly
-    if (auto newRateLimitPerSec = getRateLimitPerSec(*_context->featureFlags);
+    if (auto newRateLimitPerSec = getHttpsRateLimitPerSec(_context->featureFlags);
         newRateLimitPerSec != _rateLimitPerSec) {
         _rateLimitPerSec = newRateLimitPerSec;
         _rateLimiter.setTokensRefilledPerSec(newRateLimitPerSec);
@@ -313,12 +311,9 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
             try {
-                rawDoc =
-                    tojson(payloadDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
-            } catch (const DBException& e) {
-                if (e.code() != ErrorCodes::BSONObjectTooLarge) {
-                    throw;
-                }
+                rawDoc = mongo::tojson(payloadDoc.toBson(),
+                                       mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
+            } catch (ExceptionFor<ErrorCodes::BSONObjectTooLarge>& e) {
                 writeToDLQ(streamDoc,
                            payloadDoc,
                            fmt::format("{}: {}", e.codeString(), e.what()),
@@ -880,13 +875,6 @@ std::string HttpsOperator::joinPaths(const std::string& basePath, const std::str
     out.append(cleanSlashes(path));
 
     return out;
-}
-
-int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
-    tassert(9503701, "Feature flags should be set", featureFlags);
-    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kHttpsRateLimitPerSecond).getInt();
-
-    return *val;
 }
 
 }  // namespace streams

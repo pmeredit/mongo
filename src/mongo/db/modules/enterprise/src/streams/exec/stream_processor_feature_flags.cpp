@@ -103,4 +103,18 @@ bool enableMetadataRefreshInterval(
                 .getBool();
 }
 
+int64_t getHttpsRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(9503701, "Feature flags should be set", featureFlags);
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kHttpsRateLimitPerSecond).getInt();
+    return *val;
+}
+
+int64_t getExternalFunctionRateLimitPerSec(
+    boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(9929408, "Feature flags should be set", featureFlags);
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kExternalFunctionRateLimitPerSecond)
+                   .getInt();
+    return *val;
+}
+
 }  // namespace streams

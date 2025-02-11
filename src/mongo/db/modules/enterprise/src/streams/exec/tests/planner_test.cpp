@@ -2,12 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include <algorithm>
+#include <aws/core/Aws.h>
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
 #include <chrono>
 #include <fmt/format.h>
-#include <iostream>
 #include <memory>
 #include <rdkafkacpp.h>
 #include <string>
@@ -20,11 +19,11 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/bson/oid.h"
-#include "mongo/db/pipeline/aggregate_command_gen.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
-#include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/s/sharding_state.h"
@@ -32,19 +31,16 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/scopeguard.h"
-#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
-#include "streams/exec/https_operator.h"
-#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/external_function_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/limit_operator.h"
-#include "streams/exec/log_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/noop_dead_letter_queue.h"
@@ -53,8 +49,6 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
-#include "streams/exec/tenant_feature_flags.h"
-#include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/util/metric_manager.h"
@@ -69,6 +63,11 @@ public:
         ShardingState::create(getServiceContext());
         _metricManager = std::make_unique<MetricManager>();
         _context = get<0>(getTestContext(nullptr));
+        Aws::InitAPI(_sdkOptions);
+    }
+
+    ~PlannerTest() override {
+        Aws::ShutdownAPI(_sdkOptions);
     }
 
     void setupConnections() {
@@ -99,8 +98,15 @@ public:
         httpsConnWithFragment.setOptions(httpsConnOptionsWithFragment.toBSON());
         httpsConnWithFragment.setType(ConnectionTypeEnum::HTTPS);
 
+        Connection awsIAMConn{};
+        awsIAMConn.setName("awsIAMLambda1");
+        AWSIAMConnectionOptions awsIAMConnOptions{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
+        awsIAMConn.setOptions(awsIAMConnOptions.toBSON());
+        awsIAMConn.setType(ConnectionTypeEnum::AWSIAMLambda);
+
         std::vector<Connection> connectionsVector{
-            atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment};
+            atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment, awsIAMConn};
 
         auto inMemoryConnection = testInMemoryConnections();
         connectionsVector.insert(
@@ -173,6 +179,7 @@ public:
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    Aws::SDKOptions _sdkOptions;
 };
 
 namespace {
@@ -1712,6 +1719,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         auto context = get<0>(getTestContext(nullptr));
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
         featureFlagsMap.emplace(std::make_pair(FeatureFlags::kEnableS3Emit.name, true));
+        featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
         StreamProcessorFeatureFlags spFeatureFlags{
             featureFlagsMap,
             std::chrono::time_point<std::chrono::system_clock>{
@@ -1722,6 +1730,8 @@ TEST_F(PlannerTest, ExecutionPlan) {
         options1.setIsTestKafka(true);
         AtlasConnectionOptions options2{"mongodb://localhost:270"};
         HttpsConnectionOptions options3{"https://localhost:12345"};
+        AWSIAMConnectionOptions options4{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
         context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
             Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
             Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
@@ -1729,8 +1739,8 @@ TEST_F(PlannerTest, ExecutionPlan) {
             Connection{
                 "s3Bucket1",
                 ConnectionTypeEnum::S3,
-                options3.toBSON()}  // TODO(SERVER-99973): Use S3ConnectionOptions when available
-        });
+                options3.toBSON()},  // TODO(SERVER-99973): Use S3ConnectionOptions when available
+            Connection{"awsIAMLambda1", ConnectionTypeEnum::AWSIAMLambda, options4.toBSON()}});
 
         Planner planner(context.get(), Planner::Options{});
         auto bson = parsePipeline(userPipeline);
@@ -2414,6 +2424,34 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
     ])",
               {"ChangeStreamConsumerOperator", "AddFieldsOperator", "MergeOperator"});
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+
+        {
+            $externalFunction: {
+              connectionName: "awsIAMLambda1",
+              functionName: "foo",
+              as: "bar"
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "ExternalFunctionOperator", "MergeOperator"});
 
     // Ensure the planner is properly planning a S3EmitOperator
     innerTest(R"(
@@ -2687,23 +2725,6 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
 #if LIBCURL_VERSION_NUM >= 0x074e00
 
 /**
-Parse a pipeline containing $https in it. Verify that it fails when not supplied the correct
-feature flag.
-*/
-TEST_F(PlannerTest, HttpsFailsWithoutFeatureFlag) {
-    std::string pipeline = R"(
-[
-    { $https: {} }
-]
-    )";
-
-    ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
-                                DBException,
-                                ErrorCodes::StreamProcessorInvalidOptions,
-                                "StreamProcessorInvalidOptions: Unsupported stage: $https");
-}
-
-/**
 Parse a pipeline containing $https in it, but missing required arguments.
 */
 TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
@@ -2715,14 +2736,12 @@ TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
             std::chrono::system_clock::now().time_since_epoch()}};
     _context->featureFlags->updateFeatureFlags(spFeatureFlags);
 
-    auto prevConnections = _context->connections;
     ScopeGuard guard([&] {
         // Unset feature flags to avoid corrupting other tests.
         _context->featureFlags->updateFeatureFlags(
             StreamProcessorFeatureFlags{prevFeatureFlags,
                                         std::chrono::time_point<std::chrono::system_clock>{
                                             std::chrono::system_clock::now().time_since_epoch()}});
-        _context->connections = prevConnections;
     });
     setupConnections();
 
@@ -2784,7 +2803,7 @@ TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
 Parse a pipeline containing $https in it. Verify that it does not fail when not supplied
 the expected feature flag.
 */
-TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
+TEST_F(PlannerTest, Https) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
     StreamProcessorFeatureFlags spFeatureFlags{
@@ -2793,14 +2812,12 @@ TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
             std::chrono::system_clock::now().time_since_epoch()}};
     _context->featureFlags->updateFeatureFlags(spFeatureFlags);
 
-    auto prevConnections = _context->connections;
     ScopeGuard guard([&] {
         // Unset feature flags to avoid corrupting other tests.
         _context->featureFlags->updateFeatureFlags(
             StreamProcessorFeatureFlags{prevFeatureFlags,
                                         std::chrono::time_point<std::chrono::system_clock>{
                                             std::chrono::system_clock::now().time_since_epoch()}});
-        _context->connections = prevConnections;
     });
 
     auto planHttpsTest = [&](const std::vector<BSONObj>& spec,
@@ -3095,6 +3112,247 @@ TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
 }
 
 #endif
+
+/**
+Parse a pipeline containing $externalFunction in it. Verify that it fails when not supplied the
+correct feature flag.
+*/
+TEST_F(PlannerTest, ExternalFunctionFailsWithoutFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalFunction: {} }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+}
+
+/**
+Parse a pipeline containing $externalFunction in it. Verify that it still fails when the feature
+flag is defined but set to false.
+*/
+TEST_F(PlannerTest, ExternalFunctionWithFalseFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalFunction: {} }
+]
+    )";
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+}
+
+/**
+Parse a pipeline containing $externalFunction in it, the expected feature flag, but missing
+required arguments.
+*/
+TEST_F(PlannerTest, ExternalFunctionWithMissingRequiredArgs) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+    setupConnections();
+
+    {
+        // This pipeline is missing 'connectionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                functionName: "foo",
+                as: "response"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'externalFunction.connectionName' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+
+    {
+        // This pipeline passes in an unexpected connectionName.
+        ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "unseenbeforelegendaryconnectionname",
+                functionName: "foo",
+                as: "response"
+            }
+        }
+    ])")),
+                                    DBException,
+                                    mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                                    "StreamProcessorInvalidOptions: Unknown connectionName "
+                                    "'unseenbeforelegendaryconnectionname' in $externalFunction");
+    }
+
+    {
+        // This pipeline is missing 'functionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'externalFunction.functionName' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+
+    {
+        // This pipeline is missing 'as'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                functionName: "foo"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+}
+
+/**
+Parse a pipeline containing $externalFunction in it. Verify that it does not fail when not
+supplied the expected feature flag.
+*/
+TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+
+    auto planExternalFunctionTest = [&](const std::vector<BSONObj>& spec,
+                                        streams::ExternalFunctionOperator::Options expectedOpts,
+                                        Document inputDoc) {
+        auto dag = addSourceSinkAndParse(spec);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
+
+        auto actualOper = dynamic_cast<ExternalFunctionOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->getOptions().functionName, expectedOpts.functionName);
+        ASSERT_EQ(actualOper->getOptions().execution, expectedOpts.execution);
+        ASSERT_EQ(actualOper->getOptions().as, expectedOpts.as);
+        ASSERT_EQ(actualOper->getOptions().onError, expectedOpts.onError);
+    };
+
+    {
+        // unknown field
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalFunctionTest(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                as: "response",
+                randomField: "foo"
+            }
+        }
+    ])"),
+                                     {},
+                                     {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLUnknownField: BSON field 'externalFunction.randomField' is an unknown field.");
+    }
+
+    {
+        // `as` is not supported when using async execution
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalFunctionTest(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                functionName: "foo",
+                execution: "async",
+                as: "response"
+            }
+        }
+    ])"),
+                                     {},
+                                     {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is not "
+            "supported with 'externalFunction.execution: async'");
+    }
+
+    {
+        planExternalFunctionTest(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                functionName: "foo",
+                as: "response"
+            }
+        }
+    ])"),
+                                 {
+                                     .functionName = "foo",
+                                     .execution = mongo::ExternalFunctionExecutionEnum::Sync,
+                                     .as = boost::optional<std::string>("response"),
+                                 },
+                                 Document{BSON("bar"
+                                               << "baz")});
+    }
+}
 
 }  // namespace
 }  // namespace streams

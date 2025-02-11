@@ -34,6 +34,7 @@ enums:
             InMemory: "in_memory"
             HTTPS: "https"
             S3: "s3"
+            AWSIAMLambda: "aws_iam_lambda"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"
@@ -160,6 +161,13 @@ enums:
             processingTime: "processingTime"
             eventTime: "eventTime"
 
+    ExternalFunctionExecution:
+        type: string
+        description: "Describes if the stage should wait for a complete response (Sync) or proceed after acknowledgement (Async)"
+        values:
+            Sync: "sync"
+            Async: "async"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -268,6 +276,19 @@ structs:
                 description: "Path to CA file for verifying the PEM file above."
                 type: string
                 optional: true
+
+    AWSIAMConnectionOptions:
+        description: "AWS IAM connection options."
+        strict: true
+        fields:
+            accessKey:
+                type: string
+            accessSecret:
+                type: string
+            sessionToken:
+                type: string
+            expirationDate:
+                type: date
 
     Connection:
         description: "Connection registry information."
@@ -789,4 +810,31 @@ structs:
             config:
                 description: "Additional configuration options for the $https operator"
                 type: HttpsConfigOptions
+                optional: true
+
+    ExternalFunctionOptions:
+        description: "$externalFunction stage options."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the connection used for auth."
+                type: string
+            functionName:
+                description: "The name of the function."
+                type: string
+            execution:
+                description: "Whether to wait for the response payload from the lambda to return or move on after request acknowledgement."
+                type: ExternalFunctionExecution
+                default: Sync
+            as:
+                description: "Defines the field name for response data. Required if execution == sync and not a sink stage"
+                type: string
+                optional: true
+            onError:
+                description: "Describes how error responses from the external function are handled."
+                type: OnError
+                default: DLQ
+            payload:
+                description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent."
+                type: pipeline
                 optional: true

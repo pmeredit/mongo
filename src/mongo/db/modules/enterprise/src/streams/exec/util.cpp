@@ -44,31 +44,31 @@ bool hasWindow(const std::vector<BSONObj>& pipeline) {
     return false;
 }
 
-bool hasHttpsStage(const std::vector<mongo::BSONObj>& pipeline) {
+bool hasPayloadStage(const std::vector<mongo::BSONObj>& pipeline) {
     for (const auto& stage : pipeline) {
-        if (isHttpsStage(stage.firstElementFieldNameStringData())) {
+        if (isPayloadStage(stage.firstElementFieldNameStringData())) {
             return true;
         }
     }
     return false;
 }
 
-bool hasHttpsStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline) {
-    boost::optional<size_t> httpsStageIdx;
+bool hasPayloadStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline) {
+    boost::optional<size_t> payloadStageIdx;
     boost::optional<size_t> windowStageIdx;
     for (size_t idx = 0; idx < pipeline.size(); ++idx) {
         const auto& stage = pipeline[idx];
         auto name = stage.firstElementFieldNameStringData();
         if (isWindowStage(name)) {
             windowStageIdx = idx;
-        } else if (isHttpsStage(name)) {
-            httpsStageIdx = idx;
+        } else if (isPayloadStage(name)) {
+            payloadStageIdx = idx;
         }
     }
-    if (!httpsStageIdx || !windowStageIdx) {
+    if (!payloadStageIdx || !windowStageIdx) {
         return false;
     }
-    return *httpsStageIdx < *windowStageIdx;
+    return *payloadStageIdx < *windowStageIdx;
 }
 
 bool isLookUpStage(mongo::StringData name) {
@@ -104,8 +104,9 @@ bool hasBlockingStage(const BSONPipeline& pipeline) {
     return false;
 }
 
-bool isHttpsStage(mongo::StringData name) {
-    return name == mongo::StringData(kHttpsStageName);
+bool isPayloadStage(mongo::StringData name) {
+    return name == mongo::StringData(kHttpsStageName) ||
+        name == mongo::StringData(kExternalFunctionStageName);
 }
 
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,
@@ -303,6 +304,40 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                                      << StreamMetaHttps::kResponseTimeMsFieldName)
                           .ss.str()),
             Value(httpsMeta->getResponseTimeMs()));
+    }
+    if (auto externalFunctionMeta = internalStreamMeta.getExternalFunction();
+        externalFunctionMeta) {
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kFunctionNameFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getFunctionName()));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kExecutedVersionFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getExecutedVersion()));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kStatusCodeFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getStatusCode()));
+
+        if (externalFunctionMeta->getFunctionError()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                         << StreamMetaExternalFunction::kFunctionErrorFieldName)
+                              .ss.str()),
+                Value(*externalFunctionMeta->getFunctionError()));
+        }
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kResponseTimeMsFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getResponseTimeMs()));
     }
     return newStreamMeta.freeze();
 }
