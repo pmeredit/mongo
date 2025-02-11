@@ -25,7 +25,6 @@
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/platform/random.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"

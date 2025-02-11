@@ -33,8 +33,6 @@
 #include "mongo/rpc/metadata/audit_client_attrs.h"
 #include "mongo/transport/mock_session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/options_parser/environment.h"

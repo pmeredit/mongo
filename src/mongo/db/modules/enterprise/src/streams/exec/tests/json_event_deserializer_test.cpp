@@ -5,9 +5,7 @@
 #include <exception>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/json_event_deserializer.h"
 

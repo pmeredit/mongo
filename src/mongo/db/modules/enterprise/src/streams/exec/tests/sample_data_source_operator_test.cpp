@@ -1,7 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"

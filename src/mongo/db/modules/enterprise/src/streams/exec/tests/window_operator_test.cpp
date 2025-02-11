@@ -25,7 +25,6 @@
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"

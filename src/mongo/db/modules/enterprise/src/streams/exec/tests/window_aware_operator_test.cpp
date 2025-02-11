@@ -14,8 +14,6 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_data_gen.h"

@@ -1,8 +1,7 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/tick_source.h"

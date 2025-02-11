@@ -4,8 +4,7 @@
 
 #include <fmt/format.h>
 
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/stream_processor_feature_flags.h"

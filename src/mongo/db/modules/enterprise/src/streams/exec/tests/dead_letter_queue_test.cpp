@@ -9,7 +9,7 @@
 
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/pipeline/expression.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"

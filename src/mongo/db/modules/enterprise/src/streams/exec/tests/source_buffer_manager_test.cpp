@@ -6,7 +6,6 @@
 #include <cmath>
 #include <memory>
 
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/tests/test_utils.h"

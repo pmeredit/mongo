@@ -16,7 +16,6 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"

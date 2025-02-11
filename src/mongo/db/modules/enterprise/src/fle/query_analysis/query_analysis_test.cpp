@@ -25,7 +25,6 @@
 #include "mongo/db/query/collation/collator_interface_mock.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 

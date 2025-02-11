@@ -4,8 +4,7 @@
 
 #include "streams/exec/memory_usage_monitor.h"
 
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/util/chunked_memory_aggregator.h"
 #include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/exception.h"

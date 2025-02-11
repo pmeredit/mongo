@@ -3,7 +3,6 @@
  */
 
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/unittest.h"
 
 #include "streams/exec/delayed_watermark_generator.h"

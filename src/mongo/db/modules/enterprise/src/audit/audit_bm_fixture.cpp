@@ -7,7 +7,7 @@
 #include "audit_bm_fixture.h"
 
 #include "mongo/db/auth/authorization_manager_factory_mock.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/options_parser/environment.h"
 
 namespace moe = mongo::optionenvironment;

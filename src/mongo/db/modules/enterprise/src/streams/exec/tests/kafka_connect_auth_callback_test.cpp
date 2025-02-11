@@ -5,9 +5,8 @@
 #include <arpa/inet.h>
 
 #include "mongo/crypto/symmetric_key.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/tests/test_utils.h"

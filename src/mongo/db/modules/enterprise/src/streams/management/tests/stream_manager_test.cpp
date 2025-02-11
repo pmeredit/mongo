@@ -17,7 +17,6 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_set.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/processinfo.h"

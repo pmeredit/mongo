@@ -1,8 +1,7 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/latency_collector.h"
 
 namespace streams {

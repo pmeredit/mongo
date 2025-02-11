@@ -22,7 +22,7 @@
 #include "mongo/db/timeseries/timeseries_collmod.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/md5.h"
 

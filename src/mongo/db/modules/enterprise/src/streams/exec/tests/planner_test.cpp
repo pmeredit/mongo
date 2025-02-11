@@ -28,8 +28,6 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/s/sharding_state.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"

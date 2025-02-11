@@ -3,8 +3,6 @@
  */
 
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/https_operator.h"

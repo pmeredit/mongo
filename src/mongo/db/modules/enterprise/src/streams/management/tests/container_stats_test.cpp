@@ -3,7 +3,7 @@
  */
 
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/time_support.h"
 #include <boost/optional.hpp>
 #include <tuple>

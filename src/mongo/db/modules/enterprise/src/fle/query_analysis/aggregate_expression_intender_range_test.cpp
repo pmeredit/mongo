@@ -4,7 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include "mongo/unittest/bson_test_util.h"
 #include <string>
 
 #include "aggregate_expression_intender_range.h"

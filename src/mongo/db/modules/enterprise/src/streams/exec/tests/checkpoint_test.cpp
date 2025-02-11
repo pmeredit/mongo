@@ -21,8 +21,6 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/periodic_runner_factory.h"
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"

@@ -4,8 +4,7 @@
 
 #include <arpa/inet.h>
 
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/tests/test_utils.h"
 
