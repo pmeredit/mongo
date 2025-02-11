@@ -34,6 +34,7 @@
 #include "mongo/shell/kms_gen.h"
 #include "mongo/shell/shell_options.h"
 #include "mongo/util/lru_cache.h"
+#include "mongo/util/testing_proctor.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -394,6 +395,44 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    void checkAllTextSearchSchemasHaveStrEncodeVersion(const BSONObj& cmd) {
+        auto commandName = cmd.firstElementFieldNameStringData();
+        if (commandName == "create"_sd) {
+            if (cmd.hasField("encryptedFields")) {
+                auto efc = EncryptedFieldConfig::parse(IDLParserContext("encryptedFields"),
+                                                       cmd["encryptedFields"].Obj());
+                bool hasTextSearchQueryType = hasQueryTypeMatching(efc, [](QueryTypeEnum qt) {
+                    return qt == QueryTypeEnum::SubstringPreview ||
+                        qt == QueryTypeEnum::SuffixPreview || qt == QueryTypeEnum::PrefixPreview;
+                });
+                tassert(9794101,
+                        "Must have strEncodeVersion in encryptedFields when there is at least one "
+                        "text search query type",
+                        !hasTextSearchQueryType ||
+                            (efc.getStrEncodeVersion() && *efc.getStrEncodeVersion() > 0));
+            }
+        }
+        if (cmd.hasField(query_analysis::kEncryptionInformation)) {
+            auto ei = EncryptionInformation::parse(
+                IDLParserContext(query_analysis::kEncryptionInformation),
+                cmd[query_analysis::kEncryptionInformation].Obj());
+            for (const auto& elem : ei.getSchema()) {
+                auto efc = EncryptedFieldConfig::parse(IDLParserContext("schema"), elem.Obj());
+                bool hasTextSearchQueryType = hasQueryTypeMatching(efc, [](QueryTypeEnum qt) {
+                    return qt == QueryTypeEnum::SubstringPreview ||
+                        qt == QueryTypeEnum::SuffixPreview || qt == QueryTypeEnum::PrefixPreview;
+                });
+
+                tassert(
+                    9794102,
+                    "Must have strEncodeVersion in encryptionInformation for EFCs with at least "
+                    "one text search query type",
+                    !hasTextSearchQueryType ||
+                        (efc.getStrEncodeVersion() && *efc.getStrEncodeVersion() > 0));
+            }
+        }
+    }
+
     using EncryptedDBClientBase::handleEncryptionRequest;
     RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
         auto& request = params.request;
@@ -523,6 +562,12 @@ public:
 
         BSONObj finalRequestObj =
             preprocessRequest(request.body, schemaInfo, dbName, schemaInfoContainer);
+
+        if (TestingProctor::instance().isEnabled() && schemaInfoContainer.isFLE2()) {
+            // We expect libmongocrypt to append the current strEncodeVersion for any schemas which
+            // don't have it.
+            checkAllTextSearchSchemasHaveStrEncodeVersion(finalRequestObj);
+        }
 
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
         finalReq.validatedTenancyScope = vtsOrig;
