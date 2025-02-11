@@ -417,14 +417,51 @@ void ChangeStreamSourceOperator::fetchLoop() {
         std::move(fetchFunc), _context, ErrorCodes::Error{8681500}, _errorPrefix, *_uri);
 
     // Translate a few other user errors specific to change stream $source.
-    auto translateCode = [&](ErrorCodes::Error newCode) -> SPStatus {
-        return SPStatus{Status{newCode, status.toString()}, status.unsafeReason()};
+    auto translateCode = [&](ErrorCodes::Error newCode, BSONObj extraDetails = {}) -> SPStatus {
+        std::string newReason = status.toString();
+        if (!extraDetails.isEmpty()) {
+            newReason += " : details: " + extraDetails.toString(false);
+        }
+        return SPStatus{Status{newCode, newReason}, status.unsafeReason()};
     };
+
     switch (int32_t statusCode = status.code(); statusCode) {
-        case ErrorCodes::ChangeStreamHistoryLost:
+        case ErrorCodes::ChangeStreamHistoryLost: {
+            BSONObjBuilder extraDetails;
+            if (_context->restoredCheckpointInfo) {
+                auto restoredCheckpointInfo = *_context->restoredCheckpointInfo;
+                auto checkpointTimestamp =
+                    restoredCheckpointInfo.description.getCheckpointTimestamp();
+
+                extraDetails.append("checkpoint.timestamp", checkpointTimestamp.toString());
+            }
+            if (_options.userSpecifiedStartingPoint) {
+                const auto& startingPoint = *_options.userSpecifiedStartingPoint;
+                if (auto resumeToken = std::get_if<mongo::BSONObj>(&startingPoint)) {
+                    extraDetails.append(
+                        "$source.config.startAfter.resumeToken.timestamp",
+                        std::to_string(
+                            ResumeToken::parse(*resumeToken).getClusterTime().getSecs()));
+                    extraDetails.append("$source.config.startAfter.resumeToken",
+                                        resumeToken->toString());
+                } else if (auto ts = std::get_if<mongo::Timestamp>(&startingPoint)) {
+                    extraDetails.append("$source.config.startAtOperationTime",
+                                        std::to_string(ts->getSecs()));
+                }
+            }
+            if (_latestResumeToken) {
+                extraDetails.append(
+                    "latestResumeToken.timestamp",
+                    std::to_string(
+                        ResumeToken::parse(*_latestResumeToken).getClusterTime().getSecs()));
+                extraDetails.append("latestResumeToken", _latestResumeToken->toString());
+            }
+
             // We cannot resume from this point in the changestream.
-            status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource);
+            status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource,
+                                   extraDetails.obj());
             break;
+        }
         case ErrorCodes::NoMatchingDocument:
             if (_options.fullDocumentMode == FullDocumentModeEnum::kRequired) {
                 // If the user specifies fullDocumentMode==kRequired, the server will return

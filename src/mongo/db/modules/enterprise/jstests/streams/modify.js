@@ -803,7 +803,7 @@ const testCases = [
                                              }),
         validateShouldSucceed: false,
         expectedValidateError:
-            "Resume of change stream was not possible, as the resume point may no longer be in the oplog",
+            "Resume of change stream was not possible, as the resume point may no longer be in the oplog.: generic server error : details: { checkpoint.timestamp:",
         validateFailureCode: ErrorCodes.StreamProcessorCannotResumeFromSource,
         useTimeField: true
     },
