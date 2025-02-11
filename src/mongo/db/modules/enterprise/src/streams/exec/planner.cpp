@@ -1514,9 +1514,10 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
     SessionWindowAssigner::Options windowingOptions(WindowAssigner::Options{});
 
     windowingOptions.windowBoundary = getValidWindowBoundary(options);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Cannot use processing time with session window",
-            windowingOptions.windowBoundary != mongo::WindowBoundaryEnum::processingTime);
+    tassert(ErrorCodes::InternalError, "Operators shouldn't be empty", !_operators.empty());
+    if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
+        src->setWindowBoundary(windowingOptions.windowBoundary);
+    }
     windowingOptions.gapSize = gap.getSize();
     windowingOptions.gapUnit = gap.getUnit();
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());

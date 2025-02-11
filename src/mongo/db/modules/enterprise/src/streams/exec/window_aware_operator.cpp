@@ -702,14 +702,16 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
         int64_t minTS = std::numeric_limits<int64_t>::max();
         int64_t maxTS = std::numeric_limits<int64_t>::min();
     };
-
-    std::sort(
-        dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
-            return lhs.minDocTimestampMs < rhs.minDocTimestampMs;
-        });
-
     const auto& options = getOptions();
     auto assigner = dynamic_cast<SessionWindowAssigner*>(options.windowAssigner.get());
+
+    if (!assigner->hasProcessingTimeWindowBoundary()) {
+        std::sort(
+            dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
+                return lhs.minDocTimestampMs < rhs.minDocTimestampMs;
+            });
+    }
+
     const auto& expr = assigner->getPartitionBy();
     mongo::ValueUnorderedMap<MiniWindow> miniWindows =
         mongo::ValueComparator::kInstance.makeUnorderedValueMap<MiniWindow>();
@@ -728,6 +730,10 @@ void WindowAwareOperator::assignSessionWindowsAndProcessDataMsg(StreamDataMsg da
 
         if (doc.minDocTimestampMs < _minWindowStartTime &&
             !fitsInOpenSession(partition, doc.minDocTimestampMs)) {
+            tassert(9944100,
+                    "minDocTimestampMs should never be less than the min window start time in "
+                    "processing time mode",
+                    !assigner->hasProcessingTimeWindowBoundary());
             // Send late data that does not fit into an existing session to the DLQ.
             sendLateDocDlqMessage(doc, doc.minDocTimestampMs);
             continue;
@@ -981,7 +987,11 @@ void WindowAwareOperator::processSessionWindowWatermarkMsg(StreamControlMsg cont
         tassert(9188002,
                 "Expected a watermarkStatus of kIdle",
                 watermark.watermarkStatus == WatermarkStatus::kIdle);
-        return;
+        if (options.windowAssigner->hasProcessingTimeWindowBoundary()) {
+            inputWatermarkTime = watermark.watermarkTimestampMs;
+        } else {
+            return;
+        }
     }
 
     auto assigner = getSessionAssigner();

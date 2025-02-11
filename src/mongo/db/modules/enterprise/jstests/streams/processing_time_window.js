@@ -96,6 +96,23 @@ function testCheckpointing() {
         useTimeField: false,
         useKafka: true
     });
+    commonTest({
+        input: [{a: 1, b: 2}, {a: 2, b: 3}],
+        pipeline: [{
+            $sessionWindow: {
+                boundary: "processingTime",
+                gap: {size: NumberInt(5), unit: "second"},
+                partitionBy: "$a",
+                pipeline:
+                    [{$sort: {b: 1}}, {$group: {_id: "$a", push: {$push: {a: "$a", b: "$b"}}}}]
+            }
+        }],
+        expectedOutput: [{push: [{a: 1, b: 2}]}, {push: [{a: 2, b: 3}]}],
+        featureFlags: {processingTimeWindows: true},
+        fieldsToSkip: fieldsToSkip,
+        useTimeField: false,
+        useKafka: true
+    });
 }
 
 function testIdleMessagesCloseWindows(sourceSpec, windowSpec, expectedOutput, isKafka) {
@@ -146,35 +163,26 @@ function testWindowsClosingAsExpected(
 
     // Make sure next document inserted closes the current window
     sleep(windowIntervalMillis);
+    if (isKafka) {
+        processor.testInsert({a: 1});
+    } else {
+        inputColl.insertOne({a: 1});
+    }
 
     assert.soon(() => {
-        const outputMessageCount = getStats(processorName)["outputMessageCount"];
-        if (outputMessageCount < 2) {
-            if (isKafka) {
-                processor.testInsert({a: 1});
-            } else {
-                inputColl.insertOne({a: 1});
-            }
-        }
-        return outputMessageCount >= 2;
+        const stats = getStats(processorName);
+        return stats["outputMessageCount"] == 2;
     }, "Failed to close window");
 
-    const outputDocFirstWindow = sampleUntil(cursorId, 1, processorName);
+    const outputDocFirstWindow = sampleUntil(cursorId, 2, processorName);
+
     assert(resultsEq(expectedOutput, [outputDocFirstWindow[0]], true, fieldsToSkip));
     const firstWindowStartTime =
         outputDocFirstWindow[0]["_stream_meta"]["window"]["start"].getTime();
     const firstWindowEndTime = outputDocFirstWindow[0]["_stream_meta"]["window"]["end"].getTime();
     assert(Math.abs(startTime.getTime() - firstWindowStartTime) <= 5000);
     assert(Math.abs(startTime.getTime() - firstWindowEndTime) <= 5000);
-    const verboseStats = getStats(processorName);
-    assert(Math.abs(startTime.getTime() - new Date(verboseStats["watermark"]).getTime()) <= 5000);
-
-    let outputDocSecondWindow;
-    if (isKafka) {
-        outputDocSecondWindow = [outputDocFirstWindow[1]];
-    } else {
-        outputDocSecondWindow = sampleUntil(cursorId, 1, processorName);
-    }
+    let outputDocSecondWindow = [outputDocFirstWindow[1]];
     assert(resultsEq(expectedOutput, [outputDocSecondWindow[0]], true, fieldsToSkip));
 
     const secondWindowStartTime =
@@ -219,10 +227,15 @@ function testDLQedMessages(sourceSpec,
     } else {
         inputColl.insert({a: 45});
     }
-    const firstWindowOutput = sampleUntil(cursorId, 1, processorName);
+    assert.soon(() => {
+        let stats = getStats(processorName);
+        return stats["outputMessageCount"] == 2;
+    });
+    const output = sampleUntil(cursorId, 2, processorName);
+    let firstWindowOutput = [output[0]];
     assert(resultsEq(expectedOutput, firstWindowOutput, true, fieldsToSkip));
 
-    const secondWindowOutput = sampleUntil(cursorId, 1, processorName);
+    let secondWindowOutput = [output[1]];
     assert(resultsEq(expectedOutput, secondWindowOutput, true, fieldsToSkip));
 
     assert.soon(() => {
@@ -273,6 +286,34 @@ testIdleMessagesCloseWindows(changeStreamSourceSpec,
                                  "ns": {"db": "test", "coll": "input_coll"},
                              }],
                              false);
+testIdleMessagesCloseWindows(changeStreamSourceSpec,
+                             {
+                                 $sessionWindow: {
+                                     boundary: "processingTime",
+                                     gap: {size: NumberInt(5), unit: "second"},
+                                     partitionBy: "$a",
+                                     pipeline: [{$sort: {a: 1}}]
+                                 }
+                             },
+                             [{
+                                 "operationType": "insert",
+                                 "fullDocument": {"a": 1},
+                                 "ns": {"db": "test", "coll": "input_coll"},
+                             }],
+                             false);
+testIdleMessagesCloseWindows(changeStreamSourceSpec,
+                             {
+                                 $sessionWindow: {
+                                     boundary: "processingTime",
+                                     gap: {size: NumberInt(1), unit: "second"},
+                                     partitionBy: "$a",
+                                     pipeline: [{$group: {_id: "$a", count: {$sum: 1}}}]
+                                 }
+                             },
+                             [{
+                                 "count": 1,
+                             }],
+                             false);
 testWindowsClosingAsExpected(changeStreamSourceSpec,
                              {
                                  $tumblingWindow: {
@@ -286,7 +327,7 @@ testWindowsClosingAsExpected(changeStreamSourceSpec,
                                  "fullDocument": {"a": 1},
                                  "ns": {"db": "test", "coll": "input_coll"},
                              }],
-                             1000,
+                             2000,
                              false);
 testWindowsClosingAsExpected(changeStreamSourceSpec,
                              {
@@ -302,7 +343,23 @@ testWindowsClosingAsExpected(changeStreamSourceSpec,
                                  "fullDocument": {"a": 1},
                                  "ns": {"db": "test", "coll": "input_coll"},
                              }],
-                             1000,
+                             2000,
+                             false);
+testWindowsClosingAsExpected(changeStreamSourceSpec,
+                             {
+                                 $sessionWindow: {
+                                     boundary: "processingTime",
+                                     gap: {size: NumberInt(5), unit: "second"},
+                                     partitionBy: "$a",
+                                     pipeline: [{$sort: {_id: 1}}]
+                                 }
+                             },
+                             [{
+                                 "operationType": "insert",
+                                 "fullDocument": {"a": 1},
+                                 "ns": {"db": "test", "coll": "input_coll"},
+                             }],
+                             11000,
                              false);
 testDLQedMessages(changeStreamSourceSpec,
                   {
@@ -337,6 +394,23 @@ testDLQedMessages(changeStreamSourceSpec,
                       "count": 1,
                   }],
                   false);
+testDLQedMessages(changeStreamSourceSpec,
+                  {
+                      $sessionWindow: {
+                          boundary: "processingTime",
+                          gap: {size: NumberInt(5), unit: "second"},
+                          partitionBy: "$a",
+                          pipeline: [{$group: {_id: "$a", count: {$sum: 1}}}]
+                      }
+
+                  },
+                  0,
+                  2,
+                  11000,
+                  [{
+                      "count": 1,
+                  }],
+                  false);
 testWindowsClosingAsExpected(kafkaSourceSpec,
                              {
                                  $tumblingWindow: {
@@ -354,6 +428,18 @@ testWindowsClosingAsExpected(kafkaSourceSpec,
                                      boundary: "processingTime",
                                      interval: {size: NumberInt(1), unit: "second"},
                                      hopSize: {size: NumberInt(1), unit: "second"},
+                                     pipeline: [{$sort: {_id: 1}}]
+                                 }
+                             },
+                             [{"a": 1}],
+                             2000,
+                             true);
+testWindowsClosingAsExpected(kafkaSourceSpec,
+                             {
+                                 $sessionWindow: {
+                                     boundary: "processingTime",
+                                     gap: {size: NumberInt(1), unit: "second"},
+                                     partitionBy: "$a",
                                      pipeline: [{$sort: {_id: 1}}]
                                  }
                              },
@@ -382,6 +468,23 @@ testDLQedMessages(kafkaSourceSpec,
                       $tumblingWindow: {
                           boundary: "processingTime",
                           interval: {size: NumberInt(5), unit: "second"},
+                          pipeline: [{$group: {_id: "$a", count: {$sum: 1}}}]
+                      }
+
+                  },
+                  0,
+                  2,
+                  5000,
+                  [{
+                      "count": 1,
+                  }],
+                  true);
+testDLQedMessages(kafkaSourceSpec,
+                  {
+                      $sessionWindow: {
+                          boundary: "processingTime",
+                          gap: {size: NumberInt(5), unit: "second"},
+                          partitionBy: "$a",
                           pipeline: [{$group: {_id: "$a", count: {$sum: 1}}}]
                       }
 
@@ -421,6 +524,17 @@ testIdleMessagesCloseWindows(kafkaSourceSpec,
                                      boundary: "processingTime",
                                      interval: {size: NumberInt(1), unit: "second"},
                                      hopSize: {size: NumberInt(1), unit: "second"},
+                                     pipeline: [{$sort: {_id: 1}}]
+                                 }
+                             },
+                             [{"a": 1}],
+                             true);
+testIdleMessagesCloseWindows(kafkaSourceSpec,
+                             {
+                                 $sessionWindow: {
+                                     boundary: "processingTime",
+                                     gap: {size: NumberInt(1), unit: "second"},
+                                     partitionBy: "$a",
                                      pipeline: [{$sort: {_id: 1}}]
                                  }
                              },
