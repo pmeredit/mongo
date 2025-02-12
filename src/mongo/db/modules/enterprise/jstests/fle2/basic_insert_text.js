@@ -11,11 +11,22 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
+import {
+    PrefixField,
+    SubstringField,
+    SuffixAndPrefixField,
+    SuffixField
+} from "jstests/fle2/libs/qe_text_search_util.js";
 
 const dbName = 'basic_insert_text';
 const dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
 const client = new EncryptedClient(db.getMongo(), dbName);
+
+const firstNameField = new SubstringField(1000, 10, 100, false, false, 1);
+const lastNameField = new PrefixField(2, 48, false, true, 1);
+const locationField = new SuffixField(2, 48, true, false, 1);
+const ssnField = new SuffixAndPrefixField(3, 30, 2, 20, true, true, 1);
 
 jsTest.log("createEncryptionCollection");
 assert.commandWorked(client.createEncryptionCollection("basic", {
@@ -24,139 +35,51 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 path: "firstName",
                 bsonType: "string",
-                queries: {
-                    queryType: "substringPreview",
-                    contention: NumberLong(1),
-                    strMaxLength: NumberLong(1000),
-                    strMaxQueryLength: NumberLong(100),
-                    strMinQueryLength: NumberLong(10),
-                    caseSensitive: false,
-                    diacriticSensitive: false
-                }
+                queries: firstNameField.createQueryTypeDescriptor()
             },
             {
                 path: "lastName",
                 bsonType: "string",
-                queries: {
-                    queryType: "prefixPreview",
-                    contention: NumberLong(1),
-                    strMinQueryLength: NumberLong(2),
-                    strMaxQueryLength: NumberLong(48),
-                    caseSensitive: false,
-                    diacriticSensitive: true,
-                }
+                queries: lastNameField.createQueryTypeDescriptor()
             },
             {
                 path: "location",
                 bsonType: "string",
-                queries: {
-                    queryType: "suffixPreview",
-                    contention: NumberLong(1),
-                    strMinQueryLength: NumberLong(2),
-                    strMaxQueryLength: NumberLong(48),
-                    caseSensitive: true,
-                    diacriticSensitive: false,
-                }
+                queries: locationField.createQueryTypeDescriptor()
             },
-            {
-                path: "ssn",
-                bsonType: "string",
-                queries: [
-                    {
-                        queryType: "suffixPreview",
-                        contention: NumberLong(1),
-                        strMinQueryLength: NumberLong(3),
-                        strMaxQueryLength: NumberLong(30),
-                        caseSensitive: true,
-                        diacriticSensitive: true,
-                    },
-                    {
-                        queryType: "prefixPreview",
-                        contention: NumberLong(1),
-                        strMinQueryLength: NumberLong(2),
-                        strMaxQueryLength: NumberLong(20),
-                        caseSensitive: true,
-                        diacriticSensitive: true,
-                    },
-                ]
-            },
+            {path: "ssn", bsonType: "string", queries: ssnField.createQueryTypeDescriptor()},
         ]
     }
 }));
 
 const edb = client.getDB();
 
-function getSubstringFieldTagCount(cplen, mlen, lb, ub) {
-    assert.gte(cplen, 0);
-    assert.gt(lb, 0);
-    assert.gte(ub, lb);
-    assert.gte(mlen, ub);
-    const beta = cplen == 0 ? 1 : cplen;
-    const cbclen = Math.ceil(beta / 16) * 16;
-    if (beta > mlen || lb > cbclen) {
-        return 0;
-    }
-    const hi = Math.min(ub, cbclen);
-    const range = hi - lb + 1;
-    const hisum = (hi * (hi + 1)) / 2;  // sum of [1..hi]
-    const losum = (lb * (lb - 1)) / 2;  // sum of [1..lb)
-    const maxkgram1 = (mlen * range) - (hisum - losum) + range;
-    const maxkgram2 = (cbclen * range) - (hisum - losum) + range;
-    return Math.min(maxkgram1, maxkgram2);
-}
-
-function getSuffixPrefixFieldTagCount(cplen, lb, ub) {
-    assert.gt(lb, 0);
-    assert.gte(ub, lb);
-    assert.gte(cplen, 0);
-    const beta = cplen == 0 ? 1 : cplen;
-    const cbclen = Math.ceil(beta / 16) * 16;
-    if (lb > cbclen) {
-        return 0;
-    }
-    return Math.min(ub, cbclen) - lb + 1;
-}
-
-function firstNameTags(cplen) {
-    return getSubstringFieldTagCount(cplen, 1000, 10, 100) + 1;  // +1 for exact match tag
-}
-
-function locationTags(cplen) {
-    return getSuffixPrefixFieldTagCount(cplen, 2, 48) + 1;  // +1 for exact match tag
-}
-
-function lastNameTags(cplen) {
-    return getSuffixPrefixFieldTagCount(cplen, 2, 48) + 1;  // +1 for exact match tag
-}
-
-function ssnTags(cplen) {
-    // +1 for exact match tag
-    return getSuffixPrefixFieldTagCount(cplen, 2, 20) + getSuffixPrefixFieldTagCount(cplen, 3, 30) +
-        1;
-}
-
 // Insert a document with fields which get encrypted
 jsTestLog("doing single encrypted substring field insert");
-assert.commandWorked(edb.basic.einsert({"_id": 1, "firstName": "Linda"}));
+let testStr = "Linda";
+assert.commandWorked(edb.basic.einsert({"_id": 1, "firstName": testStr}));
 let edcCount = 1;
-let tagCount = firstNameTags(5);
+let tagCount = firstNameField.calculateExpectedTagCount(testStr.length);
 client.assertEncryptedCollectionCounts("basic", edcCount, tagCount, tagCount);
 
 jsTestLog("doing single encrypted suffix field insert");
-assert.commandWorked(edb.basic.einsert({"_id": 2, "location": "New Jersey"}));
-tagCount += locationTags(10);
+testStr = "New Jersey";
+assert.commandWorked(edb.basic.einsert({"_id": 2, "location": testStr}));
+tagCount += locationField.calculateExpectedTagCount(testStr.length);
 edcCount++;
 client.assertEncryptedCollectionCounts("basic", edcCount, tagCount, tagCount);
 
 jsTestLog("doing single encrypted prefix field insert");
+testStr = "Belcher";
 assert.commandWorked(edb.basic.einsert({"_id": 3, "lastName": "Belcher"}));
-tagCount += lastNameTags(7);
+tagCount += lastNameField.calculateExpectedTagCount("Belcher".length);
 edcCount++;
 client.assertEncryptedCollectionCounts("basic", edcCount, tagCount, tagCount);
 
 jsTestLog("doing single encrypted prefix+suffix field insert");
-assert.commandWorked(edb.basic.einsert({"_id": 4, "ssn": "997-23-2222"}));
-tagCount += ssnTags(11);
+testStr = "997-23-2222";
+assert.commandWorked(edb.basic.einsert({"_id": 4, "ssn": testStr}));
+tagCount += ssnField.calculateExpectedTagCount(testStr.length);
 edcCount++;
 client.assertEncryptedCollectionCounts("basic", edcCount, tagCount, tagCount);
 
@@ -168,7 +91,7 @@ assert.commandWorked(edb.basic.einsert({
     "ssn": "997-23-2222",
     "location": "New Jersey",
 }));
-tagCount *= 2;
+tagCount *= 2;  // x2 because we just inserted the same values as we did individually above.
 edcCount++;
 client.assertEncryptedCollectionCounts("basic", edcCount, tagCount, tagCount);
 
@@ -193,7 +116,7 @@ assert(doc[kSafeContentField] !== undefined);
 
 // Test various string lengths for a substring field
 for (let len of [0, 8 /* < lb */, 16, 18, 48, 101, 160]) {
-    const expectTagCt = firstNameTags(len);
+    const expectTagCt = firstNameField.calculateExpectedTagCount(len);
     jsTestLog(
         `inserting substring encrypted field value with length: ${len}, tag_ct: ${expectTagCt}`);
     if (expectTagCt > 255) {  // Too many tags
@@ -209,7 +132,7 @@ for (let len of [0, 8 /* < lb */, 16, 18, 48, 101, 160]) {
 
 // Test various string lengths for suffix field
 for (let len of [0, 1 /* < lb */, 16, 18, 48, 101, 160]) {
-    const expectTagCt = locationTags(len);
+    const expectTagCt = locationField.calculateExpectedTagCount(len);
     jsTestLog(`inserting suffix encrypted field value with length: ${len}, tag_ct: ${expectTagCt}`);
     if (expectTagCt > 255) {  // Too many tags
         assert.commandFailedWithCode(edb.basic.einsert({location: "a".repeat(len)}), 9784104);
@@ -223,7 +146,7 @@ for (let len of [0, 1 /* < lb */, 16, 18, 48, 101, 160]) {
 
 // Test various string lengths for prefix field
 for (let len of [0, 1 /* < lb */, 16, 18, 48, 101, 160]) {
-    const expectTagCt = lastNameTags(len);
+    const expectTagCt = lastNameField.calculateExpectedTagCount(len);
     jsTestLog(`inserting prefix encrypted field value with length: ${len}, tag_ct: ${expectTagCt}`);
     if (expectTagCt > 255) {  // Too many tags
         assert.commandFailedWithCode(edb.basic.einsert({lastName: "a".repeat(len)}), 9784104);
