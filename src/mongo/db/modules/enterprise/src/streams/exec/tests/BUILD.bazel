@@ -890,3 +890,21 @@ mongo_cc_unit_test(
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
     ],
 )
+
+mongo_cc_unit_test(
+    name = "external_function_operator_test",
+    srcs = [
+        "external_function_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)

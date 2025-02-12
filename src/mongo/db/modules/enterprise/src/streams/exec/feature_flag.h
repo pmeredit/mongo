@@ -70,6 +70,8 @@ public:
     static const FeatureFlagDefinition kOldStreamMeta;
     static const FeatureFlagDefinition kEnableMetadataRefreshInterval;
     static const FeatureFlagDefinition kEnableS3Emit;
+    static const FeatureFlagDefinition kEnableExternalFunctionOperator;
+    static const FeatureFlagDefinition kExternalFunctionRateLimitPerSecond;
 };
 
 }  // namespace streams
