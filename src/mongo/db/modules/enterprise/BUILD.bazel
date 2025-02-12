@@ -11,3 +11,13 @@ mongo_install(
     ],
     visibility = ["//visibility:public"],
 )
+
+mongo_install(
+    name = "mongo-crypt",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/fle/lib:mongo_crypt_v1",
+        "//src/mongo/db/modules/enterprise/src/fle/lib:shim",
+        "//src/mongo/db/modules/enterprise/src/fle/query_analysis",
+    ],
+    visibility = ["//visibility:public"],
+)
