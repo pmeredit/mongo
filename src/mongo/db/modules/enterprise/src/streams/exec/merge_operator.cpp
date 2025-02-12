@@ -4,6 +4,7 @@
 #include "streams/exec/merge_operator.h"
 
 #include "mongo/util/duration.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/message.h"
 #include "streams/util/exception.h"
 #include <boost/optional.hpp>
@@ -15,7 +16,9 @@
 #include <utility>
 
 #include "mongo/bson/json.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/document_source_merge.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/merge_processor.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
 #include "mongo/logv2/log.h"
@@ -26,6 +29,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/log_util.h"
+#include "streams/exec/mongo_process_interface_for_test.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/util.h"
@@ -37,13 +41,134 @@ namespace streams {
 using namespace mongo;
 
 MergeOperator::MergeOperator(Context* context, Options options)
-    : QueuedSinkOperator(context, 1 /* numInputs */),
-      _options(std::move(options)),
-      _processor(_options.documentSource->getMergeProcessor()) {
-    _stats.connectionType = ConnectionTypeEnum::Atlas;
+    : QueuedSinkOperator(context, 1, options.spec.getParallelism()), _options(std::move(options)) {
+    if (_options.spec.getOn()) {
+        _onFieldPaths.emplace();
+        for (const auto& field : *_options.spec.getOn()) {
+            const auto [_, inserted] = _onFieldPaths->insert(FieldPath(field));
+            uassert(8186211,
+                    str::stream() << "Found a duplicate field in the $merge.on list: '" << field
+                                  << "'",
+                    inserted);
+        }
+    }
+
+    // Validate the whenMatched and whenNotMatched modes are supported.
+    // TODO(SERVER-100746): Support kFail whenMatched/whenNotMatched mode.
+    static const stdx::unordered_set<MergeWhenMatchedModeEnum> supportedWhenMatchedModes{
+        {MergeWhenMatchedModeEnum::kKeepExisting,
+         MergeWhenMatchedModeEnum::kMerge,
+         MergeWhenMatchedModeEnum::kPipeline,
+         MergeWhenMatchedModeEnum::kReplace}};
+    static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
+        {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
+    if (_options.spec.getWhenMatched()) {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                fmt::format("StreamProcessorInvalidOptions: Unsupported whenMatched mode: {}",
+                            MergeWhenMatchedMode_serializer(_options.spec.getWhenMatched()->mode)),
+                supportedWhenMatchedModes.contains(_options.spec.getWhenMatched()->mode));
+    }
+    if (_options.spec.getWhenNotMatched()) {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                fmt::format("StreamProcessorInvalidOptions: Unsupported whenNotMatched mode: {}",
+                            MergeWhenNotMatchedMode_serializer(*_options.spec.getWhenNotMatched())),
+                supportedWhenNotMatchedModes.contains(*_options.spec.getWhenNotMatched()));
+    }
+
+    auto maxMergeParallelism =
+        *_context->featureFlags->getFeatureFlagValue(FeatureFlags::kMaxMergeParallelism).getInt();
+    uassert(
+        ErrorCodes::StreamProcessorInvalidOptions,
+        str::stream()
+            << "$merge.parallelism must be greater than or equal to 1 and less than or equal to "
+            << maxMergeParallelism,
+        _options.spec.getParallelism() >= 1 &&
+            _options.spec.getParallelism() <= maxMergeParallelism);
+
+    auto targetCollection = parseAtlasConnection();
+    // TODO(SERVER-100401): Support this.
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "$merge.into.db and $merge.into.coll must be literals if $merge.parallelism is greater "
+            "than 1",
+            _options.spec.getParallelism() == 1 ||
+                (targetCollection.getDb().isLiteral() && targetCollection.getColl().isLiteral()));
 }
 
-OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
+boost::intrusive_ptr<DocumentSource> MergeOperator::makeDocumentSourceMerge() {
+    DocumentSourceMergeSpec docSourceMergeSpec;
+    // Use a dummy target namespace kNoDbCollNamespaceString since it's not used.
+    auto dummyTargetNss = NamespaceStringUtil::deserialize(
+        /*tenantId=*/boost::none, kNoDbCollNamespaceString, SerializationContext());
+    auto whenMatched = _options.spec.getWhenMatched() ? _options.spec.getWhenMatched()->mode
+                                                      : DocumentSourceMerge::kDefaultWhenMatched;
+    auto whenNotMatched =
+        _options.spec.getWhenNotMatched().value_or(DocumentSourceMerge::kDefaultWhenNotMatched);
+    auto pipeline =
+        _options.spec.getWhenMatched() ? _options.spec.getWhenMatched()->pipeline : boost::none;
+    std::set<FieldPath> mergeOnFields{"_id"};
+    if (_onFieldPaths) {
+        mergeOnFields = *_onFieldPaths;
+    }
+    auto expCtx = makeExpressionContext();
+    return DocumentSourceMerge::create(std::move(dummyTargetNss),
+                                       expCtx,
+                                       whenMatched,
+                                       whenNotMatched,
+                                       _options.spec.getLet(),
+                                       pipeline,
+                                       std::move(mergeOnFields),
+                                       /*collectionPlacementVersion*/ boost::none,
+                                       _options.allowMergeOnNullishValues);
+}
+
+mongo::AtlasCollection MergeOperator::parseAtlasConnection() {
+    return AtlasCollection::parse(IDLParserContext("AtlasCollection"), _options.spec.getInto());
+}
+
+std::unique_ptr<SinkWriter> MergeOperator::makeWriter() {
+    MergeWriter::Options opts;
+    auto stage = makeDocumentSourceMerge();
+    opts.documentSource = dynamic_cast<DocumentSourceMerge*>(stage.get());
+    opts.mergeExpCtx = opts.documentSource->getContext();
+    auto targetCollection = parseAtlasConnection();
+    opts.db = targetCollection.getDb();
+    opts.coll = targetCollection.getColl();
+    opts.onFieldPaths = _onFieldPaths;
+    return std::make_unique<MergeWriter>(_context, this, std::move(opts));
+}
+
+boost::intrusive_ptr<mongo::ExpressionContext> MergeOperator::makeExpressionContext() {
+    auto mergeExpressionCtx = ExpressionContextBuilder{}
+                                  .opCtx(_context->opCtx.get())
+                                  .ns(NamespaceString(DatabaseName::kLocal))
+                                  .build();
+
+    if (_options.isTest) {
+        if (_onFieldPaths) {
+            mergeExpressionCtx->setMongoProcessInterface(
+                std::make_shared<MongoProcessInterfaceForTest>(*_onFieldPaths));
+        } else {
+            mergeExpressionCtx->setMongoProcessInterface(
+                std::make_shared<MongoProcessInterfaceForTest>());
+        }
+    } else {
+        MongoCxxClientOptions clientOptions(_options.atlasOptions, _context);
+        clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
+        mergeExpressionCtx->setMongoProcessInterface(
+            std::make_shared<MongoDBProcessInterface>(clientOptions));
+    }
+
+    return mergeExpressionCtx;
+}
+
+
+MergeWriter::MergeWriter(Context* context, SinkOperator* sinkOperator, MergeWriter::Options options)
+    : SinkWriter(context, sinkOperator),
+      _options(std::move(options)),
+      _processor(_options.documentSource->getMergeProcessor()),
+      _hash(&_options.mergeExpCtx->getValueComparator()) {}
+
+OperatorStats MergeWriter::processDataMsg(StreamDataMsg dataMsg) {
     // Partitions the docs in 'dataMsg' based on their target namespaces.
     OperatorStats stats;
     auto [docPartitions, partitionStats] = partitionDocsByTargets(dataMsg);
@@ -72,7 +197,7 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
     return stats;
 }
 
-auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
+auto MergeWriter::partitionDocsByTargets(const StreamDataMsg& dataMsg)
     -> std::tuple<DocPartitions, OperatorStats> {
     OperatorStats stats;
     auto getNsKey = [&](const StreamDocument& streamDoc) -> boost::optional<NsKey> {
@@ -106,7 +231,7 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
     return {docPartitions, stats};
 }
 
-void MergeOperator::validateConnection() {
+void MergeWriter::validateConnection() {
     if (_options.coll.isLiteral() && _options.db.isLiteral()) {
         auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
             _options.mergeExpCtx->getMongoProcessInterface().get());
@@ -114,25 +239,24 @@ void MergeOperator::validateConnection() {
         // If the target is literal, validate that the connection works.
         auto outputNs = getNamespaceString(_options.db.getLiteral(), _options.coll.getLiteral());
         auto validateFunc = [this, outputNs, mongoProcessInterface]() {
-            // Test the connection to the target.
-            mongoProcessInterface->testConnection(outputNs);
+            // Resolve or validate the $merge.on fields.
+            MongoDBProcessInterface::DocumentKeyResolutionMetadata result;
+            try {
+                // Test the connection to the target.
+                mongoProcessInterface->testConnection(outputNs);
 
-            if (_options.onFieldPaths) {
-                MongoDBProcessInterface::DocumentKeyResolutionMetadata result;
-                try {
-                    // If the $merge.on field is specified, validate that the on fields have unique
-                    // indexes.
-                    result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
-                        _options.mergeExpCtx,
-                        _options.onFieldPaths,
-                        /*targetCollectionPlacementVersion*/ boost::none,
-                        outputNs);
-                } catch (DBException& e) {
-                    e.addContext("Error occured while validating $merge.on");
-                    throw;
-                }
-                _literalMergeOnFieldPaths = std::move(std::get<0>(result));
+                // If the $merge.on field is specified, validate that the on fields have unique
+                // indexes.
+                result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+                    _options.mergeExpCtx,
+                    _options.onFieldPaths,
+                    /*targetCollectionPlacementVersion*/ boost::none,
+                    outputNs);
+            } catch (DBException& e) {
+                e.addContext("Error occured while validating $merge.on");
+                throw;
             }
+            _literalMergeOnFieldPaths = std::move(std::get<0>(result));
         };
 
         auto status = runMongocxxNoThrow(std::move(validateFunc),
@@ -144,7 +268,7 @@ void MergeOperator::validateConnection() {
     }
 }
 
-void MergeOperator::errorOut(const mongocxx::exception& e, const mongo::NamespaceString& outputNs) {
+void MergeWriter::errorOut(const mongocxx::exception& e, const mongo::NamespaceString& outputNs) {
     auto code = ErrorCodes::Error{e.code().value()};
     LOGV2_INFO(74781,
                "Error encountered in MergeOperator",
@@ -161,14 +285,14 @@ void MergeOperator::errorOut(const mongocxx::exception& e, const mongo::Namespac
 }
 
 // Returns an error message prefix for the output namespace.
-std::string MergeOperator::getErrorPrefix(const mongo::NamespaceString& outputNs) {
+std::string MergeWriter::getErrorPrefix(const mongo::NamespaceString& outputNs) {
     return fmt::format("$merge to {} failed", outputNs.toStringForErrorMsg());
 }
 
-OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
-                                               const NamespaceString& outputNs,
-                                               const DocIndices& docIndices,
-                                               size_t maxBatchDocSize) {
+OperatorStats MergeWriter::processStreamDocs(const StreamDataMsg& dataMsg,
+                                             const NamespaceString& outputNs,
+                                             const DocIndices& docIndices,
+                                             size_t maxBatchDocSize) {
     OperatorStats stats;
     auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
         _options.mergeExpCtx->getMongoProcessInterface().get());
@@ -329,6 +453,28 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
 
     stats.timeSpent = dataMsg.creationTimer->elapsed();
     return stats;
+}
+
+size_t MergeWriter::partition(StreamDocument& doc) {
+    tassert(
+        ErrorCodes::InternalError, "Expected literal $merge.on fields", _literalMergeOnFieldPaths);
+    bool mergeOnFieldPathsIncludeId{_literalMergeOnFieldPaths->contains(kIdFieldName)};
+
+    if (mergeOnFieldPathsIncludeId && doc.doc.getField(kIdFieldName).missing()) {
+        // Add the _id field if it doesn't already exist.
+        // (merge_processor also does this)
+        MutableDocument mutableDoc(std::move(doc.doc));
+        mutableDoc[kIdFieldName] = Value(OID::gen());
+        doc.doc = mutableDoc.freeze();
+    }
+
+    std::vector<Value> onFieldValues;
+    onFieldValues.reserve(_literalMergeOnFieldPaths->size());
+    for (const auto& field : *_literalMergeOnFieldPaths) {
+        onFieldValues.push_back(doc.doc[field.fullPath()]);
+    }
+
+    return _hash(Value{std::move(onFieldValues)});
 }
 
 }  // namespace streams

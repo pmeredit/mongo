@@ -714,6 +714,11 @@ structs:
                 description: The merge mode for the merge operation when source and target elements
                              do not match.
 
+            parallelism:
+                type: int
+                default: 1
+                description: Number of parallel writers to use in the $merge stage.
+
     KafkaSinkOptions:
         description: "Specifies details about an $emit stage configured to output to a Kafka topic"
         strict: true

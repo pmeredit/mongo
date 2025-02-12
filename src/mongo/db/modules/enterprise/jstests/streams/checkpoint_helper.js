@@ -66,13 +66,15 @@ function runGeneratedSourcePipeline({
     if (useTimeField) {
         generatedSource["$source"]["timeField"] = timeField;
     }
+    const waitForCount = expectedOutput.length + expectedDlq.length;
     const output = sp.process(
         [
             generatedSource,
             ...pipeline,
         ],
         5000000 /* maxLoops */,
-        featureFlags);
+        featureFlags,
+        waitForCount);
     const dlqMessageField = "_dlqMessage";
     const dlqOutput = output.filter(d => d.hasOwnProperty(dlqMessageField))
                           .map(d => sanitizeDlqDoc(d[dlqMessageField]));
@@ -82,10 +84,26 @@ function runGeneratedSourcePipeline({
 }
 
 // Run kafka pipeline with a checkpoint in the middle
-function runKafkaPipeline(
-    {input, pipeline, expectedOutput, featureFlags, fieldsToSkip, useTimeField}) {
-    const test2 = new CheckPointTestHelper(
-        input, pipeline, 10000000, "kafka", true, null, null, useTimeField, featureFlags);
+function runKafkaPipeline({
+    input,
+    pipeline,
+    expectedOutput,
+    featureFlags,
+    fieldsToSkip,
+    useTimeField,
+    extraMergeParams,
+    expectedOutputMessageCount
+}) {
+    const test2 = new CheckPointTestHelper(input,
+                                           pipeline,
+                                           10000000,
+                                           "kafka",
+                                           true,
+                                           null,
+                                           null,
+                                           useTimeField,
+                                           featureFlags,
+                                           extraMergeParams);
     // now split the input, stop the run in the middle, continue and verify the output is same
     jsTestLog(`input docs size=${input.length}`);
     test2.runWithInputSlice(0, input.length - 1);
@@ -96,28 +114,36 @@ function runKafkaPipeline(
 
     // Run the streamProcessor.
     test2.run();
-    assert.soon(() => { return test2.stats().inputMessageCount == input.length; },
-                "Waiting for input message count",
+    assert.soon(() => {
+        return test2.stats().inputMessageCount == input.length &&
+            test2.stats().outputMessageCount ==
+            (expectedOutputMessageCount ? expectedOutputMessageCount : expectedOutput.length);
+    }, "Waiting for input message count", timeoutSecs * 1000);
+    assert.soon(() => { return test2.outputColl.count() == expectedOutput.length; },
+                "waiting for output messages in output collection",
                 timeoutSecs * 1000);
-
-    assert.soon(() => { return test2.stats().outputMessageCount == expectedOutput.length; },
-                "Waiting for output message count",
-                timeoutSecs * 1000);
-    waitForCount(test2.outputColl, expectedOutput.length, timeoutSecs);
     waitWhenThereIsMoreData(test2.outputColl);
     assert.soon(() => {
         let results = test2.getResults();
-        return resultsEq(
-            expectedOutput, results, true, fieldsToSkip.length > 0 ? fieldsToSkip : ["_id"]);
-    });
+        return resultsEq(expectedOutput, results, true, fieldsToSkip);
+    }, "waiting for results", timeoutSecs * 1000);
     test2.stop();
 }
 
 // Run changestream pipeline with checkpoint in the middle
-function runChangeStreamPipeline(
-    {input, pipeline, useTimeField, featureFlags, expectedOutput, expectedDlq, fieldsToSkip}) {
+function runChangeStreamPipeline({
+    input,
+    pipeline,
+    useTimeField,
+    featureFlags,
+    expectedOutput,
+    expectedDlq,
+    fieldsToSkip,
+    extraMergeParams,
+    expectedOutputMessageCount
+}) {
     const newPipeline = [
-        {$match: {operationType: "insert"}},
+        {$match: {$or: [{operationType: "insert"}, {operationType: "replace"}]}},
         {$replaceRoot: {newRoot: "$fullDocument"}},
         ...pipeline,
     ];
@@ -136,7 +162,8 @@ function runChangeStreamPipeline(
                                 false,         // changestreamStalenessMonitoring
                                 undefined,     // oplogSizeMB
                                 true,          // kafkaIsTest
-                                featureFlags);
+                                featureFlags,
+                                extraMergeParams);
     test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
 
     jsTestLog(`Running with input length ${input.length}, first doc ${tojson(input[0])}`);
@@ -148,16 +175,21 @@ function runChangeStreamPipeline(
                 // Wait for all other docs to be processed.
                 assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
                             `waiting for inputMessageCount of ${numInserts}`,
-                            1000 * 10);
+                            timeoutSecs * 1000);
             } else {
-                assert.commandWorked(test.inputColl.insertOne(doc));
+                if (doc.hasOwnProperty("_id")) {
+                    assert.commandWorked(
+                        test.inputColl.replaceOne({_id: doc["_id"]}, doc, {upsert: true}));
+                } else {
+                    assert.commandWorked(test.inputColl.replaceOne(doc, doc, {upsert: true}));
+                }
                 numInserts += 1;
             }
         }
 
         assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
                     `waiting for inputMessageCount of ${numInserts}`,
-                    1000 * 10);
+                    timeoutSecs * 1000);
     };
 
     // Start the processor and write part of the input.
@@ -166,26 +198,33 @@ function runChangeStreamPipeline(
     insertData(firstInput);
     // Stop the processor and write the rest of the input.
     test.stop();
-    assert.commandWorked(test.inputColl.insertOne(input[input.length - 1]));
+    const lastDoc = input[input.length - 1];
+    if (lastDoc.hasOwnProperty("_id")) {
+        assert.commandWorked(
+            test.inputColl.replaceOne({_id: lastDoc["_id"]}, lastDoc, {upsert: true}));
+    } else {
+        assert.commandWorked(test.inputColl.replaceOne(lastDoc, lastDoc, {upsert: true}));
+    }
     // Start the processor from its last checkpoint.
     test.startFromLatestCheckpoint();
     // Validate the expected results are obtained.
-    assert.soon(() => { return test.stats().outputMessageCount == expectedOutput.length; });
     assert.soon(() => {
-        return resultsEq(test.outputColl.find({}).toArray(),
-                         expectedOutput,
-                         true /* verbose */,
-                         fieldsToSkip.length > 0 ? fieldsToSkip : ["_id"]);
+        return test.stats().outputMessageCount ==
+            (expectedOutputMessageCount ? expectedOutputMessageCount : expectedOutput.length);
+    });
+    assert.soon(() => {
+        return resultsEq(
+            test.outputColl.find({}).toArray(), expectedOutput, true /* verbose */, fieldsToSkip);
     });
     // Wait for expected DLQ results.
     assert.soon(() => { return test.stats().dlqMessageCount == expectedDlq.length; },
                 "waiting for expected DLQ stats",
-                10 * 1000);
+                timeoutSecs * 1000);
     assert.soon(() => {
         return resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
                          expectedDlq,
                          true /* verbose */,
-                         fieldsToSkip.length > 0 ? fieldsToSkip : ["_id"]);
+                         fieldsToSkip);
     });
 
     test.stop();
@@ -251,7 +290,9 @@ export function commonTest({
     featureFlags = {},
     expectedDlq = [],
     useKafka = true,
-    fieldsToSkip = [],
+    fieldsToSkip = ["_id"],
+    extraMergeParams,
+    expectedOutputMessageCount
 }) {
     assert(expectedOutput ||
            (expectedGeneratedOutput && expectedChangestreamOutput && expectedTestKafkaOutput) ||
@@ -276,7 +317,9 @@ export function commonTest({
             expectedOutput: (expectedTestKafkaOutput ? expectedTestKafkaOutput : expectedOutput),
             featureFlags: featureFlags,
             fieldsToSkip: fieldsToSkip,
-            useTimeField: useTimeField
+            useTimeField: useTimeField,
+            expectedOutputMessageCount: expectedOutputMessageCount,
+            extraMergeParams: extraMergeParams
         });
     }
 
@@ -287,7 +330,9 @@ export function commonTest({
         featureFlags: featureFlags,
         expectedOutput: (expectedChangestreamOutput ? expectedChangestreamOutput : expectedOutput),
         expectedDlq: expectedDlq,
-        fieldsToSkip: fieldsToSkip
+        fieldsToSkip: fieldsToSkip,
+        extraMergeParams: extraMergeParams,
+        expectedOutputMessageCount: expectedOutputMessageCount
     });
 }
 
@@ -449,7 +494,8 @@ export class TestHelper {
                 changestreamStalenessMonitoring = false,
                 oplogSizeMB = undefined,
                 kafkaIsTest = true,
-                featureFlags = {}) {
+                featureFlags = {},
+                extraMergeParams) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.sinkType = sinkType;
@@ -495,6 +541,10 @@ export class TestHelper {
         this.spName = uuidStr();
         this.processorId = this.spName;
         this.checkpointIntervalMs = null;  // Use the default.
+        this.extraMergeParams = null;
+        if (extraMergeParams) {
+            this.extraMergeParams = extraMergeParams;
+        }
 
         this.useNewCheckpointing = useNewCheckpointing;
         if (writeDir == null) {
@@ -617,7 +667,7 @@ export class TestHelper {
         if (this.sinkType == 'memory') {
             this.pipeline.push({$emit: {connectionName: '__testMemory'}});
         } else {
-            this.pipeline.push({
+            var merge = {
                 $merge: {
                     into: {
                         connectionName: this.dbConnectionName,
@@ -625,7 +675,19 @@ export class TestHelper {
                         coll: this.outputCollName
                     },
                 }
-            });
+            };
+            if (this.extraMergeParams && this.extraMergeParams !== null) {
+                Object.assign(merge["$merge"], this.extraMergeParams);
+            }
+            if (merge["$merge"].hasOwnProperty("on")) {
+                // Create the required unique index for the on field.
+                let index = {};
+                for (let field of merge["$merge"]["on"]) {
+                    index[field] = 1;
+                }
+                assert.commandWorked(this.outputColl.createIndex(index, {unique: true}));
+            }
+            this.pipeline.push(merge);
         }
     }
 
@@ -873,7 +935,8 @@ export class CheckPointTestHelper extends TestHelper {
                 writeDir = null,
                 restoreDir = null,
                 useTimeField = true,
-                featureFlags = {}) {
+                featureFlags = {},
+                extraMergeParams) {
         super(inputDocs,
               pipeline,
               interval,
@@ -889,7 +952,8 @@ export class CheckPointTestHelper extends TestHelper {
               false,
               undefined,
               true,
-              featureFlags);
+              featureFlags,
+              extraMergeParams);
     }
     runWithInputSlice(startRange, endRange, firstStart = true) {
         this.sp.createStreamProcessor(this.spName, this.pipeline);

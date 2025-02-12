@@ -2,6 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "mongo/bson/simple_bsonobj_comparator.h"
+#include "mongo/db/exec/document_value/value_comparator.h"
+#include "mongo/db/pipeline/aggregation_request_helper.h"
+#include "streams/exec/mongodb_process_interface.h"
 #include <fmt/format.h>
 #include <memory>
 
@@ -15,6 +19,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
+#include "streams/exec/mongo_process_interface_for_test.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/tests/test_utils.h"
@@ -23,141 +28,6 @@ namespace streams {
 
 using namespace mongo;
 using namespace std::string_literals;
-
-// Override StubMongoProcessInterface like done in document_source_merge_test.cpp
-class MongoProcessInterfaceForTest : public MongoDBProcessInterface {
-public:
-    MongoProcessInterfaceForTest(
-        std::set<FieldPath> documentKey = {"_id"},
-        MongoProcessInterface::SupportingUniqueIndex supportingUniqueIndex =
-            MongoProcessInterface::SupportingUniqueIndex::NotNullish)
-        : _documentKey(std::move(documentKey)), _supportingUniqueIndex(supportingUniqueIndex) {}
-
-    struct InsertInfo {
-        BSONObj obj;
-        boost::optional<OID> oid;
-    };
-
-    struct UpdateInfo {
-        MongoProcessInterface::BatchObject batchObj;
-        UpsertType upsert;
-        bool multi;
-        boost::optional<OID> oid;
-    };
-
-    class WriteSizeEstimatorForTest final : public WriteSizeEstimator {
-    public:
-        int estimateInsertHeaderSize(
-            const write_ops::InsertCommandRequest& insertReq) const override {
-            return 0;
-        }
-        int estimateUpdateHeaderSize(
-            const write_ops::UpdateCommandRequest& insertReq) const override {
-            return 0;
-        }
-
-        int estimateInsertSizeBytes(const BSONObj& insert) const override {
-            return 0;
-        }
-
-        int estimateUpdateSizeBytes(const BatchObject& batchObject,
-                                    UpsertType type) const override {
-            return 0;
-        }
-    };
-
-    std::unique_ptr<WriteSizeEstimator> getWriteSizeEstimator(
-        OperationContext* opCtx, const NamespaceString& ns) const override {
-        return std::make_unique<WriteSizeEstimatorForTest>();
-    }
-
-    bool isSharded(OperationContext* opCtx, const NamespaceString& ns) override {
-        return false;
-    }
-
-    boost::optional<ShardId> determineSpecificMergeShard(OperationContext* opCtx,
-                                                         const NamespaceString& ns) const override {
-        return boost::none;
-    }
-
-    std::vector<FieldPath> collectDocumentKeyFieldsActingAsRouter(
-        OperationContext* opCtx, const NamespaceString& nss) const override {
-        return {"_id"};
-    }
-
-    void checkRoutingInfoEpochOrThrow(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                      const NamespaceString&,
-                                      ChunkVersion) const override {
-        return;
-    }
-
-    void initConfigCollection() override {}
-
-    void ensureCollectionExists(const mongo::NamespaceString& ns) override {}
-
-    DocumentKeyResolutionMetadata ensureFieldsUniqueOrResolveDocumentKey(
-        const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        boost::optional<std::set<mongo::FieldPath>> fieldPaths,
-        boost::optional<mongo::ChunkVersion> targetCollectionPlacementVersion,
-        const mongo::NamespaceString& outputNs) const override {
-        return {_documentKey, boost::none, _supportingUniqueIndex};
-    }
-
-    Status insert(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                  const NamespaceString& ns,
-                  std::unique_ptr<write_ops::InsertCommandRequest> insertReq,
-                  const WriteConcernOptions& wc,
-                  boost::optional<OID> oid) override {
-        for (auto& obj : insertReq->getDocuments()) {
-            InsertInfo iInfo;
-            iInfo.obj = std::move(obj);
-            iInfo.oid = oid;
-            _objsInserted.push_back(iInfo);
-        }
-        return Status::OK();
-    }
-
-    StatusWith<UpdateResult> update(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                    const NamespaceString& ns,
-                                    std::unique_ptr<write_ops::UpdateCommandRequest> updateReq,
-                                    const WriteConcernOptions& wc,
-                                    UpsertType upsert,
-                                    bool multi,
-                                    boost::optional<OID> oid) override {
-        for (auto& updateOp : updateReq->getUpdates()) {
-            UpdateInfo uInfo;
-            uInfo.batchObj = MongoProcessInterface::BatchObject{
-                updateOp.getQ(), updateOp.getU(), updateOp.getC()};
-            uInfo.upsert = upsert;
-            uInfo.multi = multi;
-            uInfo.oid = oid;
-            _objsUpdated.push_back(uInfo);
-        }
-        return StatusWith(UpdateResult{});
-    }
-
-    const std::vector<InsertInfo>& getObjsInserted() const {
-        return _objsInserted;
-    }
-
-    const std::vector<UpdateInfo>& getObjsUpdated() const {
-        return _objsUpdated;
-    }
-
-    void testConnection(const mongo::NamespaceString& nss) override {}
-
-    const mongocxx::uri& uri() override {
-        return _uri;
-    }
-
-private:
-    mongocxx::uri _uri{"mongodb://localhost:27017"};
-    std::set<FieldPath> _documentKey;
-    MongoProcessInterface::SupportingUniqueIndex _supportingUniqueIndex;
-
-    std::vector<InsertInfo> _objsInserted;
-    std::vector<UpdateInfo> _objsUpdated;
-};
 
 class MergeOperatorTest : public AggregationContextFixture {
 public:
@@ -174,6 +44,7 @@ public:
 
     // Start the MergeOperator and wait for it to connect.
     void start(MergeOperator* op) {
+        op->_options.isTest = true;
         op->start();
         auto deadline = Date_t::now() + Seconds{10};
         // Wait for the source to be connected like the Executor does.
@@ -184,12 +55,54 @@ public:
         ASSERT(op->getConnectionStatus().isConnected());
     }
 
-    boost::intrusive_ptr<DocumentSourceMerge> createMergeStage(BSONObj spec) {
-        auto specElem = spec.firstElement();
-        boost::intrusive_ptr<DocumentSourceMerge> mergeStage = dynamic_cast<DocumentSourceMerge*>(
-            DocumentSourceMerge::createFromBson(specElem, _context->expCtx).get());
-        ASSERT_TRUE(mergeStage);
-        return mergeStage;
+    auto makeMergeOperator(MergeOperator::Options options, int parallelism = 1) {
+        options.spec.setParallelism(parallelism);
+        options.isTest = true;
+        return std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    }
+
+    std::unique_ptr<MergeOperator> createMergeStage(BSONObj spec,
+                                                    bool allowMergeOnNullishValues = true) {
+        MutableDocument mut{Document{spec.getField("$merge").Obj()}};
+        mut["into"] = Value(BSON("connectionName"
+                                 << "test"
+                                 << "db"
+                                 << "test"
+                                 << "coll"
+                                 << "test"));
+        MergeOperator::Options opts;
+        opts.isTest = true;
+        opts.allowMergeOnNullishValues = allowMergeOnNullishValues;
+        auto doc = mut.freeze();
+        auto bson = doc.toBson();
+        opts.spec =
+            MergeOperatorSpec::parseOwned(IDLParserContext{"createMergeStage"}, std::move(bson));
+        return std::make_unique<MergeOperator>(_context.get(), std::move(opts));
+    }
+
+    MongoProcessInterfaceForTest* getMongoProcessInterface(QueuedSinkOperator* op,
+                                                           size_t threadIdx = 0) {
+        auto mongo = dynamic_cast<MergeWriter*>(op->_threads[threadIdx]->writer.get())
+                         ->_options.mergeExpCtx->getMongoProcessInterface();
+        return dynamic_cast<MongoProcessInterfaceForTest*>(mongo.get());
+    }
+
+    std::vector<MongoProcessInterfaceForTest*> getAllMongoProcessInterfaces(
+        QueuedSinkOperator* op) {
+        std::vector<MongoProcessInterfaceForTest*> mongoProcessInterfaces;
+        for (size_t i = 0; i < op->_threads.size(); ++i) {
+            mongoProcessInterfaces.push_back(getMongoProcessInterface(op, i));
+        }
+        return mongoProcessInterfaces;
+    }
+
+    void setForTest(QueuedSinkOperator* op) {
+        auto mongo = dynamic_cast<MergeOperator*>(op);
+        mongo->_options.isTest = true;
+    }
+
+    int getNumWriters(QueuedSinkOperator* op) {
+        return op->_threads.size();
     }
 
 protected:
@@ -207,15 +120,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
                                       << "replace"
                                       << "whenNotMatched"
                                       << "insert"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
@@ -228,8 +133,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -256,16 +160,10 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
                                       << "replace"
                                       << "whenNotMatched"
                                       << "discard"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
+    ASSERT(mergeOperator);
+
     start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
@@ -276,8 +174,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -304,15 +201,8 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
                                       << "keepExisting"
                                       << "whenNotMatched"
                                       << "insert"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
+    ASSERT(mergeOperator);
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
@@ -324,8 +214,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -352,37 +241,11 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
                                       << "fail"
                                       << "whenNotMatched"
                                       << "insert"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
-    mergeOperator->registerMetrics(_executor->getMetricManager());
-    start(mergeOperator.get());
-
-    StreamDataMsg dataMsg;
-    for (int i = 0; i < 10; ++i) {
-        dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{_id: {}, a: {}}}", i, i))));
-    }
-    dataMsg.creationTimer = mongo::Timer{};
-    mergeOperator->onDataMsg(0, dataMsg, boost::none);
-    mergeOperator->flush();
-
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
-    auto objsInserted = processInterface->getObjsInserted();
-    ASSERT_EQUALS(10, objsInserted.size());
-    for (int i = 0; i < 10; ++i) {
-        ASSERT_FALSE(objsInserted[i].oid);
-        ASSERT_TRUE(objsInserted[i].obj.hasField("_id"));
-        ASSERT_BSONOBJ_EQ(objsInserted[i].obj, dataMsg.docs[i].doc.toBson());
-    }
-
-    mergeOperator->stop();
+    ASSERT_THROWS_CODE_AND_WHAT(
+        createMergeStage(std::move(spec)),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported whenMatched mode: fail");
 }
 
 // Test that {whenMatched: merge, on: [...]} works as expected.
@@ -396,15 +259,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
                                       << "whenMatched"
                                       << "merge"
                                       << "on" << BSON_ARRAY("customerId")));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
@@ -419,8 +274,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(20, objsUpdated.size());
     for (int i = 0; i < 20; ++i) {
@@ -449,15 +303,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
                                       << "whenMatched"
                                       << "merge"
                                       << "on" << BSON_ARRAY("customerId")));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec), false /*allowMergeOnNullishValues*/);
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
@@ -487,8 +333,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(2, objsUpdated.size());
     auto verifyObjUpdated = [&](size_t i, size_t j) {
@@ -532,14 +377,7 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
                                       << "replace"
                                       << "whenNotMatched"
                                       << "insert"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
@@ -571,14 +409,7 @@ TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
                                       << "replace"
                                       << "whenNotMatched"
                                       << "insert"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
@@ -601,8 +432,7 @@ TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
     mergeOperator->onDataMsg(0, dataMsg);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     auto objsInserted = processInterface->getObjsInserted();
     ASSERT_EQ(objsUpdated.size(), 4);
@@ -669,27 +499,302 @@ TEST_F(MergeOperatorTest, BatchLargerThanQueueMaxSize) {
                                       << "replace"
                                       << "whenNotMatched"
                                       << "insert"));
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{.documentSource = mergeStage.get(),
-                                   .db = "test"s,
-                                   .coll = "coll"s,
-                                   .mergeExpCtx = _context->expCtx};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
     mergeOperator->flush();
 
-    auto processInterface = dynamic_cast<MongoProcessInterfaceForTest*>(
-        _context->expCtx->getMongoProcessInterface().get());
+    auto processInterface = getMongoProcessInterface(mergeOperator.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(docsInBatch, objsUpdated.size());
 
     mergeOperator->stop();
+}
+
+// Tests basic correctness and partitioning when using $merge.parallelism >= 1.
+TEST_F(MergeOperatorTest, Parallelism) {
+    struct TestCase {
+        std::vector<BSONObj> input;
+        boost::optional<int> parallelism;
+        size_t nextBatchSize{1};
+        bool allThreadsShouldHaveData{false};
+    };
+    auto innerTest = [&, this](TestCase c) {
+        std::cout << fmt::format("Running test case, parallelism: {}, input size: {}\n",
+                                 c.parallelism ? std::to_string(*c.parallelism) : "none",
+                                 c.input.size());
+
+        _context->expCtx->setMongoProcessInterface(
+            std::make_shared<MongoProcessInterfaceForTest>());
+        _context->dlq->registerMetrics(_executor->getMetricManager());
+
+        Connection atlasConn;
+        atlasConn.setName("myconnection");
+        AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:27017"};
+        atlasConn.setOptions(atlasConnOptions.toBSON());
+        atlasConn.setType(ConnectionTypeEnum::Atlas);
+        std::vector<mongo::Connection> connections{
+            mongo::Connection{std::string("__testMemory"),
+                              mongo::ConnectionTypeEnum::InMemory,
+                              /* options */ mongo::BSONObj()}};
+        connections.push_back(std::move(atlasConn));
+        _context->connections = std::make_unique<ConnectionCollection>(connections);
+
+        auto pipeline = R"([
+            { "$source": {
+                "connectionName": "__testMemory"
+            }},
+            { "$merge": {
+                "into": {
+                    "connectionName": "myconnection",
+                    "db": "test",
+                    "coll": "newColl2"
+                },
+                whenMatched: "replace"
+            }}
+        ]
+        )";
+
+        auto obj = fromjson(std::string{"{\"pipeline\": "} + pipeline + "}");
+        auto rawPipeline = parsePipelineFromBSON(obj.getField("pipeline"));
+        if (c.parallelism) {
+            MutableDocument doc{Document(rawPipeline[1]["$merge"].Obj())};
+            doc.setField("parallelism", Value(*c.parallelism));
+            rawPipeline[1] = BSON("$merge" << doc.freeze().toBson());
+        }
+
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
+        auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+        auto sink = dynamic_cast<QueuedSinkOperator*>(dag->operators().back().get());
+        setForTest(sink);
+
+        auto poll = [&](std::function<bool()> validate, std::string msg = "") {
+            fmt::print("Polling: {}", msg);
+            auto deadline = Date_t::now() + Seconds{10};
+            while (Date_t::now() < deadline) {
+                if (validate()) {
+                    break;
+                }
+                sleepFor(Milliseconds(10));
+            }
+            ASSERT(validate());
+        };
+
+        Executor::Options executorOpts{.operatorDag = dag.get(),
+                                       .checkpointCoordinator = nullptr,
+                                       .metricManager = std::make_unique<MetricManager>()};
+
+        Executor executor{_context.get(), std::move(executorOpts)};
+        auto future = executor.start();
+        poll([&]() { return executor.isConnected(); }, "waiting for connected");
+        // Validate the sink is using the expected number of writers.
+        ASSERT_EQ(c.parallelism ? *c.parallelism : 1, getNumWriters(sink));
+
+        StreamDataMsg msg;
+        for (const auto& obj : c.input) {
+            StreamDocument doc{Document(obj)};
+            msg.docs.push_back(doc);
+            if (msg.docs.size() == c.nextBatchSize) {
+                source->addDataMsg(msg);
+                msg.docs.clear();
+                c.nextBatchSize += 1;
+            }
+        }
+        if (!msg.docs.empty()) {
+            source->addDataMsg(msg);
+        }
+
+        // Wait for expected stats.
+        poll(
+            [&]() {
+                auto stats = executor.getOperatorStats();
+                auto sinkStats = stats.back();
+                return size_t(sinkStats.numInputDocs) == c.input.size() &&
+                    size_t(sinkStats.numOutputDocs) == c.input.size();
+            },
+            "waiting for expected stats");
+
+        // Validate expected results.
+        auto docsEq = [&](const auto& l, const auto& r) {
+            ASSERT_EQ(l.size(), r.size());
+            for (size_t i = 0; i < l.size(); ++i) {
+                auto it = std::find_if(r.begin(), r.end(), [&](auto result) {
+                    // Find a result equal to this input[i].
+                    return SimpleBSONObjComparator::kInstance.evaluate(l[i] == result) == 0;
+                });
+                if (it == r.end()) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        auto mongoInterfaces = getAllMongoProcessInterfaces(sink);
+        std::vector<std::vector<BSONObj>> threadResults;
+        std::vector<BSONObj> results;
+        for (auto& mongo : mongoInterfaces) {
+            auto threadUpdated = mongo->getObjsUpdated();
+            threadResults.push_back({});
+            for (auto result : threadUpdated) {
+                auto obj = std::get<1>(result.batchObj).getUpdateReplacement();
+                threadResults.back().push_back(obj);
+                results.push_back(obj);
+            }
+        }
+        ASSERT(docsEq(c.input, results));
+
+        // Return a doc's partition-- an array of it's $merge.on fields.
+        auto getPartition = [](const BSONObj& doc, const std::vector<std::string>& fieldNames) {
+            std::vector<Value> mergeOnFields;
+            mergeOnFields.reserve(fieldNames.size());
+            for (const auto& name : fieldNames) {
+                mergeOnFields.push_back(Value(doc.getField(name)));
+            }
+
+            return Value(mergeOnFields);
+        };
+
+        // Validate order in terms of $merge.on fields.
+        using PartitionedData = ValueUnorderedMap<std::vector<BSONObj>>;
+        std::vector<std::string> fieldNames = {"_id"};
+        auto partition = [&](std::vector<BSONObj> data) {
+            PartitionedData partitions(_context->expCtx->getValueComparator()
+                                           .makeUnorderedValueMap<std::vector<BSONObj>>());
+            for (auto& doc : data) {
+                auto mergeOnFieldArray = getPartition(doc, fieldNames);
+                if (!partitions.contains(mergeOnFieldArray)) {
+                    partitions[mergeOnFieldArray] = {};
+                }
+                partitions[mergeOnFieldArray].push_back(doc);
+            }
+            return partitions;
+        };
+        auto partitionsEqual = [](PartitionedData l, PartitionedData r) {
+            if (l.size() != r.size()) {
+                return false;
+            }
+            for (auto& lPart : l) {
+                auto it = r.find(lPart.first);
+                if (it == r.end()) {
+                    return false;
+                }
+                std::vector<BSONObj> rv = it->second;
+                if (rv.size() != lPart.second.size()) {
+                    return false;
+                }
+                for (size_t valueIdx = 0; valueIdx < lPart.second.size(); ++valueIdx) {
+                    if (SimpleBSONObjComparator::kInstance.evaluate(lPart.second[valueIdx] ==
+                                                                    rv[valueIdx]) != 0) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+
+        bool allMergeOnFieldsSet{true};
+        for (auto& doc : c.input) {
+            for (auto& field : fieldNames) {
+                if (!doc.hasField(field)) {
+                    allMergeOnFieldsSet = false;
+                    break;
+                }
+            }
+        }
+        if (allMergeOnFieldsSet) {
+            ASSERT(partitionsEqual(partition(c.input), partition(results)));
+        }
+
+        if (c.allThreadsShouldHaveData) {
+            // Validate that all threads have data.
+            auto mongoInterfaces = getAllMongoProcessInterfaces(sink);
+            std::vector<std::vector<BSONObj>> results;
+            for (auto& mongo : mongoInterfaces) {
+                results.push_back(std::vector<BSONObj>{});
+                for (auto result : mongo->getObjsUpdated()) {
+                    results.back().push_back(std::get<1>(result.batchObj).getUpdateReplacement());
+                }
+            }
+            int parallelism = c.parallelism ? *c.parallelism : 1;
+            ASSERT_EQ(std::ranges::count_if(
+                          results, [](auto& threadResult) { return !threadResult.empty(); }),
+                      parallelism);
+        }
+
+        // Validate all outputs for Value($merge.on fields) go only to one thread.
+        using ThreadsForPartition = ValueUnorderedMap<std::set<int>>;
+        ThreadsForPartition threadsForPartition(
+            _context->expCtx->getValueComparator().makeUnorderedValueMap<std::set<int>>());
+        for (size_t threadId = 0; threadId < threadResults.size(); ++threadId) {
+            for (const auto& doc : threadResults[threadId]) {
+                auto partition = getPartition(doc, fieldNames);
+                if (!threadsForPartition.contains(partition)) {
+                    threadsForPartition[partition] = {};
+                }
+                threadsForPartition[partition].insert(threadId);
+                ASSERT_EQ(1, threadsForPartition[partition].size());
+            }
+        }
+
+        executor.stop(StopReason::ExternalStopRequest, false);
+    };
+
+    for (auto parallelNum = 0; parallelNum < 16; ++parallelNum) {
+        boost::optional<int> parallelism;
+        if (parallelNum > 0) {
+            parallelism = parallelNum;
+        }
+
+        auto baseObj = [](int i) {
+            return BSON("i" << i << "a"
+                            << "The quick brown fox");
+        };
+        using ModifyObjectFunc = std::function<void(BSONObjBuilder&, int)>;
+        auto makeInput = [&](int size, ModifyObjectFunc modifyObj) {
+            std::vector<BSONObj> result;
+            result.reserve(size);
+            for (int i = 0; i < size; ++i) {
+                BSONObjBuilder b(baseObj(i));
+                modifyObj(b, i);
+                result.push_back(b.obj());
+            }
+            return result;
+        };
+
+        std::vector<ModifyObjectFunc> inputFuncs{
+            [&](BSONObjBuilder& builder, int i) {},
+            // id set to uniqe value
+            [&](BSONObjBuilder& builder, int i) { builder.append("_id", i); },
+            // sometimes id set
+            [&](BSONObjBuilder& builder, int i) {
+                if (bool(0x1 & i)) {
+                    builder.append("_id", i);
+                }
+            },
+            // sometimes id set
+            [&](BSONObjBuilder& builder, int i) {
+                if (bool(0x1 & i)) {
+                    builder.append("_id", i);
+                }
+            },
+            // many matching IDs
+            [&](BSONObjBuilder& builder, int i) { builder.append("_id", i % 5); },
+            // constant ID
+            [&](BSONObjBuilder& builder, int i) { builder.append("_id", "foo"); },
+        };
+        for (size_t idx = 0; idx < inputFuncs.size(); ++idx) {
+            const auto& inputFunc = inputFuncs[idx];
+            for (auto size : std::vector<int>{1, 2, 1024, 1234, 4092, 9993}) {
+                bool allThreadsShouldHaveData = size > 4000 && (idx == 0 || idx == 1);
+                innerTest(TestCase{.input = makeInput(size, inputFunc),
+                                   .parallelism = parallelism,
+                                   .allThreadsShouldHaveData = allThreadsShouldHaveData});
+            }
+        }
+    }
 }
 
 // Executes $merge using a collection in local MongoDB deployment.
@@ -733,7 +838,7 @@ TEST_F(MergeOperatorTest, LocalTest) {
     auto dag = planner.plan(rawPipeline);
     dag->start();
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<MergeOperator*>(dag->operators().back().get());
+    auto sink = dynamic_cast<QueuedSinkOperator*>(dag->operators().back().get());
 
     std::vector<BSONObj> inputDocs;
     std::vector<int> vals = {5, 2};
