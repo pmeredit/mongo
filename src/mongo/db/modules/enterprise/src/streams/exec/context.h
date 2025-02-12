@@ -96,9 +96,6 @@ struct Context {
     // in the pipeline.
     std::unique_ptr<LatencyCollector> latencyCollector;
 
-    // The region the sps are running in.
-    std::string region;
-
     mongo::BSONObj toBSON() const;
 
     // For non sink stages, add metadata when there is explicit dependency of metadata in the

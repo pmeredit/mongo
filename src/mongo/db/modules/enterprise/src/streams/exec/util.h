@@ -25,15 +25,15 @@ bool isSourceStage(mongo::StringData name);
 bool isSinkStage(mongo::StringData name);
 bool isWindowStage(mongo::StringData name);
 bool hasWindow(const std::vector<mongo::BSONObj>& pipeline);
-bool hasPayloadStage(const std::vector<mongo::BSONObj>& pipeline);
-bool hasPayloadStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline);
+bool hasHttpsStage(const std::vector<mongo::BSONObj>& pipeline);
+bool hasHttpsStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline);
 bool isLookUpStage(mongo::StringData name);
 bool isEmitStage(mongo::StringData name);
 bool isMergeStage(mongo::StringData name);
 bool isWindowAwareStage(mongo::StringData name);
 bool isBlockingWindowAwareStage(mongo::StringData name);
 bool hasBlockingStage(const BSONPipeline& pipeline);
-bool isPayloadStage(mongo::StringData name);
+bool isHttpsStage(mongo::StringData name);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 

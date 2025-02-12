@@ -4,17 +4,18 @@
 
 #pragma once
 
-#include <aws/core/Region.h>
 #include <memory>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/util/string_map.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/pipeline_rewriter.h"
+#include "streams/exec/session_window_assigner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_assigner.h"
 
@@ -29,12 +30,9 @@ class ExpressionContext;
 namespace streams {
 
 class DocumentSourceHttpsStub;
-class DocumentSourceExternalFunctionStub;
 class SinkOperator;
 class SourceOperator;
 struct Context;
-
-using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo::Expression>>;
 
 /**
  * Planner is the main entrypoint for the "frontend" of streams.
@@ -166,9 +164,6 @@ private:
 
     // Plans a $https stage.
     void planHttps(DocumentSourceHttpsStub* source);
-
-    // Plans a $externalFunction stage.
-    void planExternalFunction(DocumentSourceExternalFunctionStub* source);
 
     // Helper function to prepare the pipeline before sending it to planning. This step includes
     // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the

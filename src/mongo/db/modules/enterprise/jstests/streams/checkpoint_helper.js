@@ -96,13 +96,10 @@ function runKafkaPipeline(
 
     // Run the streamProcessor.
     test2.run();
-    assert.soon(() => { return test2.stats().inputMessageCount == input.length; },
-                "Waiting for input message count",
-                timeoutSecs * 1000);
-
-    assert.soon(() => { return test2.stats().outputMessageCount == expectedOutput.length; },
-                "Waiting for output message count",
-                timeoutSecs * 1000);
+    assert.soon(() => {
+        return test2.stats().inputMessageCount == input.length &&
+            test2.stats().outputMessageCount == expectedOutput.length;
+    }, "Waiting for input message count", timeoutSecs * 1000);
     waitForCount(test2.outputColl, expectedOutput.length, timeoutSecs);
     waitWhenThereIsMoreData(test2.outputColl);
     assert.soon(() => {
@@ -191,49 +188,7 @@ function runChangeStreamPipeline(
     test.stop();
 }
 
-/*
- * Helper function to test that the pipeline fails as intended.
- */
-export function commonFailureTest({
-    input,
-    pipeline,
-    expectedErrorCode,
-    useTimeField = true,
-    featureFlags = {},
-}) {
-    // Test with a changestream source and a checkpoint in the middle.
-    const newPipeline = [
-        {$match: {operationType: "insert"}},
-        {$replaceRoot: {newRoot: "$fullDocument"}},
-        ...pipeline,
-    ];
-    const test = new TestHelper(input,
-                                newPipeline,
-                                undefined,  // interval
-                                "atlas",    // sourcetype
-                                undefined,  // useNewCheckpointing
-                                undefined,  // useRestoredExecutionPlan
-                                undefined,  // writeDir
-                                undefined,  // restoreDir
-                                undefined,  // dbForTest
-                                undefined,  // targetSourceMergeDb
-                                useTimeField);
-    test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
-
-    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
-
-    test.run();
-    assert.commandWorked(test.inputColl.insertMany(input));
-
-    assert.soon(() => { return test.stats()["status"] == "error"; },
-                "waiting for expected status",
-                1000 * 10);
-    if (expectedErrorCode) {
-        assert.eq(test.list()[0].error.code, expectedErrorCode);
-    }
-}
-
-/*
+/**
  * Helper function to test that the pipeline returns the expectedOutput for the given input.
  * First, the $source.documents test source is used.
  * Then, then a mock Kafka $source is used with a checkpoint in the middle.
@@ -254,8 +209,7 @@ export function commonTest({
     fieldsToSkip = [],
 }) {
     assert(expectedOutput ||
-           (expectedGeneratedOutput && expectedChangestreamOutput && expectedTestKafkaOutput) ||
-           expectedDlq);
+           (expectedGeneratedOutput && expectedChangestreamOutput && expectedTestKafkaOutput));
 
     const documentsSourceInput = input.filter(d => !d.hasOwnProperty(batchBreakerField));
     runGeneratedSourcePipeline({
@@ -555,16 +509,6 @@ export class TestHelper {
                 name: '__testSample',
                 type: 'sample_solar',
                 options: {},
-            },
-            {
-                name: testConstants.awsIAMLambdaConnection,
-                type: 'aws_iam_lambda',
-                options: {
-                    accessKey: "myAccessKey",
-                    accessSecret: "myAccessSecret",
-                    sessionToken: "mySessionToken",
-                    expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
-                }
             },
         ];
         this.useTimeField = useTimeField;

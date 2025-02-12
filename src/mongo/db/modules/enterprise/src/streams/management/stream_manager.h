@@ -3,7 +3,6 @@
  */
 #pragma once
 
-#include <aws/core/Aws.h>
 #include <boost/optional.hpp>
 #include <memory>
 
@@ -57,8 +56,6 @@ public:
         // this limit is exceeded, all stream processors under this stream manager will be killed.
         int64_t memoryLimitBytes{static_cast<int64_t>(
             (mongo::ProcessInfo::getMemSizeMB() * 1024 * 1024) - kMemoryLimitBufferSpaceBytes)};
-        // region is the region mongostream is running in
-        std::string region{};
     };
 
     // Encapsulates a batch of sampled output records.
@@ -137,9 +134,6 @@ public:
     // Gets feature flags for the tenant or stream processor (used by js tests.)
     mongo::GetFeatureFlagsReply testOnlyGetFeatureFlags(
         const mongo::GetFeatureFlagsCommand& request);
-
-    // Ensures the AWS SDK is initialized for use.
-    void initAWSSDK();
 
 private:
     friend class StreamManagerTest;
@@ -311,9 +305,6 @@ private:
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
     ContainerStats _containerStats;
-
-    bool _awsSDKInitCompleted{false};
-    Aws::SDKOptions _awsSDKOptions;
 };
 
 // Get the global StreamManager instance.

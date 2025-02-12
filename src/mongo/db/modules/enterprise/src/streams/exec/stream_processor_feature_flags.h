@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <any>
 #include <chrono>
 
 #include "mongo/bson/bsonobj.h"
@@ -52,8 +53,5 @@ boost::optional<int64_t> getKafkaTotalQueuedBytes(
 bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 bool enableMetadataRefreshInterval(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
-int64_t getHttpsRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);
-int64_t getExternalFunctionRateLimitPerSec(
-    boost::optional<StreamProcessorFeatureFlags> featureFlags);
 
 }  // namespace streams

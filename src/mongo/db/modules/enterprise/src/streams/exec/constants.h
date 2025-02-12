@@ -30,7 +30,6 @@ constexpr const char kGroupStageName[] = "$group";
 constexpr const char kSortStageName[] = "$sort";
 constexpr const char kLimitStageName[] = "$limit";
 constexpr const char kHttpsStageName[] = "$https";
-constexpr const char kExternalFunctionStageName[] = "$externalFunction";
 
 constexpr char kNoDbDbName[] = "$nodb$";
 constexpr char kNoCollCollectionName[] = "$nocoll$";

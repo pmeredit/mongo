@@ -1,24 +1,32 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include <chrono>
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/db_raii.h"
 #include "mongo/db/error_labels.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
+#include "mongo/platform/basic.h"
+#include "mongo/stdx/chrono.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/net/socket_utils.h"
+#include "mongo/util/processinfo.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/stacktrace.h"
 #include "mongo/util/str.h"
@@ -29,9 +37,11 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/concurrent_checkpoint_monitor.h"
 #include "streams/exec/config_gen.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/merge_operator.h"
@@ -354,16 +364,6 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
             options.memoryLimitBytes = memoryLimitBytes;
         }
 
-        // This is an environment variable set by Helix
-        auto cRegion = getenv("XGEN_REGION");
-        if (!getTestCommandsEnabled()) {
-            tassert(9929499, "Environment Variable XGEN_REGION is undefined", cRegion);
-            options.region = std::string(cRegion);
-        } else {
-            options.region = Aws::Region::US_EAST_1;
-        }
-
-
         streamManager = std::make_unique<StreamManager>(svcCtx, std::move(options));
         registerShutdownTask([&]() {
             LOGV2_INFO(75907, "Starting StreamManager shutdown");
@@ -466,10 +466,6 @@ StreamManager::~StreamManager() {
         _backgroundjob.detach();
     }
     _containerStats.shutdown();
-
-    if (_awsSDKInitCompleted) {
-        Aws::ShutdownAPI(_awsSDKOptions);
-    }
 
     LockLogger lk{"StreamManager destructor", _mutex};
     tassert(8874300, "_tenantProcessors is not empty at shutdown", _tenantProcessors.empty());
@@ -914,7 +910,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     if (request.getInstanceName()) {
         context->instanceName = request.getInstanceName()->toString();
     }
-    context->region = _options.region;
 
     context->featureFlags =
         StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
@@ -925,11 +920,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                 context->streamProcessorId.find('/') == std::string::npos);
 
     context->connections = std::make_unique<ConnectionCollection>(request.getConnections());
-    for (const auto& connection : request.getConnections()) {
-        if (connection.getType() == mongo::ConnectionTypeEnum::AWSIAMLambda) {
-            initAWSSDK();
-        }
-    }
 
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
@@ -2112,14 +2102,6 @@ mongo::SendEventReply StreamManager::sendEvent(const mongo::SendEventCommand& re
     SendEventReply reply;
     reply.setCheckpointFlushedEventReply(CheckpointFlushedReply{std::move(stats)});
     return reply;
-}
-
-void StreamManager::initAWSSDK() {
-    static std::once_flag initOnce;
-    std::call_once(initOnce, [&]() {
-        Aws::InitAPI(_awsSDKOptions);
-        _awsSDKInitCompleted = true;
-    });
 }
 
 }  // namespace streams

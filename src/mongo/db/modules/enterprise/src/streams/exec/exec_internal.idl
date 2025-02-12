@@ -168,27 +168,6 @@ structs:
             responseTimeMs:
                 description: "The amount time elapsed from when the request was sent and when a response was received"
                 type: int
-
-    StreamMetaExternalFunction:
-        description: "The definition of the externalFunction field of stream metadata"
-        strict: false
-        fields:
-            functionName:
-                description: "The user provided function name"
-                type: string
-            statusCode:
-                description: "The HTTP status code returned in the response"
-                type: int
-            functionError:
-                description: "Present if there was an error (e.g., 'Unhandled' for unhandled errors, 'Handled' for caught errors)"
-                type: string
-                optional: true
-            executedVersion:
-                description: "The version of the external function that was invoked"
-                type: string
-            responseTimeMs:
-                description: "The amount time elapsed from when the request was sent and when a response was received"
-                type: int
     
     StreamMeta:
         description: "_stream_meta object definition"
@@ -205,10 +184,6 @@ structs:
             https:
                 description: "https field of _stream_meta object"
                 type: StreamMetaHttps
-                optional: true
-            externalFunction:
-                description: "externalFunction field of _stream_meta object"
-                type: StreamMetaExternalFunction
                 optional: true
 
     SampleDataSourceSolarSpecObs:
