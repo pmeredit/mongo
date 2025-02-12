@@ -1945,11 +1945,75 @@ function kafkaStartAtEarliestTest(setInOperator = true, connName = kafkaPlaintex
     stopStreamProcessor(name);
 }
 
+function kafkaEmitMessageSize(inputSize, messageMaxBytes, failWithMessageSizeTooLargeError) {
+    const processorId = `processor-coll_${sourceColl1.getName()}-to-topic_${topicName1}`;
+    const options = startOptions;
+    if (messageMaxBytes && messageMaxBytes > 0) {
+        options["featureFlags"] = {kafkaEmitMessageMaxBytes: messageMaxBytes};
+    }
+    const spName = `${kafkaToMongoNamePrefix}-${topicName1}`;
+    const startCmd = {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: dbConnName,
+                    db: dbName,
+                    coll: sourceColl1.getName(),
+                    config: {fullDocument: "required", fullDocumentOnly: true}
+                }
+            },
+            {$match: {b: {$exists: true}}},
+            {
+                $emit: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
+                }
+            }
+        ],
+        connections: connectionRegistry,
+        options: options,
+        processorId: processorId,
+    };
+    const {name} = startCmd;
+    assert.commandWorked(db.runCommand(startCmd));
+
+    sourceColl1.insert({b: "c".repeat(inputSize - 1)});  // -1 to account for key size
+    if (failWithMessageSizeTooLargeError) {
+        assert.soon(() => {
+            let result = listStreamProcessors();
+            let processor = result.streamProcessors.filter(s => s.name == spName)[0];
+            jsTestLog(processor);
+            // The processor fails with a "Message size too large" error either in the main consumer
+            // thread if the message exceeds the producer's message.max.bytes limit or in
+            // the delivery callback when the message size exceeds the broker's
+            // message.max.bytes limit.
+            return processor.status == "error" &&
+                processor.error.reason.includes("Message size too large");
+        }, "Expected processor to fail with 'Message size too large error'", 10 * 1000);
+    } else {
+        assert.soon(() => {
+            const stats = getStats(name);
+            assert.commandWorked(stats);
+            return stats["outputMessageCount"] == 1;
+        }, "Expected processor to process insert event", 10 * 1000);
+    }
+
+    stopStreamProcessor(name);
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
-function runKafkaTest(kafka, testFn, partitionCount = 1) {
+function runKafkaTest(kafka, testFn, partitionCount = 1, messageMaxBytes = undefined) {
     // Clear any previous persistent state so that the test starts with a clean slate.
     dropCollections();
-    kafka.start(partitionCount);
+    const overrides = {};
+    if (messageMaxBytes) {
+        overrides["KAFKA_MESSAGE_MAX_BYTES"] = messageMaxBytes;
+    }
+    kafka.start(partitionCount, overrides);
     const funcStr = testFn.toString();
     try {
         jsTestLog(`Running: ${funcStr}`);
@@ -3181,3 +3245,66 @@ runKafkaTest(kafka, () => {
     run("tISO8601", true);
     assert.eq(get("tISO8601"), str);
 });
+
+// Default broker and producer settings. Sending a 0.5MB message should work.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(0.5 * 1024 * 1024), /* inputSize */
+);
+
+// Default broker and producer settings. Sending a 2MB message breaks
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(2 * 1024 * 1024, /* inputSize */
+                               undefined,       /* messageMaxBytes */
+                               true),           /* failWithMessageSizeTooLargeError */
+);
+
+// Default broker (1MB message.max.bytes). producer message.max.bytes = 16MB. Sending a 2MB message
+// breaks.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(
+        2 * 1024 * 1024,  /* inputSize */
+        16 * 1024 * 1024, /* messageMaxBytes */
+        true,             /* failWithMessageSizeTooLargeError */
+        ),
+);
+
+// 16MB broker message.max.bytes. default producer config. Sending a 0.5MB message works.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(0.5 * 1024 * 1024), /* inputSize */
+    1,                                             /* partitionCount */
+    16 * 1024 * 1024                               /* messageMaxBytes */
+);
+
+// 16MB broker message.max.bytes. default producer config. Sending a 2MB message breaks.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(
+        2 * 1024 * 1024, /* inputSize */
+        1 * 1024 * 1024, /* messageMaxBytes */
+        true,            /* failWithMessageSizeTooLargeError */
+        ),
+    1,               /* partitionCount */
+    16 * 1024 * 1024 /* messageMaxBytes */
+);
+
+// 16MB broker message.max.bytes. producer message.max.bytes = 16MB. Sending a 2MB message works.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(2 * 1024 * 1024,   /* inputSize */
+                               16 * 1024 * 1024), /* messageMaxBytes */
+    1,                                            /* partitionCount */
+    16 * 1024 * 1024                              /* messageMaxBytes */
+);
+
+// 16MB broker message.max.bytes. producer message.max.bytes = 16MB. Sending a 15MB message works.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(15 * 1024 * 1024,  /* inputSize */
+                               16 * 1024 * 1024), /* messageMaxBytes */
+    1,                                            /* partitionCount */
+    16 * 1024 * 1024                              /* messageMaxBytes */
+);

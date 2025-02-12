@@ -2,12 +2,16 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_emit_operator.h"
+
+#include <bsoncxx/document/view.hpp>
+#include <bsoncxx/document/view_or_value.hpp>
+#include <bsoncxx/json.hpp>
 #include <exception>
+#include <mongocxx/logger.hpp>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 #include <string>
-
-#include "streams/exec/kafka_emit_operator.h"
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
@@ -198,6 +202,10 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     // Set the event callback.
     setConf("event_cb", _eventCbImpl.get());
     setConf("debug", "security");
+
+    if (_options.messageMaxBytes) {
+        setConf("message.max.bytes", std::to_string(*_options.messageMaxBytes));
+    }
 
     if (_useDeliveryCallback) {
         // Set the delivery callback, used during flush to detect connectivity errors.

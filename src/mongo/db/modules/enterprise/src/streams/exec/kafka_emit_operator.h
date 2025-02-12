@@ -5,6 +5,8 @@
 #pragma once
 
 #include <boost/intrusive_ptr.hpp>
+#include <rdkafka.h>
+#include <rdkafkacpp.h>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/oid.h"
@@ -18,9 +20,6 @@
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/stages_gen.h"
-
-#include <rdkafka.h>
-#include <rdkafkacpp.h>
 
 namespace streams {
 /**
@@ -44,6 +43,8 @@ public:
         int queueBufferingMaxKBytes{16384};
         // queue.buffering.max.messages setting.
         int queueBufferingMaxMessages{100000};
+        // message.max.bytes setting.
+        boost::optional<int> messageMaxBytes;
         // Partition to write to. If not specified, PARTITION_UA is supplied to librdkafka,
         // which will write to random partitions. Explicit partition is currently only
         // used in testing.

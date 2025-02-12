@@ -117,4 +117,15 @@ int64_t getExternalFunctionRateLimitPerSec(
     return *val;
 }
 
+boost::optional<int64_t> getKafkaMessageMaxBytes(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    auto val =
+        featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitMessageMaxBytes).getValue();
+    if (val.missing()) {
+        return boost::none;
+    }
+
+    return val.coerceToLong();
+}
+
 }  // namespace streams

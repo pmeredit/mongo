@@ -272,6 +272,11 @@ const FeatureFlagDefinition FeatureFlags::kEnableS3Emit{
     mongo::Value(false),
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kKafkaEmitMessageMaxBytes{
+    "kafkaEmitMessageMaxBytes",
+    "The maximum Kafka protocol request message size.",
+    mongo::Value(16 * 1024 * 1024)};  // 16MB to mirror BSON max document size
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -298,7 +303,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableExternalFunctionOperator.name,
      FeatureFlags::kEnableExternalFunctionOperator},
     {FeatureFlags::kExternalFunctionRateLimitPerSecond.name,
-     FeatureFlags::kExternalFunctionRateLimitPerSecond}};
+     FeatureFlags::kExternalFunctionRateLimitPerSecond},
+    {FeatureFlags::kKafkaEmitMessageMaxBytes.name, FeatureFlags::kKafkaEmitMessageMaxBytes}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);
@@ -308,6 +314,8 @@ bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Val
             case mongo::BSONType::NumberLong:
                 return definition->second.defaultValue.getType() == mongo::BSONType::NumberInt ||
                     definition->second.defaultValue.getType() == mongo::BSONType::NumberLong;
+            case mongo::BSONType::NumberDouble:
+                return definition->second.defaultValue.getType() == mongo::BSONType::NumberDouble;
             default:
                 return value.getType() == definition->second.defaultValue.getType();
         }

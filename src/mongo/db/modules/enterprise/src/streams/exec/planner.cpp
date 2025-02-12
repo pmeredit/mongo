@@ -1130,6 +1130,12 @@ void Planner::planEmitSink(const BSONObj& spec) {
             KafkaEmitOperator::Options kafkaEmitOptions;
             kafkaEmitOptions.topicName = options.getTopic();
             kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
+
+            boost::optional<int64_t> maybeMessageMaxBytes = _context->featureFlags
+                ? getKafkaMessageMaxBytes(_context->featureFlags)
+                : boost::none;
+            kafkaEmitOptions.messageMaxBytes = maybeMessageMaxBytes;
+
             if (auto auth = baseOptions.getAuth(); auth) {
                 kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
             }

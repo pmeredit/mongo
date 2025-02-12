@@ -72,6 +72,7 @@ public:
     static const FeatureFlagDefinition kEnableS3Emit;
     static const FeatureFlagDefinition kEnableExternalFunctionOperator;
     static const FeatureFlagDefinition kExternalFunctionRateLimitPerSecond;
+    static const FeatureFlagDefinition kKafkaEmitMessageMaxBytes;
 };
 
 }  // namespace streams
