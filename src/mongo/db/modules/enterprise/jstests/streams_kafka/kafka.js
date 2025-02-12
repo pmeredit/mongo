@@ -414,9 +414,14 @@ function insertData(coll, count = null, begIdx = 0) {
 }
 
 function validateLatencyLogs() {
+    let line = null;
+    assert.soon(() => {
+        const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+        line = findMatchingLogLine(log, {id: 9961300});
+        return line != null;
+    });
+
     // Validate the latency log messages are showing up.
-    const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
-    const line = findMatchingLogLine(log, {id: 9961300});
     const entry = JSON.parse(line)["attr"];
     const hasFields = (obj, fields) => {
         for (const field of fields) {
