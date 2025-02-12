@@ -39,6 +39,7 @@ mongo_cc_library(
         "//src/mongo/db/query:query_test_service_context.h",
     ],
     copts = MONGOCXX_COPTS,
+    tags = ["compile_requires_large_memory_gcc_fission"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/commands:streams_ops_idl",
