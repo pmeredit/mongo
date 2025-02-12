@@ -17,6 +17,7 @@
 #include "mongo/db/generic_argument_util.h"
 #include "mongo/db/s/forwardable_operation_metadata.h"
 #include "mongo/logv2/log.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
 #include "mongo/s/write_ops/batched_command_response.h"
 
@@ -65,9 +66,8 @@ struct SetAuditConfigCmd {
         }
 
         // We need to create a separate client and opCtx with internal authorization to
-        // correctly run setClusterParameter. Grab client attribs and opCtx metadata to pass on
-        // to the invocation of the setClusterParameter command.
-        audit::ImpersonatedClientAttrs impersonatedClientAttrs(opCtx->getClient());
+        // correctly run setClusterParameter. Grab opCtx metadata to pass on to the invocation of
+        // the setClusterParameter command.
         ForwardableOperationMetadata forwardableOpMetadata(opCtx);
 
         // Allow this thread to be killable. If interrupted, runCommand will fail and the error
@@ -80,8 +80,6 @@ struct SetAuditConfigCmd {
         as->grantInternalAuthorization();
 
         forwardableOpMetadata.setOn(altOpCtx.get());
-        as->setImpersonatedUserData(std::move(impersonatedClientAttrs.userName),
-                                    std::move(impersonatedClientAttrs.roleNames));
 
         DBDirectClient directClient(altOpCtx.get());
 

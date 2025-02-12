@@ -18,7 +18,7 @@ public:
     void onCreateClient(Client* client) final;
     void onDestroyClient(Client* client) final{};
 
-    void onCreateOperationContext(OperationContext* opCtx) final;
+    void onCreateOperationContext(OperationContext* opCtx) final{};
     void onDestroyOperationContext(OperationContext* opCtx) final{};
 };
 

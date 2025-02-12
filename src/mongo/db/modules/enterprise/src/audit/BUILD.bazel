@@ -171,6 +171,7 @@ mongo_cc_library(
         "//src/mongo/db/repl:repl_coordinator_interface",
         "//src/mongo/db/repl:repl_settings",
         "//src/mongo/idl:cluster_server_parameter",
+        "//src/mongo/rpc:metadata_impersonated_user",
         "//src/mongo/transport:message_compressor",
         "//src/mongo/transport:transport_layer",
         "//src/mongo/util/net:network",
@@ -253,6 +254,7 @@ mongo_cc_library(
         "//src/mongo/db/repl:replica_set_aware_service",
         "//src/mongo/db/s:forwardable_operation_metadata",
         "//src/mongo/db/s:sharding_commands_d",
+        "//src/mongo/rpc:metadata_impersonated_user",
         "//src/mongo/s/write_ops:batch_write_types",
     ],
 )
@@ -368,6 +370,7 @@ mongo_cc_benchmark(
         "audit_enterprise",
         "//src/mongo/db:audit",
         "//src/mongo/db/auth:authmocks",
+        "//src/mongo/rpc:metadata_impersonated_user",
         "//src/mongo/transport:transport_layer_mock",
         "//src/mongo/unittest",
     ],

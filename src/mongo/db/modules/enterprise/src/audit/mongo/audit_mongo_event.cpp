@@ -11,21 +11,13 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
 #include "mongo/rpc/metadata/audit_client_attrs.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/transport/asio/asio_session_impl.h"
 
 namespace mongo {
 namespace audit {
 
 namespace {
-template <typename Iter>
-void serializeNamesToBSON(Iter names, BSONObjBuilder* builder, StringData nameType) {
-    BSONArrayBuilder namesBuilder(builder->subarrayStart(nameType));
-    while (names.more()) {
-        const auto& name = names.next();
-        name.serializeToBSON(&namesBuilder);
-    }
-}
-
 constexpr auto kATypeField = "atype"_sd;
 constexpr auto kTimestampField = "ts"_sd;
 constexpr auto kLocalEndpointField = "local"_sd;
@@ -139,28 +131,25 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
         }
     }
 
-    if (AuthorizationSession::exists(client)) {
-        auto as = AuthorizationSession::get(client);
-        auto userName = as->getImpersonatedUserName();
-        RoleNameIterator roleNames;
-
-        if (userName) {
-            roleNames = as->getImpersonatedRoleNames();
-        } else {
-            userName = as->getAuthenticatedUserName();
-            roleNames = as->getAuthenticatedRoleNames();
-        }
-
-        // users: [{db: dbname, user: username}]
-        BSONArrayBuilder namesBuilder(builder->subarrayStart(kUsersField));
-        if (userName) {
-            userName->serializeToBSON(&namesBuilder);
-        }
-        namesBuilder.doneFast();
-
-        // roles: [{db: dbname, role: rolename}, ...]
-        serializeNamesToBSON(roleNames, builder, kRolesField);
+    boost::optional<UserName> userName;
+    std::vector<RoleName> roleNames;
+    if (auto auditUserAttrs = rpc::AuditUserAttrs::get(client)) {
+        userName = auditUserAttrs->getUser();
+        roleNames = auditUserAttrs->getRoles();
     }
+    // users: [{db: dbname, user: username}]
+    BSONArrayBuilder namesBuilder(builder->subarrayStart(kUsersField));
+    if (userName) {
+        userName->serializeToBSON(&namesBuilder);
+    }
+    namesBuilder.doneFast();
+
+    // roles: [{db: dbname, role: rolename}, ...]
+    BSONArrayBuilder rolesBuilder(builder->subarrayStart(kRolesField));
+    for (const auto& role : roleNames) {
+        role.serializeToBSON(&rolesBuilder);
+    }
+    rolesBuilder.doneFast();
 }
 
 StringData AuditMongo::AuditEventMongo::getTimestampFieldName() const {

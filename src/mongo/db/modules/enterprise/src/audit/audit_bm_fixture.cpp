@@ -7,6 +7,8 @@
 #include "audit_bm_fixture.h"
 
 #include "mongo/db/auth/authorization_manager_factory_mock.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
+#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/options_parser/environment.h"
 
@@ -143,8 +145,10 @@ void AuditBenchmarkFixture<T>::setupAuthorizationSession() {
 
     UserName username("usertest", "db");
 
-    authSession->setImpersonatedUserData(UserName(metadataValues.driver, "db1"),
-                                         {RoleName("sd", "sd")});
+    rpc::AuditUserAttrs::set(client->makeOperationContext().get(),
+                             UserName(metadataValues.driver, "db1"),
+                             {RoleName("sd", "sd")},
+                             true /* isImpersonating */);
 }
 
 template <typename T>
@@ -216,17 +220,17 @@ template <typename T>
 void AuditBenchmarkFixture<T>::bmSetImpersonationClient(benchmark::State& state) {
     setupAuthorizationSession();
 
-    audit::ImpersonatedClientAttrs impersonatedClientAttrs(client.get());
+    UserName userName(metadataValues.driver, "db1");
+    std::vector roleNames = {RoleName("sd", "sd")};
+    auto opCtx = client->getOperationContext();
 
     warmup([&]() {
-        authSession->setImpersonatedUserData(impersonatedClientAttrs.userName,
-                                             impersonatedClientAttrs.roleNames);
+        rpc::AuditUserAttrs::set(opCtx, userName, roleNames, true /* isImpersonating */);
     });
 
     // Benchmark
     for (auto _ : state) {
-        authSession->setImpersonatedUserData(impersonatedClientAttrs.userName,
-                                             impersonatedClientAttrs.roleNames);
+        rpc::AuditUserAttrs::set(opCtx, userName, roleNames, true /* isImpersonating */);
     }
 
     setBMLabel(state);
@@ -236,7 +240,6 @@ template <typename T>
 void AuditBenchmarkFixture<T>::bmLogImpersonatedClientMetadata(benchmark::State& state) {
     setupAuthorizationSession();
     setupClientMetadata();
-
 
     warmup([&]() { logClientMetadata(client.get()); });
 

@@ -9,7 +9,6 @@ const audit = m.auditSpooler();
 
 function checkForUserRoles({param, users, roles}) {
     assert.soon(() => {
-        const log = audit.getAllLines().slice(audit.getCurrentAuditLine());
         const line = audit.getNextEntry();
         if (line.atype !== 'authCheck') {
             return false;

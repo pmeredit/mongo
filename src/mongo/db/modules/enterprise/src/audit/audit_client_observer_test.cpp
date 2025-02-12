@@ -160,8 +160,8 @@ TEST_F(AuditUserAttrsTest, basicAuditUserAttrsCheck) {
     auto opCtx2 = newClient->makeOperationContext();
     auto auditAttrs = rpc::AuditUserAttrs::get(opCtx2.get());
 
-    ASSERT_EQ(auditAttrs->userName.getUser(), "user1");
-    ASSERT_EQ(auditAttrs->roleNames.size(), 0);
+    ASSERT_EQ(auditAttrs->getUser().getUser(), "user1");
+    ASSERT_EQ(auditAttrs->getRoles().size(), 0);
 }
 
 TEST_F(AuditAttrsCommunityTest, basicAuditAttrsCommunityCheck) {
@@ -176,9 +176,11 @@ TEST_F(AuditAttrsCommunityTest, basicAuditAttrsCommunityCheck) {
     auto auditClientAttrs = rpc::AuditClientAttrs::get(newClient.get());
 
     // community version does not have AuditManager and thus should not have observer setting up the
-    // auditUserAttrs or auditClientAttrs decorations
-    ASSERT_FALSE(auditUserAttrs);
+    // auditClientAttrs decoration. auditUserAttrs should still exist and be empty.
     ASSERT_FALSE(auditClientAttrs);
+    ASSERT(auditUserAttrs);
+    ASSERT_EQ(auditUserAttrs->getUser().getUser(), "user1");
+    ASSERT_EQ(auditUserAttrs->getRoles().size(), 0);
 }
 
 TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {

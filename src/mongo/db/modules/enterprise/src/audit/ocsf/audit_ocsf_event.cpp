@@ -4,11 +4,13 @@
 
 #include "audit/ocsf/audit_ocsf.h"
 
+#include "audit/ocsf/ocsf_constants.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
 #include "mongo/rpc/metadata/audit_client_attrs.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/transport/asio/asio_session_impl.h"
 #include "mongo/util/processinfo.h"
 
@@ -192,22 +194,15 @@ void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder, Client* clie
         return;
     }
 
-    if (AuthorizationSession::exists(client)) {
-        auto as = AuthorizationSession::get(client);
-        auto userName = as->getImpersonatedUserName();
-        RoleNameIterator roleNames;
-
-        if (userName) {
-            roleNames = as->getImpersonatedRoleNames();
-        } else {
-            userName = as->getAuthenticatedUserName();
-            roleNames = as->getAuthenticatedRoleNames();
-        }
-
-        if (userName) {
-            _buildUser(builder, *userName, roleNames);
-        }
+    if (auto auditUserAttrs = rpc::AuditUserAttrs::get(client)) {
+        _buildUser(builder, auditUserAttrs->getUser(), auditUserAttrs->getRoles());
+        return;
     }
+
+    // If there is no authenticated user, and this isn't from a system connection, this is an
+    // unauthed regular user.
+    BSONObjBuilder user(builder->subobjStart(kUserField));
+    user.append(kTypeIDField, ocsf::kUserTypeIdRegularUser);
 }
 
 void AuditOCSF::AuditEventOCSF::_buildProcess(BSONObjBuilder* builder) {

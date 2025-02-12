@@ -53,7 +53,7 @@ inline int fromMongoStatus(Status status) {
 /* User.typeId */
 constexpr auto kUserTypeIdUnknown = 0;
 constexpr auto kUserTypeIdRegularUser = 1;
-constexpr auto kUserTypeIdAdminUser = 1;
+constexpr auto kUserTypeIdAdminUser = 2;
 constexpr auto kUserTypeIdSystemUser = 3;
 constexpr auto kUserTypeIdOther = 99;
 
