@@ -1,21 +1,28 @@
 import {
-    getAtlasStreamProcessorHandle,
+    getAtlasStreamProcessingInstance,
     getDefaultSp,
     test
 } from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
 import {makeRandomString} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
-const spName = "simple_merge_benchmark";
-const windowSpName = "window_simple_merge_benchmark";
-const inputColl = db.getSiblingDB(test.dbName)[test.inputCollName];
-const spOutputColl = db.getSiblingDB(test.dbName)[test.outputCollName];
-const spWindowOutputCollName = "window-" + test.outputCollName;
-const spWindowOutputColl = db.getSiblingDB(test.dbName)[spWindowOutputCollName];
-const aggOutputCollName = `agg-${test.outputCollName}`;
-const aggOutputColl = db.getSiblingDB(test.dbName)[aggOutputCollName];
-const aggWhenMatchedOutputCollName = `aggwhenmatched-${test.outputCollName}`;
-const aggWhenMatchOutputColl = db.getSiblingDB(test.dbName)[aggWhenMatchedOutputCollName];
 let sp = null;
+
+// by default use the local mongod as the source/merge target
+let targetConn = new Mongo(db.getMongo().host);
+
+let targetClusterURI = _getEnv("ATLAS_CLUSTER_URI");
+if (targetClusterURI && targetClusterURI !== null && targetClusterURI !== "") {
+    // Use a remote Atlas cluster as the source/merge target.
+    targetConn = new Mongo(targetClusterURI);
+    jsTestLog("Running against target Atlas cluster");
+}
+let targetDb = targetConn.getDB(test.dbName);
+const spName = "simple_merge_benchmark";
+const inputColl = targetDb.getSiblingDB(test.dbName)[test.inputCollName];
+const aggOutputCollName = `agg-${test.outputCollName}`;
+const aggOutputColl = targetDb.getSiblingDB(test.dbName)[aggOutputCollName];
+const aggWhenMatchedOutputCollName = `aggwhenmatched-${test.outputCollName}`;
+const aggWhenMatchOutputColl = targetDb.getSiblingDB(test.dbName)[aggWhenMatchedOutputCollName];
 
 function generateInput({docSize, docCount}) {
     // 3 integers, one _id.
@@ -39,7 +46,7 @@ function generateInput({docSize, docCount}) {
 
 // Insert the data into the input collection. Returns an operationTimestamp before the inserts.
 function setup(input) {
-    const startTime = db.hello().$clusterTime.clusterTime;
+    const startTime = targetDb.hello().$clusterTime.clusterTime;
     const batchSize = 1000;
     let batch = [];
     const flush = () => {
@@ -67,8 +74,10 @@ function waitForDone(coll, expectedMessages, pollingIntervalMs = 200) {
 }
 
 // Run a $source, $merge streamProcessor beginning from clusterTime.
-function runStreamProcessor(clusterTime, inputLength) {
-    sp.createStreamProcessor(spName, [
+function runStreamProcessor(clusterTime, inputLength, parallelism) {
+    const collName = test.outputCollName + parallelism ? `-${parallelism}` : "";
+    const outputColl = targetDb.getSiblingDB(test.dbName)[collName];
+    let pipeline = [
         {
             $source: {
                 connectionName: test.atlasConnection,
@@ -81,64 +90,18 @@ function runStreamProcessor(clusterTime, inputLength) {
                 }
             }
         },
-        {
-            $merge: {
-                into: {
-                    connectionName: test.atlasConnection,
-                    db: test.dbName,
-                    coll: test.outputCollName
-                }
-            }
-        },
-    ]);
+        {$merge: {into: {connectionName: test.atlasConnection, db: test.dbName, coll: collName}}},
+    ];
+    if (parallelism) {
+        pipeline[pipeline.length - 1]["$merge"]["parallelism"] = NumberInt(parallelism);
+    }
+    sp.createStreamProcessor(spName, pipeline);
     const startTime = new Date();
     sp[spName].start();
-    waitForDone(spOutputColl, inputLength);
+    waitForDone(outputColl, inputLength);
     const endTime = new Date();
     sp[spName].stop();
-    return endTime - startTime;
-}
-
-// Run a $source,$tumblingWindow,$merge streamProcessor beginning from clusterTime.
-function runStreamProcessorWithWindow(clusterTime, inputLength) {
-    sp.createStreamProcessor(windowSpName, [
-        {
-            $source: {
-                connectionName: test.atlasConnection,
-                db: test.dbName,
-                coll: test.inputCollName,
-                config: {
-                    startAtOperationTime: clusterTime,
-                    fullDocumentOnly: true,
-                    fullDocument: "required"
-                }
-            }
-        },
-        {
-            $tumblingWindow: {
-                interval: {size: NumberInt(1), unit: "second"},
-                idleTimeout: {size: NumberInt(10), unit: "second"},
-                allowedLateness: {size: NumberInt(10), unit: "second"},
-                pipeline: [
-                    {$group: {_id: '$$ROOT', count: {$sum: 1}}},
-                    {$project: {_id: 0, data: "$_id", count: 1}},
-                ]
-            }
-        },
-        {
-            $merge: {
-                into: {
-                    connectionName: test.atlasConnection,
-                    db: test.dbName,
-                    coll: spWindowOutputCollName
-                }
-            }
-        },
-    ]);
-    const startTime = new Date();
-    sp[windowSpName].start();
-    waitForDone(spWindowOutputColl, inputLength);
-    return new Date() - startTime;
+    return {time: endTime - startTime, outputColl: outputColl};
 }
 
 // Run aggregate with default $merge.
@@ -158,28 +121,20 @@ function runAggregateWithWhenMatchedFailed() {
 }
 
 function benchmark() {
-    const dbUri = db.getMongo().host;
-    const runningOnAtlas = dbUri.includes("mongodb.net");
-    if (runningOnAtlas) {
-        let aspUri = _getEnv("ASP_URI");
-        if (aspUri != "" && aspUri != null) {
-            sp = getAtlasStreamProcessorHandle(aspUri);
-        }
-    } else {
-        // Running locally.
-        sp = getDefaultSp();
+    sp = getDefaultSp(targetClusterURI);
+    let aspUri = _getEnv("ASP_URI");
+    if (aspUri != "" && aspUri != null) {
+        sp = getAtlasStreamProcessingInstance(aspUri);
     }
 
     inputColl.drop();
-    spWindowOutputColl.drop();
-    spOutputColl.drop();
     aggOutputColl.drop();
     aggWhenMatchOutputColl.drop();
     Random.setRandomSeed(42);
     // Set the oplog to 16GB.
-    db.adminCommand({replSetResizeOplog: 1, size: 16000});
+    targetDb.adminCommand({replSetResizeOplog: 1, size: 16000});
 
-    // The input is 10k 1kB documents, about 10MB of data.
+    // The input is 1million 1kB documents, about 1GB of data.
     let input = generateInput({docSize: 1000, docCount: 1000000});
     const inputLength = input.length;
     const clusterTime = setup(input);
@@ -188,37 +143,30 @@ function benchmark() {
     // Run the workloads.
     let aggResult = runAggregate();
     let insertAggResult = runAggregateWithWhenMatchedFailed();
-    let spResult = null;
-    let spWindowResult = null;
+    let spResults = [];
     if (sp != null) {
-        spResult = runStreamProcessor(clusterTime, inputLength);
-        spWindowResult = runStreamProcessorWithWindow(clusterTime, inputLength);
+        for (let parallelism of [1, 2, 4, 8]) {
+            const {time, outputColl} = runStreamProcessor(clusterTime, inputLength, parallelism);
+            assert.eq(inputLength, outputColl.count());
+            outputColl.drop();
+            spResults.push({time: time, parallelism: parallelism});
+        }
     }
 
     jsTestLog("simple_merge_benchmark results:");
-    jsTestLog({
-        "sp": spResult,
-        "spWithWindow": spWindowResult,
-        "agg": aggResult,
-        "insertAgg": insertAggResult
-    });
+    jsTestLog({"sp": spResults, "agg": aggResult, "insertAgg": insertAggResult});
 
     if (sp != null) {
         sp[spName].drop(false /*assertWorked*/);
-        sp[windowSpName].drop(false /*assertWorked*/);
-        assert.eq(inputLength, spOutputColl.count());
-        assert.eq(inputLength, spWindowOutputColl.count());
     }
     assert.eq(inputLength, aggOutputColl.count());
     assert.eq(inputLength, aggWhenMatchOutputColl.count());
     inputColl.drop();
-    spWindowOutputColl.drop();
-    spOutputColl.drop();
     aggOutputColl.drop();
     aggWhenMatchOutputColl.drop();
 }
 
-const buildInfo = db.getServerBuildInfo();
+const buildInfo = targetDb.getServerBuildInfo();
 if (!buildInfo.isDebug() && !buildInfo.isAddressSanitizerActive() &&
     !buildInfo.isThreadSanitizerActive() && !buildInfo.isLeakSanitizerActive()) {
     // Don't run this on debug builds or sanitizer builds in Evergreen, it takes too long.

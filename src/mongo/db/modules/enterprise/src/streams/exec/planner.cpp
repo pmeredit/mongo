@@ -77,6 +77,7 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/project_operator.h"
+#include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/redact_operator.h"
 #include "streams/exec/replace_root_operator.h"
 #include "streams/exec/s3_emit_operator.h"
@@ -254,51 +255,6 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context,
     }
 
     return {std::move(validator), options.getValidationAction()};
-}
-
-// Translates MergeOperatorSpec into DocumentSourceMergeSpec.
-boost::intrusive_ptr<DocumentSource> makeDocumentSourceMerge(
-    const MergeOperatorSpec& mergeOpSpec, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    // TODO: Support kFail whenMatched/whenNotMatched mode.
-    static const stdx::unordered_set<MergeWhenMatchedModeEnum> supportedWhenMatchedModes{
-        {MergeWhenMatchedModeEnum::kKeepExisting,
-         MergeWhenMatchedModeEnum::kMerge,
-         MergeWhenMatchedModeEnum::kPipeline,
-         MergeWhenMatchedModeEnum::kReplace}};
-    static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
-        {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
-
-    if (mergeOpSpec.getWhenMatched()) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Unsupported whenMatched mode: ",
-                supportedWhenMatchedModes.contains(mergeOpSpec.getWhenMatched()->mode));
-    }
-    if (mergeOpSpec.getWhenNotMatched()) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Unsupported whenNotMatched mode: ",
-                supportedWhenNotMatchedModes.contains(*mergeOpSpec.getWhenNotMatched()));
-    }
-
-    DocumentSourceMergeSpec docSourceMergeSpec;
-    // Use a dummy target namespace kNoDbCollNamespaceString since it's not used.
-    auto dummyTargetNss = NamespaceStringUtil::deserialize(
-        /*tenantId=*/boost::none, kNoDbCollNamespaceString, SerializationContext());
-    auto whenMatched = mergeOpSpec.getWhenMatched() ? mergeOpSpec.getWhenMatched()->mode
-                                                    : DocumentSourceMerge::kDefaultWhenMatched;
-    auto whenNotMatched =
-        mergeOpSpec.getWhenNotMatched().value_or(DocumentSourceMerge::kDefaultWhenNotMatched);
-    auto pipeline =
-        mergeOpSpec.getWhenMatched() ? mergeOpSpec.getWhenMatched()->pipeline : boost::none;
-    std::set<FieldPath> dummyMergeOnFields{"_id"};
-    return DocumentSourceMerge::create(std::move(dummyTargetNss),
-                                       expCtx,
-                                       whenMatched,
-                                       whenNotMatched,
-                                       mergeOpSpec.getLet(),
-                                       pipeline,
-                                       std::move(dummyMergeOnFields),
-                                       /*collectionPlacementVersion*/ boost::none,
-                                       /*allowMergeOnNullishValues*/ true);
 }
 
 // Utility to construct a map of auth options from 'authOptions' for a Kafka connection.
@@ -1014,7 +970,8 @@ void Planner::planMergeSink(const BSONObj& spec) {
                 spec.firstElement().isABSONObj());
 
     auto mergeObj = spec.firstElement().Obj();
-    auto mergeOpSpec = MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), mergeObj);
+    auto mergeOpSpec =
+        MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), std::move(mergeObj));
     auto mergeIntoAtlas =
         AtlasCollection::parse(IDLParserContext("AtlasCollection"), mergeOpSpec.getInto());
     std::string connectionName(mergeIntoAtlas.getConnectionName().toString());
@@ -1029,47 +986,13 @@ void Planner::planMergeSink(const BSONObj& spec) {
             connection.getType() == ConnectionTypeEnum::Atlas);
     auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
                                                       connection.getOptions());
-    if (_context->expCtx->getMongoProcessInterface()) {
-        dassert(dynamic_cast<StubMongoProcessInterface*>(
-            _context->expCtx->getMongoProcessInterface().get()));
-    }
 
-    auto mergeExpressionCtx = ExpressionContextBuilder{}
-                                  .opCtx(_context->opCtx.get())
-                                  .ns(NamespaceString(DatabaseName::kLocal))
-                                  .build();
-
-    MongoCxxClientOptions clientOptions(atlasOptions, _context);
-    clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
-    mergeExpressionCtx->setMongoProcessInterface(
-        std::make_shared<MongoDBProcessInterface>(clientOptions));
-
-    auto documentSource = makeDocumentSourceMerge(mergeOpSpec, mergeExpressionCtx);
-
-    boost::optional<std::set<FieldPath>> onFieldPaths;
-    if (mergeOpSpec.getOn()) {
-        onFieldPaths.emplace();
-        for (const auto& field : *mergeOpSpec.getOn()) {
-            const auto [_, inserted] = onFieldPaths->insert(FieldPath(field));
-            uassert(8186211,
-                    str::stream() << "Found a duplicate field in the $merge.on list: '" << field
-                                  << "'",
-                    inserted);
-        }
-    }
-
-    auto specificSource = dynamic_cast<DocumentSourceMerge*>(documentSource.get());
-    dassert(specificSource);
-    MergeOperator::Options options{.documentSource = specificSource,
-                                   .db = mergeIntoAtlas.getDb(),
-                                   .coll = mergeIntoAtlas.getColl(),
-                                   .onFieldPaths = std::move(onFieldPaths),
-                                   .mergeExpCtx = std::move(mergeExpressionCtx)};
+    MergeOperator::Options options{.spec = std::move(mergeOpSpec), .atlasOptions = atlasOptions};
     auto oper = std::make_unique<MergeOperator>(_context, std::move(options));
+
     oper->setOperatorId(_nextOperatorId++);
 
     invariant(!_operators.empty());
-    _pipeline.push_back(std::move(documentSource));
     appendOperator(std::move(oper));
 }
 

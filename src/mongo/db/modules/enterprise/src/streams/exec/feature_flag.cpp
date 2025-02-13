@@ -197,6 +197,11 @@ const FeatureFlagDefinition FeatureFlags::kCheckpointMaxIntervalSeconds{
     "Specifies the maximum periodic checkpoint interval",
     mongo::Value::createIntOrLong(60 * 60)};
 
+const FeatureFlagDefinition FeatureFlags::kMaxMergeParallelism{
+    "maxMergeParallelism",
+    "Specifies the maximum parallelism allowed in a merge stage.",
+    mongo::Value::createIntOrLong(16)};
+
 const FeatureFlagDefinition FeatureFlags::kCheckpointStateSizeToUseMaxIntervalBytes{
     "checkpointStateSizeToUseMaxIntervalBytes",
     "Specifies the byte size for which to use the maximum periodic checkpoint interval",
