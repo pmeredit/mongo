@@ -124,7 +124,15 @@ print("Testing that all documents can be decrypted by an encrypted client");
 
     assert.eq(writeErrors.length, 1);
 
-    assert.eq(writeErrors[0].errmsg, "Document failed validation");
+    // TODO SERVER-99035: Re-enable exact match assertion and delete partial match assertion.
+    // Currently the TXN API returns a CommitResult struct which pre-pends "Command error committing
+    // internal transaction" even for transactions that failed before committing. SERVER-99035 will
+    // refactor it so that a general struct is returned instead that will not prepend that message.
+    //
+    // assert.eq("Document failed validation", writeErrors[0].errmsg);
+    assert(writeErrors[0].errmsg.includes("Document failed validation"));
+
+    assert.eq(writeErrors[0].code, ErrorCodes.DocumentValidationFailure);
 
     assert.eq(writeErrors[0].index, 1);
 
@@ -174,8 +182,15 @@ print("Testing that all documents can be decrypted by an encrypted client");
     let writeErrors = commandResult.writeErrors;
     assert.eq(writeErrors.length, 2);
 
-    assert.eq(writeErrors[0].errmsg, "Document failed validation");
-    assert.eq(writeErrors[1].errmsg, "Document failed validation");
+    // TODO SERVER-99035: Re-enable exact match assertions and delete partial match assertions.
+    // Currently the TXN API returns a CommitResult struct which pre-pends "Command error committing
+    // internal transaction" even for transactions that failed before committing. SERVER-99035 will
+    // refactor it so that a general struct is returned instead that will not prepend that message.
+    //
+    // assert.eq(writeErrors[0].errmsg, "Document failed validation");
+    // assert.eq(writeErrors[1].errmsg, "Document failed validation");
+    assert(writeErrors[0].errmsg.includes("Document failed validation"));
+    assert(writeErrors[1].errmsg.includes("Document failed validation"));
 
     assert.eq(writeErrors[0].index, 1);
     assert.eq(writeErrors[1].index, 2);
