@@ -354,16 +354,6 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
             options.memoryLimitBytes = memoryLimitBytes;
         }
 
-        // This is an environment variable set by Helix
-        auto cRegion = getenv("XGEN_REGION");
-        if (!getTestCommandsEnabled()) {
-            tassert(9929499, "Environment Variable XGEN_REGION is undefined", cRegion);
-            options.region = std::string(cRegion);
-        } else {
-            options.region = Aws::Region::US_EAST_1;
-        }
-
-
         streamManager = std::make_unique<StreamManager>(svcCtx, std::move(options));
         registerShutdownTask([&]() {
             LOGV2_INFO(75907, "Starting StreamManager shutdown");
@@ -914,7 +904,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     if (request.getInstanceName()) {
         context->instanceName = request.getInstanceName()->toString();
     }
-    context->region = _options.region;
 
     context->featureFlags =
         StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
@@ -927,9 +916,21 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->connections = std::make_unique<ConnectionCollection>(request.getConnections());
     for (const auto& connection : request.getConnections()) {
         if (connection.getType() == mongo::ConnectionTypeEnum::AWSIAMLambda) {
+            if (_options.region == "") {
+                // This is an environment variable set by Helix
+                auto cRegion = getenv("XGEN_REGION");
+                if (!getTestCommandsEnabled()) {
+                    tassert(9929499, "Environment Variable XGEN_REGION is undefined", cRegion);
+                    _options.region = std::string(cRegion);
+                } else {
+                    _options.region = Aws::Region::US_EAST_1;
+                }
+            }
             initAWSSDK();
         }
     }
+
+    context->region = _options.region;
 
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
