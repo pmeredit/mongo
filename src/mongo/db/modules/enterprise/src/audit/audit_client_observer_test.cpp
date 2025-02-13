@@ -193,7 +193,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
         ASSERT_EQ(st.session()->local().port(), _testMainPort);
         ASSERT_TRUE(st.session()->local().isLocalHost());
         ASSERT_FALSE(st.session()->isFromRouterPort());
-        ASSERT_FALSE(st.session()->isFromLoadBalancer());
+        ASSERT_FALSE(st.session()->isConnectedToLoadBalancerPort());
         ASSERT_FALSE(st.session()->getProxiedDstEndpoint());
 
         // Check that auditClientAttrs exists on the newly-created client and matches the values on
@@ -260,7 +260,7 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
         ASSERT_EQ(st.session()->local().port(), _testLoadBalancerPort);
         ASSERT_TRUE(st.session()->local().isLocalHost());
         ASSERT_FALSE(st.session()->isFromRouterPort());
-        ASSERT_TRUE(st.session()->isFromLoadBalancer());
+        ASSERT_TRUE(st.session()->isConnectedToLoadBalancerPort());
         ASSERT_TRUE(st.session()->getProxiedDstEndpoint());
 
         // Check that auditClientAttrs exists on the newly-created client and matches the values
