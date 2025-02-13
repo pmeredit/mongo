@@ -315,20 +315,22 @@ public:
           _streamProcessorName(streamProcessorName),
           _streamProcessorId(streamProcessorId),
           _tenantId(tenantId) {
-        LOGV2_INFO(9994400,
-                   "acquired lock",
-                   "source"_attr = _source,
-                   "streamProcessorName"_attr = _streamProcessorName,
-                   "streamProcessorId"_attr = _streamProcessorId,
-                   "tenantId"_attr = _tenantId);
+        LOGV2_DEBUG(9994400,
+                    5,
+                    "acquired lock",
+                    "source"_attr = _source,
+                    "streamProcessorName"_attr = _streamProcessorName,
+                    "streamProcessorId"_attr = _streamProcessorId,
+                    "tenantId"_attr = _tenantId);
     }
     ~LockLogger() {
-        LOGV2_INFO(9994401,
-                   "released lock",
-                   "source"_attr = _source,
-                   "streamProcessorName"_attr = _streamProcessorName,
-                   "streamProcessorId"_attr = _streamProcessorId,
-                   "tenantId"_attr = _tenantId);
+        LOGV2_DEBUG(9994401,
+                    5,
+                    "released lock",
+                    "source"_attr = _source,
+                    "streamProcessorName"_attr = _streamProcessorName,
+                    "streamProcessorId"_attr = _streamProcessorId,
+                    "tenantId"_attr = _tenantId);
     }
     stdx::unique_lock<stdx::mutex>& getLock() {
         return _guard;
