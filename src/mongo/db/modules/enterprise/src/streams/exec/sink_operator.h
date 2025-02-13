@@ -39,12 +39,6 @@ public:
         return doGetConnectionStatus();
     }
 
-    // Returns true if there are samplers associated with this sink.
-    bool samplersExist() const;
-
-    // Send output to the samplers associated with this sink.
-    void sendOutputToSamplers(const StreamDataMsg& dataMsg);
-
 protected:
     virtual ConnectionStatus doGetConnectionStatus() {
         return ConnectionStatus{ConnectionStatus::Status::kConnected};
@@ -78,6 +72,10 @@ protected:
     bool doIsSink() final {
         return true;
     }
+
+    bool samplersExist() const;
+
+    void sendOutputToSamplers(const StreamDataMsg& dataMsg);
 
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
 

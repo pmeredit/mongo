@@ -191,7 +191,7 @@ export class StreamProcessor {
         };
         let result = this._db.runCommand(cmd);
         assert.commandWorked(result);
-        return result["id"];
+        return result;
     }
 
     getNextSample(cursorId) {
@@ -282,7 +282,7 @@ export class Streams {
         return res;
     }
 
-    process(pipeline, maxLoops = 3, featureFlags = {}, waitForCount = 1) {
+    process(pipeline, maxLoops = 3, featureFlags = {}) {
         let name = UUID().toString();
         this[name] =
             new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
@@ -293,14 +293,9 @@ export class Streams {
         let startResult = this[name].start(startOptions);
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
-        let results = [];
-        assert.soon(() => {
-            let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);
-            results.push(...sampleResults);
-            return results.length >= waitForCount;
-        });
+        let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);
         assert.commandWorked(this[name].stop());
-        return results;
+        return sampleResults;
     }
 
     metrics() {
@@ -322,11 +317,8 @@ export const test = {
     dlqCollName: "testdlq"
 };
 
-export function getDefaultSp(atlasTargetUri) {
-    let uri = 'mongodb://' + db.getMongo().host;
-    if (atlasTargetUri && atlasTargetUri !== null && atlasTargetUri !== "") {
-        uri = atlasTargetUri;
-    }
+export function getDefaultSp() {
+    const uri = 'mongodb://' + db.getMongo().host;
     return new Streams(TEST_TENANT_ID, [
         {
             name: test.atlasConnection,
@@ -360,7 +352,7 @@ export function commonTestSetup() {
     return [sp, inputColl, outputColl];
 }
 
-export function getAtlasStreamProcessingInstance(uri) {
+export function getAtlasStreamProcessorHandle(uri) {
     const m = new Mongo(uri);
     const dbForTest = m.getDB("admin");
     return new Streams(

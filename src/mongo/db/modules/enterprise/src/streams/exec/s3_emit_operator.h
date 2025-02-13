@@ -14,32 +14,18 @@ class S3EmitOperator : public QueuedSinkOperator {
 public:
     struct Options {};
 
-    S3EmitOperator(Context* context, Options options);
+    S3EmitOperator(Context* context, Options opts);
 
-    // Make a SinkWriter instance.
-    std::unique_ptr<SinkWriter> makeWriter();
-
+protected:
     std::string doGetName() const override {
         return "S3EmitOperator";
     }
 
-    mongo::ConnectionTypeEnum getConnectionType() const override {
-        // TODO(SERVER-100795): Use the right connection type here.
-        return mongo::ConnectionTypeEnum::HTTPS;
-    }
+    OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
+    void validateConnection() override;
 
 private:
     Options _options;
-};
-
-class S3EmitWriter : public SinkWriter {
-public:
-    S3EmitWriter(Context* context, SinkOperator* sinkOperator)
-        : SinkWriter(context, sinkOperator) {}
-
-protected:
-    OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
-    void validateConnection() override;
 };
 
 }  // namespace streams

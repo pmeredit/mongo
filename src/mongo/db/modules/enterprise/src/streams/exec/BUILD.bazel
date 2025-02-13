@@ -304,7 +304,6 @@ mongo_cc_library(
         "memory_usage_monitor.h",
         "merge_operator.h",
         "message.h",
-        "mongo_process_interface_for_test.h",
         "mongocxx_utils.h",
         "mongodb_dead_letter_queue.h",
         "mongodb_process_interface.h",

@@ -30,34 +30,13 @@ public:
         boost::intrusive_ptr<mongo::Expression> collExpr;
     };
 
-    TimeseriesEmitOperator(Context* context, Options options)
-        : QueuedSinkOperator(context, 1 /* numInputs */, 1 /* parallelism */),
-          _options(std::move(options)) {}
+    TimeseriesEmitOperator(Context* context, Options options);
 
-    std::unique_ptr<SinkWriter> makeWriter() override;
-
+protected:
     std::string doGetName() const override {
         return "TimeseriesEmitOperator";
     }
 
-    mongo::ConnectionTypeEnum getConnectionType() const override {
-        return mongo::ConnectionTypeEnum::Atlas;
-    }
-
-private:
-    Options _options;
-};
-
-/*
- * TimeseriesWriter handles actually inserting data into a timeseries collection.
- */
-class TimeseriesWriter : public SinkWriter {
-public:
-    TimeseriesWriter(Context* context,
-                     SinkOperator* sinkOperator,
-                     TimeseriesEmitOperator::Options options);
-
-protected:
     OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
 
     void validateConnection() override;
@@ -70,7 +49,7 @@ private:
     // Queries the database to retrieve the TimeseriesOptions for the timeseries collection.
     boost::optional<mongo::TimeseriesOptions> getTimeseriesOptionsFromDb();
 
-    TimeseriesEmitOperator::Options _options;
+    Options _options;
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;
