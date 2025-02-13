@@ -130,7 +130,9 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
     }
     doc.onMetaUpdate(_context);
 
-    doc.minProcessingTimeMs = curTimeMillis64();
+    doc.minProcessingTimeMs = _windowBoundary == mongo::WindowBoundaryEnum::processingTime
+        ? timestampMs
+        : curTimeMillis64Monotonic();
     doc.sourceTimestampMs = doc.minProcessingTimeMs;
     doc.minDocTimestampMs = timestampMs;
     doc.maxDocTimestampMs = timestampMs;

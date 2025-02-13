@@ -5,6 +5,7 @@
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/message.h"
@@ -113,6 +114,16 @@ protected:
 
     // Window boundary
     mongo::WindowBoundaryEnum _windowBoundary{mongo::WindowBoundaryEnum::eventTime};
+
+    int64_t _lastObservedTimestamp = 0;
+
+    int64_t curTimeMillis64Monotonic() {
+        int64_t curTime = mongo::curTimeMillis64();
+        if (curTime > _lastObservedTimestamp) {
+            _lastObservedTimestamp = curTime;
+        }
+        return _lastObservedTimestamp;
+    }
 };
 
 }  // namespace streams

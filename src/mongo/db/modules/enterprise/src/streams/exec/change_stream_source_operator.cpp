@@ -46,6 +46,7 @@
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 #include "streams/util/exception.h"
+#include "streams/util/metrics.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -615,7 +616,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         if (_options.sendIdleMessages && _isIdle.load()) {
             // If _options.sendIdleMessages is set, send a kIdle watermark when
             // there are 0 docs in the batch and the background thread has set _isIdle.
-            int64_t curTime = curTimeMillis64();
+            int64_t curTime = curTimeMillis64Monotonic();
             StreamControlMsg msg{.watermarkMsg =
                                      WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle,
                                                          .watermarkTimestampMs = curTime}};
@@ -812,7 +813,7 @@ ChangeStreamSourceOperator::ChangeStreamEventTimestamp ChangeStreamSourceOperato
     }
 
     if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
-        ts.assignedTimestamp = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+        ts.assignedTimestamp = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64Monotonic());
     } else if (_options.timestampExtractor) {
         ts.assignedTimestamp = _options.timestampExtractor->extractTimestamp(fullDocument);
     } else {
@@ -874,7 +875,9 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     streamDoc.streamMeta.setSource(std::move(streamMetaSource));
     streamDoc.onMetaUpdate(_context);
 
-    streamDoc.minProcessingTimeMs = curTimeMillis64();
+    streamDoc.minProcessingTimeMs = _windowBoundary == mongo::WindowBoundaryEnum::processingTime
+        ? ts.assignedTimestamp.toMillisSinceEpoch()
+        : curTimeMillis64Monotonic();
     streamDoc.minDocTimestampMs = ts.assignedTimestamp.toMillisSinceEpoch();
     streamDoc.sourceTimestampMs = ts.wallTimeOrOperationTime.toMillisSinceEpoch();
     streamDoc.maxDocTimestampMs = ts.assignedTimestamp.toMillisSinceEpoch();
@@ -886,6 +889,14 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
     _state = *_restoreCheckpointState;
     if (_options.useWatermarks) {
         if (_state.getWatermark()) {
+            if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+                while (Date_t::now().asInt64() < _state.getWatermark()->getTimestampMs()) {
+                    sleepmillis(_state.getWatermark()->getTimestampMs() - Date_t::now().asInt64());
+                }
+                tassert(ErrorCodes::InternalError,
+                        "Wallclock time should be after latest watermark timestamp",
+                        Date_t::now().asInt64() >= _state.getWatermark()->getTimestampMs());
+            }
             // All watermarks start as active when restoring from a checkpoint.
             WatermarkControlMsg watermark{WatermarkStatus::kActive,
                                           _state.getWatermark()->getTimestampMs()};

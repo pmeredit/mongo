@@ -118,7 +118,6 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
 
     // Organize docs according to the window(s) the doc belongs to.
     // First, sort the documents by timestamp.
-    // TODO(SERVER-99893): Add source logic to validate timestamps are monotonically increasing
     if (!options.windowAssigner->hasProcessingTimeWindowBoundary()) {
         std::sort(
             dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {

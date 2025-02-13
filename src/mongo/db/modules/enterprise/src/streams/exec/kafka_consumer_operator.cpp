@@ -610,6 +610,17 @@ void KafkaConsumerOperator::initFromCheckpoint() {
                                        inputIdx);
 
             if (partitionState.getWatermark()) {
+                if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+                    while (Date_t::now().asInt64() <
+                           partitionState.getWatermark()->getTimestampMs()) {
+                        sleepmillis(partitionState.getWatermark()->getTimestampMs() -
+                                    Date_t::now().asInt64());
+                    }
+                    tassert(ErrorCodes::InternalError,
+                            "Wallclock time should be after latest watermark timestamp",
+                            Date_t::now().asInt64() >=
+                                partitionState.getWatermark()->getTimestampMs());
+                }
                 // All partition watermarks start as active when restoring from a checkpoint.
                 WatermarkControlMsg watermark{WatermarkStatus::kActive,
                                               partitionState.getWatermark()->getTimestampMs()};
@@ -900,7 +911,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 if (totalNumInputDocs == 0 && _options.sendIdleMessages) {
                     // If _options.sendIdleMessages is set, always send a kIdle watermark when
                     // there are 0 docs read from the source.
-                    int64_t curTime = curTimeMillis64();
+                    int64_t curTime = curTimeMillis64Monotonic();
                     newControlMsg = StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
                                                          .watermarkStatus = WatermarkStatus::kIdle,
                                                          .watermarkTimestampMs = curTime}};
@@ -1121,7 +1132,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         mongo::Date_t ts;
         int64_t logAppendTimeMs{sourceDoc.logAppendTimeMs};
         if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
-            ts = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+            ts = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64Monotonic());
         } else if (_options.timestampExtractor) {
             ts = _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
         } else {
@@ -1190,8 +1201,9 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             streamDoc->doc = mutableDoc.freeze();
         }
         streamDoc->minProcessingTimeMs =
-            (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) ? ts.toMillisSinceEpoch()
-                                                                           : curTimeMillis64();
+            (_windowBoundary == mongo::WindowBoundaryEnum::processingTime)
+            ? ts.toMillisSinceEpoch()
+            : curTimeMillis64Monotonic();
         streamDoc->minDocTimestampMs = ts.toMillisSinceEpoch();
         streamDoc->maxDocTimestampMs = ts.toMillisSinceEpoch();
         streamDoc->sourceTimestampMs = logAppendTimeMs;
