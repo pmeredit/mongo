@@ -602,6 +602,10 @@ export class ShardingFixture {
         this.conn = this.st.s0;
     }
 
+    getShardingTest() {
+        return this.st;
+    }
+
     stopProcess() {
         this.st.stop();
     }

@@ -95,17 +95,7 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
 
     client->getUUID().appendToBuilder(builder, kUuid);
 
-    if (client->isFromSystemConnection()) {
-        {
-            auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
-            localBob.appendBool(kIsSystemUser, true);
-        }
-
-        {
-            auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
-            remoteBob.appendBool(kIsSystemUser, true);
-        }
-    } else if (auto attrs = rpc::AuditClientAttrs::get(client)) {
+    if (auto attrs = rpc::AuditClientAttrs::get(client)) {
         {
             // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
             BSONObjBuilder localBuilder(builder->subobjStart(kLocalEndpointField));
@@ -128,6 +118,16 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
             // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
             BSONObjBuilder remoteBuilder(builder->subobjStart(kRemoteEndpointField));
             serializeHostAndPortToBSONMongo(attrs->getRemote(), &remoteBuilder);
+        }
+    } else if (client->isFromSystemConnection()) {
+        {
+            auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
+            localBob.appendBool(kIsSystemUser, true);
+        }
+
+        {
+            auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
+            remoteBob.appendBool(kIsSystemUser, true);
         }
     }
 
