@@ -3,7 +3,7 @@
  *  featureFlagStreams,
  * ]
  */
-import {commonTest} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {commonTest} from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 
 // This file contains tests for the {$meta: "stream.<optional path>"} expression.
 

@@ -75,7 +75,7 @@ OperatorStats TimeseriesWriter::processDataMsg(StreamDataMsg dataMsg) {
     return processStreamDocs(dataMsg, /* startIdx */ 0, kDataMsgMaxDocSize);
 }
 
-void TimeseriesWriter::validateConnection() {
+void TimeseriesWriter::connect() {
     if (_options.dbExpr || _options.collExpr) {
         return;
     }
@@ -352,7 +352,7 @@ boost::optional<TimeseriesOptions> TimeseriesWriter::getTimeseriesOptionsFromDb(
 }
 
 std::unique_ptr<SinkWriter> TimeseriesEmitOperator::makeWriter() {
-    // TODO(SERVER-100401): Duplicate expressions.
+    // TODO(SERVER-100880): Duplicate expressions.
     return std::make_unique<TimeseriesWriter>(_context, this, _options);
 }
 

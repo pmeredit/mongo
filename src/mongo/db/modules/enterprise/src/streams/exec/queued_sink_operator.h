@@ -40,7 +40,7 @@ public:
     virtual OperatorStats processDataMsg(StreamDataMsg dataMsg) = 0;
 
     // Validate the connection, throw exception if it's invalid.
-    virtual void validateConnection() = 0;
+    virtual void connect() = 0;
 
     // Return the docs partition. QueuedSinkOperator uses this to partition messages to different
     // writer threads. The partition implementation can modify the doc if needed.

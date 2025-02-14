@@ -30,14 +30,17 @@ QueuedSinkOperator::QueuedSinkOperator(Context* context, int32_t numInputs, int3
 std::unique_ptr<QueuedSinkOperator::WriterThread> QueuedSinkOperator::makeThread(
     std::unique_ptr<SinkWriter> writer) {
     auto thread = std::make_unique<WriterThread>();
+    int64_t maxQueueSizeBytes = getMaxQueueSizeBytes(_context->featureFlags);
+    if (_parallelism > 1) {
+        maxQueueSizeBytes = (maxQueueSizeBytes / _parallelism) * 2;
+    }
     thread->writer = std::move(writer);
     thread->context = _context;
     thread->queue =
         std::make_unique<mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc>>(
             mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc>::Options{
-                .maxQueueDepth = static_cast<size_t>(getMaxQueueSizeBytes(_context->featureFlags)),
-                .costFunc =
-                    QueueCostFunc{.maxSizeBytes = getMaxQueueSizeBytes(_context->featureFlags)}});
+                .maxQueueDepth = static_cast<size_t>(maxQueueSizeBytes),
+                .costFunc = QueueCostFunc{.maxSizeBytes = maxQueueSizeBytes}});
     return thread;
 }
 
@@ -68,10 +71,10 @@ void QueuedSinkOperator::WriterThread::start() {
         // Validate the connection with the target.
         SPStatus status{Status::OK()};
         try {
-            writer->validateConnection();
+            writer->connect();
         } catch (const SPException& e) {
             LOGV2_INFO(8520399,
-                       "SPException occured in QueuedSinkOperator validateConnection",
+                       "SPException occured in QueuedSinkOperator connect",
                        "context"_attr = context,
                        "code"_attr = e.code(),
                        "reason"_attr = e.reason(),
@@ -79,22 +82,21 @@ void QueuedSinkOperator::WriterThread::start() {
             status = e.toStatus();
         } catch (const DBException& e) {
             LOGV2_INFO(8520301,
-                       "Exception occured in QueuedSinkOperator validateConnection",
+                       "Exception occured in QueuedSinkOperator connect",
                        "context"_attr = context,
                        "code"_attr = e.code(),
                        "reason"_attr = e.reason());
             status = e.toStatus();
         } catch (const std::exception& e) {
-            LOGV2_WARNING(
-                8520300,
-                "Unexpected std::exception occured in QueuedSinkOperator validateConnection",
-                "context"_attr = context,
-                "exception"_attr = e.what());
+            LOGV2_WARNING(8520300,
+                          "Unexpected std::exception occured in QueuedSinkOperator connect",
+                          "context"_attr = context,
+                          "exception"_attr = e.what());
             status = SPStatus{{ErrorCodes::UnknownError, "Unkown error occured in sink operator."},
                               e.what()};
         }
 
-        // If validateConnection succeeded, enter a kConnected state.
+        // If connect succeeded, enter a kConnected state.
         // Otherwise enter an error state and return.
         {
             stdx::lock_guard<stdx::mutex> lock(consumerMutex);
@@ -162,12 +164,12 @@ void QueuedSinkOperator::WriterThread::registerMetrics(MetricManager* metricMana
     queueSizeGauge = metricManager->registerIntGauge(
         "sink_operator_queue_size",
         /* description */ "Total docs currently buffered in the queue",
-        /*labels*/ getDefaultMetricLabels(context));
+        /*labels*/ labels);
     queueByteSizeGauge = metricManager->registerIntGauge(
         "sink_operator_queue_bytesize",
         /* description */ "Total bytes currently buffered in the queue",
-        /*labels*/ getDefaultMetricLabels(context));
-    writer->registerMetrics(metricManager, labels);
+        /*labels*/ labels);
+    writer->registerMetrics(metricManager, std::move(labels));
 }
 
 OperatorStats QueuedSinkOperator::doGetStats() {
@@ -231,7 +233,7 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
             }
         }
 
-        // TODO(SERVER-100401): Optimize the common case where all _id are generated
+        // TODO(SERVER-100663): Optimize the common case where all _id are generated
         // by us. In that case, we can just use insert instead of update.
     }
 

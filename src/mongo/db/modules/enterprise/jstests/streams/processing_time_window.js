@@ -8,7 +8,7 @@
 import {resultsEq} from "jstests/aggregation/extras/utils.js";
 import {
     commonTest,
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+} from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     getStats,

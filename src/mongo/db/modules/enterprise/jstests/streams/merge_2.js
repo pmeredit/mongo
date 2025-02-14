@@ -1,5 +1,4 @@
-/**
- * @tags: [
+/* @tags: [
  *  featureFlagStreams,
  * ]
  *
@@ -8,7 +7,7 @@
 
 import {
     commonTest,
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+} from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 import {
     getDefaultSp,
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
@@ -22,7 +21,9 @@ for (let parallelism of [0, 2, 4, 8]) {
         expectedOutputMessageCount,
         on,
         whenMatched,
-        fieldsToIgnore = []
+        fieldsToIgnore = [],
+        expectedDlq = [],
+        useGeneratedSourcePipeline = true,
     }) => {
         var extras = {};
         if (parallelism > 0) {
@@ -42,7 +43,22 @@ for (let parallelism of [0, 2, 4, 8]) {
             expectedGeneratedOutput,
             expectedOutputMessageCount: expectedOutputMessageCount,
             extraMergeParams: extras,
-            fieldsToIgnore
+            useGeneratedSourcePipeline: useGeneratedSourcePipeline,
+            fieldsToIgnore,
+            expectedDlq: expectedDlq,
+            beforeStopValidationFunc: (testHelper) => {
+                const metrics = testHelper.gaugeMetrics();
+                const queueByteSizeMetrics =
+                    metrics.filter((m) => { return m.name == "sink_operator_queue_size"; });
+                const num = parallelism > 0 ? parallelism : 1;
+                assert.eq(num, queueByteSizeMetrics.length);
+                for (let threadID = 0; threadID < num; ++threadID) {
+                    assert(queueByteSizeMetrics.some((m) => {
+                        const threadIDLabel = m.labels.find(l => l.key == "sink_thread_id");
+                        return threadIDLabel.value == threadID;
+                    }));
+                }
+            },
         });
     };
 
@@ -110,6 +126,41 @@ for (let parallelism of [0, 2, 4, 8]) {
         expectedOutputMessageCount: input.length,
         on: ["a"],
         fieldsToIgnore: ["_id"]
+    });
+
+    // Test with a custom $merge.on field.
+    input = Array.from(Array(100).keys()).map(i => { return {i: i, a: 1, b: i % 5, _id: i % 5}; });
+    test({
+        input: input,
+        expectedOutput: [
+            {i: 95, a: 1, b: 0},
+            {i: 96, a: 1, b: 1},
+            {i: 97, a: 1, b: 2},
+            {i: 98, a: 1, b: 3},
+            {i: 99, a: 1, b: 4},
+        ],
+        expectedGeneratedOutput: input,
+        expectedOutputMessageCount: input.length,
+        on: ["a", "b"],
+        fieldsToIgnore: ["_id"]
+    });
+
+    // Test with a custom $merge.on field with documents that have it.
+    input = [{i: 0, _id: 1}];
+    test({
+        input: input,
+        expectedOutput: [{i: 0, _id: 1, a: null, b: null}],
+        on: ["a", "b"],
+        useGeneratedSourcePipeline: false,
+    });
+
+    // Test with a custom $merge.on field with documents that don't have part of it.
+    input = [{i: 0, _id: 1, a: 1}];
+    test({
+        input: input,
+        expectedOutput: [{i: 0, _id: 1, a: 1, b: null}],
+        on: ["a", "b"],
+        useGeneratedSourcePipeline: false,
     });
 }
 

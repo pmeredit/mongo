@@ -99,7 +99,7 @@ public:
 protected:
     OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
 
-    void validateConnection() override;
+    void connect() override;
 
     size_t partition(StreamDocument& doc) override;
 

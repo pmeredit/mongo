@@ -86,7 +86,7 @@ MergeOperator::MergeOperator(Context* context, Options options)
             _options.spec.getParallelism() <= maxMergeParallelism);
 
     auto targetCollection = parseAtlasConnection();
-    // TODO(SERVER-100401): Support this.
+    // TODO(SERVER-100768): Support this.
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             "$merge.into.db and $merge.into.coll must be literals if $merge.parallelism is greater "
             "than 1",
@@ -231,7 +231,7 @@ auto MergeWriter::partitionDocsByTargets(const StreamDataMsg& dataMsg)
     return {docPartitions, stats};
 }
 
-void MergeWriter::validateConnection() {
+void MergeWriter::connect() {
     if (_options.coll.isLiteral() && _options.db.isLiteral()) {
         auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
             _options.mergeExpCtx->getMongoProcessInterface().get());

@@ -7,7 +7,7 @@
 import {
     commonTest,
     makeBatchBreakerDoc
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+} from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 
 commonTest({
     input: [

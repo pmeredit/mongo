@@ -2,7 +2,7 @@ import {getPython3Binary} from "jstests/libs/python.js";
 import {
     commonFailureTest,
     commonTest
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+} from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 import {
     test as testConstants
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";

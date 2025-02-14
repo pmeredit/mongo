@@ -39,7 +39,7 @@ public:
 
 protected:
     OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
-    void validateConnection() override;
+    void connect() override;
 };
 
 }  // namespace streams

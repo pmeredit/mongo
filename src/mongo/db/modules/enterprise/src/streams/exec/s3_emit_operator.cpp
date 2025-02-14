@@ -13,7 +13,7 @@ OperatorStats S3EmitWriter::processDataMsg(StreamDataMsg dataMsg) {
     return OperatorStats{};
 }
 
-void S3EmitWriter::validateConnection() {
+void S3EmitWriter::connect() {
     return;
 }
 

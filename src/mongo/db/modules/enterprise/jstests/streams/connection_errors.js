@@ -136,59 +136,68 @@ function badKafkaSourceStartError() {
 // Create a streamProcessor with a bad $merge target. Verify the
 // streamProcessor reports a meaningful error in listStreamProcessors.
 function badMergeStartError() {
-    // Chose a valid network address and port that does not have a running server on it.
-    const goodUri = 'mongodb://' + db.getMongo().host;
-    const goodConnection = "dbgood";
-    const dbName = "test";
-    const inputCollName = "testin";
-    const badUri = "mongodb://127.0.0.1:9123";
-    const badConnection = "dbbad";
-    const outputCollName = "outputcoll";
-    const outputDbName = "test";
-    const connectionRegistry = [
-        {
-            name: badConnection,
-            type: 'atlas',
-            options: {
-                uri: badUri,
-            }
-        },
-        {
-            name: goodConnection,
-            type: 'atlas',
-            options: {
-                uri: goodUri,
-            }
-        },
-    ];
-    const spName = "sp1";
-    let result = db.runCommand({
-        streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
-        projectId: TEST_PROJECT_ID,
-        name: spName,
-        processorId: spName,
-        pipeline: [
+    const test = (parallelism) => {
+        // Chose a valid network address and port that does not have a running server on it.
+        const goodUri = 'mongodb://' + db.getMongo().host;
+        const goodConnection = "dbgood";
+        const dbName = "test";
+        const inputCollName = "testin";
+        const badUri = "mongodb://127.0.0.1:9123";
+        const badConnection = "dbbad";
+        const outputCollName = "outputcoll";
+        const outputDbName = "test";
+        const connectionRegistry = [
             {
-                $source: {
-                    connectionName: goodConnection,
-                    db: dbName,
-                    coll: inputCollName,
+                name: badConnection,
+                type: 'atlas',
+                options: {
+                    uri: badUri,
                 }
             },
             {
-                $merge: {
-                    into: {connectionName: badConnection, db: outputDbName, coll: outputCollName},
+                name: goodConnection,
+                type: 'atlas',
+                options: {
+                    uri: goodUri,
                 }
+            },
+        ];
+        const spName = "sp1";
+        let merge = {
+            $merge: {
+                into: {connectionName: badConnection, db: outputDbName, coll: outputCollName},
             }
-        ],
-        connections: connectionRegistry,
-        options: {featureFlags: {}}
-    });
-    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
-    assert.eq(
-        result.errmsg,
-        "$merge to test.outputcoll failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error");
+        };
+        if (parallelism) {
+            merge["$merge"]["parallelism"] = NumberInt(parallelism);
+        }
+        let result = db.runCommand({
+            streams_startStreamProcessor: '',
+            tenantId: TEST_TENANT_ID,
+            projectId: TEST_PROJECT_ID,
+            name: spName,
+            processorId: spName,
+            pipeline: [
+                {
+                    $source: {
+                        connectionName: goodConnection,
+                        db: dbName,
+                        coll: inputCollName,
+                    }
+                },
+                merge
+            ],
+            connections: connectionRegistry,
+            options: {featureFlags: {}}
+        });
+        assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
+        assert.eq(
+            result.errmsg,
+            "$merge to test.outputcoll failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error");
+    };
+
+    test();
+    test(2);
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.
