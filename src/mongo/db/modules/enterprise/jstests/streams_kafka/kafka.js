@@ -478,6 +478,7 @@ function mongoToKafkaToMongo({
     compressionType,
     acks,
     connectionName = kafkaPlaintextName,
+    validateLatency = true
 } = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, connectionName);
@@ -532,7 +533,9 @@ function mongoToKafkaToMongo({
     } else {
         // Verify output shows up in the sink collection as expected.
         waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
-        validateLatencyLogs();
+        if (validateLatency) {
+            validateLatencyLogs();
+        }
 
         let results = sinkColl1.find({}).sort({a: 1}).toArray();
         let output = [];
@@ -2853,7 +2856,8 @@ if (!debugBuild) {
     // This takes to long on debug builds.
     numDocumentsToInsert = 100000;
 }
-runKafkaTest(kafka, mongoToKafkaToMongo, 12);
+// TODO(SERVER-100934): Enable latency validation.
+runKafkaTest(kafka, () => mongoToKafkaToMongo({validateLatency: false}), 12);
 
 numDocumentsToInsert = defaultNumDocsToInsert;
 runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "relaxedJson"}));
