@@ -11,6 +11,8 @@ import {
 } from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kATypes = {
+    kCreateUser: {mongo: "createUser", OCSF: "createUser"},
+    kAuthenticate: {mongo: "authenticate", OCSF: "authenticate"},
     kCreateDatabase: {mongo: "createDatabase", OCSF: "create_database"},
     kCreateCollection: {mongo: "createCollection", OCSF: "create_collection"},
     kCreateIndex: {mongo: "createIndex", OCSF: "create_index"},
@@ -38,6 +40,69 @@ function getAddress(host) {
     return match ? match[1].replace(/-/g, '.') : null;
 }
 
+function getFixtureOptions(isSharded, proxy_server) {
+    let opts = {};
+
+    if (proxy_server) {
+        opts.other = {
+            mongosOptions: {setParameter: {loadBalancerPort: proxy_server.getEgressPort()}}
+        };
+    }
+
+    if (isSharded) {
+        opts.other = opts.other || {};
+        opts.other.rsOptions = {
+            auditPath: MongoRunner.dataPath + "shard_audit.log",
+            auditDestination: "file",
+            auditFormat: "JSON"
+        };
+        opts.other.configOptions = {
+            auditPath: MongoRunner.dataPath + "config_audit.log",
+            auditDestination: "file",
+            auditFormat: "JSON"
+        };
+    }
+
+    return opts;
+}
+
+function setupAuth(admin) {
+    assert.commandWorked(
+        admin.runCommand({createUser: kUserName, pwd: kPassword, roles: ['root']}));
+    assert(admin.auth(kUserName, kPassword));
+}
+
+function assertAuditAuth(schema, isSharded, authExpectedAddress, audit) {
+    const {configExpectedAddress, mongosExpectedAddress, mongodExpectedAddress} =
+        authExpectedAddress;
+
+    if (isSharded) {
+        const auditConfig = new AuditSpooler(MongoRunner.dataPath + "config_audit.log");
+
+        assertEntry(auditConfig,
+                    schema,
+                    kATypes.kCreateUser,
+                    {db: 'admin', user: kUserName},
+                    configExpectedAddress);
+        assertEntry(audit,
+                    schema,
+                    kATypes.kAuthenticate,
+                    {db: 'admin', user: kUserName},
+                    mongosExpectedAddress);
+    } else {
+        assertEntry(audit,
+                    schema,
+                    kATypes.kCreateUser,
+                    {db: 'admin', user: kUserName},
+                    mongodExpectedAddress);
+        assertEntry(audit,
+                    schema,
+                    kATypes.kAuthenticate,
+                    {db: 'admin', user: kUserName},
+                    mongodExpectedAddress);
+    }
+}
+
 /* For standalone:
  * - host is the mongod address
  * - port is the mongod port
@@ -49,53 +114,39 @@ function getAddress(host) {
  * - audit AuditSpool for shard
  * - expectedIntermediates includes the mongos address and port
  */
-
 function setup(fixture, schema, isSharded, proxy_server = null) {
-    let opts = {};
-
-    if (proxy_server) {
-        opts = {
-            other: {mongosOptions: {setParameter: {loadBalancerPort: proxy_server.getEgressPort()}}}
-        };
-    }
-
-    if (isSharded) {
-        opts.other = opts.other || {};
-        opts.other.rsOptions = {
-            auditPath: MongoRunner.dataPath + "shard_audit.log",
-            auditDestination: "file",
-            auditFormat: "JSON"
-        };
-    }
+    const opts = getFixtureOptions(isSharded, proxy_server);
 
     let {conn, audit, admin} = fixture.startProcess(opts, "JSON", schema);
+
     let host = klocalHost;
     let port = conn.port;
+    let auditShard;
+    let configPort;
+    let mongosPort;
 
     let shellPort = conn.getShellPort();
     let intermediates = [];
 
     if (isSharded) {
         const st = fixture.getShardingTest();
-        const mongosPort = conn.port;
+        mongosPort = conn.port;
 
-        audit = new AuditSpooler(MongoRunner.dataPath + "shard_audit.log");
+        auditShard = new AuditSpooler(MongoRunner.dataPath + "shard_audit.log");
 
         // Windows hosts return the name of the server but we want the actual ip address
-        if (_isWindows()) {
-            host = get_ipaddr();
-        } else {
-            host = getAddress(st.rs0.getPrimary().host);
-        }
+        host = _isWindows() ? get_ipaddr() : getAddress(st.rs0.getPrimary().host);
 
         port = st.rs0.getPrimary().port;
+        admin = st.s0.getDB('admin');
+        configPort = st.c0.port;
 
         intermediates.push({ip: klocalHost, port: mongosPort});
     }
 
     if (proxy_server) {
         const ingressPort = proxy_server.getIngressPort();
-        const egressPort = proxy_server.getEgressPort();
+        mongosPort = proxy_server.getEgressPort();
 
         const uri = `mongodb://127.0.0.1:${ingressPort}/?loadBalanced=true`;
         conn = new Mongo(uri);
@@ -104,15 +155,40 @@ function setup(fixture, schema, isSharded, proxy_server = null) {
         shellPort = conn.getShellPort();
 
         intermediates = [];
-        intermediates.push({ip: klocalHost, port: egressPort});
+        intermediates.push({ip: klocalHost, port: mongosPort});
         intermediates.push({ip: klocalHost, port: ingressPort});
     }
 
-    const local = {ip: host, port: port};
-    const remote = {ip: klocalHost, port: shellPort};
-    const expectedAddresses = {local, remote, intermediates};
+    const expectedAddresses = {
+        local: {ip: host, port: port},
+        remote: {ip: klocalHost, port: shellPort},
+        intermediates
+    };
+    const authExpectedAddress = {
+        configExpectedAddress: {
+            local: {ip: host, port: configPort},
+            remote: expectedAddresses.remote,
+            intermediates: expectedAddresses.intermediates
+        },
+        mongosExpectedAddress: {
+            local: {ip: klocalHost, port: mongosPort},
+            remote: expectedAddresses.remote,
+            intermediates: proxy_server ? [expectedAddresses.intermediates[1]] : []
+        },
+        mongodExpectedAddress: {...expectedAddresses}
+    }
 
-    return {conn, audit, admin, expectedAddresses};
+    setupAuth(admin);
+
+    // TODO SERVER-83990: remove
+    if (!FeatureFlagUtil.isPresentAndEnabled(admin, "ExposeClientIpInAuditLogs")) {
+        fixture.stopProcess();
+        quit();
+    }
+
+    assertAuditAuth(schema, isSharded, authExpectedAddress, audit);
+
+    return {conn, audit: auditShard || audit, admin, expectedAddresses};
 }
 
 function assertEntry(audit, schema, atype, param, expectedAddresses) {
@@ -129,21 +205,13 @@ function assertEntry(audit, schema, atype, param, expectedAddresses) {
 
     if (expectedAddresses.intermediates.length) {
         assert.docEq(expectedAddresses.intermediates, entry.intermediates);
+    } else {
+        assert(!entry.hasOwnProperty('intermediates'));
     }
 }
 
 function runTest(fixture, schema, isSharded = false, proxy_server = null) {
-    const {conn, audit, admin, expectedAddresses} = setup(fixture, schema, isSharded, proxy_server);
-    assert.commandWorked(
-        admin.runCommand({createUser: kUserName, pwd: kPassword, roles: ['root']}));
-    assert(admin.auth(kUserName, kPassword));
-
-    // TODO SERVER-83990: remove
-    if (!FeatureFlagUtil.isPresentAndEnabled(admin, "ExposeClientIpInAuditLogs")) {
-        fixture.stopProcess();
-
-        return;
-    }
+    const {conn, audit, expectedAddresses} = setup(fixture, schema, isSharded, proxy_server);
 
     const testDB = conn.getDB(kDbName);
 
