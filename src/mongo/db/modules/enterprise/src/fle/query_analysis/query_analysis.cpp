@@ -1460,8 +1460,7 @@ void processAggregateCommand(OperationContext* opCtx,
                              const BSONObj& cmdObj,
                              BSONObjBuilder* builder,
                              const NamespaceString ns) {
-    // (Ignore FCV check): Query Analysis does not run in the server, so it can't be FCV gated.
-    if (feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabledAndIgnoreFCVUnsafe()) {
+    if (feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabled()) {
         processQueryCommand(
             opCtx, dbName, cmdObj, builder, addPlaceHoldersForAggregate<EncryptionSchemaMap>, ns);
     } else {

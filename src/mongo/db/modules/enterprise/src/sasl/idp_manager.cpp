@@ -477,8 +477,6 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
 
     bool observedLastMatchPattern = false;
     for (auto& idp : parsedObjects) {
-        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
-
         uassertNonEmptyString(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
         uassertValidURL(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
         uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
@@ -491,13 +489,12 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
         uassert(ErrorCodes::BadValue,
                 "Unrecognized field 'useAuthorizationClaim'",
                 idp.getUseAuthorizationClaim() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled());
 
         // If the OIDC internal authorization feature flag is disabled, then authorizationClaim must
         // be specified. Otherwise, authorizationClaim must be specified if useAuthorizationClaim is
         // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
-            idp.getUseAuthorizationClaim()) {
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled() || idp.getUseAuthorizationClaim()) {
             uassertNonEmptyString(
                 idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
         }
@@ -505,14 +502,12 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
         // supportsHumanFlows cannot be set to false if the feature flag is disabled.
         uassert(ErrorCodes::BadValue,
                 "Unrecognized field 'supportsHumanFlows'",
-                idp.getSupportsHumanFlows() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+                idp.getSupportsHumanFlows() || gFeatureFlagOIDCInternalAuthorization.isEnabled());
 
         // If the OIDC internal authorization feature flag is disabled, then clientId must
         // be specified. Otherwise, clientId must be specified if supportsHumanFlows is
         // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
-            idp.getSupportsHumanFlows()) {
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled() || idp.getSupportsHumanFlows()) {
             uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
         }
 
