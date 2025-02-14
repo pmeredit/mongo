@@ -66,6 +66,9 @@ private:
      * This is protected by the GeneratedDataSourceOperator's mutex.
      */
     std::vector<StreamMsgUnion> _messages;
+
+    // A message around 1MB in size.
+    StreamDataMsg _oneMBMessage;
 };
 
 }  // namespace streams

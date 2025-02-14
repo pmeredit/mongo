@@ -234,6 +234,12 @@ const FeatureFlagDefinition FeatureFlags::kEnableExternalFunctionOperator{
     mongo::Value(false),
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kEnableInMemoryConstantMessage{
+    "enableInMemoryConstantMessage",
+    "If true, the InMemorySourceOperator will just repeatedly send a 1MB message.",
+    mongo::Value(false),
+    {}};
+
 const FeatureFlagDefinition FeatureFlags::kExternalFunctionRateLimitPerSecond{
     "externalFunctionRateLimitPerSecond",
     "Specifies rate limit to be used by $externalFunction",

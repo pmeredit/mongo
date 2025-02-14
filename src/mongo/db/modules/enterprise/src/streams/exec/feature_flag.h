@@ -74,6 +74,7 @@ public:
     static const FeatureFlagDefinition kExternalFunctionRateLimitPerSecond;
     static const FeatureFlagDefinition kKafkaEmitMessageMaxBytes;
     static const FeatureFlagDefinition kMaxMergeParallelism;
+    static const FeatureFlagDefinition kEnableInMemoryConstantMessage;
 };
 
 }  // namespace streams

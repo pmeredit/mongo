@@ -4,15 +4,53 @@
 
 #include "streams/exec/in_memory_source_operator.h"
 
+#include "mongo/bson/json.h"
+#include "mongo/bson/oid.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/context.h"
-
-namespace streams {
+#include "streams/exec/message.h"
 
 using namespace mongo;
 
+namespace streams {
+
+namespace {
+
+StreamDataMsg generateFixedDataMsg(int docSize, int messageSize) {
+    auto randomDoc = [&](int i) {
+        static const char characters[] =
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+        auto seed = std::random_device{}();
+        std::mt19937 gen;
+        gen.seed(seed);
+        std::string tmp;
+        tmp.reserve(docSize);
+        for (int i = 0; i < docSize; ++i) {
+            tmp += characters[gen() % (sizeof(characters) - 1)];
+        }
+        return BSON("i" << i << "str" << tmp);
+    };
+    std::vector<StreamDocument> docs;
+    int curSize = 0;
+    int idx = 0;
+    while (curSize < messageSize) {
+        docs.push_back(StreamDocument(Document(randomDoc(idx++))));
+        curSize += tojson(docs.back().doc.toBson(), mongo::ExtendedRelaxedV2_0_0).size();
+    }
+    StreamDataMsg msg;
+    msg.docs = std::move(docs);
+    msg.creationTimer.emplace();
+    return msg;
+}
+
+}  // namespace
+
 InMemorySourceOperator::InMemorySourceOperator(Context* context, Options options)
-    : GeneratedDataSourceOperator(context, /* numOutputs */ 1), _options(std::move(options)) {}
+    : GeneratedDataSourceOperator(context, /* numOutputs */ 1), _options(std::move(options)) {
+    _oneMBMessage = generateFixedDataMsg(1.5 * 1024, 900 * 1024);
+}
 
 InMemorySourceOperator::~InMemorySourceOperator() {
     // Report 0 memory usage to SourceBufferManager.
@@ -64,6 +102,13 @@ void InMemorySourceOperator::addControlMsgInner(StreamControlMsg controlMsg) {
 }
 
 std::vector<StreamMsgUnion> InMemorySourceOperator::getMessages(WithLock) {
+    auto useConstantMessage =
+        _context->featureFlags->getFeatureFlagValue(FeatureFlags::kEnableInMemoryConstantMessage)
+            .getBool();
+    if (useConstantMessage && *useConstantMessage) {
+        return {StreamMsgUnion{.dataMsg = _oneMBMessage}};
+    }
+
     std::vector<StreamMsgUnion> msgs;
     std::swap(_messages, msgs);
     _stats.memoryUsageBytes = 0;

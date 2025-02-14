@@ -55,7 +55,7 @@ export class StreamProcessor {
     }
 
     // Start the streamProcessor.
-    start(options, assertWorked = true, pipelineVersion = undefined) {
+    start(options, assertWorked = true, pipelineVersion = undefined, ephemeral) {
         this._startOptions = options;
         this._pipelineVersion = pipelineVersion;
         if (this._startOptions === undefined) {
@@ -63,6 +63,9 @@ export class StreamProcessor {
         }
         if (this._startOptions.featureFlags === undefined) {
             this._startOptions.featureFlags = {};
+        }
+        if (ephemeral) {
+            this._startOptions.ephemeral = ephemeral;
         }
         this._startOptions.featureFlags.enableSessionWindow = true;
         const cmd = this.makeStartCmd(this._startOptions);
