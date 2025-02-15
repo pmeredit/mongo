@@ -52,6 +52,7 @@ void logCreateUpdateRole(Client* client,
          activityId,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
              if (activityId == ocsf::kAccountChangeActivityCreate) {
                  unmapped.append(ocsf::kATypeFieldName,
@@ -106,7 +107,7 @@ void logGrantRevokeRolesToFromUser(Client* client,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildUser(builder, username);
-
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              {
                  BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
                  unmapped.append(ocsf::kATypeFieldName, Action::kRolesToFromUser);
@@ -134,6 +135,7 @@ void logGrantRevokeRolesToFromRole(Client* client,
          Action::kActivity,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              {
                  BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
                  unmapped.append(ocsf::kATypeFieldName, Action::kRolesToFromRole);
@@ -162,6 +164,7 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
          Action::kActivity,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              {
                  BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
                  unmapped.append(ocsf::kATypeFieldName, Action::kPrivilegesToFromRole);
@@ -200,6 +203,7 @@ void AuditOCSF::logDropRole(Client* client, const RoleName& role) const {
          ocsf::kAccountChangeActivityDelete,
          audit::ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
              unmapped.append(ocsf::kATypeFieldName,
                              AuditEventType_serializer(AuditEventType::kDropRole));
@@ -216,6 +220,7 @@ void AuditOCSF::logDropAllRolesFromDatabase(Client* client, const DatabaseName& 
          ocsf::kAccountChangeActivityDelete,
          audit::ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
              unmapped.append(ocsf::kATypeFieldName,
                              AuditEventType_serializer(AuditEventType::kDropAllRolesFromDatabase));

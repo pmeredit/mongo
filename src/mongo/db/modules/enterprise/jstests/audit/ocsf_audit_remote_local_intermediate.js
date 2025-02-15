@@ -1,5 +1,5 @@
-// Tests `local`, `remote` and `intermediates` fields are present in audit logs when connected with
-// or without a load balancer.
+// Tests `local`, `remote` and `intermediates` fields are present in OCSF audit logs when connected
+// with or without a load balancer.
 
 import {ProxyProtocolServer} from "jstests/sharding/libs/proxy_protocol.js";
 import {
@@ -7,20 +7,20 @@ import {
     StandaloneFixture
 } from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 import {
-    kSchemaMongo,
+    kSchemaOCSF,
     runTest
 } from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_remote_local_intermediate_lib.js";
 
 {
     jsTest.log("Testing standalone");
     const fixture = new StandaloneFixture();
-    runTest(fixture, kSchemaMongo);
+    runTest(fixture, kSchemaOCSF);
 }
 
 {
     jsTest.log("Testing sharded cluster");
     const fixture = new ShardingFixture();
-    runTest(fixture, kSchemaMongo, true /* isSharded */);
+    runTest(fixture, kSchemaOCSF, true /* isSharded */);
 }
 
 // TODO: SERVER-100859: remove
@@ -38,7 +38,7 @@ if (_isWindows()) {
     proxy_server.start();
 
     const fixture = new ShardingFixture();
-    runTest(fixture, kSchemaMongo, true /* isSharded */, proxy_server);
+    runTest(fixture, kSchemaOCSF, true /* isSharded */, proxy_server);
 
     proxy_server.stop();
 }
@@ -52,7 +52,7 @@ if (_isWindows()) {
     proxy_server.start();
 
     const fixture = new ShardingFixture();
-    runTest(fixture, kSchemaMongo, true /* isSharded */, proxy_server);
+    runTest(fixture, kSchemaOCSF, true /* isSharded */, proxy_server);
 
     proxy_server.stop();
 }

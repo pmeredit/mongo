@@ -118,14 +118,18 @@ void AuditOCSF::AuditEventOCSF::_init(const TryLogEventParamsOCSF& tryLogParams)
     AuditInterface::AuditEvent::_obj = builder.obj<BSONObj::LargeSizeTrait>();
 }
 
-void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* builder) {
+void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client,
+                                              BSONObjBuilder* builder,
+                                              bool shouldLogDst) {
     invariant(client);
 
     if (auto attrs = rpc::AuditClientAttrs::get(client)) {
         {
             // Serialize the dst_endpoint field
-            BSONObjBuilder dstBuilder = builder->subobjStart(kDestinationEndpointField);
-            serializeHostAndPortToBSONOCSF(attrs->getLocal(), &dstBuilder);
+            if (shouldLogDst) {
+                BSONObjBuilder dstBuilder = builder->subobjStart(kDestinationEndpointField);
+                serializeHostAndPortToBSONOCSF(attrs->getLocal(), &dstBuilder);
+            }
         }
 
         {

@@ -274,7 +274,12 @@ public:
 
         StringData getTimestampFieldName() const override;
 
-        static void _buildNetwork(Client* client, BSONObjBuilder* builder);
+        // Builds the remote client IP addr into "src_endpoint" and the local IP addr
+        // into "dst_endpoint". Some classes only allow "src_endpoint" - those callsites
+        // override shouldLogDst to "false".
+        static void _buildNetwork(Client* client,
+                                  BSONObjBuilder* builder,
+                                  bool shouldLogDst = true);
 
         // Build a User object into a "user" field based on an on-disk document.
         static void _buildUser(BSONObjBuilder* builder,

@@ -437,6 +437,92 @@ export class AuditSpoolerOCSF extends AuditSpooler {
     }
 
     /**
+     * Poll the audit logfile for a matching entry
+     * beginning with the current line.
+     * This method returns true if an entry in the audit file exists after "now" which:
+     * 1. Represents an entity management class, with an `entity` subobject
+     * 2. Contains the matching atype in its `entity` subobject.
+     * 3. Contains all of the fields in `entity` in its `entity` subobject (relaxed match).
+     */
+    assertEntityEntryRelaxed(atype, entity) {
+        let line;
+        assert.soon(() => {
+            const log = this.getAllLines().slice(this._auditLine);
+            for (let idx in log) {
+                const entry = log[idx];
+                try {
+                    line = JSON.parse(entry);
+                    jsTestLog('Audit line: ' + tojson(line));
+                } catch (e) {
+                    continue;
+                }
+
+                // This audit log entry does not belong to "Entity".
+                if (!line.entity) {
+                    continue;
+                }
+
+                const lineEntity = line.entity;
+                if (lineEntity.type !== atype) {
+                    continue;
+                }
+
+                if (this.deepPartialEquals(lineEntity, entity)) {
+                    this._auditLine += Number(idx) + 1;
+                    return true;
+                }
+            }
+            return false;
+        }, () => this._makeErrorMessage());
+
+        // Success if we got here, return the matched record.
+        return line;
+    }
+
+    /**
+     * Poll the audit logfile for a matching entry
+     * beginning with the current line.
+     * This method returns true if an entry in the audit file exists after "now" which:
+     * 1. Contains the `unmapped` subobject.
+     * 2. Contains the matching atype in its `unmapped` subobject.
+     * 3. Contains all of the fields in `unmapped` in its `unmapped` subobject (relaxed match).
+     */
+    assertUnmappedEntryRelaxed(atype, unmapped) {
+        let line;
+        assert.soon(() => {
+            const log = this.getAllLines().slice(this._auditLine);
+            for (let idx in log) {
+                const entry = log[idx];
+                try {
+                    line = JSON.parse(entry);
+                    jsTestLog('Audit line: ' + tojson(line));
+                } catch (e) {
+                    continue;
+                }
+
+                // This audit log entry does not belong to "Entity".
+                if (!line.unmapped) {
+                    continue;
+                }
+
+                const lineUnmapped = line.unmapped;
+                if (lineUnmapped.atype !== atype) {
+                    continue;
+                }
+
+                if (unmapped && this.deepPartialEquals(lineUnmapped, unmapped)) {
+                    this._auditLine += Number(idx) + 1;
+                    return true;
+                }
+            }
+            return false;
+        }, () => this._makeErrorMessage());
+
+        // Success if we got here, return the matched record.
+        return line;
+    }
+
+    /**
      *  This function is called by the functions above.
      *
      *  It takes a list of log lines, an audit type, and a search parameter and searches the log

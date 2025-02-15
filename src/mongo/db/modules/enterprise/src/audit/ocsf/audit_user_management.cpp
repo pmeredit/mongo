@@ -40,6 +40,7 @@ void logCreateUpdateUser(Client* client,
          activityType,
          audit::ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              if (roles) {
                  AuditOCSF::AuditEventOCSF::_buildUser(builder, username, *roles);
              } else {
@@ -109,7 +110,7 @@ void AuditOCSF::logDirectAuthOperation(Client* client,
          ocsf::kSeverityCritical,
          [&](BSONObjBuilder* builder) {
              AuditEventOCSF::_buildUser(builder, doc, nss.tenantId());
-             AuditEventOCSF::_buildNetwork(client, builder);
+             AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
              unmapped.append(ocsf::kATypeFieldName,
                              AuditEventType_serializer(AuditEventType::kDirectAuthMutation));
@@ -153,7 +154,10 @@ void AuditOCSF::logDropUser(Client* client, const UserName& username) const {
          ocsf::OCSFEventClass::kAccountChange,
          ocsf::kAccountChangeActivityDelete,
          ocsf::kSeverityInformational,
-         [&](BSONObjBuilder* builder) { AuditOCSF::AuditEventOCSF::_buildUser(builder, username); },
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
+             AuditOCSF::AuditEventOCSF::_buildUser(builder, username);
+         },
          ErrorCodes::OK});
 }
 
@@ -165,6 +169,7 @@ void AuditOCSF::logDropAllUsersFromDatabase(Client* client, const DatabaseName& 
          ocsf::kAccountChangeActivityDelete,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
              unmapped.append(ocsf::kATypeFieldName,
                              AuditEventType_serializer(AuditEventType::kDropAllUsersFromDatabase));

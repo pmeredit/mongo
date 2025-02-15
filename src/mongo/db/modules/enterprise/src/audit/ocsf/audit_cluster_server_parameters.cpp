@@ -53,6 +53,7 @@ void AuditOCSF::logGetClusterParameter(
          ocsf::kAPIActivityRead,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
              visit(OverloadedVisitor{
                        [&](const std::string& strParameterValue) {
