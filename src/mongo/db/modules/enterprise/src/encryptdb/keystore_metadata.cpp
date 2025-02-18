@@ -17,15 +17,15 @@
 namespace mongo {
 namespace {
 
-using namespace fmt::literals;
-
 Status makeError(StringData action,
                  const boost::filesystem::path& path,
                  ErrorCodes::Error err = ErrorCodes::InternalError) {
     auto ec = lastSystemError();
     return Status(err,
-                  "Failed to {} keystore metadata file ({}): {}"_format(
-                      action, path.string(), errorMessage(ec)));
+                  fmt::format("Failed to {} keystore metadata file ({}): {}",
+                              action,
+                              path.string(),
+                              errorMessage(ec)));
 }
 
 }  // namespace

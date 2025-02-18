@@ -22,7 +22,6 @@
 namespace mongo::aggregate_expression_intender {
 
 
-using namespace fmt::literals;
 using namespace std::string_literals;
 
 std::string toString(const decltype(Subtree::output)& outputType) {

@@ -51,8 +51,6 @@ void LookUpOperator::registerMetrics(MetricManager* metricManager) {
 void LookUpOperator::doOnDataMsg(int32_t inputIdx,
                                  StreamDataMsg dataMsg,
                                  boost::optional<StreamControlMsg> controlMsg) {
-    using namespace fmt::literals;
-
     int32_t curDataMsgByteSize{0};
     auto newStreamDataMsg = [&]() {
         StreamDataMsg outputMsg;

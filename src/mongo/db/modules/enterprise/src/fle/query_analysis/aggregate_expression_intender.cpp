@@ -23,7 +23,6 @@ namespace mongo::aggregate_expression_intender {
 
 namespace {
 
-using namespace fmt::literals;
 using namespace std::string_literals;
 
 
