@@ -215,7 +215,7 @@ const FeatureFlagDefinition FeatureFlags::kTimeseriesEmitDynamicContentRouting{
 const FeatureFlagDefinition FeatureFlags::kProcessingTimeWindows{
     "processingTimeWindows",
     "Allows support for the processing time windows feature",
-    mongo::Value(false)};
+    mongo::Value(true)};
 
 const FeatureFlagDefinition FeatureFlags::kOldStreamMeta{
     "oldStreamMeta",

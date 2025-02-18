@@ -242,6 +242,13 @@ $hoppingWindow: {
 
 TEST_F(ProcessingTimeWindowsTest, FeatureFlagDisabled) {
     setupConnections();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kProcessingTimeWindows.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
     Planner planner(_context.get(), Planner::Options());
     std::string hoppingWindowStr = R"(
 {

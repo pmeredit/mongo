@@ -47,6 +47,8 @@ function testRunner({
     modifyPipelineUseEarliestStartTimestamp,
     removeCheckpointsBeforeModify,
     sourceType = "changestream",
+    featureFlags = {},
+    fieldsToSkip = ["_id"]
 }) {
     const waitTimeMs = 30000;
     // Run the stream processor with the originalPipeline.
@@ -63,7 +65,9 @@ function testRunner({
                               useTimeField,
                               undefined,
                               undefined,
-                              oplogSizeMB);
+                              oplogSizeMB,
+                              true,
+                              featureFlags);
 
     let earliestStartTimestamp;
     if (modifyPipelineUseEarliestStartTimestamp) {
@@ -84,7 +88,7 @@ function testRunner({
     assert(resultsEq(expectedDlqBeforeModify,
                      test.dlqColl.aggregate([{$replaceRoot: {newRoot: "$doc"}}]).toArray(),
                      true /* verbose */,
-                     ["_id"]));
+                     fieldsToSkip));
     // Stop the stream processor, writing a final checkpoint.
     test.stop();
 
@@ -211,13 +215,13 @@ function testRunner({
     if (modifiedOutputCollection) {
         output.push(...outputBeforeModify);
     }
-    assert(resultsEq(expectedOutput, output, true /* verbose */, ["_id"] /* fieldsToSkip */));
+    assert(resultsEq(expectedOutput, output, true /* verbose */, fieldsToSkip));
     // Validate we see the expected results in the DLQ collection.
     assert.soon(() => {
         return resultsEq(expectedDlqAfterModify,
                          test.dlqColl.aggregate([{$replaceRoot: {newRoot: "$doc"}}]).toArray(),
                          true /* verbose */,
-                         ["_id"] /* fieldsToSkip */);
+                         fieldsToSkip);
     }, "waiting for expected DLQ output", waitTimeMs);
 
     // Validate the summary stats contain input, output, and DLQ counts for all
@@ -235,7 +239,6 @@ function testRunner({
         // the value to 0 is sufficient.
         expectedInputMessages = 0;
     }
-
     assert.eq(expectedInputMessages, stats["inputMessageCount"]);
     assert.eq(expectedDlqAfterModify.length, stats["dlqMessageCount"]);
     let expectedOutputLength = expectedOutput.length;
@@ -820,6 +823,111 @@ const testCases = [
             };
         },
         expectedOutput: [],
+    },
+    {
+        inputForOriginalPipeline: [{a: 1}],
+        originalPipeline: [{
+            $tumblingWindow: {
+                boundary: "processingTime",
+                interval: {unit: "second", size: NumberInt(1)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $tumblingWindow: {
+                boundary: "processingTime",
+                interval: {unit: "second", size: NumberInt(2)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        resumeFromCheckpoint: false,
+        featureFlags: {processingTimeWindows: true},
+        validateShouldSucceed: true,
+        expectedOutput: [{count: 1}],
+        expectedTotalInputMessages: 2,
+        fieldsToSkip: ["_stream_meta", "_id"]
+    },
+    {
+        inputForOriginalPipeline: [{a: 1}],
+        originalPipeline: [{
+            $hoppingWindow: {
+                boundary: "processingTime",
+                interval: {unit: "second", size: NumberInt(2)},
+                hopSize: {unit: "second", size: NumberInt(2)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $hoppingWindow: {
+                boundary: "processingTime",
+                interval: {unit: "second", size: NumberInt(2)},
+                hopSize: {unit: "second", size: NumberInt(2)},
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        resumeFromCheckpoint: false,
+        featureFlags: {processingTimeWindows: true},
+        validateShouldSucceed: true,
+        expectedTotalInputMessages: 2,
+        expectedOutput: [{count: 1}],
+        fieldsToSkip: ["_stream_meta", "_id"]
+    },
+    {
+        inputForOriginalPipeline: [{a: 1}],
+        originalPipeline: [{
+            $sessionWindow: {
+                boundary: "processingTime",
+                gap: {unit: "second", size: NumberInt(1)},
+                partitionBy: "$a",
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        modifiedPipeline: [{
+            $sessionWindow: {
+                boundary: "processingTime",
+                gap: {unit: "second", size: NumberInt(1)},
+                partitionBy: "$a",
+                pipeline: [{$group: {_id: null, count: {$count: {}}}}],
+            }
+        }],
+        resumeFromCheckpoint: false,
+        featureFlags: {processingTimeWindows: true},
+        validateShouldSucceed: true,
+        expectedTotalInputMessages: 2,
+        expectedOutput: [{count: 1}],
+        fieldsToSkip: ["_stream_meta", "_id"]
+    },
+    {
+        inputForOriginalPipeline: [{a: 1, b: 1}],
+        inputAfterStopBeforeModify: [{a: 2}],
+        originalPipeline: [{
+            $tumblingWindow: {
+                boundary: "processingTime",
+                interval: {unit: "second", size: NumberInt(10)},
+                pipeline: [{$sort: {_id: 1}}],
+            }
+        }],
+        modifiedPipeline: [
+            {
+                $tumblingWindow: {
+                    boundary: "processingTime",
+                    interval: {unit: "second", size: NumberInt(10)},
+                    pipeline: [{$group: {_id: "$a", push: {$push: "$$ROOT"}}}]
+                }
+            },
+            {$unwind: "$push"},
+            {$project: {_id: 0}}
+        ],
+        resumeFromCheckpoint: true,
+        featureFlags: {processingTimeWindows: true},
+        validateShouldSucceed: true,
+        expectedOutput: [
+            {push: {"fullDocument": {"a": 1, "b": 1}, "operationType": "insert"}},
+            {push: {"fullDocument": {"a": 2}, "operationType": "insert"}}
+        ],
+        expectedTotalInputMessages: 3,
+        fieldsToSkip:
+            ["_stream_meta", "_id", "clusterTime", "wallTime", "ns", "documentKey", "_ts"]
     },
 ];
 
