@@ -222,15 +222,15 @@ void AuditBenchmarkFixture<T>::bmSetImpersonationClient(benchmark::State& state)
 
     UserName userName(metadataValues.driver, "db1");
     std::vector roleNames = {RoleName("sd", "sd")};
-    auto opCtx = client->getOperationContext();
+    auto opCtx = client->makeOperationContext();
 
     warmup([&]() {
-        rpc::AuditUserAttrs::set(opCtx, userName, roleNames, true /* isImpersonating */);
+        rpc::AuditUserAttrs::set(opCtx.get(), userName, roleNames, true /* isImpersonating */);
     });
 
     // Benchmark
     for (auto _ : state) {
-        rpc::AuditUserAttrs::set(opCtx, userName, roleNames, true /* isImpersonating */);
+        rpc::AuditUserAttrs::set(opCtx.get(), userName, roleNames, true /* isImpersonating */);
     }
 
     setBMLabel(state);
