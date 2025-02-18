@@ -356,7 +356,7 @@ public:
     }
 
     Milliseconds getInterval(CheckpointCoordinator* coordinator) {
-        return coordinator->_interval;
+        return coordinator->_interval.load();
     }
 
     void setLastCheckpointTime(

@@ -169,7 +169,6 @@ public:
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        waitForRunOnceFinish(lk, info->executor.get());
         info->context->checkpointStorage->_lastCheckpointSizeBytes = bytes;
     }
 
@@ -179,7 +178,6 @@ public:
             stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
             auto info = getStreamProcessorInfo(lk, details);
             stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-            waitForRunOnceFinish(lk, info->executor.get());
             if (info->context->checkpointStorage->_lastCheckpointSizeBytes > 0) {
                 return;
             }
@@ -194,7 +192,6 @@ public:
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        waitForRunOnceFinish(lk, info->executor.get());
         info->checkpointCoordinator->_lastCheckpointTimestamp = time;
     }
 
@@ -286,34 +283,16 @@ public:
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto processorInfo = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
-        waitForRunOnceFinish(lk, processorInfo->executor.get());
         processorInfo->executor->_tenantFeatureFlagsUpdate = std::move(featureFlags);
         processorInfo->executor->updateContextFeatureFlags();
-    }
-
-    // should be called only by test code holding the executor lock
-    // returns true when the runOnce was ongoing and finished.
-    bool waitForRunOnceFinish(WithLock lk, Executor* executor) {
-        auto runOnceCount = executor->_runOnceCounter->value();
-        // now, wait for the executor to finish if it's in the middle of a runOnce cycle.
-        // this is to workaround data races if the test thread is calling getCheckpointInterval
-        // and the executor thread is in runOnce updating checkpointCoordinator->_interval.
-        auto maxWait = Date_t::now() + Seconds{5};
-        while (Date_t::now() < maxWait) {
-            if (executor->_runOnceCounter->value() > runOnceCount) {
-                // A run once just finished.
-                return true;
-            }
-        }
-        return false;
     }
 
     std::chrono::milliseconds getCheckpointInterval(ProcessorDetails details) {
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto processorInfo = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
-        waitForRunOnceFinish(lk, processorInfo->executor.get());
-        return std::chrono::milliseconds(processorInfo->checkpointCoordinator->_interval.count());
+        return std::chrono::milliseconds(
+            processorInfo->checkpointCoordinator->_interval.load().count());
     }
 
     // Used to act like the streams Agent and flush committed checkpoints.

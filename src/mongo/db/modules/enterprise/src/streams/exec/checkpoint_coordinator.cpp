@@ -29,7 +29,7 @@ CheckpointCoordinator::CheckpointCoordinator(Options options)
 boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointControlMsgIfReady(
     const CheckpointRequest& req) {
     if (!_options.fixedInterval) {
-        _interval = getDynamicInterval(req.lastCheckpointSizeBytes);
+        _interval.store(getDynamicInterval(req.lastCheckpointSizeBytes));
     }
 
     auto createCheckpoint = evaluateIfCheckpointShouldBeWritten(req);
@@ -117,7 +117,7 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
 
     // Else, if sufficient time has elapsed, then take a checkpoint.
     dassert(_lastCheckpointTimestamp <= now);
-    if (now - _lastCheckpointTimestamp <= _interval.toSystemDuration()) {
+    if (now - _lastCheckpointTimestamp <= _interval.load().toSystemDuration()) {
         return CreateCheckpoint::kNotNeeded;
     }
     return CreateCheckpoint::kIfRoom;
