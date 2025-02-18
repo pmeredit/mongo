@@ -1986,7 +1986,7 @@ function kafkaEmitMessageSize(inputSize, messageMaxBytes, failWithMessageSizeToo
 
     sourceColl1.insert({b: "c".repeat(inputSize - 1)});  // -1 to account for key size
     if (failWithMessageSizeTooLargeError) {
-        const extraDocuments = 0
+        const extraDocuments = 0;
         assert.soon(() => {
             if (extraDocuments < 3) {
                 // insert extra documents to ensure that poll() is being called which calls the

@@ -206,7 +206,7 @@ function setup(fixture, schema, isSharded, proxy_server = null) {
             intermediates: proxy_server ? [expectedAddresses.intermediates[1]] : []
         },
         mongodExpectedAddress: {...expectedAddresses}
-    }
+    };
 
     setupAuth(admin);
 
