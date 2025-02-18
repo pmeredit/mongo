@@ -17,6 +17,7 @@
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
 #include <mutex>
+#include <ostream>
 #include <variant>
 
 #include "mongo/base/error_codes.h"
@@ -417,6 +418,10 @@ void ChangeStreamSourceOperator::fetchLoop() {
     auto status = runMongocxxNoThrow(
         std::move(fetchFunc), _context, ErrorCodes::Error{8681500}, _errorPrefix, *_uri);
 
+    if (status.isOK()) {
+        return;
+    }
+
     // Translate a few other user errors specific to change stream $source.
     auto translateCode = [&](ErrorCodes::Error newCode, BSONObj extraDetails = {}) -> SPStatus {
         std::string newReason = status.toString();
@@ -500,14 +505,19 @@ void ChangeStreamSourceOperator::fetchLoop() {
             status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
             break;
         default:
+            if (!_options.pipeline.empty() && !_context->restoreCheckpointId) {
+                // if the user sets a $source.config.pipeline, and this is a fresh start of a
+                // processor, treat most errors as StreamProcessorInvalidOptions
+                status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
+                break;
+            }
+
             break;
     }
 
-    // If the status returned is not OK, set the error in connectionStatus.
-    if (!status.isOK()) {
-        stdx::unique_lock lock(_mutex);
-        _connectionStatus = {ConnectionStatus::kError, std::move(status)};
-    }
+    // Set the error in connectionStatus.
+    stdx::unique_lock lock(_mutex);
+    _connectionStatus = {ConnectionStatus::kError, std::move(status)};
 }
 
 ConnectionStatus ChangeStreamSourceOperator::doGetConnectionStatus() {
