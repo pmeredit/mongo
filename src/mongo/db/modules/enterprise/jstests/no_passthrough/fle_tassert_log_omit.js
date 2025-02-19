@@ -64,10 +64,11 @@ function runTest(conn, restartFn) {
 
         // Log lines should not contain the command contents. There may be multiple ScopedDebugInfo
         // log lines, and each one can contain multiple entries depending on the available printers.
-        assert(diagnostics.every(line => line.includes("curOpDiagnostics: omitted") &&
-                                     !line.includes("opDescription")),
-               "Found a log line containing command diagnostics, when none were expected " +
-                   tojson(diagnostics));
+        assert(
+            diagnostics.every(line => line.includes("curOpDiagnostics: omitted") &&
+                                  !line.includes("opDescription") && !line.includes("winningPlan")),
+            "Found a log line containing command diagnostics, when none were expected " +
+                tojson(diagnostics));
 
         // Each test case restarts the required node to clear the previous logs.
         restartFn();
