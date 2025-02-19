@@ -216,7 +216,7 @@ Status doImportCollection(OperationContext* opCtx,
 
     // Create Collection object
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    auto durableCatalog = storageEngine->getDurableCatalog();
+    auto durableCatalog = storageEngine->getCatalog();
     auto opts = ImportOptions(uuidOption);
     opts.panicOnCorruptWtMetadata = panicOnCorruptWtMetadata;
     opts.repair = repair;
@@ -286,7 +286,7 @@ Status doImportCollection(OperationContext* opCtx,
 
     // Fetch the catalog entry for the imported collection and log an oplog entry.
     auto importedCatalogEntry =
-        storageEngine->getDurableCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
+        storageEngine->getCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
     opCtx->getServiceContext()->getOpObserver()->onImportCollection(opCtx,
                                                                     importUUID,
                                                                     nss,
