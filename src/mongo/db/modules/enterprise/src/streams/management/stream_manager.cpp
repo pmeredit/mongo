@@ -1,6 +1,7 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "mongo/db/commands/test_commands_enabled.h"
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -64,6 +65,14 @@ namespace streams {
 namespace {
 
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
+
+static constexpr auto kEnvXgenRegion = "XGEN_REGION";
+
+// Returns true if running in Helix, i.e. the real service environment.
+bool isRunningInHelix() {
+    auto region = getenv(kEnvXgenRegion);
+    return bool(region);
+}
 
 std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
                                            const StartOptions& startOptions,
@@ -920,7 +929,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         if (connection.getType() == mongo::ConnectionTypeEnum::AWSIAMLambda) {
             if (_options.region == "") {
                 // This is an environment variable set by Helix
-                auto cRegion = getenv("XGEN_REGION");
+                auto cRegion = getenv(kEnvXgenRegion);
                 if (!getTestCommandsEnabled()) {
                     tassert(9929499, "Environment Variable XGEN_REGION is undefined", cRegion);
                     _options.region = std::string(cRegion);
@@ -2045,7 +2054,7 @@ void StreamManager::stopAllStreamProcessors() {
     }
 
     LOGV2_INFO(10055200, "Stopped all stream processors");
-    {
+    if (isRunningInHelix() || mongo::getTestCommandsEnabled()) {
         // Wait for a list request to come through. During k8s shutdown, this allows the Agent to
         // use list and realize all processors have shutdown, before the mongostream process dies.
         // This helps avoid Agent waiting on a request timeout from a shutdown mongostream.
