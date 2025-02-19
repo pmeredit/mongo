@@ -326,6 +326,7 @@ std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri) {
 boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
     const mongocxx::operation_exception& ex) {
     using namespace mongo::write_ops;
+    using namespace fmt::literals;
     const auto& rawServerError = ex.raw_server_error();
     if (!rawServerError || rawServerError->find(kWriteErrorsFieldName) == rawServerError->end()) {
         return boost::none;
@@ -365,12 +366,10 @@ boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
     for (auto& writeErrorElem : writeErrorsVec) {
         writeErrors.insert(WriteError::parse(writeErrorElem.embeddedObject()));
     }
-    logAndUassert(
-        ErrorCodes::InternalError,
-        fmt::format("bulk_write_exception::raw_server_error() contains duplicate entries in the "
-                    "'{}' field",
-                    kWriteErrorsFieldName),
-        writeErrors.size() == writeErrorsVec.size());
+    logAndUassert(ErrorCodes::InternalError,
+                  "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                  "'{}' field"_format(kWriteErrorsFieldName),
+                  writeErrors.size() == writeErrorsVec.size());
 
     // Since we apply the writes in ordered manner there should only be 1 failed write and all the
     // writes before it should have succeeded.
@@ -387,13 +386,10 @@ boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
         for (auto& upsertedItem : upsertedVec) {
             upsertedIndexes.insert(upsertedItem[Upserted::kIndexFieldName].Int());
         }
-        logAndUassert(
-            ErrorCodes::InternalError,
-            fmt::format(
-                "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-                "'{}' field",
-                UpdateCommandReply::kUpsertedFieldName),
-            upsertedIndexes.size() == upsertedVec.size());
+        logAndUassert(ErrorCodes::InternalError,
+                      "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                      "'{}' field"_format(UpdateCommandReply::kUpsertedFieldName),
+                      upsertedIndexes.size() == upsertedVec.size());
         logAndUassert(ErrorCodes::InternalError,
                       str::stream()
                           << "unexpected number of upserted indexes (" << upsertedIndexes.size()

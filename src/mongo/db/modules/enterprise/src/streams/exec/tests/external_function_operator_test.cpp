@@ -166,7 +166,7 @@ public:
         uassert(ErrorCodes::OperationFailed,
                 fmt::format("Unexpected request submitted to mock lambda client {} {} {}",
                             request.GetFunctionName(),
-                            fmt::underlying(request.GetInvocationType()),
+                            request.GetInvocationType(),
                             body),
                 it != _expectations.end());
         auto outcome = std::move(it->second);

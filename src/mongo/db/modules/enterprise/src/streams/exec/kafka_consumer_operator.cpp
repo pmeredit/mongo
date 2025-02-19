@@ -545,10 +545,9 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
         _operatorId,
-        fmt::format("partition count in the checkpoint ({}) "
-                    "does not match the partition count of Kafka topics ({})",
-                    partitions.size(),
-                    expectedNumTopicPartitions),
+        str::stream() << "partition count in the checkpoint (" << partitions.size() << ") "
+                      << "does not match the partition count of Kafka topics ("
+                      << expectedNumTopicPartitions << ")",
         partitions.size() == expectedNumTopicPartitions);
 
     // Use the consumer group ID from the checkpoint. The consumer group ID should never change
@@ -594,8 +593,8 @@ void KafkaConsumerOperator::initFromCheckpoint() {
 
         CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                    _operatorId,
-                                   fmt::format("state has unexpected watermark: {}",
-                                               static_cast<bool>(partitionState.getWatermark())),
+                                   str::stream() << "state has unexpected watermark: "
+                                                 << bool(partitionState.getWatermark()),
                                    bool(partitionState.getWatermark()) == _options.useWatermarks ||
                                        _context->isModifiedProcessor)
 
@@ -604,13 +603,11 @@ void KafkaConsumerOperator::initFromCheckpoint() {
             invariant(_watermarkCombiner);
 
             boost::optional<int32_t> inputIdx = getPartitionIdx(chkptTopic, chkptPartitionId);
-            CHECKPOINT_RECOVERY_ASSERT(
-                *_context->restoreCheckpointId,
-                _operatorId,
-                fmt::format("Could not get inputIdx for topic/partition {}/{}",
-                            chkptTopic,
-                            chkptPartitionId),
-                inputIdx);
+            CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                       _operatorId,
+                                       str::stream() << "Could not get inputIdx for topic/partition"
+                                                     << chkptTopic << "/" << chkptPartitionId,
+                                       inputIdx);
 
             if (partitionState.getWatermark()) {
                 if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
@@ -798,7 +795,7 @@ void KafkaConsumerOperator::init() {
         auto errorCode = _groupConsumer->subscribe(_options.topicNames);
         uassert(8674606,
                 fmt::format("Subscribing to Kafka failed with {}: {}",
-                            fmt::underlying(errorCode),
+                            errorCode,
                             RdKafka::err2str(errorCode)),
                 errorCode == RdKafka::ERR_NO_ERROR);
 

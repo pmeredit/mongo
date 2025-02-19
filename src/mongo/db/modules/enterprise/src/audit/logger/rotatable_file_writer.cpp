@@ -20,6 +20,8 @@ namespace logger {
 
 namespace {
 
+using namespace fmt::literals;
+
 /**
  * Renames file "oldName" to "newName".
  *
@@ -204,17 +206,15 @@ Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
 
             if (!targetExists.isOK()) {
                 return Status(ErrorCodes::FileRenameFailed, targetExists.getStatus().reason())
-                    .withContext(fmt::format("Cannot verify whether destination already exists: {}",
-                                             renameTarget));
+                    .withContext("Cannot verify whether destination already exists: {}"_format(
+                        renameTarget));
             }
 
             if (targetExists.getValue() || MONGO_unlikely(auditLogRotateFileExists.shouldFail())) {
                 if (onMinorError)
                     onMinorError({ErrorCodes::FileRenameFailed,
-                                  fmt::format("Target already exists during log rotation. "
-                                              "target={}, file={}",
-                                              renameTarget,
-                                              _writer->_fileName)});
+                                  "Target already exists during log rotation. "
+                                  "target={}, file={}"_format(renameTarget, _writer->_fileName)});
                 return Status::OK();
             }
 
@@ -225,17 +225,12 @@ Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
                     if (onMinorError)
                         onMinorError(
                             {ErrorCodes::FileRenameFailed,
-                             fmt::format(
-                                 "Source file was missing during log rotation. Creating a new "
-                                 "one. "
-                                 "file={}",
-                                 _writer->_fileName)});
+                             "Source file was missing during log rotation. Creating a new one. "
+                             "file={}"_format(_writer->_fileName)});
                 } else {
                     return Status(ErrorCodes::FileRenameFailed,
-                                  fmt::format("Failed to rename {} to {}: {}",
-                                              _writer->_fileName,
-                                              renameTarget,
-                                              ec.message()));
+                                  "Failed to rename {} to {}: {}"_format(
+                                      _writer->_fileName, renameTarget, ec.message()));
                 }
             }
         }

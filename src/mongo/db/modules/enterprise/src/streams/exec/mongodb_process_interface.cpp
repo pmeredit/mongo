@@ -27,6 +27,7 @@ namespace streams {
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
 using namespace mongo;
+using namespace fmt::literals;
 
 namespace {
 
@@ -123,12 +124,11 @@ mongocxx::database* MongoDBProcessInterface::getDb(const mongo::DatabaseName& db
     auto dbNameStr = DatabaseNameUtil::serialize(dbName, SerializationContext());
     tassert(8186201, "The database name must not be empty", !dbNameStr.empty());
     uassert(ErrorCodes::StreamProcessorTooManyOutputTargets,
-            fmt::format("Too many unique databases: {}", _databaseCache.size()),
+            "Too many unique databases: {}"_format(_databaseCache.size()),
             _databaseCache.size() < kMaxDatabaseCacheSize);
 
     auto [dbIt, inserted] = _databaseCache.emplace(dbNameStr, createDb(dbNameStr));
-    tassert(
-        8143704, fmt::format("Failed to insert a database into cache: {}", dbNameStr), inserted);
+    tassert(8143704, "Failed to insert a database into cache: {}"_format(dbNameStr), inserted);
     return dbIt->second.get();
 }
 
@@ -154,7 +154,7 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
 
     tassert(8186207, "The collection name must not be empty", !collName.empty());
     uassert(8143707,
-            fmt::format("Too many unique collections: {}", _collectionCache.size()),
+            "Too many unique collections: {}"_format(_collectionCache.size()),
             _collectionCache.size() < kMaxCollectionCacheSize);
 
     auto collInfo = std::make_unique<CollectionInfo>();
@@ -167,7 +167,7 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
         auto helloResponse = fromBsoncxxDocument(callHello(*db));
         auto msgElement = helloResponse["msg"];
         uassert(8429101,
-                fmt::format("Unexpected hello response: {}", helloResponse.toString()),
+                "Unexpected hello response: {}"_format(helloResponse.toString()),
                 !msgElement || msgElement.type() == BSONType::String);
         if (msgElement && msgElement.String() == "isdbgrid") {
             _isInstanceSharded = true;
@@ -192,7 +192,7 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
             configDocs.emplace_back(fromBsoncxxDocument(doc));
         }
         uassert(8186210,
-                fmt::format("Found more than 1 entries in config.collections for {}", nss),
+                "Found more than 1 entries in config.collections for {}"_format(nss),
                 configDocs.size() <= 1);
         if (!configDocs.empty()) {
             const auto& collectionConfig = configDocs[0];
@@ -206,11 +206,10 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
     auto collInfoPtr = collInfo.get();
     auto nsKey = std::make_pair(db->name().to_string(), collName);
     auto [collIt, inserted] = _collectionCache.emplace(nsKey, std::move(collInfo));
-    tassert(8186204,
-            fmt::format("Failed to insert a collection into cache: {}.{}",
-                        db->name().to_string(),
-                        collName),
-            inserted);
+    tassert(
+        8186204,
+        "Failed to insert a collection into cache: {}.{}"_format(db->name().to_string(), collName),
+        inserted);
     return collInfoPtr;
 }
 
@@ -318,7 +317,7 @@ MongoDBProcessInterface::fieldsHaveSupportingUniqueIndex(
     const std::set<FieldPath>& fieldPaths) const {
     auto collInfo = getExistingCollection(nss);
     tassert(8186206,
-            fmt::format("Could not find the collection instance for {}", nss.toStringForErrorMsg()),
+            "Could not find the collection instance for {}"_format(nss.toStringForErrorMsg()),
             collInfo);
     if (collInfo->indexes.empty()) {
         // The collection does not exist.
@@ -379,7 +378,7 @@ std::vector<mongo::FieldPath> MongoDBProcessInterface::collectDocumentKeyFieldsA
     mongo::OperationContext*, const mongo::NamespaceString& nss) const {
     auto collInfo = getExistingCollection(nss);
     tassert(8186205,
-            fmt::format("Could not find the collection instance for {}", nss.toStringForErrorMsg()),
+            "Could not find the collection instance for {}"_format(nss.toStringForErrorMsg()),
             collInfo);
     if (*_isInstanceSharded && collInfo->shardKeyPattern) {
         return CommonProcessInterface::shardKeyToDocumentKeyFields(

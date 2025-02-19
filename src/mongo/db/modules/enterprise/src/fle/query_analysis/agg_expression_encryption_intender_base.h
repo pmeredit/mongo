@@ -155,6 +155,7 @@ template <typename Out>
 void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     // It's really easy to push and forget to pop (enter but not exit). As a layer of safety we
     // verify that you are popping off the stack the type you expect to be popping.
+    using namespace fmt::literals;
     visit(
         [](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
@@ -164,9 +165,8 @@ void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtre
                 // This is a workaround, once we upgrade to a version of gcc which has a fix for
                 // that bug (e.g. gcc 9.1), we can move 'msg' inline.
                 std::string msg =
-                    fmt::format("exiting a subtree of an unexpected type. Expected {}, found {}",
-                                toString<Out>(),
-                                toString(output));
+                    "exiting a subtree of an unexpected type. Expected {}, found {}"_format(
+                        toString<Out>(), toString(output));
                 invariant(false, msg);
             }
         },

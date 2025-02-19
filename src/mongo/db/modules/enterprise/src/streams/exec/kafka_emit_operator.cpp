@@ -34,6 +34,7 @@
 namespace streams {
 
 using namespace mongo;
+using namespace fmt::literals;
 
 // IMPORTANT! If you update this allowed list make sure you also update the UI that
 // shows warnings for unsupported configurations. Keep in mind that there is also a
@@ -121,9 +122,8 @@ void KafkaEmitOperator::Connector::testConnection() {
                                                                      /*conf*/ nullptr,
                                                                      errstr)};
         if (!topic) {
-            uasserted(
-                ErrorCodes::StreamProcessorKafkaConnectionError,
-                fmt::format("$emit to Kafka failed to connect to topic with error: {}", errstr));
+            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                      "$emit to Kafka failed to connect to topic with error: {}"_format(errstr));
         }
 
         kafkaErrorCode = _options.producer->metadata(
@@ -365,8 +365,7 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
         err = headers->add(key, valuePointer, valueLength);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 kafkaErrToString(
-                    fmt::format(
-                        "Failed to emit to topic {} due to error during adding to Kafka headers",
+                    "Failed to emit to topic {} due to error during adding to Kafka headers"_format(
                         topicName),
                     err),
                 err == RdKafka::ERR_NO_ERROR);
@@ -378,8 +377,7 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
         err = headers->add(key, value);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 kafkaErrToString(
-                    fmt::format(
-                        "Failed to emit to topic {} due to error during adding to Kafka headers",
+                    "Failed to emit to topic {} due to error during adding to Kafka headers"_format(
                         topicName),
                     err),
                 err == RdKafka::ERR_NO_ERROR);
@@ -582,7 +580,7 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto topicIt = _topicCache.find(topicName);
     if (topicIt == _topicCache.cend()) {
         uassert(ErrorCodes::StreamProcessorTooManyOutputTargets,
-                fmt::format("Too many unique topic names: {}", _topicCache.size()),
+                "Too many unique topic names: {}"_format(_topicCache.size()),
                 _topicCache.size() < kMaxTopicNamesCacheSize);
 
         std::string errstr;
@@ -590,10 +588,10 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
                                                                      topicName,
                                                                      /*conf*/ nullptr,
                                                                      errstr)};
-        uassert(8117200, fmt::format("Failed to create topic with error: {}", errstr), topic);
+        uassert(8117200, "Failed to create topic with error: {}"_format(errstr), topic);
         bool inserted = false;
         std::tie(topicIt, inserted) = _topicCache.emplace(topicName, std::move(topic));
-        uassert(8117201, fmt::format("Failed to insert a new topic {}", topicName), inserted);
+        uassert(8117201, "Failed to insert a new topic {}"_format(topicName), inserted);
     }
 
     const void* keyPointer = nullptr;
@@ -659,9 +657,9 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         if (headers != nullptr) {
             delete headers;
         }
-        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                  kafkaErrToString(
-                      fmt::format("Failed to emit to topic {} due to error", topicName), err));
+        uasserted(
+            ErrorCodes::StreamProcessorKafkaConnectionError,
+            kafkaErrToString("Failed to emit to topic {} due to error"_format(topicName), err));
     }
 
     if (_useDeliveryCallback) {
@@ -745,7 +743,7 @@ void KafkaEmitOperator::doFlush() {
             Status{ErrorCodes::Error{74686},
                    fmt::format("$emit to Kafka encountered error while flushing, kafka error code: "
                                "{}, message: {}",
-                               fmt::underlying(err),
+                               err,
                                RdKafka::err2str(err))}));
     }
     auto deliveryStatus = _deliveryCb->getStatus();
@@ -767,10 +765,9 @@ void KafkaEmitOperator::DeliveryReportCallback::dr_cb(RdKafka::Message& message)
                    "error"_attr = message.errstr(),
                    "context"_attr = _context);
         stdx::unique_lock lock(_mutex);
-        _status = Status{ErrorCodes::StreamProcessorKafkaConnectionError,
-                         fmt::format("Kafka $emit encountered error {}: {}",
-                                     fmt::underlying(message.err()),
-                                     message.errstr())};
+        _status = Status{
+            ErrorCodes::StreamProcessorKafkaConnectionError,
+            fmt::format("Kafka $emit encountered error {}: {}", message.err(), message.errstr())};
     }
 
     if (message.msg_opaque()) {

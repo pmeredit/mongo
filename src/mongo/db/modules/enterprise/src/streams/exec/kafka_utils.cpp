@@ -23,7 +23,7 @@ mongo::stdx::unordered_set<std::string> specialHandledConfigurations = {"group.i
                                                                         "auto.offset.reset"};
 
 std::string kafkaErrToString(const std::string& wrappingErrMsg, const RdKafka::ErrorCode err) {
-    return fmt::format("{}: {} ({})", wrappingErrMsg, RdKafka::err2str(err), fmt::underlying(err));
+    return fmt::format("{}: {} ({})", wrappingErrMsg, RdKafka::err2str(err), err);
 }
 
 boost::optional<int64_t> getRdKafkaQueuedMaxMessagesKBytes(

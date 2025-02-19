@@ -26,7 +26,9 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo::auth {
+using namespace fmt::literals;
 using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
+using namespace fmt::literals;
 
 namespace {
 
@@ -204,8 +206,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
     if (!statuses.empty()) {
         if (statuses.size() == 1) {
             auto& [issuer, status] = statuses.front();
-            return status.withContext(
-                fmt::format("Failed to refresh IdentityProvider '{}'", issuer));
+            return status.withContext("Failed to refresh IdentityProvider '{}'"_format(issuer));
         }
 
         StringBuilder msg;
@@ -274,16 +275,16 @@ StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName,
 
     auto issLookupItr = catalog->providersByIssuerAndAudience.find(issuerName);
     uassert(ErrorCodes::NoSuchKey,
-            fmt::format("Unknown Identity Provider '{}'", issuerName),
+            "Unknown Identity Provider '{}'"_format(issuerName),
             issLookupItr != catalog->providersByIssuerAndAudience.end());
 
     auto& providersByAudience = issLookupItr->second;
     auto audLookupItr = providersByAudience.find(audienceName);
 
-    uassert(ErrorCodes::NoSuchKey,
-            fmt::format(
-                "Unknown audience name '{}' for Identity Provider '{}'", audienceName, issuerName),
-            audLookupItr != providersByAudience.end());
+    uassert(
+        ErrorCodes::NoSuchKey,
+        "Unknown audience name '{}' for Identity Provider '{}'"_format(audienceName, issuerName),
+        audLookupItr != providersByAudience.end());
 
     return audLookupItr->second;
 } catch (const DBException& ex) {
@@ -376,11 +377,8 @@ void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
     uassertNonEmptyString(idp, prefix, fieldName);
     for (const auto ch : prefix) {
         uassert(ErrorCodes::BadValue,
-                fmt::format("Field '{}' for issuer '{}' must contain only alphanumerics, hyphens, "
-                            "and/or underscores. Encountered '{}'",
-                            fieldName,
-                            idp.getIssuer(),
-                            ch),
+                "Field '{}' for issuer '{}' must contain only alphanumerics, hyphens, "
+                "and/or underscores. Encountered '{}'"_format(fieldName, idp.getIssuer(), ch),
                 std::isalnum(ch) || (ch == '-') || (ch == '_'));
     }
 }
@@ -399,16 +397,15 @@ void uassertSameIssuerConfigsAreValid(std::vector<IDPConfiguration>& configs) {
         StringDataSet audiences = {first->getAudience()};
 
         for (auto itr = groupedConfigs.begin() + 1; itr != groupedConfigs.end(); ++itr) {
-            uassert(ErrorCodes::BadValue,
-                    fmt::format(
-                        "IDP configurations with issuer '{}' must have the same JWKSPollSecs value",
-                        first->getIssuer()),
-                    (*itr)->getJWKSPollSecs() == first->getJWKSPollSecs());
+            uassert(
+                ErrorCodes::BadValue,
+                "IDP configurations with issuer '{}' must have the same JWKSPollSecs value"_format(
+                    first->getIssuer()),
+                (*itr)->getJWKSPollSecs() == first->getJWKSPollSecs());
 
             uassert(ErrorCodes::BadValue,
-                    fmt::format("Duplicate configuration for issuer-audience pair ('{}', '{}')",
-                                (*itr)->getIssuer(),
-                                (*itr)->getAudience()),
+                    "Duplicate configuration for issuer-audience pair ('{}', '{}')"_format(
+                        (*itr)->getIssuer(), (*itr)->getAudience()),
                     audiences.insert((*itr)->getAudience()).second);
         }
     }
@@ -460,6 +457,8 @@ Status setConfigFromBSONObj(BSONArray config) try {
 }  // namespace
 
 std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray config) {
+    using namespace fmt::literals;
+
     std::vector<IDPConfiguration> parsedObjects;
     parsedObjects.reserve(config.nFields());
     for (const auto& elem : config) {

@@ -49,6 +49,8 @@
 namespace mongo {
 namespace {
 
+using namespace fmt::literals;
+
 const std::string mockHostName = "localhost";
 const std::string mockServiceName = "mockservice";
 const std::string userName = "mockuser@LDAPTEST.10GEN.CC";
@@ -105,7 +107,7 @@ void setupLegacyEnvironment(const std::string& tempPath) {
         auto ec = lastSystemError();
         fassert(4021,
                 Status(ErrorCodes::InternalError,
-                       fmt::format("cannot execute \"kinit\": {}", errorMessage(ec))));
+                       "cannot execute \"kinit\": {}"_format(errorMessage(ec))));
     }
     int waitStatus;
     pid_t waitedPid;
