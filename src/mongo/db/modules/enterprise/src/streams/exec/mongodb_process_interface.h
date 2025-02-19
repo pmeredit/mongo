@@ -158,6 +158,11 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    mongo::UUID fetchCollectionUUIDFromPrimary(mongo::OperationContext* opCtx,
+                                               const mongo::NamespaceString& nss) final {
+        MONGO_UNREACHABLE;
+    }
+
     mongo::query_shape::CollectionType getCollectionType(mongo::OperationContext* opCtx,
                                                          const mongo::NamespaceString& nss) final {
         MONGO_UNREACHABLE;
