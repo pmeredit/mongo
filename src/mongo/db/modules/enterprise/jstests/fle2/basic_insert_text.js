@@ -115,7 +115,7 @@ assert.eq(doc["location"], "New Jersey");
 assert(doc[kSafeContentField] !== undefined);
 
 // Test various string lengths for a substring field
-for (let len of [0, 8 /* < lb */, 16, 18, 48, 101, 160]) {
+for (let len of [0, 8 /* < lb */, 13, 16, 18, 48, 101, 160]) {
     const expectTagCt = firstNameField.calculateExpectedTagCount(len);
     jsTestLog(
         `inserting substring encrypted field value with length: ${len}, tag_ct: ${expectTagCt}`);
@@ -131,7 +131,7 @@ for (let len of [0, 8 /* < lb */, 16, 18, 48, 101, 160]) {
 }
 
 // Test various string lengths for suffix field
-for (let len of [0, 1 /* < lb */, 16, 18, 48, 101, 160]) {
+for (let len of [0, 1 /* < lb */, 13, 16, 18, 48, 101, 160]) {
     const expectTagCt = locationField.calculateExpectedTagCount(len);
     jsTestLog(`inserting suffix encrypted field value with length: ${len}, tag_ct: ${expectTagCt}`);
     if (expectTagCt > 255) {  // Too many tags
@@ -145,7 +145,7 @@ for (let len of [0, 1 /* < lb */, 16, 18, 48, 101, 160]) {
 }
 
 // Test various string lengths for prefix field
-for (let len of [0, 1 /* < lb */, 16, 18, 48, 101, 160]) {
+for (let len of [0, 1 /* < lb */, 13, 16, 18, 48, 101, 160]) {
     const expectTagCt = lastNameField.calculateExpectedTagCount(len);
     jsTestLog(`inserting prefix encrypted field value with length: ${len}, tag_ct: ${expectTagCt}`);
     if (expectTagCt > 255) {  // Too many tags
