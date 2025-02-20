@@ -1316,7 +1316,7 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
 
         if (processorInfo->executorStatus) {
             LOGV2_INFO(75902,
-                       "Stopped stream processor",
+                       "Done waiting for stream processor stop",
                        "context"_attr = processorInfo->context.get(),
                        "stopReason"_attr = stopReasonToString(stopReason));
             return processorInfo->executorStatus;
@@ -1388,6 +1388,15 @@ StopStreamProcessorReply StreamManager::stopStreamProcessor(
             _tenantProcessors.erase(tenantId);
         }
     }
+
+    LOGV2_INFO(10106800,
+               "Finished stream processor stop",
+               "context"_attr =
+                   LoggingContext{.streamProcessorName = request.getName().toString(),
+                                  .streamProcessorId =
+                                      request.getProcessorId().get_value_or("").toString(),
+                                  .tenantId = request.getTenantId().toString()},
+               "stopReason"_attr = stopReasonToString(stopReason));
 
     return StopStreamProcessorReply{std::move(finalStats)};
 }
