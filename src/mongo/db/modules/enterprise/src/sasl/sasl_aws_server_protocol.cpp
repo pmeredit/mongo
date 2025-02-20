@@ -26,7 +26,6 @@ SaslAWSGlobalParams saslAWSGlobalParams;
 }  // namespace awsIam
 
 namespace {
-using namespace fmt::literals;
 
 // Secure Random for SASL IAM Nonce generation
 stdx::mutex saslAWSServerMutex;
@@ -282,13 +281,14 @@ std::string awsIam::makeSimplifiedArn(StringData arn) {
             resourcePathComponents.front().begin(), resourcePathComponents.back().begin() - 1);
 
         // Build a simplified ARN.
-        return "{}:{}:{}:{}:{}:{}/{}/*"_format(arnSegment,
-                                               partitionSegment,
-                                               serviceSegment,
-                                               regionSegment,
-                                               accountIdSegment,
-                                               resourceTypeSegment,
-                                               trimmedResourceId);
+        return fmt::format("{}:{}:{}:{}:{}:{}/{}/*",
+                           arnSegment,
+                           partitionSegment,
+                           serviceSegment,
+                           regionSegment,
+                           accountIdSegment,
+                           resourceTypeSegment,
+                           trimmedResourceId);
     } else {
         uasserted(5479902, "ARN has unacceptable service");
     }

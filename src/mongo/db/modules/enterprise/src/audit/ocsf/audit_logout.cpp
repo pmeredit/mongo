@@ -25,7 +25,6 @@ void audit::AuditOCSF::logLogout(Client* client,
                                  const BSONArray& initialUsers,
                                  const BSONArray& updatedUsers,
                                  const boost::optional<Date_t>& loginTime) const {
-    using namespace fmt::literals;
     tryLogEvent<AuditOCSF::AuditEventOCSF>(
         {client,
          ocsf::OCSFEventCategory::kIdentityAndAccess,
@@ -38,7 +37,7 @@ void audit::AuditOCSF::logLogout(Client* client,
              // requires us to have user as a top level attribute so
              // so we have to build it twice.
              AuditOCSF::AuditEventOCSF::_buildUser(builder, client);
-             builder->append(kMessageField, "Reason: {}"_format(reason));
+             builder->append(kMessageField, fmt::format("Reason: {}", reason));
              if (loginTime)
                  builder->append(ocsf::kUnmappedFieldName,
                                  BSON("loginTime" << loginTime->toMillisSinceEpoch()));

@@ -158,12 +158,11 @@ void SortOperator::doRestoreWindowState(Window* window, Document record) {
     auto processor = sortState->processor.get();
     auto& sortKeyGenerator = sortState->sortKeyGenerator;
     auto sortRecord = record.getField(WindowOperatorCheckpointRecord::kSortRecordFieldName);
-    CHECKPOINT_RECOVERY_ASSERT(
-        8289701,
-        _operatorId,
-        fmt::format("{kSortRecordFieldName} field missing from checkpoint restore record",
-                    WindowOperatorCheckpointRecord::kSortRecordFieldName),
-        !sortRecord.missing() && sortRecord.getType() == BSONType::Object);
+    CHECKPOINT_RECOVERY_ASSERT(8289701,
+                               _operatorId,
+                               fmt::format("{} field missing from checkpoint restore record",
+                                           WindowOperatorCheckpointRecord::kSortRecordFieldName),
+                               !sortRecord.missing() && sortRecord.getType() == BSONType::Object);
     mongo::Document doc(sortRecord.getDocument());
     Value sortKey = sortKeyGenerator->computeSortKeyFromDocument(doc);
     processor->add(sortKey, std::move(doc));

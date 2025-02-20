@@ -12,7 +12,6 @@
 
 namespace mongo::auth {
 namespace {
-using namespace fmt::literals;
 
 constexpr auto kIssuer1 = "https://test.kernel.mongodb.com/IDPManager1"_sd;
 constexpr auto kIssuer2 = "https://test.kernel.mongodb.com/IDPManager2"_sd;
@@ -683,8 +682,8 @@ TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentJWKSPollSecs) {
     ASSERT_THROWS_WHAT(
         IDPManager::parseConfigFromBSONObj(configuration),
         DBException,
-        "IDP configurations with issuer '{}' must have the same JWKSPollSecs value"_format(
-            kIssuer1));
+        fmt::format("IDP configurations with issuer '{}' must have the same JWKSPollSecs value",
+                    kIssuer1));
 }
 
 TEST(IDPManager, twoHumanIdPsWithoutMatchersFail) {

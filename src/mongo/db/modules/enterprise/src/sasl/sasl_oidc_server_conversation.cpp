@@ -21,8 +21,6 @@
 
 namespace mongo::auth {
 
-using namespace fmt::literals;
-
 namespace {
 GlobalSASLMechanismRegisterer<OIDCServerFactory> oidcRegisterer;
 
@@ -132,15 +130,18 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
     auto& audience = issuerAndAudience.audience.front();
 
     if (_idp) {
+        uassert(ErrorCodes::BadValue,
+                fmt::format(
+                    "Token issuer '{}' does not match that inferred from principal name hint '{}'",
+                    issuer,
+                    _idp->getIssuer()),
+                issuer == _idp->getIssuer());
         uassert(
             ErrorCodes::BadValue,
-            "Token issuer '{}' does not match that inferred from principal name hint '{}'"_format(
-                issuer, _idp->getIssuer()),
-            issuer == _idp->getIssuer());
-        uassert(
-            ErrorCodes::BadValue,
-            "Token audience '{}' does not match that inferred from principal name hint '{}'"_format(
-                audience, _idp->getAudience()),
+            fmt::format(
+                "Token audience '{}' does not match that inferred from principal name hint '{}'",
+                audience,
+                _idp->getAudience()),
             audience == _idp->getAudience());
     } else {
         // _idp will only be present if we performed step1.
@@ -152,10 +153,12 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
         uassertStatusOK(_idp->getPrincipalName(token, false /*Don't include authNamePrefix*/));
 
     if (_principalNameHint) {
-        uassert(ErrorCodes::BadValue,
-                str::stream() << "Principal name changed between step1 '{}' and step2 '{}'"_format(
-                    _principalNameHint.get(), principalName),
-                _principalNameHint.get() == principalName);
+        uassert(
+            ErrorCodes::BadValue,
+            str::stream() << fmt::format("Principal name changed between step1 '{}' and step2 '{}'",
+                                         _principalNameHint.get(),
+                                         principalName),
+            _principalNameHint.get() == principalName);
     }
 
     // principal name in UserRequest will include the authNamePrefix

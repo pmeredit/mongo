@@ -194,14 +194,14 @@ NamespaceString getNamespaceString(const std::string& dbStr, const std::string& 
 }
 
 NamespaceString getNamespaceString(const NameExpression& db, const NameExpression& coll) {
-    using namespace fmt::literals;
     tassert(8117400,
-            "Expected a static database name but got expression: {}"_format(db.toString()),
+            fmt::format("Expected a static database name but got expression: {}", db.toString()),
             db.isLiteral());
     auto dbStr = db.getLiteral();
-    tassert(8117401,
-            "Expected a static collection name but got expression: {}"_format(coll.toString()),
-            coll.isLiteral());
+    tassert(
+        8117401,
+        fmt::format("Expected a static collection name but got expression: {}", coll.toString()),
+        coll.isLiteral());
     auto collStr = coll.getLiteral();
     return getNamespaceString(dbStr, collStr);
 }

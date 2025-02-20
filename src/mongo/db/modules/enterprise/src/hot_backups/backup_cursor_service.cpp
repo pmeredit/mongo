@@ -228,10 +228,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
             boost::system::error_code errorCode;
             const std::uint64_t fileSize = boost::filesystem::file_size(filePath, errorCode);
 
-            using namespace fmt::literals;
             uassert(31318,
-                    "Failed to get a file's size. Filename: {} Error: {}"_format(
-                        filePath, errorCode.message()),
+                    fmt::format("Failed to get a file's size. Filename: {} Error: {}",
+                                filePath,
+                                errorCode.message()),
                     !errorCode);
 
             // The database instance backing the encryption at rest data simply returns filenames
