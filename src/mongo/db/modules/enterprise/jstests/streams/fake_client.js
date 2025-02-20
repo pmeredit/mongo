@@ -56,16 +56,6 @@ export class StreamProcessor {
 
     // Start the streamProcessor.
     start(options, assertWorked = true, pipelineVersion = undefined, ephemeral) {
-        if (this._isUsingAtlas) {
-            const result = this._db.runCommand({
-                "startStreamProcessor": this._name,
-            });
-            if (assertWorked) {
-                assert.commandWorked(result);
-            }
-            return result;
-        }
-
         this._startOptions = options;
         this._pipelineVersion = pipelineVersion;
         if (this._startOptions === undefined) {
@@ -376,12 +366,8 @@ export function commonTestSetup() {
 export function getAtlasStreamProcessingInstance(uri) {
     const m = new Mongo(uri);
     const dbForTest = m.getDB("admin");
-    jsTestLog(`TODOM: ${dbForTest}`);
-    jsTestLog(`TODOM: ${typeof dbForTest}`);
-    return new Streams(TEST_TENANT_ID,
-                       [] /*connectionRegistry*/,
-                       dbForTest,
-                       /*isRunningOnAtlasStreamProcessor*/ true);
+    return new Streams(
+        [] /*connectionRegistry*/, dbForTest, /*isRunningOnAtlasStreamProcessor*/ true);
 }
 
 export function kafkaExample(
