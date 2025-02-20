@@ -63,16 +63,12 @@ function runTest(insertHigherTermOplogEntry) {
     assert.eq(entriesAfterBackup.length, 3);
 
     magicRestoreTest.copyFilesAndCloseBackup();
-
-    let expectedConfig = magicRestoreTest.getExpectedConfig();
-    // The new node will be allocated a new port by the test fixture.
-    expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
-    rst.stopSet(
-        null /* signal */, false /* forRestart */, {'skipValidation': true, noCleanData: true});
+    magicRestoreTest.rst.stopSet(
+        null /* signal */, true /* forRestart */, {'skipValidation': true, noCleanData: true});
 
     let restoreConfiguration = {
         "nodeType": "replicaSet",
-        "replicaSetConfig": expectedConfig,
+        "replicaSetConfig": magicRestoreTest.getExpectedConfig(),
         "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
     };
     restoreConfiguration =
@@ -81,11 +77,10 @@ function runTest(insertHigherTermOplogEntry) {
     magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, [], {"replSet": jsTestName()});
 
-    // Restart the destination replica set.
-    rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
+    magicRestoreTest.rst.startSet(
+        {restart: true, dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
-    primary = rst.getPrimary();
+    primary = magicRestoreTest.rst.getPrimary();
     db = primary.getDB(dbName);
 
     const configTxnsPreRetry = primary.getDB("config").getCollection("transactions").findOne();
@@ -113,7 +108,8 @@ function runTest(insertHigherTermOplogEntry) {
         expectedNumDocsSnapshot: 1,
     });
 
-    rst.stopSet(null /* signal */, false /* forRestart */, {'skipValidation': true});
+    magicRestoreTest.rst.stopSet(
+        null /* signal */, false /* forRestart */, {'skipValidation': true});
 }
 
 // insertHigherTermOplogEntry causes a no-op oplog entry insert with a higher term. This affects the

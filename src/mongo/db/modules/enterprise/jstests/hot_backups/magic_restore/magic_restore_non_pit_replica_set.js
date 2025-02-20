@@ -61,15 +61,11 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     assert.eq(entriesAfterBackup.length, 3);
 
     magicRestoreTest.copyFilesAndCloseBackup();
-
-    let expectedConfig = magicRestoreTest.getExpectedConfig();
-    // The new node will be allocated a new port by the test fixture.
-    expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
-    rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
+    magicRestoreTest.rst.stopSet(null /* signal */, true /* forRestart */, {noCleanData: true});
 
     let restoreConfiguration = {
         "nodeType": "replicaSet",
-        "replicaSetConfig": expectedConfig,
+        "replicaSetConfig": magicRestoreTest.getExpectedConfig(),
         "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
     };
     restoreConfiguration =
@@ -89,11 +85,11 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         cat(magicRestoreDebugPath).split("\n").forEach((line) => { print(line); });
     }
 
-    jsTestLog("Start a new replica set fixture on the dbpath.");
-    rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
+    jsTestLog("Restart the replica set fixture on the dbpath.");
+    magicRestoreTest.rst.startSet(
+        {restart: true, dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
-    primary = rst.getPrimary();
+    primary = magicRestoreTest.rst.getPrimary();
 
     // See if auth we setup before restore is still valid.
     if (testAuth) {
@@ -118,7 +114,7 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
         logPath: magicRestoreDebugPath
     });
 
-    rst.stopSet();
+    magicRestoreTest.rst.stopSet();
 }
 
 // insertHigherTermOplogEntry causes a no-op oplog entry insert with a higher term. This affects the

@@ -64,11 +64,7 @@ function runTest(updateAutoCreds) {
     assert.eq(entriesAfterBackup.length, 3);
 
     magicRestoreTest.copyFilesAndCloseBackup();
-
-    let expectedConfig = magicRestoreTest.getExpectedConfig();
-    // The new node will be allocated a new port by the test fixture.
-    expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
-    rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
+    magicRestoreTest.rst.stopSet(null /* signal */, true /* forRestart */, {noCleanData: true});
 
     let roles = [];
     // If we are testing the update code path, include a new role to be included in the update.
@@ -82,7 +78,7 @@ function runTest(updateAutoCreds) {
 
     let restoreConfiguration = {
         "nodeType": "replicaSet",
-        "replicaSetConfig": expectedConfig,
+        "replicaSetConfig": magicRestoreTest.getExpectedConfig(),
         "maxCheckpointTs": magicRestoreTest.getCheckpointTimestamp(),
         "automationCredentials": autoCreds,
         "systemUuids": [
@@ -96,11 +92,11 @@ function runTest(updateAutoCreds) {
     magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, [], {"replSet": jsTestName()});
 
-    // Restart the destination replica set.
-    rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
+    // Restart the restored replica set.
+    magicRestoreTest.rst.startSet(
+        {restart: true, dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
-    primary = rst.getPrimary();
+    primary = magicRestoreTest.rst.getPrimary();
     const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
     // The later 3 writes were truncated during magic restore.
     assert.eq(restoredDocs.length, 3);
@@ -144,7 +140,7 @@ function runTest(updateAutoCreds) {
         primary, {ns: "admin.system.roles"}, updateAutoCreds ? 1 : 0);
     magicRestoreTest.assertOplogCountForNamespace(
         primary, {ns: "admin.system.users"}, updateAutoCreds ? 1 : 0);
-    rst.stopSet();
+    magicRestoreTest.rst.stopSet();
 }
 
 // The create operations in the automationCredentials field are automatically converted to updates

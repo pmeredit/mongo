@@ -66,15 +66,11 @@ function runTest(pit) {
 
     assert.commandWorked(
         primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
-
-    let expectedConfig = magicRestoreTest.getExpectedConfig();
-    // The new node will be allocated a new port by the test fixture.
-    expectedConfig.members[0].host = getHostName() + ":" + (Number(primary.port) + 2);
-    rst.stopSet(null /* signal */, false /* forRestart */, {noCleanData: true});
+    magicRestoreTest.rst.stopSet(null /* signal */, true /* forRestart */, {noCleanData: true});
 
     let restoreConfiguration = {
         "nodeType": "replicaSet",
-        "replicaSetConfig": expectedConfig,
+        "replicaSetConfig": magicRestoreTest.getExpectedConfig(),
         "maxCheckpointTs": checkpointTimestamp,
     };
     if (pit) {
@@ -88,8 +84,8 @@ function runTest(pit) {
     magicRestoreTest.writeObjsAndRunMagicRestore(
         restoreConfiguration, pit ? entriesAfterBackup : [], {"replSet": jsTestName()});
 
-    rst = new ReplSetTest({nodes: 1});
-    rst.startSet({dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
+    magicRestoreTest.rst.startSet(
+        {restart: true, dbpath: magicRestoreTest.getBackupDbPath(), noCleanData: true});
 
     primary = rst.getPrimary();
     magicRestoreTest.postRestoreChecks({
