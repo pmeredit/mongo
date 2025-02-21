@@ -100,8 +100,6 @@ function runKafkaPipeline({
     // Run the streamProcessor.
     test2.run();
     assert.soon(() => {
-        // TODOM
-        jsTestLog(test2.stats());
         return test2.stats().inputMessageCount == input.length &&
             test2.stats().outputMessageCount ==
             (expectedOutputMessageCount ? expectedOutputMessageCount : expectedOutput.length);
