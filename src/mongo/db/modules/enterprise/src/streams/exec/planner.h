@@ -12,6 +12,7 @@
 #include "mongo/db/pipeline/pipeline.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/external_function.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/pipeline_rewriter.h"
@@ -132,6 +133,7 @@ private:
     // Methods that are used to plan the sink stage.
     void planMergeSink(const mongo::BSONObj& spec);
     void planEmitSink(const mongo::BSONObj& spec);
+    void planExternalFunctionSink(const mongo::BSONObj& spec);
 
 
     // Methods that are used to plan a window stage.
@@ -169,6 +171,8 @@ private:
 
     // Plans a $externalFunction stage.
     void planExternalFunction(DocumentSourceExternalFunctionStub* source);
+    ExternalFunction::Options planExternalFunctionOptions(const mongo::BSONObj& bsonOptions,
+                                                          bool isSink);
 
     // Helper function to prepare the pipeline before sending it to planning. This step includes
     // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the

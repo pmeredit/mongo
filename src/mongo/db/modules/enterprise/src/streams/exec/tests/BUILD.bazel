@@ -895,13 +895,13 @@ mongo_cc_unit_test(
 )
 
 mongo_cc_unit_test(
-    name = "external_function_operator_test",
+    name = "external_function_test",
     srcs = [
-        "external_function_operator_test.cpp",
+        "external_function_test.cpp",
     ],
     copts = MONGOCXX_COPTS,
     linkopts = RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_first_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
