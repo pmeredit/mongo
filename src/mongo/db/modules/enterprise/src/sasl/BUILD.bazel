@@ -269,9 +269,6 @@ mongo_cc_unit_test(
     ],
     has_custom_mainline = True,
     tags = [
-        # System call appears to fail in sandbox
-        "code_coverage_quarantine",
-        "code_coverage_quarantine_SERVER-98845",
         "mongo_unittest_seventh_group",
     ],
     target_compatible_with = select({
