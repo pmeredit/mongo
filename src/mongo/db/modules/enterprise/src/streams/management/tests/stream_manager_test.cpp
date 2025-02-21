@@ -192,13 +192,13 @@ public:
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        info->checkpointCoordinator->_lastCheckpointTimestamp = time;
+        info->checkpointCoordinator->_lastCheckpointTimestamp.store(time);
     }
 
     mongo::stdx::chrono::time_point<system_clock> getLastCheckpointTime(ProcessorDetails details) {
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto info = getStreamProcessorInfo(lk, details);
-        return info->checkpointCoordinator->_lastCheckpointTimestamp;
+        return info->checkpointCoordinator->_lastCheckpointTimestamp.load();
     }
 
     void setUncheckpointedState(ProcessorDetails details, bool uncheckpointedState) {
@@ -207,9 +207,21 @@ public:
         info->executor->_uncheckpointedState.store(uncheckpointedState);
     }
 
-    void waitForCheckpointInterval(ProcessorDetails details, Milliseconds expected) {
+    void fakeLargeCheckpointCheckInterval(ProcessorDetails details,
+                                          int64_t bytes,
+                                          Milliseconds expected) {
+        // wait for at least one checkpoint
+        waitForLastCheckpointSize(details);
+
         auto deadline = Date_t::now() + Minutes{1};
         while (Date_t::now() < deadline) {
+            setLastCheckpointSize(details, bytes);
+            // set this to force another checkpoint
+            setLastCheckpointTime(details,
+                                  stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
+            setUncheckpointedState(details, true);
+            // since the last checkpoint was 100MB, after a runOnce call in the executor background
+            // thread, the checkpoint interval should increase to 60 minutes.
             auto actual = Milliseconds{getCheckpointInterval(details).count()};
             std::cout << "actual: " << actual << std::endl;
             if (expected == actual) {
@@ -1118,16 +1130,9 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         // Manifest file takes up a few bytes, so if one is written, the next checkpoint interval
         // will be slightly longer.
         ASSERT(std::abs((actual - stdx::chrono::milliseconds{expectedIntervalMs}).count()) < 20);
-        // wait for at least one checkpoint
-        waitForLastCheckpointSize(details);
 
-        setLastCheckpointSize(details, 100_MiB);
-        // set this to force another checkpoint
-        setLastCheckpointTime(details, stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
-        setUncheckpointedState(details, true);
-        // since the last checkpoint was 100MB, after a runOnce call in the executor background
-        // thread, the checkpoint interval should increase to 60 minutes.
-        waitForCheckpointInterval(details, Milliseconds{Minutes{60}});
+        // Fake a large checkpoint and wait a large interval.
+        fakeLargeCheckpointCheckInterval(details, 100_MiB, Milliseconds{Minutes{60}});
 
         mongo::BSONObj featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: 50000}}}");

@@ -44,7 +44,7 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
         createCheckpoint == CreateCheckpoint::kForce);
     if (!hasRoom && createCheckpoint == CreateCheckpoint::kIfRoom) {
         auto minutesSinceLastCheckpoint = std::chrono::duration_cast<std::chrono::minutes>(
-            system_clock::now() - _lastCheckpointTimestamp);
+            system_clock::now() - _lastCheckpointTimestamp.load());
         if (minutesSinceLastCheckpoint >= 120min) {
             LOGV2_WARNING(8368300,
                           "unable to take checkpoint due to max concurrent checkpoints reached",
@@ -89,8 +89,9 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     }
 
     auto now = system_clock::now();
-    dassert(_lastCheckpointTimestamp <= now);
-    if (now - _lastCheckpointTimestamp >= _options.maxIdleCheckpointIntervalMs) {
+    auto lastCheckpointTs = _lastCheckpointTimestamp.load();
+    dassert(lastCheckpointTs <= now);
+    if (now - lastCheckpointTs >= _options.maxIdleCheckpointIntervalMs) {
         return CreateCheckpoint::kForce;
     }
 
@@ -116,8 +117,8 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
     }
 
     // Else, if sufficient time has elapsed, then take a checkpoint.
-    dassert(_lastCheckpointTimestamp <= now);
-    if (now - _lastCheckpointTimestamp <= _interval.load().toSystemDuration()) {
+    dassert(lastCheckpointTs <= now);
+    if (now - lastCheckpointTs <= _interval.load().toSystemDuration()) {
         return CreateCheckpoint::kNotNeeded;
     }
     return CreateCheckpoint::kIfRoom;
@@ -126,7 +127,7 @@ CheckpointCoordinator::CreateCheckpoint CheckpointCoordinator::evaluateIfCheckpo
 
 CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
     _writtenFirstCheckpoint = true;
-    _lastCheckpointTimestamp = system_clock::now();
+    _lastCheckpointTimestamp.store(system_clock::now());
     invariant(_options.storage);
     CheckpointId id = _options.storage->startCheckpoint();
     return CheckpointControlMsg{.id = std::move(id)};

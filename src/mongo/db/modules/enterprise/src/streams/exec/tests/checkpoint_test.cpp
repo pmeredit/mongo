@@ -362,7 +362,7 @@ public:
     void setLastCheckpointTime(
         CheckpointCoordinator* coordinator,
         mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
-        coordinator->_lastCheckpointTimestamp = time;
+        coordinator->_lastCheckpointTimestamp.store(time);
     }
 
     Milliseconds getDynamicInterval(CheckpointCoordinator* coordinator, int64_t stateSize) {

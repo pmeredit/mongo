@@ -103,9 +103,9 @@ private:
     bool _writtenFirstCheckpoint{false};
 
     Options _options;
-    mongo::stdx::chrono::time_point<system_clock> _lastCheckpointTimestamp;
-    // Use an Atomic so some multi-threaded unit tests can read this while it's
+    // Use Atomics so some multi-threaded unit tests can read this while it's
     // being written.
+    mongo::Atomic<mongo::stdx::chrono::time_point<system_clock>> _lastCheckpointTimestamp;
     mongo::Atomic<mongo::Milliseconds> _interval;
 };
 
