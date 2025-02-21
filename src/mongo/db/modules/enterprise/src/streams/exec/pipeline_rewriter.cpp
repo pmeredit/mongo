@@ -14,18 +14,18 @@ namespace streams {
 
 using namespace mongo;
 
-PipelineRewriter::PipelineRewriter(std::vector<mongo::BSONObj> pipeline) {
+PipelineRewriter::PipelineRewriter(std::vector<BSONObj> pipeline) {
     for (auto& stage : pipeline) {
         _pipeline.push_back(std::move(stage).getOwned());
     }
 }
 
-std::vector<mongo::BSONObj> PipelineRewriter::rewrite() {
-    std::vector<mongo::BSONObj> rewrittenPipeline;
+std::vector<BSONObj> PipelineRewriter::rewrite() {
+    std::vector<BSONObj> rewrittenPipeline;
     for (const auto& stageObj : _pipeline) {
         auto stageName = stageObj.firstElement().fieldNameStringData();
         if (isLookUpStage(stageName)) {
-            auto newStageObj = rewriteLookUp(stageObj);
+            BSONObj newStageObj = rewriteLookUp(stageObj);
             _rewrittenLookupStages.push_back(std::make_pair(stageObj, newStageObj.copy()));
             rewrittenPipeline.push_back(std::move(newStageObj));
         } else {
@@ -51,15 +51,16 @@ BSONObj PipelineRewriter::rewriteLookUp(const BSONObj& stageObj) {
             "The $lookup.from field must be an object",
             fromField.isABSONObj());
 
-    // Rewrite the 'from' object in $lookup to be just a string containing the collection name.
+    // Remove the `connectionName` in the 'from' object in $lookup so that it can parsed with the
+    // `allowGenericForeignDbLookup` flag.
     BSONObjBuilder newStageObjBuilder;
     BSONObjBuilder newLookupObjBuilder(newStageObjBuilder.subobjStart(kLookUpStageName));
     for (const auto& elem : lookupObj) {
         if (elem.fieldNameStringData() == kFromFieldName) {
             auto fromFieldObj = elem.embeddedObject();
-            auto lookupFromAtlas =
-                AtlasCollection::parse(IDLParserContext("AtlasCollection"), fromFieldObj);
-            newLookupObjBuilder.append(kFromFieldName, lookupFromAtlas.getColl().toString());
+            auto fromFieldObjNoConnectionName =
+                fromFieldObj.removeField(AtlasCollection::kConnectionNameFieldName);
+            newLookupObjBuilder.append(kFromFieldName, fromFieldObjNoConnectionName);
         } else {
             newLookupObjBuilder.append(elem);
         }

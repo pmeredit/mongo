@@ -635,9 +635,9 @@ PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<Express
     // time by stages such as $lookup and $out.
     expCtx->setNamespaceString(request.getNamespace());
     expCtx->setResolvedNamespaces([&]() {
-        StringMap<ResolvedNamespace> resolvedNamespaces;
+        ResolvedNamespaceMap resolvedNamespaces;
         for (auto&& involvedNs : pipelineInvolvedNamespaces) {
-            resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
+            resolvedNamespaces[involvedNs] = {involvedNs, std::vector<BSONObj>{}};
         }
         return resolvedNamespaces;
     }());

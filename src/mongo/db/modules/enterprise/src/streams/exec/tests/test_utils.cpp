@@ -57,13 +57,16 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
     context->tenantId = tenantId;
     context->streamProcessorId = streamProcessorId;
-    // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
-    // appropriately here
+
+    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We set
+    // 'allowGenericForeignDbLookup' to true so this syntax can be parsed in DocumentSourceLookup
+    // without throwing errors.
     context->expCtx =
         ExpressionContextBuilder{}
             .opCtx(context->opCtx.get())
             .ns(NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")))
             .allowDiskUse(false)
+            .allowGenericForeignDbLookup(true)
             .build();
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     auto executor = std::make_unique<Executor>(

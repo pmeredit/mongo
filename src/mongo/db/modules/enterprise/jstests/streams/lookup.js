@@ -21,8 +21,18 @@ const dlqColl = db.dlq_coll;
 
 const sampleData = Array.from({length: 20}, (_, i) => ({id: i, aa: i % 5, bb: Math.floor(i / 5)}));
 
+const db2 = db.getSiblingDB("test2");
+const db2_foreignColl = db2.foreign_coll;
+
+const sampleData2 =
+    Array.from({length: 20}, (_, i) => ({id: i, aa: (i + 1) % 5, bb: Math.floor(i / 5)}));
+
 foreignColl.drop();
 foreignColl.insert(sampleData);
+assert.soon(() => { return foreignColl.count() == 20; });
+
+db2_foreignColl.drop();
+db2_foreignColl.insert(sampleData2);
 assert.soon(() => { return foreignColl.count() == 20; });
 
 function prepareDoc(doc) {
@@ -317,6 +327,69 @@ function stopStreamProcessor() {
                   arr3: [
                       {id: 1, aa: 1, bb: 0},
                   ]
+              }],
+              outputColl.find({id: 1}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+(function testMultipleLookUpsCollsAndDBs() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $lookup: {
+                from: {connectionName: 'db1', db: 'test', coll: foreignColl.getName()},
+                localField: "id",
+                foreignField: "id",
+                as: 'arr',
+            }
+        },
+        {
+            $lookup: {
+                from: {connectionName: 'db1', db: 'test2', coll: db2_foreignColl.getName()},
+                localField: "id",
+                foreignField: "id",
+                as: 'arr2',
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    inputColl.insert([{id: 1, ts: 1, a: 1, b: 2, c: 3}]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 1; });
+    assert.eq([{
+                  id: 1,
+                  ts: 1,
+                  a: 1,
+                  b: 2,
+                  c: 3,
+                  arr: [
+                      {id: 1, aa: 1, bb: 0},
+                  ],
+                  arr2: [
+                      {id: 1, aa: 2, bb: 0},
+                  ],
               }],
               outputColl.find({id: 1}).toArray().map(prepareDoc));
 
@@ -754,6 +827,82 @@ function stopStreamProcessor() {
                   ]
               }],
               outputColl.find({_id: 3}).sort({"arr.id": 1}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+(function testAgainstLocalDB() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Insert data into the foreign collection in the "local" database.
+    const localDB = db.getSiblingDB('local');
+    const localDB_foreignColl = localDB.foreign_coll;
+    localDB_foreignColl.drop();
+    localDB_foreignColl.insert(sampleData);
+    assert.soon(() => { return localDB_foreignColl.count() == 20; });
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $lookup: {
+                from: {connectionName: 'db1', db: 'local', coll: localDB_foreignColl.getName()},
+                localField: "a",
+                foreignField: "aa",
+                as: 'arr',
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    inputColl.insert([{id: 1, ts: 1, a: 1, b: 2, c: 3}, {id: 3, ts: 3, a: 3, b: 2, c: 3}]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 2; });
+    assert.eq([{
+                  id: 1,
+                  ts: 1,
+                  a: 1,
+                  b: 2,
+                  c: 3,
+                  arr: [
+                      {id: 1, aa: 1, bb: 0},
+                      {id: 6, aa: 1, bb: 1},
+                      {id: 11, aa: 1, bb: 2},
+                      {id: 16, aa: 1, bb: 3}
+                  ]
+              }],
+              outputColl.find({id: 1}).toArray().map(prepareDoc));
+    assert.eq([{
+                  id: 3,
+                  ts: 3,
+                  a: 3,
+                  b: 2,
+                  c: 3,
+                  arr: [
+                      {id: 3, aa: 3, bb: 0},
+                      {id: 8, aa: 3, bb: 1},
+                      {id: 13, aa: 3, bb: 2},
+                      {id: 18, aa: 3, bb: 3}
+                  ]
+              }],
+              outputColl.find({id: 3}).toArray().map(prepareDoc));
 
     // Stop the streamProcessor.
     stopStreamProcessor();

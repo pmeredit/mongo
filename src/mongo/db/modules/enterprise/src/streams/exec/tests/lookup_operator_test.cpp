@@ -58,7 +58,7 @@ TEST_F(LookUpOperatorTest, LocalTest) {
     NamespaceString fromNs =
         NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
     _context->expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
+        ResolvedNamespaceMap{{fromNs, {fromNs, std::vector<BSONObj>()}}});
 
     auto lookupObj = fromjson(R"(
 {

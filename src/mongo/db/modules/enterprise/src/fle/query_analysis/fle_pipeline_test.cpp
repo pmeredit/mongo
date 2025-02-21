@@ -104,8 +104,7 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
     // Setup involved namespaces to avoid crashing on pipeline parse.
     NamespaceString fromNs = NamespaceString::createNamespaceString_forTest("test", "other");
     getExpCtx()->setNamespaceString(fromNs);
-    getExpCtx()->setResolvedNamespaces(
-        {{fromNs.coll().toString(), {fromNs, std::vector<BSONObj>{}}}});
+    getExpCtx()->setResolvedNamespaces({{fromNs, {fromNs, std::vector<BSONObj>{}}}});
     std::vector<BSONObj> stageSpecs = {
         fromjson(R"({$facet: {
             "pipeline1": [
@@ -619,9 +618,9 @@ TEST_F(FLEPipelineTest, PropagateSchemaForLookupCsfleEncryptionSchemas) {
                                                            true);
 
     const auto cmdObj = fromjson(R"({
-               "csfleEncryptionSchemas": { 
+               "csfleEncryptionSchemas": {
                     "testdb.coll_a": {
-                        "jsonSchema": { 
+                        "jsonSchema": {
                                 type: "object",
                                 properties: {
                                     a: {
@@ -634,7 +633,7 @@ TEST_F(FLEPipelineTest, PropagateSchemaForLookupCsfleEncryptionSchemas) {
                         },
                         "isRemoteSchema": false },
                    "testdb.coll_b": {
-                        "jsonSchema": { 
+                        "jsonSchema": {
                                 type: "object",
                                 properties: {
                                     b: {
@@ -651,8 +650,8 @@ TEST_F(FLEPipelineTest, PropagateSchemaForLookupCsfleEncryptionSchemas) {
     )");
     auto nsA = getExpCtx()->getNamespaceString();
     auto nsB = NamespaceString::createNamespaceString_forTest("testdb.coll_b");
-    getExpCtx()->setResolvedNamespaces({{nsA.coll().toString(), {nsA, std::vector<BSONObj>{}}},
-                                        {nsB.coll().toString(), {nsB, std::vector<BSONObj>{}}}});
+    getExpCtx()->setResolvedNamespaces(
+        {{nsA, {nsA, std::vector<BSONObj>{}}}, {nsB, {nsB, std::vector<BSONObj>{}}}});
 
     auto lookupSpec = fromjson(
         "{$lookup: {from: 'coll_b', as: 'docs', localField: 'foo', foreignField: 'l_foo'}}");
@@ -678,9 +677,9 @@ TEST_F(FLEPipelineTest, PropagateSchemaForGraphLookupCsfleEncryptionSchemasFails
     RAIIServerParameterControllerForTest controller("featureFlagLookupEncryptionSchemasFLE", true);
 
     const auto cmdObj = fromjson(R"({
-               "csfleEncryptionSchemas": { 
+               "csfleEncryptionSchemas": {
                     "testdb.coll_a": {
-                        "jsonSchema": { 
+                        "jsonSchema": {
                                 type: "object",
                                 properties: {
                                     a: {
@@ -693,7 +692,7 @@ TEST_F(FLEPipelineTest, PropagateSchemaForGraphLookupCsfleEncryptionSchemasFails
                         },
                         "isRemoteSchema": false },
                    "testdb.coll_b": {
-                        "jsonSchema": { 
+                        "jsonSchema": {
                                 type: "object",
                                 properties: {
                                     b: {
@@ -710,8 +709,8 @@ TEST_F(FLEPipelineTest, PropagateSchemaForGraphLookupCsfleEncryptionSchemasFails
     )");
     auto nsA = getExpCtx()->getNamespaceString();
     auto nsB = NamespaceString::createNamespaceString_forTest("testdb.coll_b");
-    getExpCtx()->setResolvedNamespaces({{nsA.coll().toString(), {nsA, std::vector<BSONObj>{}}},
-                                        {nsB.coll().toString(), {nsB, std::vector<BSONObj>{}}}});
+    getExpCtx()->setResolvedNamespaces(
+        {{nsA, {nsA, std::vector<BSONObj>{}}}, {nsB, {nsB, std::vector<BSONObj>{}}}});
 
 
     auto graphLookupSpec = fromjson(R"({

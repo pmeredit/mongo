@@ -947,12 +947,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
 
-    // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
-    // appropriately here
     context->expCtx = ExpressionContextBuilder{}
                           .opCtx(context->opCtx.get())
                           .allowDiskUse(false)
                           .ns(NamespaceString(DatabaseName::kLocal))
+                          .allowGenericForeignDbLookup(true)
                           .build();
     context->memoryAggregator =
         _memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());

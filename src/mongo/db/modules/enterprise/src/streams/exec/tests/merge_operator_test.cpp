@@ -816,8 +816,8 @@ TEST_F(MergeOperatorTest, LocalTest) {
 
     NamespaceString fromNs =
         NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
-    _context->expCtx->setResolvedNamespaces(StringMap<mongo::ResolvedNamespace>{
-        {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
+    _context->expCtx->setResolvedNamespaces(
+        ResolvedNamespaceMap{{fromNs, {fromNs, std::vector<BSONObj>()}}});
 
     auto mergeObj = fromjson(R"(
 {

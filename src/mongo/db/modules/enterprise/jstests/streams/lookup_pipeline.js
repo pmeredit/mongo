@@ -126,7 +126,8 @@ const spName = "lookupPipelineTest";
             insertDocs(spName, inputDocs);
             assert.soon(() => { return outputColl.find().itcount() == 5001; }, logState(spName));
             assert.eq(
-                Array.from({length: 5000}, (_, i) => ({k: 0, out: {fk: 0, a: i + 1, b: 10}})).concat(
+                Array.from({length: 5000}, (_, i) => ({k: 0, out: {fk: 0, a: i + 1, b:
+                10}})).concat(
                 [{k: 2, out: {fk: 2, a: 3, b: 12}}]),
                 outputColl.find({}, {_id: 0, k: 1, out: 1}).toArray());
         },
@@ -166,8 +167,8 @@ const spName = "lookupPipelineTest";
                 return outputColl.find().itcount() == 3;
             }, logState(spName));
             assert.eq(
-                [{k: 1, out: [{fk: 1}, {fk: 2}, {fk: 3}]}, {k: 3, out: [{fk: 3}]}, {k: 4, out: []}],
-                outputColl.find({}, {_id: 0, k: 1, out: 1}).toArray());
+                [{k: 1, out: [{fk: 1}, {fk: 2}, {fk: 3}]}, {k: 3, out: [{fk: 3}]}, {k: 4, out:
+                []}], outputColl.find({}, {_id: 0, k: 1, out: 1}).toArray());
         },
     });
 })();
@@ -257,7 +258,120 @@ const spName = "lookupPipelineTest";
             insertDocs(spName, inputDocs);
             assert.soon(() => {
                 return outputColl.find().itcount() == 3;
+            }, logState(spName), 10000);
+            assert.eq(
+                [
+                    {k: 1, k2: 1, str: "abc"},
+                    {k: 1, k2: 2, str: "bcd"},
+                    {k: 2, k2: 3, str: "cde"},
+                ],
+                outputColl.find({}, {_id: 0, k: 1, k2: 1, str: 1}).toArray());
+        },
+    });
+})();
+
+(function testPipelineWithLetAndInnerLookupOnLocalDB() {
+    const localDB_foreignColl = db.getSiblingDB("local").foreign;
+
+    const inputDocs = [{k: 1}, {k: 2}];
+    const foreignDocs = [{fk: 1, k2: 1}, {fk: 1, k2: 2}, {fk: 2, k2: 3}, {fk: 3, k2: 4}];
+    const foreignColl2 = db.getSiblingDB("local").foreign2;
+    const foreign2Docs = [{_id: 1, str: "abc"}, {_id: 2, str: "bcd"}, {_id: 3, str: "cde"}];
+
+    runTest({
+        spName: spName,
+        pipeline: makeLookupPipeline({
+            $lookup: {
+                from: {connectionName: connectionName, db: "local", coll: localDB_foreignColl.getName()},
+                let: {lk: "$k"},
+                pipeline: [
+                    {$match: {$expr: {$eq: ["$fk", "$$lk"]}}},
+                    {$project: {_id: 0, fk: 1, k2: 1}},
+                    // There's an inner lookup stage in the inner pipeline of the $lookup stage. The
+                    // inner pipeline is sent to the remote db server as is, so the 'from'
+                    // collection should belong to the same remote server and remote db.
+                    {$lookup: {from: foreignColl2.getName(), localField: "k2", foreignField: "_id",
+                               as: "out2"}},
+                    {$project: {_id: 0, fk: 1, k2: 1, out2: 1}},
+                    {$unwind: {path: "$out2"}},
+                    {$project: {fk: 1, k2: 1, str: "$out2.str"}},
+                ],
+                as: 'out'
+            }
+        },
+        {$unwind: {path: "$out"}},
+        // Removes the duplicated fields and fully flattens the output.
+        {$project: {k: 1, k2: "$out.k2", str: "$out.str"}}),
+        setupAction: () => {
+            outputColl.drop();
+            dlqColl.drop();
+            localDB_foreignColl.drop();
+            localDB_foreignColl.insert(foreignDocs);
+            foreignColl2.drop();
+            foreignColl2.insert(foreign2Docs);
+        },
+        verifyActions: () => {
+            insertDocs(spName, inputDocs);
+            assert.soon(() => {
+                return outputColl.find().itcount() == 3;
             }, logState(spName));
+            assert.eq(
+                [
+                    {k: 1, k2: 1, str: "abc"},
+                    {k: 1, k2: 2, str: "bcd"},
+                    {k: 2, k2: 3, str: "cde"},
+                ],
+                outputColl.find({}, {_id: 0, k: 1, k2: 1, str: 1}).toArray());
+        },
+    });
+})();
+
+(function testPipelineWithLetAndInnerLookupOnLocalDB() {
+    const localDB_foreignColl = db.getSiblingDB("local").foreign;
+
+    const inputDocs = [{k: 1}, {k: 2}];
+    const foreignDocs = [{fk: 1, k2: 1}, {fk: 1, k2: 2}, {fk: 2, k2: 3}, {fk: 3, k2: 4}];
+    const foreignColl2 = db.getSiblingDB("local").foreign2;
+    const foreign2Docs = [{_id: 1, str: "abc"}, {_id: 2, str: "bcd"}, {_id: 3, str: "cde"}];
+
+    runTest({
+        spName: spName,
+        pipeline: makeLookupPipeline({
+            $lookup: {
+                from: {connectionName: connectionName, db: "local", coll: localDB_foreignColl.getName()},
+                let: {lk: "$k"},
+                pipeline: [
+                    {$match: {$expr: {$eq: ["$fk", "$$lk"]}}},
+                    {$project: {_id: 0, fk: 1, k2: 1}},
+                    // There's an inner lookup stage in the inner pipeline of the $lookup stage. The
+                    // inner pipeline is sent to the remote db server as is, so the 'from'
+                    // collection should belong to the same remote server and remote db.
+                    {$lookup: {from: foreignColl2.getName(), localField: "k2", foreignField: "_id",
+                               as: "out2"}},
+                    {$project: {_id: 0, fk: 1, k2: 1, out2: 1}},
+                    {$unwind: {path: "$out2"}},
+                    {$project: {fk: 1, k2: 1, str: "$out2.str"}},
+                ],
+                as: 'out'
+            }
+        },
+        {$unwind: {path: "$out"}},
+        // Removes the duplicated fields and fully flattens the output.
+        {$project: {k: 1, k2: "$out.k2", str: "$out.str"}}),
+        setupAction: () => {
+            outputColl.drop();
+            dlqColl.drop();
+            localDB_foreignColl.drop();
+            localDB_foreignColl.insert(foreignDocs);
+            foreignColl2.drop();
+            foreignColl2.insert(foreign2Docs);
+        },
+        verifyActions: () => {
+            insertDocs(spName, inputDocs);
+            jsTestLog(foreignColl.find({}).toArray());
+            assert.soon(() => {
+                return outputColl.find().itcount() == 3;
+            }, logState(spName), 10000);
             assert.eq(
                 [
                     {k: 1, k2: 1, str: "abc"},
@@ -277,49 +391,49 @@ const spName = "lookupPipelineTest";
     const foreignDocs = [{fk: 0, str: "abc"}, {fk: 1, str: "bcd"}, {fk: 2, str: "cde"}, {fk: 3}];
 
     runTest({
-        spName: spName,
-        pipeline: makeLookupPipeline({
-            $tumblingWindow: {
-                interval: {size: NumberInt(1), unit: "second"},
-                allowedLateness: NumberInt(0),
-                pipeline: [
-                    {
-                        $group: {
-                            _id: "$k",
-                            sa: {$sum: "$a"}
-                        }
-                    },
-                    {
-                        $lookup: {
-                            from: {
-                                connectionName: connectionName,
-                                db: dbName,
-                                coll: foreignColl.getName()
-                            },
-                            let: {lk: "$_id"},
-                            pipeline: [
-                                {$match: {$expr: {$eq: ["$fk", "$$lk"]}}},
-                                {$project: {_id: 0, fk: 1, str: 1}},
-                            ],
-                            as: 'out'
-                        }
+    spName: spName,
+    pipeline: makeLookupPipeline({
+        $tumblingWindow: {
+            interval: {size: NumberInt(1), unit: "second"},
+            allowedLateness: NumberInt(0),
+            pipeline: [
+                {
+                    $group: {
+                        _id: "$k",
+                        sa: {$sum: "$a"}
                     }
-                ]
-            }
-        }),
-        setupAction: () => {
-            outputColl.drop();
-            dlqColl.drop();
-            foreignColl.drop();
-            foreignColl.insert(foreignDocs);
-        },
-        verifyActions: () => {
-            // Inserts docs for the first window.
-            insertDocs(spName, inputDocs1);
-            // Gives some time for the first window to close.
-            sleep(2000);
-            // Inserts docs for the second window which will actually closes the first window.
-            insertDocs(spName, inputDocs2);
+                },
+                {
+                    $lookup: {
+                        from: {
+                            connectionName: connectionName,
+                            db: dbName,
+                            coll: foreignColl.getName()
+                        },
+                        let: {lk: "$_id"},
+                        pipeline: [
+                            {$match: {$expr: {$eq: ["$fk", "$$lk"]}}},
+                            {$project: {_id: 0, fk: 1, str: 1}},
+                        ],
+                        as: 'out'
+                    }
+                }
+            ]
+        }
+    }),
+    setupAction: () => {
+        outputColl.drop();
+        dlqColl.drop();
+        foreignColl.drop();
+        foreignColl.insert(foreignDocs);
+    },
+    verifyActions: () => {
+        // Inserts docs for the first window.
+        insertDocs(spName, inputDocs1);
+        // Gives some time for the first window to close.
+        sleep(2000);
+        // Inserts docs for the second window which will actually closes the first window.
+        insertDocs(spName, inputDocs2);
 
             assert.soon(() => {
                 logState(spName);

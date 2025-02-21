@@ -1834,15 +1834,15 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
     auto pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(stages));
     stages = pipelineRewriter->rewrite();
 
+    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We set
+    // 'allowGenericForeignDbLookup' to true so this syntax can be parsed in DocumentSourceLookup
+    // without throwing errors.
+    LiteParserOptions options{.allowGenericForeignDbLookup = true};
+    LiteParsedPipeline liteParsedPipeline(_context->expCtx->getNamespaceString(), stages, options);
+
     // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
     // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
-    LiteParsedPipeline liteParsedPipeline(_context->expCtx->getNamespaceString(), stages);
-    auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    for (auto& involvedNs : pipelineInvolvedNamespaces) {
-        resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
-    }
-    _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
+    _context->expCtx->addResolvedNamespaces(liteParsedPipeline.getInvolvedNamespaces());
     auto pipeline = Pipeline::parse(stages, _context->expCtx);
     if (_options.planningUserPipeline) {
         pipeline->optimizePipeline();
