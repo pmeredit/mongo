@@ -43,6 +43,7 @@ import {
     const stream = sp.createStreamProcessor('sp0', [source, aggregation, sink.memory]);
 
     stream.start({featureFlags: {}});
+    assert(!("lastMessageIn" in stream.stats()));
 
     const documents = [
         // Two documents with same grouping key (`id`) and `timestamp`, so
@@ -59,6 +60,7 @@ import {
     // This will close all the windows created from the first document set that
     // was sent above.
     const commitDocument = {timestamp: "2023-03-03T20:43:00.000Z", id: 3, value: 1};
+    const startTime = new Date();
     stream.testInsert(commitDocument);
 
     // Wait for the two documents to be emitted.
@@ -98,6 +100,7 @@ import {
     assert.eq(stats['outputMessageCount'], verboseStats['outputMessageCount']);
     assert.eq(stats['outputMessageSize'], verboseStats['outputMessageSize']);
     assert.eq(stats['stateSize'], verboseStats['stateSize']);
+    assert(Math.abs(startTime.getTime() - stats['lastMessageIn'].getTime()) <= 5000);
 
     // Make sure that watermarks are written at a partition level
     assert.eq(1, verboseStats['kafkaPartitions'].length);

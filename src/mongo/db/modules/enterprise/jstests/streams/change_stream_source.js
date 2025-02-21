@@ -132,6 +132,7 @@ function runChangeStreamSourceTest({
     assert.commandWorked(startResult);
     const cursorId = startResult["sampleCursorId"];
 
+    const startTime = new Date();
     performWrites();
 
     let outputDocs = sampleUntil(cursorId, expectedNumberOfDataMessages, processorName);
@@ -139,6 +140,8 @@ function runChangeStreamSourceTest({
     // Get verbose stats.
     const verboseStats = getStats(processorName);
     jsTestLog(verboseStats);
+
+    assert(Math.abs(startTime.getTime() - verboseStats['lastMessageIn'].getTime()) <= 5000);
     assert.eq(verboseStats["ok"], 1);
     const startingPoint = verboseStats['changeStreamState'];
     assert(startingPoint);

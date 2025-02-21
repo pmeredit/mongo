@@ -9,6 +9,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
@@ -224,9 +225,9 @@ void Executor::stop(StopReason stopReason, bool checkpointOnStop) {
                "stopReason"_attr = _stopReason);
 }
 
-std::vector<OperatorStats> Executor::getOperatorStats() {
+Executor::ExecutorStats Executor::getExecutorStats() {
     stdx::lock_guard<stdx::mutex> lock(_mutex);
-    return _streamStats.operatorStats;
+    return ExecutorStats{_streamStats.operatorStats, _lastMessageIn};
 }
 
 std::vector<KafkaConsumerPartitionState> Executor::getKafkaConsumerPartitionStates() const {
@@ -298,6 +299,9 @@ void Executor::updateStats() {
     _numOutputDocumentsCounter->increment(delta.numOutputDocs);
     _numOutputBytesCounter->increment(delta.numOutputBytes);
     _memoryUsageGauge->set(_context->memoryAggregator->getCurrentMemoryUsageBytes());
+    if (delta.numInputDocs > 0) {
+        _lastMessageIn = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+    }
 
     if (delta.numOutputDocs || delta.numDlqDocs) {
         // no need to check thru all the individual operators

@@ -608,7 +608,8 @@ TEST_F(MergeOperatorTest, Parallelism) {
         // Wait for expected stats.
         poll(
             [&]() {
-                auto stats = executor.getOperatorStats();
+                auto executorStats = executor.getExecutorStats();
+                auto stats = executorStats.operatorStats;
                 auto sinkStats = stats.back();
                 return size_t(sinkStats.numInputDocs) == c.input.size() &&
                     size_t(sinkStats.numOutputDocs) == c.input.size();

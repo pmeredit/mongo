@@ -1648,7 +1648,8 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     reply.setScaleFactor(scale);
 
     // Per-operator stats for this execution.
-    auto currentOperatorStats = processorInfo->executor->getOperatorStats();
+    Executor::ExecutorStats executorStats = processorInfo->executor->getExecutorStats();
+    std::vector<OperatorStats> currentOperatorStats = std::move(executorStats.operatorStats);
     // Per-operator stats for the lifetime of the processor (including stats in checkpoint).
     std::vector<OperatorStats> fullOperatorStats{currentOperatorStats};
     const auto& restoredCheckpointInfo = processorInfo->context->restoredCheckpointInfo;
@@ -1671,6 +1672,9 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
         summaryStats += toSummaryStats(*restoredCheckpointInfo->summaryStats);
     }
 
+    if (executorStats.lastMessageIn) {
+        reply.setLastMessageIn(executorStats.lastMessageIn);
+    }
     reply.setInputMessageCount(summaryStats.numInputDocs);
     reply.setInputMessageSize(double(summaryStats.numInputBytes) / scale);
     reply.setOutputMessageCount(summaryStats.numOutputDocs);

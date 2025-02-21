@@ -65,6 +65,11 @@ public:
         int64_t testOnlyDocsQueueMaxSizeBytes{512 * 1024 * 1024};  // 512 MB
     };
 
+    struct ExecutorStats {
+        std::vector<OperatorStats> operatorStats;
+        boost::optional<mongo::Date_t> lastMessageIn;
+    };
+
     Executor(Context* context, Options options);
 
     ~Executor();
@@ -81,7 +86,7 @@ public:
     bool isConnected();
 
     // Returns stats for each operator.
-    std::vector<OperatorStats> getOperatorStats();
+    ExecutorStats getExecutorStats();
 
     // Returns the state for each kafka consumer partition. If this stream processor is not using
     // the kafka consumer source, then this returns an empty vector.
@@ -243,6 +248,7 @@ private:
     std::shared_ptr<IntGauge> _startDurationGauge;
     std::shared_ptr<IntGauge> _stopDurationGauge;
     std::shared_ptr<IntGauge> _maxRunOnceDurationGauge;
+    boost::optional<mongo::Date_t> _lastMessageIn;
 
     mongo::AtomicWord<mongo::Date_t> _lastRunOnce{mongo::Date_t::now()};
 
