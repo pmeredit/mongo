@@ -594,9 +594,10 @@ In FLE 1, Bindata 6 had several subtypes as denoted by the first byte of a binda
 11. FLE 2 V2 Insert Update Payload (see FLE2InsertUpdatePayloadV2 below)
 12. FLE 2 V2 Find Equality Payload (see FLE2FindEqualityPayloadV2 below)
 13. FLE 2 V2 Find Range Payload (see FLE2FindRangePayloadV2 below)
-14. FLE 2 V2 Equality Indexed Encrypted Value (See Indexed Equality Encrypted Values)
-15. FLE 2 V2 Range Indexed Encrypted Value (Not in this document)
+14. FLE 2 V2 Equality Indexed Encrypted Value (See Equality Indexed Values)
+15. FLE 2 V2 Range Indexed Encrypted Value (See Range Indexed Values)
 16. FLE 2 V2 Unindexed Encrypted Value (similar to type 2)
+17. FLE 2 Text Indexed Encrypted Value (See Substring/Suffix/Prefix Indexed Values)
 
 # Reference: Keys and Tokens
 
@@ -654,6 +655,66 @@ AnchorPaddingKeyToken = HMAC(AnchorPaddingRootToken, 1) = Fs[f,1,2,d,1]
 AnchorPaddingValueToken = HMAC(AnchorPaddingRootToken, 2) = Fs[f,1,2,d,2]
 ```
 
+Tokens for String Exact Match Search:
+
+```
+EDCTextExactToken = HMAC(EDCToken, 1) = Fs[f,1,1,1]
+EDCTextExactDerivedFromDataToken = HMAC(EDCTextExactToken, v) = Fs[f,1,1,1,v]
+EDCTextExactDerivedFromDataTokenAndContentionFactorToken = HMAC(EDCTextExactDerivedFromDataToken, u) = Fs[f,1,1,1,v,u]
+
+ESCTextExactToken = HMAC(ESCToken, 1) = Fs[f,1,2,1]
+ESCTextExactDerivedFromDataToken = HMAC(ESCTextExactToken, v) = Fs[f,1,2,1,v]
+ESCTextExactDerivedFromDataTokenAndContentionFactorToken = HMAC(ESCTextExactDerivedFromDataToken, u) = Fs[f,1,2,1,v,u]
+
+ServerTextExactToken = HMAC(ServerTokenDerivationLevel1Token, 1) = Fs[f,2,1]
+ServerTextExactDerivedFromDataToken = HMAC(ServerTextExactToken, v) = Fs[f,2,1,v]
+```
+
+Tokens for String Substring Search:
+
+```
+EDCTextSubstringToken = HMAC(EDCToken, 2) = Fs[f,1,1,2]
+EDCTextSubstringDerivedFromDataToken = HMAC(EDCTextSubstringToken, v) = Fs[f,1,1,2,v]
+EDCTextSubstringDerivedFromDataTokenAndContentionFactorToken = HMAC(EDCTextSubstringDerivedFromDataToken, u) = Fs[f,1,1,2,v,u]
+
+ESCTextSubstringToken = HMAC(ESCToken, 2) = Fs[f,1,2,2]
+ESCTextSubstringDerivedFromDataToken = HMAC(ESCTextSubstringToken, v) = Fs[f,1,2,2,v]
+ESCTextSubstringDerivedFromDataTokenAndContentionFactorToken = HMAC(ESCTextSubstringDerivedFromDataToken, u) = Fs[f,1,2,2,v,u]
+
+ServerTextSubstringToken = HMAC(ServerTokenDerivationLevel1Token, 1) = Fs[f,2,2]
+ServerTextSubstringDerivedFromDataToken = HMAC(ServerTextSubstringToken, v) = Fs[f,2,2,v]
+```
+
+Tokens for String Suffix Search:
+
+```
+EDCTextSuffixToken = HMAC(EDCToken, 1) = Fs[f,1,1,3]
+EDCTextSuffixDerivedFromDataToken = HMAC(EDCTextSuffixToken, v) = Fs[f,1,1,3,v]
+EDCTextSuffixDerivedFromDataTokenAndContentionFactorToken = HMAC(EDCTextSuffixDerivedFromDataToken, u) = Fs[f,1,1,3,v,u]
+
+ESCTextSuffixToken = HMAC(ESCToken, 1) = Fs[f,1,2,3]
+ESCTextSuffixDerivedFromDataToken = HMAC(ESCTextSuffixToken, v) = Fs[f,1,2,3,v]
+ESCTextSuffixDerivedFromDataTokenAndContentionFactorToken = HMAC(ESCTextSuffixDerivedFromDataToken, u) = Fs[f,1,2,3,v,u]
+
+ServerTextSuffixToken = HMAC(ServerTokenDerivationLevel1Token, 1) = Fs[f,2,3]
+ServerTextSuffixDerivedFromDataToken = HMAC(ServerTextSuffixToken, v) = Fs[f,2,3,v]
+```
+
+Tokens for String Prefix Search:
+
+```
+EDCTextPrefixToken = HMAC(EDCToken, 1) = Fs[f,1,1,4]
+EDCTextPrefixDerivedFromDataToken = HMAC(EDCTextPrefixToken, v) = Fs[f,1,1,4,v]
+EDCTextPrefixDerivedFromDataTokenAndContentionFactorToken = HMAC(EDCTextPrefixDerivedFromDataToken, u) = Fs[f,1,1,4,v,u]
+
+ESCTextPrefixToken = HMAC(ESCToken, 1) = Fs[f,1,2,4]
+ESCTextPrefixDerivedFromDataToken = HMAC(ESCTextPrefixToken, v) = Fs[f,1,2,4,v]
+ESCTextPrefixDerivedFromDataTokenAndContentionFactorToken = HMAC(ESCTextPrefixDerivedFromDataToken, u) = Fs[f,1,2,4,v,u]
+
+ServerTextPrefixToken = HMAC(ServerTokenDerivationLevel1Token, 1) = Fs[f,2,4]
+ServerTextPrefixDerivedFromDataToken = HMAC(ServerTextPrefixToken, v) = Fs[f,2,4,v]
+```
+
 # Reference: Schema
 
 Four collections ( r = read, w = write)
@@ -686,7 +747,7 @@ struct {
 }
 ```
 
-# Reference: Indexed Equality Encrypted Values
+# Reference: Indexed Encrypted Values
 
 The Encrypted Data Collection (EDC) is read and written by the user. It stores the encrypted data and embedded search tags. EDC collection documents have the following format which consists of encrypted fields and safeContent fields:
 
@@ -699,50 +760,105 @@ The Encrypted Data Collection (EDC) is read and written by the user. It stores t
 }
 ```
 
-Fields values have the following contents in pseudo code:
+An indexed encrypted field value's on-disk payload format varies depending on what type of indexing
+applies for that value, which can be either equality, range, or text search. The type is indicated
+in the first byte of the BinData field value (see Reference: BinData 6 subtypes).
 
-`BinData(6, byte(0xE) + S_KeyId + BSONType + Encrypt(ServerDataEncryptionLevel1Token, v) + metadataBlock` and
-`metadataBlock = Encrypt(k) + tag + Encrypt(32 bytes of zero)`
+## Equality Indexed Values
+
+Equality indexed encrypted values have the following on-disk format. In pseudo code:
 
 ```c
-struct {
-    uint8_t fle_blob_subtype = 0xE;
-    uint8_t key_uuid[16]; // S_KeyId aka IndexKeyId
-    uint8  original_bson_type;
-    ciphertext[ciphertext_length];
-    metadataBlock;
+struct EqualityIndexedValueV2 {
+    uint8_t fle_blob_subtype = 0xE;          // kFLE2EqualityIndexedValueV2
+    uint8_t key_uuid[16];                    // S_KeyId aka IndexKeyId
+    uint8_t original_bson_type;
+    uint8_t server_ciphertext[ctxt_length];  // client_data re-encrypted in server
+    MetadataBlock metadata_block;
 }
-
 ```
 
-where `ciphertext_length = sizeof(struct) - 17 - sizeof(metadataBlock)`.
+where:
+
+- `client_ciphertext` is the result of `AES-CBC-AEAD-Encrypt(K_Key, plaintext_value, aad=K_KeyId)`
+- `client_data` has the format `(16-byte K_KeyID || client_ciphertext)`
+  - the 16-byte user key ID is the associated data
+- `server_ciphertext = AES_256_CTR_Encrypt(ServerDataEncryptionLevel1Token, client_data)`
+- `ctxt_length = 16-byte IV + sizeof(client_data)`
 
 The format of the metadata block is as follows:
 
 ```c
-struct {
-    uint8_t[32] encryptedCountersBlob;
-    uint8_t[32] tag;
-    uint8_t[32] encryptedZerosBlob;
+struct MetadataBlock {
+    uint8_t encrypted_counters[32];    // 16-byte IV + 16-byte ciphertext
+    uint8_t tag[32];                   // 32-byte PRF (HMAC) result
+    uint8_t encrypted_zeros[32];       // 16-byte IV + 16-byte ciphertext
 }
 ```
 
-where `encryptedZerosBlob = Encrypt(ServerZerosEncryptionToken, 16 bytes of 0x0)`,
-`encryptedCountersBlob = Encrypt(ServerCountAndContentionFactorEncryptionToken, counter || contentionFactor)`
+where:
 
-The format of the encrypted data is as follows:
+- `encrypted_zeros = AES-CTR-Encrypt(ServerZerosEncryptionToken, 16 bytes of 0x0)`
+- `encrypted_counters = AES-CTR-Encrypt(ServerCountAndContentionFactorEncryptionToken, counter || contentionFactor)`
+- `tag = HMAC(EDCTwiceDerivedToken, count)`
+
+## Range Indexed Values
+
+Range indexed encrypted values have the following on-disk format. In pseudo code:
 
 ```c
-struct {
-    uint8_t[length] cipherText; // UserKeyId + EncryptAEAD(K_KeyId, value)
+struct RangeIndexedValueV2 {
+    uint8_t fle_blob_subtype = 0xF;          // kFLE2RangeIndexedValueV2
+    uint8_t key_uuid[16];                    // S_KeyId aka IndexKeyId
+    uint8_t original_bson_type;
+    uint8_t edge_count;
+    uint8_t server_ciphertext[ctxt_length];  // client encrypted data re-encrypted in server
+    MetadataBlock metadata_blocks[edge_count];
 }
 ```
 
-where `ciphertext_length = sizeof(struct) - (16)`. Everything except `cipherText` is associatedData.
+where:
 
-Tags are formatted as
+- `edge_count` is the number of edges for the numeric value (as determined by the client
+  running the OST `Edges` algorithm).
+- for each edge value, a `MetadataBlock` is produced and stored in the array `metadata_blocks`.
 
-`HMAC(EDCTwiceDerivedToken, count)`
+## Substring/Suffix/Prefix Indexed Values
+
+Fields that are indexed for substring search, suffix search, prefix search, or both prefix & suffix
+search, all share the same on-disk payload type & format. In pseudo code:
+
+```c
+struct TextIndexedValueV2 {
+    uint8_t fle_blob_subtype = 0x10;         // kFLE2TextIndexedValue
+    uint8_t key_uuid[16];                    // S_KeyId aka IndexKeyId
+    uint8_t original_bson_type;
+    uint32_t tag_count;
+    uint32_t substring_tag_count;
+    uint32_t suffix_tag_count;
+    uint8_t server_ciphertext[ctxt_length];  // client encrypted data re-encrypted in server
+    MetadataBlock exact_metadata_block;
+    MetadataBlock substr_metadata_blocks[substring_tag_count];
+    MetadataBlock suffix_metadata_blocks[suffix_tag_count];
+    MetadataBlock prefix_metadata_blocks[prefix_tag_count];
+}
+```
+
+where:
+
+- `tag_count` is the combined number of metadata blocks.
+- `prefix_tag_count = tag_count - substring_tag_count - suffix_tag_count - 1`.
+
+The `exact_metadata_block` is derived from the whole string, and is used for exact search.
+
+For a substring-indexed value, the client runs the OST `SubTree` algorithm to obtain an array of
+substrings. Each entry in this array derives one `MetadataBlock` in `substr_metadata_blocks`.
+The `substring_tag_count` field is the length of this array.
+
+In similar fashion, for suffix-indexed and/or prefix-indexed values, the client runs the OST
+`SuffTree` and/or `PrefTree` algorithms to get an array of substrings. Each entry in the array
+derives a `MetadataBlock` in the respective `suffix_metadata_blocks` or `prefix_metadata_blocks`
+array.
 
 # Reference: ESC Schema
 
