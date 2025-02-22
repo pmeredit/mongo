@@ -155,7 +155,6 @@ protected:
 
 private:
     friend class MergeOperatorTest;
-    friend class ExternalFunctionTest;
 
     struct WriterThread {
         // Handles sink specific writing logic.

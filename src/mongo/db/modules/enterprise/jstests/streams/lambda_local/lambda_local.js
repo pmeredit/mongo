@@ -1,7 +1,6 @@
 import {getPython3Binary} from "jstests/libs/python.js";
 import {
     commonFailureTest,
-    commonSinkTest,
     commonTest
 } from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 import {
@@ -43,18 +42,17 @@ try {
 
     const functionName = "function";
 
-    // Middle Stage Tests
+    // Test code here
     commonTest({
         input: [
             {action: "hello", makeARequest: true, requestID: 1},
         ],
         pipeline: [
             {
-                $externalFunction: {
-                    connectionName: testConstants.awsIAMLambdaConnection,
-                    functionName,
-                    as: "response",
-                }
+                $externalFunction:
+                    {
+                        connectionName: testConstants.awsIAMLambdaConnection, functionName, as:
+                        "response"}
             },
             ...projectStages,
         ],
@@ -81,16 +79,17 @@ try {
         ],
         pipeline: [
             {
-                $externalFunction: {
-                    connectionName: testConstants.awsIAMLambdaConnection,
-                    functionName,
-                    as: "response",
-                    payload: [
-                        { $replaceRoot: { newRoot: "$payloadToSend" } },
-                        { $addFields: { sum: { $sum: "$randomArray" }}},
-                        { $project: { success: 1, sum: 1 }}
-                    ]
-                }
+                $externalFunction:
+                    {
+                        connectionName: testConstants.awsIAMLambdaConnection,
+                        functionName,
+                        as: "response",
+                        payload: [
+                            { $replaceRoot: { newRoot: "$payloadToSend" } },
+                            { $addFields: { sum: { $sum: "$randomArray" }}},
+                            { $project: { success: 1, sum: 1 }}
+                        ]
+                    }
             },
             ...projectStages,
         ],
@@ -154,79 +153,6 @@ try {
         useTimeField: false,
         featureFlags
     });
-
-    // Sink Stage Tests
-    commonSinkTest({
-        input: [
-            {action: "hello", makeARequest: true, requestID: 1},
-        ],
-        pipeline: [
-            {
-                $externalFunction: {
-                    connectionName: testConstants.awsIAMLambdaConnection,
-                    functionName,
-                }
-            },
-        ],
-        expectedOutputMessageCount: 1,
-        expectedDlq: [],
-        useTimeField: false,
-        featureFlags
-    });
-    commonSinkTest({
-        input: [
-            {
-                payloadToSend: {
-                    success: "yes I worked",
-                    shouldBeExcludeFromRequest: true,
-                    randomArray: [1, 2, 3]
-                }
-            },
-        ],
-        pipeline: [
-            {
-                $externalFunction: {
-                    connectionName: testConstants.awsIAMLambdaConnection,
-                    functionName,
-                    payload: [
-                        {$replaceRoot: {newRoot: "$payloadToSend"}},
-                        {$addFields: {sum: {$sum: "$randomArray"}}},
-                        {$project: {success: 1, sum: 1}}
-                    ]
-                }
-            },
-        ],
-        expectedOutputMessageCount: 1,
-        expectedDlq: [],
-        useTimeField: false,
-        featureFlags
-    });
-    commonSinkTest({
-        input: [
-            {
-                payloadToSend: {
-                    success: "yes I worked",
-                    shouldBeExcludeFromRequest: true,
-                    randomArray: [1, 2, 3]
-                }
-            },
-        ],
-        pipeline: [
-            {
-                $externalFunction: {
-                    connectionName: testConstants.awsIAMLambdaConnection,
-                    functionName,
-                    execution: "async",
-                }
-            },
-        ],
-        expectedOutputMessageCount: 1,
-        expectedDlq: [],
-        useTimeField: false,
-        featureFlags
-    });
-
-    // DLQ Tests
     try {
         assert.commandWorked(
             db.adminCommand({'configureFailPoint': 'awsUserFunctionError', 'mode': 'alwaysOn'}));
@@ -236,13 +162,10 @@ try {
             ],
             pipeline: [
                 {
-                    $externalFunction: {
-                        connectionName: testConstants.awsIAMLambdaConnection,
-                        functionName, 
-                        as: "response",
-                    }
+                    $externalFunction:
+                        {connectionName: testConstants.awsIAMLambdaConnection, functionName, as:
+                        "response"}
                 },
-                ...projectStages,
             ],
             expectedOutput: [],
             expectedDlq: [
@@ -260,40 +183,10 @@ try {
             useTimeField: false,
             featureFlags
         });
-
-        commonSinkTest({
-            input: [
-                {makeARequest: true, requestID: 1},
-            ],
-            pipeline: [
-                {
-                    $externalFunction: {
-                        connectionName: testConstants.awsIAMLambdaConnection,
-                        functionName,
-                    }
-                },
-            ],
-            expectedOutputMessageCount: 0,
-            expectedDlq: [{
-                "errInfo": {
-                    "reason":
-                        "Failed to process input document in $externalFunction with error: Request failure in $externalFunction with error: Received error response from external function. Payload: Uncaught User Exception"
-                },
-                "operatorName": "ExternalFunctionSinkOperator",
-                "doc": {
-                    "makeARequest": true,
-                    "requestID": 1,
-                }
-            }],
-            useTimeField: false,
-            featureFlags
-        });
     } finally {
         assert.commandWorked(
             db.adminCommand({'configureFailPoint': 'awsUserFunctionError', 'mode': 'off'}));
     }
-
-    // Failure Tests
     try {
         assert.commandWorked(
             db.adminCommand({'configureFailPoint': 'awsLambdaNotFound', 'mode': 'alwaysOn'}));

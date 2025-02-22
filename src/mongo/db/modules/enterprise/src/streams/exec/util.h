@@ -23,8 +23,6 @@ namespace streams {
 using BSONPipeline = std::vector<mongo::BSONObj>;
 bool isSourceStage(mongo::StringData name);
 bool isSinkStage(mongo::StringData name);
-bool isSinkOnlyStage(mongo::StringData name);
-bool isMiddleAndSinkStage(mongo::StringData name);
 bool isWindowStage(mongo::StringData name);
 bool hasWindow(const std::vector<mongo::BSONObj>& pipeline);
 bool hasPayloadStage(const std::vector<mongo::BSONObj>& pipeline);
@@ -36,7 +34,6 @@ bool isWindowAwareStage(mongo::StringData name);
 bool isBlockingWindowAwareStage(mongo::StringData name);
 bool hasBlockingStage(const BSONPipeline& pipeline);
 bool isPayloadStage(mongo::StringData name);
-bool isExternalFunctionStage(mongo::StringData name);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 

@@ -115,12 +115,6 @@ TEST(RateLimiterTest, SetsInvalidTokenRate) {
     ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSec(-1),
                        mongo::DBException,
                        "tokensRefilledPerSec is not greater than 0");
-    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(0, 1),
-                       mongo::DBException,
-                       "tokensRefilledPerSec is not greater than 0");
-    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(-1, 1),
-                       mongo::DBException,
-                       "tokensRefilledPerSec is not greater than 0");
 }
 
 TEST(RateLimiterTest, RefillRateIsSlower) {
@@ -156,12 +150,6 @@ TEST(RateLimiterTest, SetsInvalidCapacity) {
         rateLimiter.setCapacity(0), mongo::DBException, "capacity is not greater than 0");
     ASSERT_THROWS_WHAT(
         rateLimiter.setCapacity(-1), mongo::DBException, "capacity is not greater than 0");
-    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(1, 0),
-                       mongo::DBException,
-                       "capacity is not greater than 0");
-    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(1, -1),
-                       mongo::DBException,
-                       "capacity is not greater than 0");
 }
 
 TEST(RateLimiterTest, CapacityIsLowered) {

@@ -14,10 +14,12 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/processinfo.h"
 #include "mongo/util/scopeguard.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint/file_util.h"
@@ -1843,52 +1845,6 @@ TEST_F(StreamManagerTest, UpdateConnections_ShouldFailOnUnsupportedTypes) {
                            DBException,
                            ErrorCodes::InternalErrorNotSupported);
     }
-}
-
-TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForAWSIAMLambda) {
-    auto streamManager = createStreamManager(StreamManager::Options{});
-
-    std::string spName("sp");
-
-    StartStreamProcessorCommand startRequest;
-    startRequest.setTenantId(StringData(kTestTenantId1));
-    startRequest.setName(spName);
-    startRequest.setProcessorId(spName);
-    startRequest.setPipeline(
-        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
-
-    std::vector<Connection> connections{
-        {kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}},
-        {kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}}};
-    startRequest.setConnections(connections);
-    startRequest.setOptions(mongo::StartOptions{});
-    streamManager->startStreamProcessor(startRequest);
-
-    ScopeGuard guard{[&] {
-        stopStreamProcessor(
-            streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
-    }};
-
-    UpdateConnectionCommand updateRequest;
-    updateRequest.setTenantId(kTestTenantId1);
-    updateRequest.setProcessorName(spName);
-
-    Connection updatedConnection{
-        kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}};
-    auto expectedOptions =
-        mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", Date_t::now()};
-    updatedConnection.setOptions(expectedOptions.toBSON());
-    updateRequest.setConnection(updatedConnection);
-    streamManager->updateConnection(updateRequest);
-    auto spInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
-    auto actualConnection =
-        spInfo->context->connections->at(kTestAWSIAMLambdaConnectionName.toString());
-    auto actualOptions = mongo::AWSIAMConnectionOptions::parse(IDLParserContext("connectionParser"),
-                                                               actualConnection.getOptions());
-    ASSERT_EQUALS(actualOptions.getAccessKey(), expectedOptions.getAccessKey());
-    ASSERT_EQUALS(actualOptions.getAccessSecret(), expectedOptions.getAccessSecret());
-    ASSERT_EQUALS(actualOptions.getSessionToken(), expectedOptions.getSessionToken());
-    ASSERT_EQUALS(actualOptions.getExpirationDate(), expectedOptions.getExpirationDate());
 }
 
 TEST_F(StreamManagerTest, UpdateConnections_ShouldValidateProperly) {

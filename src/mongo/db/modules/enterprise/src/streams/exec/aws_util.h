@@ -30,7 +30,7 @@ private:
 class LambdaClient {
 public:
     LambdaClient(){};
-    virtual ~LambdaClient() = default;
+    virtual ~LambdaClient(){};
 
     virtual Aws::Lambda::Model::InvokeOutcome Invoke(
         const Aws::Lambda::Model::InvokeRequest& request) const = 0;

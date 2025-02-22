@@ -7,7 +7,6 @@
 #include <climits>
 #include <cstdint>
 
-#include "mongo/platform/rwmutex.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/timer.h"
 
@@ -31,22 +30,17 @@ public:
     // available.
     Microseconds consume(int64_t tokens = 1);
 
-    void setTokensRefilledPerSecAndCapacity(double tokensRefilledPerSec, int64_t capacity);
     void setTokensRefilledPerSec(double tokensRefilledPerSec);
     void setCapacity(int64_t capacity);
 
-protected:
-    void validate();
-    void reset();
-
 private:
-    double _tokensRefilledPerSec{0};
-    int64_t _capacity{0};
+    double _tokensRefilledPerSec;
+    int64_t _capacity;
 
-    Timer* _timer{nullptr};
+    Timer* _timer;
 
-    Microseconds _lastConsumptionTime{0};
-    int64_t _lastAvailableTokens{0};
+    Microseconds _lastConsumptionTime;
+    int64_t _lastAvailableTokens;
 };
 
 }  // namespace streams

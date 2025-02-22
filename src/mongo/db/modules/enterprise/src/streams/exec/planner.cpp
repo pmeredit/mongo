@@ -55,7 +55,6 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
 #include "streams/exec/external_function_operator.h"
-#include "streams/exec/external_function_sink_operator.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/feedable_pipeline.h"
 #include "streams/exec/group_operator.h"
@@ -1740,10 +1739,11 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     appendOperator(std::move(oper));
 }
 
-ExternalFunction::Options Planner::planExternalFunctionOptions(const mongo::BSONObj& bsonOptions,
-                                                               bool isSink) {
-    auto parsedOperatorOptions =
-        ExternalFunctionOptions::parse(IDLParserContext("externalFunction"), bsonOptions);
+void Planner::planExternalFunction(DocumentSourceExternalFunctionStub* docSource) {
+    _context->projectStreamMetaPriorToSinkStage = true;
+
+    auto parsedOperatorOptions = ExternalFunctionOptions::parse(
+        IDLParserContext("externalFunction"), docSource->bsonOptions());
     auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
@@ -1760,35 +1760,25 @@ ExternalFunction::Options Planner::planExternalFunctionOptions(const mongo::BSON
         clientConfig.endpointOverride = "http://localhost:9000";
     }
 
-    ExternalFunction::Options options{
+    ExternalFunctionOperator::Options options{
         .lambdaClient = std::make_unique<AWSLambdaClient>(
             std::make_shared<AWSCredentialsProvider>(_context, connectionNameField), clientConfig),
         .functionName = parsedOperatorOptions.getFunctionName().toString(),
         .execution = parsedOperatorOptions.getExecution(),
         .onError = parsedOperatorOptions.getOnError(),
-        .isSink = isSink,
     };
 
-    if (isSink) {
-        if (options.execution == mongo::ExternalFunctionExecutionEnum::Async) {
-            uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    "BSON field 'externalFunction.as' is not supported with "
-                    "'externalFunction.execution: async'",
-                    !parsedOperatorOptions.getAs());
-        }
-    } else {
-        if (options.execution == mongo::ExternalFunctionExecutionEnum::Sync) {
-            uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    "BSON field 'externalFunction.as' is missing but a required field",
-                    parsedOperatorOptions.getAs());
+    if (options.execution == mongo::ExternalFunctionExecutionEnum::Sync) {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "BSON field 'externalFunction.as' is missing but a required field",
+                parsedOperatorOptions.getAs());
 
-            options.as = parsedOperatorOptions.getAs()->toString();
-        } else {
-            uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    "BSON field 'externalFunction.as' is not supported with "
-                    "'externalFunction.execution: async'",
-                    !parsedOperatorOptions.getAs());
-        }
+        options.as = parsedOperatorOptions.getAs()->toString();
+    } else {
+        uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                "BSON field 'externalFunction.as' is not supported with "
+                "'externalFunction.execution: async'",
+                !parsedOperatorOptions.getAs());
     }
 
     if (const auto& payloadPipeline = parsedOperatorOptions.getPayload(); payloadPipeline) {
@@ -1804,26 +1794,7 @@ ExternalFunction::Options Planner::planExternalFunctionOptions(const mongo::BSON
         options.payloadPipeline = FeedablePipeline{std::move(pipeline)};
     }
 
-    return options;
-}
-
-void Planner::planExternalFunction(DocumentSourceExternalFunctionStub* docSource) {
-    _context->projectStreamMetaPriorToSinkStage = true;
-
-    auto oper = std::make_unique<ExternalFunctionOperator>(
-        _context, planExternalFunctionOptions(docSource->bsonOptions(), false));
-    oper->setOperatorId(_nextOperatorId++);
-    appendOperator(std::move(oper));
-}
-
-void Planner::planExternalFunctionSink(const BSONObj& spec) {
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << "Invalid sink: " << spec,
-            spec.firstElementFieldName() == StringData(kExternalFunctionStageName) &&
-                spec.firstElement().isABSONObj());
-
-    auto oper = std::make_unique<ExternalFunctionSinkOperator>(
-        _context, planExternalFunctionOptions(spec.firstElement().Obj(), true));
+    auto oper = std::make_unique<ExternalFunctionOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
     appendOperator(std::move(oper));
 }
@@ -2201,7 +2172,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
             isSourceStage(firstStageName));
     std::string lastStageName(bsonPipeline.rbegin()->firstElementFieldNameStringData());
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "The last stage in the pipeline must be $merge, $emit, or $externalFunction.",
+            "The last stage in the pipeline must be $merge or $emit.",
             isSinkStage(lastStageName) || _context->isEphemeral);
 
     // Validate each stage BSONObj is well formatted.
@@ -2253,9 +2224,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     // Get the middle stages until we hit a sink stage
     std::vector<BSONObj> middleStages;
     while (current != bsonPipeline.end() &&
-           !isSinkOnlyStage(current->firstElementFieldNameStringData()) &&
-           !(isMiddleAndSinkStage(current->firstElementFieldNameStringData()) &&
-             std::next(current) == bsonPipeline.end())) {
+           !isSinkStage(current->firstElementFieldNameStringData())) {
         std::string stageName(current->firstElementFieldNameStringData());
         enforceStageConstraints(stageName, PipelineType::kMain);
 
@@ -2278,7 +2247,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "The last stage in the pipeline must be $merge, $emit, or $externalFunction.",
+                "The last stage in the pipeline must be $merge or $emit.",
                 _context->isEphemeral);
         // In the ephemeral case, we append a NoOpSink to handle the sample requests.
         sinkSpec =
@@ -2297,16 +2266,6 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
         auto sinkStageName = sinkSpec.firstElementFieldNameStringData();
         if (isMergeStage(sinkStageName)) {
             planMergeSink(sinkSpec);
-        } else if (isExternalFunctionStage(sinkStageName)) {
-            auto enabled = _context->featureFlags
-                ? _context->featureFlags
-                      ->getFeatureFlagValue(FeatureFlags::kEnableExternalFunctionOperator)
-                      .getBool()
-                : boost::none;
-            uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    "Unsupported stage: $externalFunction",
-                    enabled && *enabled);
-            planExternalFunctionSink(sinkSpec);
         } else {
             dassert(isEmitStage(sinkStageName));
             planEmitSink(sinkSpec);
