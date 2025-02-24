@@ -216,6 +216,6 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target="external_function_operator_test",
+    target="external_function_test",
     source=[],
 )

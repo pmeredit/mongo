@@ -27,7 +27,15 @@ bool isSourceStage(mongo::StringData name) {
 }
 
 bool isSinkStage(mongo::StringData name) {
+    return isSinkOnlyStage(name) || isMiddleAndSinkStage(name);
+}
+
+bool isSinkOnlyStage(mongo::StringData name) {
     return isEmitStage(name) || isMergeStage(name);
+}
+
+bool isMiddleAndSinkStage(mongo::StringData name) {
+    return isExternalFunctionStage(name);
 }
 
 bool isWindowStage(mongo::StringData name) {
@@ -83,6 +91,10 @@ bool isMergeStage(mongo::StringData name) {
     return name == mongo::StringData(kMergeStageName);
 }
 
+bool isExternalFunctionStage(mongo::StringData name) {
+    return name == mongo::StringData(kExternalFunctionStageName);
+}
+
 bool isWindowAwareStage(mongo::StringData name) {
     static const stdx::unordered_set<StringData> windowAwareStages{
         {kGroupStageName, kSortStageName, kLimitStageName}};
@@ -105,8 +117,7 @@ bool hasBlockingStage(const BSONPipeline& pipeline) {
 }
 
 bool isPayloadStage(mongo::StringData name) {
-    return name == mongo::StringData(kHttpsStageName) ||
-        name == mongo::StringData(kExternalFunctionStageName);
+    return name == mongo::StringData(kHttpsStageName) || isExternalFunctionStage(name);
 }
 
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,

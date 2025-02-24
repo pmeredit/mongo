@@ -263,6 +263,67 @@ export function commonFailureTest({
     if (expectedErrorCode) {
         assert.eq(test.list()[0].error.code, expectedErrorCode);
     }
+    test.stop();
+}
+
+/*
+ * Helper function to test where the sink stage is included in the pipeline.
+ */
+export function commonSinkTest({
+    input,
+    pipeline,
+    expectedOutputMessageCount,
+    expectedDlq,
+    useTimeField = true,
+    featureFlags = {},
+}) {
+    // Test with a changestream source and a checkpoint in the middle.
+    const newPipeline = [
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        ...pipeline,
+    ];
+    const test = new TestHelper(
+        input,
+        newPipeline,
+        undefined,  // interval
+        "atlas",    // sourcetype
+        undefined,  // useNewCheckpointing
+        undefined,  // useRestoredExecutionPlan
+        undefined,  // writeDir
+        undefined,  // restoreDir
+        undefined,  // dbForTest
+        undefined,  // targetSourceMergeDb
+        useTimeField,
+        "included",  // sinkType
+    );
+    test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
+
+    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
+
+    test.run();
+    assert.commandWorked(test.inputColl.insertMany(input));
+
+    var waitTimeMs = 1000 * 10;
+
+    assert.soon(() => { return test.stats()["inputMessageCount"] == input.length; },
+                tojson(test.stats()),
+                waitTimeMs);
+
+    const waitForCount = expectedOutputMessageCount + expectedDlq.length;
+    assert.soon(() => {
+        return test.stats()["outputMessageCount"] + test.stats()["dlqMessageCount"] == waitForCount;
+    }, tojson(test.stats()), waitTimeMs);
+
+    assert.eq(test.stats()["outputMessageCount"], expectedOutputMessageCount);
+    assert.eq(test.stats()["dlqMessageCount"], expectedDlq.length);
+    assert.soon(() => {
+        return resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
+                         expectedDlq,
+                         true /* verbose */,
+                         ["_id"]);
+    });
+    test.stop();
 }
 
 /*

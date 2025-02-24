@@ -36,6 +36,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/external_function_operator.h"
+#include "streams/exec/external_function_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -2452,7 +2453,24 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
     ])",
               {"ChangeStreamConsumerOperator", "ExternalFunctionOperator", "MergeOperator"});
-
+    innerTest(R"(
+                [
+                    {
+                        $source: {
+                            connectionName: "atlas1",
+                            db: "testDb",
+                            coll: "testColl"
+                        }
+                    },
+            
+                    {
+                        $externalFunction: {
+                          connectionName: "awsIAMLambda1",
+                          functionName: "foo"
+                        }
+                    }
+                ])",
+              {"ChangeStreamConsumerOperator", "ExternalFunctionSinkOperator"});
     // Ensure the planner is properly planning a S3EmitOperator
     innerTest(R"(
     [
@@ -3129,6 +3147,19 @@ TEST_F(PlannerTest, ExternalFunctionFailsWithoutFeatureFlag) {
         DBException,
         ErrorCodes::StreamProcessorInvalidOptions,
         "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+    {
+      $externalFunction: {}
+    })")};
+
+    Planner planner(_context.get(), /*options*/ {});
+    ASSERT_THROWS_CODE_AND_WHAT(
+        planner.plan(rawPipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
 }
 
 /**
@@ -3151,6 +3182,18 @@ TEST_F(PlannerTest, ExternalFunctionWithFalseFeatureFlag) {
 
     ASSERT_THROWS_CODE_AND_WHAT(
         addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+              $externalFunction: {}
+            })")};
+    Planner planner(_context.get(), /*options*/ {});
+    ASSERT_THROWS_CODE_AND_WHAT(
+        planner.plan(rawPipeline),
         DBException,
         ErrorCodes::StreamProcessorInvalidOptions,
         "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
@@ -3277,8 +3320,7 @@ TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
     });
 
     auto planExternalFunctionTest = [&](const std::vector<BSONObj>& spec,
-                                        streams::ExternalFunctionOperator::Options expectedOpts,
-                                        Document inputDoc) {
+                                        streams::ExternalFunction::Options expectedOpts) {
         auto dag = addSourceSinkAndParse(spec);
         auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
@@ -3304,7 +3346,6 @@ TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
             }
         }
     ])"),
-                                     {},
                                      {}),
             DBException,
             ErrorCodes::StreamProcessorInvalidOptions,
@@ -3325,8 +3366,27 @@ TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
             }
         }
     ])"),
-                                     {},
                                      {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is not "
+            "supported with 'externalFunction.execution: async'");
+    }
+
+    {
+        // `as` is not supported when using async execution in sink
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+              $externalFunction: {
+                    connectionName: "awsIAMLambda1",
+                    functionName: "foo",
+                    execution: "async",
+                    as: "response"
+                }
+            })")};
+        Planner planner(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planner.plan(rawPipeline),
             DBException,
             ErrorCodes::StreamProcessorInvalidOptions,
             "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is not "
@@ -3348,9 +3408,31 @@ TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
                                      .functionName = "foo",
                                      .execution = mongo::ExternalFunctionExecutionEnum::Sync,
                                      .as = boost::optional<std::string>("response"),
-                                 },
-                                 Document{BSON("bar"
-                                               << "baz")});
+                                 });
+    }
+
+    {
+        // `as` is ignored when using sync execution in sink
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+              $externalFunction: {
+                    connectionName: "awsIAMLambda1",
+                    functionName: "foo",
+                    execution: "sync",
+                    as: "response"
+                }
+            })")};
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 1 /* pipeline stage */ + 1 /* Source */);
+
+        auto actualOper = dynamic_cast<ExternalFunctionSinkOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->getOptions().functionName, "foo");
+        ASSERT_EQ(actualOper->getOptions().execution, mongo::ExternalFunctionExecutionEnum::Sync);
+        ASSERT_EQ(actualOper->getOptions().as, boost::none);
+        ASSERT_EQ(actualOper->getOptions().onError, OnErrorEnum::DLQ);
     }
 }
 

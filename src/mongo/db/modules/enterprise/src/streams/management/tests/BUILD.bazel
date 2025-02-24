@@ -37,7 +37,11 @@ mongo_cc_unit_test(
         "stream_manager_test.cpp",
     ],
     copts = MONGOCXX_COPTS,
-    tags = ["mongo_unittest_fifth_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "compile_requires_large_memory_gcc_fission",
+        "mongo_unittest_fifth_group",
+    ],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db:service_context",

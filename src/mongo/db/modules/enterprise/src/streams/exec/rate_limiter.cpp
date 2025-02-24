@@ -21,16 +21,11 @@ RateLimiter::RateLimiter(double tokensRefilledPerSec, int64_t capacity, Timer* t
       _timer{timer},
       _lastConsumptionTime{timer->elapsed()},
       _lastAvailableTokens{capacity} {
-    uassert(ErrorCodes::InternalError,
-            "tokensRefilledPerSec is not greater than 0",
-            tokensRefilledPerSec > 0);
-    uassert(ErrorCodes::InternalError, "capacity is not greater than 0", capacity > 0);
-    tassert(ErrorCodes::InternalError, "timer is null", timer != nullptr);
+    validate();
 }
 
-RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, Timer* timer) {
-    *this = RateLimiter{1.0 * tokensRefilledPerSec, tokensRefilledPerSec, timer};
-}
+RateLimiter::RateLimiter(int64_t tokensRefilledPerSec, Timer* timer)
+    : RateLimiter{1.0 * tokensRefilledPerSec, tokensRefilledPerSec, timer} {}
 
 Microseconds RateLimiter::consume(int64_t tokens) {
     uassert(ErrorCodes::InternalError, "Tokens requested are less than 1", tokens > 0);
@@ -58,12 +53,34 @@ Microseconds RateLimiter::consume(int64_t tokens) {
     return Microseconds(0);
 }
 
+void RateLimiter::setTokensRefilledPerSecAndCapacity(double tokensRefilledPerSec,
+                                                     int64_t capacity) {
+    _tokensRefilledPerSec = tokensRefilledPerSec;
+    _capacity = capacity;
+    reset();
+}
+
 void RateLimiter::setTokensRefilledPerSec(double tokensRefilledPerSec) {
-    *this = RateLimiter{tokensRefilledPerSec, _capacity, _timer};
+    setTokensRefilledPerSecAndCapacity(tokensRefilledPerSec, _capacity);
 }
 
 void RateLimiter::setCapacity(int64_t capacity) {
-    *this = RateLimiter{_tokensRefilledPerSec, capacity, _timer};
+    setTokensRefilledPerSecAndCapacity(_tokensRefilledPerSec, capacity);
 }
+
+void RateLimiter::validate() {
+    uassert(ErrorCodes::InternalError,
+            "tokensRefilledPerSec is not greater than 0",
+            _tokensRefilledPerSec > 0);
+    uassert(ErrorCodes::InternalError, "capacity is not greater than 0", _capacity > 0);
+    tassert(ErrorCodes::InternalError, "timer is null", _timer != nullptr);
+}
+
+void RateLimiter::reset() {
+    _lastConsumptionTime = _timer->elapsed();
+    _lastAvailableTokens = _capacity;
+    validate();
+}
+
 
 }  // namespace streams

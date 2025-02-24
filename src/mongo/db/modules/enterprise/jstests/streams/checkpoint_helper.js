@@ -370,7 +370,7 @@ export class TestHelper {
         }
         if (this.sinkType == 'memory') {
             this.pipeline.push({$emit: {connectionName: '__testMemory'}});
-        } else {
+        } else if (this.sinkType != 'included') {
             var merge = {
                 $merge: {
                     into: {
