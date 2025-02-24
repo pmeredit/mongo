@@ -213,8 +213,8 @@ KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
     }
 
     // Setup event callback since we need to determine the details of connect errors
-    _eventCallback =
-        std::make_unique<KafkaEventCallback>(_context, "KafkaConsumerOperator::Connector");
+    _eventCallback = std::make_unique<KafkaEventCallback>(
+        _context, "KafkaConsumerOperator::Connector", (bool)_options.gwproxyEndpoint);
 
     _consumer = streams::createKafkaConsumer(_options.bootstrapServers,
                                              _options.consumerGroupId,

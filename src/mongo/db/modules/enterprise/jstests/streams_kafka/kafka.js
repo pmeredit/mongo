@@ -2237,8 +2237,8 @@ function testKafkaSinkAutoCreateTopicFalseError() {
         let mongoToKafka = result.streamProcessors.filter(s => s.name == mongoToKafkaName)[0];
         jsTestLog(mongoToKafka);
         return mongoToKafka.status == "error" &&
-            mongoToKafka.error.reason ===
-            `Failed to emit to topic ${topicName1} due to error: Local: Unknown topic (-188)`;
+            mongoToKafka.error.reason.includes(
+                `Failed to emit to topic ${topicName1} due to error: Local: Unknown topic (-188)`);
     }, "expected mongoToKafka processor to go into failed state");
 
     // Now stop stream processors.
@@ -2266,8 +2266,8 @@ function testKafkaSourceAutoCreateTopicTrueError() {
     // Assert that starting the processor returns the expected error
     let result = db.runCommand(startCmd);
     assert.neq(result["errmsg"], undefined);
-    assert.eq(result["errmsg"],
-              `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
+    assert(result["errmsg"].includes(
+        `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`));
 }
 
 function testKafkaNonExistentTopicError() {
@@ -2288,8 +2288,8 @@ function testKafkaNonExistentTopicError() {
     // Assert that starting the processor returns the expected error
     let result = db.runCommand(startCmd);
     assert.neq(result["errmsg"], undefined);
-    assert.eq(result["errmsg"],
-              `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
+    assert(result["errmsg"].includes(
+        `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`));
 
     // Use the logs to verify we made 3 attempts
     const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;

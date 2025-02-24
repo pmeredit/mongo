@@ -89,8 +89,11 @@ void KafkaEmitOperator::Connector::start() {
                  _options.kafkaEventCallback->appendRecentErrorsToStatus(e.toStatus())});
         } catch (const std::exception& e) {
             SPStatus status(
-                mongo::Status{ErrorCodes::InternalError,
-                              std::string("Unexpected error while connecting to kafka $emit")},
+                mongo::Status{
+                    ErrorCodes::InternalError,
+                    fmt::format(
+                        "Unexpected error while connecting to kafka $emit. [VPC Peering: {}]",
+                        _options.gwproxyEndpoint ? true : false)},
                 e.what());
             setConnectionStatus({ConnectionStatus::kError, std::move(status)});
         }
@@ -164,10 +167,11 @@ boost::optional<std::string> KafkaEmitOperator::Connector::getVerboseCallbackErr
     return boost::none;
 }
 
-
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
+
+    _eventCbImpl =
+        std::make_unique<KafkaEventCallback>(_context, getName(), (bool)_options.gwproxyEndpoint);
     _deliveryCb = std::make_unique<DeliveryReportCallback>(_context, &_metrics);
 
     auto setConf = [confPtr = conf.get(), this](const std::string& confName,
@@ -199,7 +203,7 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         // Do not log broker disconnection messages.
         setConf("log.connection.close", "false");
     }
-    // Set the event callback.
+
     setConf("event_cb", _eventCbImpl.get());
     setConf("debug", "security");
 
@@ -681,6 +685,7 @@ void KafkaEmitOperator::doStart() {
     options.kafkaEventCallback = _eventCbImpl.get();
     options.kafkaConnectAuthCallback = _connectCbImpl;
     options.kafkaResolveCallback = _resolveCbImpl;
+    options.gwproxyEndpoint = _options.gwproxyEndpoint;
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
 }
@@ -721,6 +726,10 @@ ConnectionStatus KafkaEmitOperator::doGetConnectionStatus() {
             _connector->stop();
             _connector.reset();
         }
+    }
+
+    if (_connectionStatus.isError()) {
+        return _connectionStatus;
     }
 
     if (_eventCbImpl->hasError()) {

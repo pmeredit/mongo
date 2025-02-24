@@ -61,6 +61,12 @@ SPStatus KafkaEventCallback::appendRecentErrorsToStatus(SPStatus status) {
 
     kafkaMessages.push_front(status.reason());
     std::string detailedMsg = boost::algorithm::join(kafkaMessages, ", ");
+
+    if (_peeringMsg) {
+        detailedMsg += fmt::format(", [VPC Peering: {}]", *_peeringMsg ? true : false);
+        _peeringMsg = boost::none;
+    }
+
     return SPStatus{Status{status.code(), std::move(detailedMsg)}, status.unsafeReason()};
 }
 

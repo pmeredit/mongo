@@ -126,6 +126,7 @@ private:
             KafkaEventCallback* kafkaEventCallback{nullptr};
             std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;
             std::shared_ptr<KafkaConnectAuthCallback> kafkaConnectAuthCallback;
+            boost::optional<std::string> gwproxyEndpoint;
         };
 
         Connector(Options options);

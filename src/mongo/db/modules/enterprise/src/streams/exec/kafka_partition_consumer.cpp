@@ -170,7 +170,9 @@ KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options
     : KafkaPartitionConsumerBase(context, std::move(options)),
       _memoryUsageHandle(_context->memoryAggregator->createUsageHandle()) {
     _eventCallback = std::make_unique<KafkaEventCallback>(
-        _context, fmt::format("KafkaPartitionConsumer-{}", _options.partition));
+        _context,
+        fmt::format("KafkaPartitionConsumer-{}", _options.partition),
+        (bool)_options.gwproxyEndpoint);
 }
 
 void KafkaPartitionConsumer::doInit() {
