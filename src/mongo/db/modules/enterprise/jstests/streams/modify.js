@@ -131,15 +131,22 @@ function testRunner({
 
     if (oplogSizeMB) {
         // Wait for the oplog to be truncated.
-        test.targetSourceMergeDb.getSiblingDB("admin").runCommand(
-            {replSetResizeOplog: 1, size: oplogSizeMB});
+        assert.commandWorked(test.targetSourceMergeDb.getSiblingDB("admin").runCommand(
+            {replSetResizeOplog: 1, size: oplogSizeMB}));
         const oplog = test.targetSourceMergeDb.getSiblingDB("local").oplog.rs;
         assert.soon(function() {
             const dataSize = oplog.dataSize();
             // The oplog milestone system allows the oplog to grow to 110% its max size.
             const targetSize = 1.1 * (oplogSizeMB * 1024 * 1024);
+            // TODO(SERVER-99894): Remove this logging once intermittent truncation issue is fixed
             jsTestLog("current oplog size: " + dataSize +
                       " bytes. Waiting until it is <= " + targetSize + " bytes.");
+
+            // these insertions are added to see if we can avoid an intermittent issue in this test
+            // where the oplog isn't truncating. If this ends up fixing the issue we should reach
+            // out to the appropriate team to see why this workaround was needed.
+            test.inputColl.insertOne({a: -1});
+
             return dataSize <= targetSize;
         }, "waiting for oplog to be truncated", 5 * 60 * 1000, 5 * 1000);
     }
