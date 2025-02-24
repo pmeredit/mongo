@@ -947,6 +947,9 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
 
+    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We set
+    // 'allowGenericForeignDbLookup' to true so this syntax can be parsed in DocumentSourceLookup
+    // without throwing errors.
     context->expCtx = ExpressionContextBuilder{}
                           .opCtx(context->opCtx.get())
                           .allowDiskUse(false)
