@@ -86,7 +86,7 @@ OperatorStats ExternalFunctionWriter::processDataMsg(StreamDataMsg dataMsg) {
         }
     }
 
-    stats.timeSpent = dataMsg.creationTimer->elapsed();
+    stats.timeSpent = dataMsg.creationTimer.elapsed();
 
     return stats;
 }

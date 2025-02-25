@@ -590,7 +590,7 @@ void ChangeStreamSourceOperator::doStop() {
 }
 
 int64_t ChangeStreamSourceOperator::doRunOnce() {
-    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
+    StreamDataMsg dataMsg;
     auto batch = getDocuments();
     auto& changeEvents = batch.docs;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
@@ -652,7 +652,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
                                    .numInputBytes = totalNumInputBytes,
                                    .numDlqDocs = numDlqDocs,
-                                   .timeSpent = dataMsg.creationTimer->elapsed()});
+                                   .timeSpent = dataMsg.creationTimer.elapsed()});
 
     // Early return if we did not manage to add any change events to 'dataMsg.docs'.
     if (dataMsg.docs.empty()) {

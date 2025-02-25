@@ -315,7 +315,7 @@ OperatorStats TimeseriesWriter::processStreamDocs(StreamDataMsg dataMsg,
             docBatch.clear();
         }
     }
-    stats.timeSpent = dataMsg.creationTimer->elapsed();
+    stats.timeSpent = dataMsg.creationTimer.elapsed();
     return stats;
 }
 

@@ -1685,6 +1685,11 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     reply.setDlqMessageSize(double(summaryStats.numDlqBytes) / scale);
     reply.setStateSize(double(summaryStats.memoryUsageBytes) / scale);
     reply.setMemoryTrackerBytes(double(_memoryAggregator->getCurrentMemoryUsageBytes()) / scale);
+    if (!currentOperatorStats.empty() && currentOperatorStats[0].numInputDocs > 0) {
+        // Only publish timeSpentMs summary stat when we've actually processed documents during
+        // this execution.
+        reply.setAvgTimeSpentMs(summaryStats.avgTimeSpentMs);
+    }
 
     if (summaryStats.watermark >= 0) {
         reply.setWatermark(Date_t::fromMillisSinceEpoch(summaryStats.watermark));
@@ -1744,7 +1749,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                                        (double)s.memoryUsageBytes / scale,
                                        (double)s.maxMemoryUsageBytes / scale,
                                        mongo::duration_cast<Milliseconds>(s.executionTime)};
-            stats.setTimeSpentMillis(mongo::duration_cast<Milliseconds>(s.timeSpent));
+            stats.setAvgTimeSpentMs(mongo::duration_cast<Milliseconds>(s.timeSpent));
             stats.setMinOpenWindowStartTime(s.minOpenWindowStartTime);
             stats.setMaxOpenWindowStartTime(s.maxOpenWindowStartTime);
             if (isInternal) {

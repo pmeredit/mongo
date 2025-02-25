@@ -119,7 +119,7 @@ struct StreamDocument {
 // Encapsulates the data we want to send from an operator to the next operator.
 struct StreamDataMsg {
     std::vector<StreamDocument> docs;
-    boost::optional<mongo::Timer> creationTimer;
+    mongo::Timer creationTimer;
 
     int64_t getByteSize() const {
         int64_t out{0};

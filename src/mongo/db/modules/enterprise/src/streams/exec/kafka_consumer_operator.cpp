@@ -1047,7 +1047,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
         incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                        .numInputBytes = numInputBytes,
                                        .numDlqDocs = numDlqDocs,
-                                       .timeSpent = dataMsg.creationTimer->elapsed()});
+                                       .timeSpent = dataMsg.creationTimer.elapsed()});
         if (_watermarkCombiner) {
             _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().watermarkTimestampMs;
         }

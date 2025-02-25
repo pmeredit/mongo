@@ -451,7 +451,7 @@ OperatorStats MergeWriter::processStreamDocs(const StreamDataMsg& dataMsg,
         curBatchByteSize = 0;
     }
 
-    stats.timeSpent = dataMsg.creationTimer->elapsed();
+    stats.timeSpent = dataMsg.creationTimer.elapsed();
     return stats;
 }
 

@@ -66,7 +66,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
             curDataMsgByteSize >= kDataMsgMaxByteSize) {
             // Make sure to not wrap sendDataMsg() calls with a try/catch block.
-            incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
+            incOperatorStats({.timeSpent = dataMsg.creationTimer.elapsed()});
             sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
             outputMsg = newStreamDataMsg();
         }
@@ -138,7 +138,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
 
     // Make sure to not wrap sendDataMsg() calls with a try/catch block.
     if (!outputMsg.docs.empty()) {
-        incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
+        incOperatorStats({.timeSpent = dataMsg.creationTimer.elapsed()});
         sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
     } else if (controlMsg) {
         doOnControlMsg(inputIdx, std::move(*controlMsg));

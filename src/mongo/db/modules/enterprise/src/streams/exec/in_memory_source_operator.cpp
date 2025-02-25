@@ -41,7 +41,6 @@ StreamDataMsg generateFixedDataMsg(int docSize, int messageSize) {
     }
     StreamDataMsg msg;
     msg.docs = std::move(docs);
-    msg.creationTimer.emplace();
     return msg;
 }
 
@@ -77,7 +76,7 @@ void InMemorySourceOperator::addDataMsgInner(StreamDataMsg dataMsg,
             "Failed to allocate a page from SourceBufferManager",
             allocSuccess);
     incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getByteSize(),
-                                   .timeSpent = msg.dataMsg->creationTimer->elapsed()});
+                                   .timeSpent = msg.dataMsg->creationTimer.elapsed()});
 
     {
         stdx::unique_lock<stdx::mutex> lock(_mutex);

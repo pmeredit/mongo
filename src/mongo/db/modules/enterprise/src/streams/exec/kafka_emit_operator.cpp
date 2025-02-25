@@ -329,7 +329,7 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
                       .numDlqBytes = numDlqBytes,
-                      .timeSpent = dataMsg.creationTimer->elapsed()});
+                      .timeSpent = dataMsg.creationTimer.elapsed()});
 }
 
 namespace {

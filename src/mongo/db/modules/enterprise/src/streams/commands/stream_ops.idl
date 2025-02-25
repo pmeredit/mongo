@@ -106,8 +106,8 @@ structs:
             executionTimeMillis:
                 description: Total execution time of the operator (in seconds).
                 type: milliseconds 
-            timeSpentMillis:
-                description: Total timeSpent in the operator (in milliseconds)
+            avgTimeSpentMs:
+                description: Average recent time an input document spends in an operator (in milliseconds)
                 type: milliseconds
                 optional: true
             minOpenWindowStartTime:
@@ -254,6 +254,10 @@ structs:
                     This is the lag (in seconds) of the last read change event as compared with the last event in the oplog.
                     If all available events have been read, then lag becomes 0
                 type: seconds
+                optional: true
+            avgTimeSpentMs:
+                description: Average recent time a document spends in all operators in the pipeline (in milliseconds)
+                type: milliseconds
                 optional: true
             lastMessageIn:
                 description: The timestamp of the last document processed

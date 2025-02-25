@@ -62,7 +62,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
             incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                            .numInputBytes = numInputBytes,
                                            .numDlqDocs = numDlqDocs,
-                                           .timeSpent = dataMsg.creationTimer->elapsed()});
+                                           .timeSpent = dataMsg.creationTimer.elapsed()});
 
             if (_watermarkGenerator) {
                 _stats.watermark = _watermarkGenerator->getWatermarkMsg().watermarkTimestampMs;

@@ -89,7 +89,7 @@ void ExternalFunctionOperator::doOnDataMsg(int32_t inputIdx,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
                       .numDlqBytes = numDlqBytes,
-                      .timeSpent = dataMsg.creationTimer->elapsed()});
+                      .timeSpent = dataMsg.creationTimer.elapsed()});
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 

@@ -20,6 +20,8 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
+MONGO_FAIL_POINT_DEFINE(groupOperatorSlowEventProcessing);
+
 namespace streams {
 
 using namespace mongo;
@@ -32,6 +34,10 @@ void GroupOperator::doProcessDocs(Window* window, std::vector<StreamDocument> st
     auto& processor = groupWindow->processor;
 
     for (const auto& streamDoc : streamDocs) {
+        if (MONGO_unlikely(groupOperatorSlowEventProcessing.shouldFail())) {
+            sleepFor(Milliseconds{25});
+        }
+
         Value groupKey;
         boost::optional<mongo::GroupProcessor::GroupsMap::iterator> groupIter;
         std::vector<boost::optional<Value>> accumulatorArgs;

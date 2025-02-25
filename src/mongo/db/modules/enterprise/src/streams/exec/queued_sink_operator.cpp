@@ -259,11 +259,13 @@ void QueuedSinkOperator::WriterThread::consumeLoop() {
     SPStatus status;
 
     StreamDataMsg batchMsg{};
+    bool setCreationTimer{false};
     int64_t batchMsgDataSize{0};
 
     std::function<void()> sendBatchMsgFn = [&]() {
         auto stats = this->writer->processDataMsg(std::move(batchMsg));
         batchMsg = StreamDataMsg{};
+        setCreationTimer = false;
         batchMsgDataSize = 0;
         stdx::lock_guard<stdx::mutex> lock(consumerMutex);
         consumerStats += stats;
@@ -296,8 +298,9 @@ void QueuedSinkOperator::WriterThread::consumeLoop() {
                     sendBatchMsgFn();
                     batchMsg.docs.reserve(msg->data->docs.size() - docsHandled);
                 }
-                if (!batchMsg.creationTimer) {
+                if (!setCreationTimer) {
                     batchMsg.creationTimer = msg->data->creationTimer;
+                    setCreationTimer = true;
                 }
                 queueSizeGauge->incBy(-1);
                 queueByteSizeGauge->incBy(-1 * docSize);

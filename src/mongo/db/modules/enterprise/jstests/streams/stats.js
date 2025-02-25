@@ -368,7 +368,7 @@ import {
     assert.eq(3, stats['inputMessageCount']);
     const matchOperatorStats =
         stats['operatorStats'].filter((operatorStats) => operatorStats.name === "MatchOperator");
-    assert.gte(matchOperatorStats[0].timeSpentMillis, 2500);
+    assert.gte(matchOperatorStats[0].avgTimeSpentMs, 2500);
     stream.stop();
 
     assert.commandWorked(
@@ -376,6 +376,21 @@ import {
 })();
 
 (function testGetStats_ExecutionTime() {
+    const failpoints = ['groupOperatorSlowEventProcessing', 'unwindOperatorSlowEventProcessing'];
+    const enableFailpoints = () => {
+        for (let point of failpoints) {
+            assert.commandWorked(
+                db.adminCommand({'configureFailPoint': point, 'mode': 'alwaysOn'}));
+        }
+    };
+    const disableFailpoints = () => {
+        for (let point of failpoints) {
+            assert.commandWorked(db.adminCommand({'configureFailPoint': point, 'mode': 'off'}));
+        }
+    };
+
+    enableFailpoints();
+
     const inputColl = db.input_coll;
     const outColl = db.output_coll;
     const dlqColl = db.dlq_coll;
@@ -399,14 +414,7 @@ import {
         {$replaceRoot: {newRoot: '$fullDocument'}},
         {$project: {i: {$range: [0, 10]}}},
         {$unwind: "$i"},
-        {
-            $project: {
-                value: {
-                    $range:
-                        [{$multiply: ["$i", 1000000]}, {$multiply: [{$add: ["$i", 1]}, 1900000]}]
-                }
-            }
-        },
+        {$project: {value: {$range: [0, 10]}}},
         {$unwind: "$value"},
         {
             $tumblingWindow: {
@@ -437,24 +445,28 @@ import {
         const otherOperatorStats =
             stats['operatorStats'].filter((operatorStats) => operatorStats.name != "GroupOperator");
         if (groupOperatorStats.length === 1 && unwindOperatorStats.length == 2) {
-            // TOOD(SERVER-97667): Enable these validations.
-            // if (groupOperatorStats[0].executionTimeMillis < 1) {
-            //     return false;
-            // }
-            // if (unwindOperatorStats[1].timeSpentMillis < 1) {
-            //     return false;
-            // }
-            // for (let operatorStats of otherOperatorStats) {
-            //     assert.lt(operatorStats.executionTimeMillis,
-            //     groupOperatorStats[0].executionTimeMillis);
-            // }
+            if (groupOperatorStats[0].executionTimeMillis < 1) {
+                return false;
+            }
+            if (unwindOperatorStats[1].avgTimeSpentMs < 1) {
+                return false;
+            }
+            for (let operatorStats of otherOperatorStats) {
+                assert.lt(operatorStats.executionTimeMillis,
+                          groupOperatorStats[0].executionTimeMillis);
+            }
             assert(otherOperatorStats.length > 0);
             return true;
         }
         return false;
     });
 
+    const stats = stream.stats();
+    assert.gt(stats['avgTimeSpentMs'], 0);
+
     stream.stop();
+
+    disableFailpoints();
 })();
 
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

@@ -115,6 +115,7 @@ struct StreamSummaryStats {
     int64_t watermark{-1};
     int64_t numDlqDocs{0};
     int64_t numDlqBytes{0};
+    mongo::Milliseconds avgTimeSpentMs{0};
 
     StreamSummaryStats& operator-=(const StreamSummaryStats& other) {
         numInputDocs -= other.numInputDocs;
