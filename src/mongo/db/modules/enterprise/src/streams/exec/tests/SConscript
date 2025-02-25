@@ -219,3 +219,13 @@ env.CppUnitTest(
     target="external_function_test",
     source=[],
 )
+
+env.CppUnitTest(
+    target="connection_collection_test",
+    source=[],
+)
+
+env.CppUnitTest(
+    target="latency_collector_test",
+    source=[],
+)
