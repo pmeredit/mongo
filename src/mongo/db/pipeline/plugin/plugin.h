@@ -9,6 +9,6 @@ extern "C" {
 // A function with this signature would be called in each plugin shared object loaded.
 // TODO: extend this to allow passing arguments during plugin initialization. This could be used
 // to enable features or specify remote backends.
-void mongodb_initialize_plugin(mongodb_plugin_portal* plugin_portal);
+void mongodb_initialize_plugin(MongoExtensionPortal* plugin_portal);
 
 }  // extern "C"

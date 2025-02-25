@@ -8,10 +8,9 @@
 
 namespace mongo {
 
-static void add_aggregation_stage(const unsigned char* name,
-                                  size_t name_len,
-                                  mongodb_parse_aggregation_stage parser) {
-    auto name_sd = StringData(reinterpret_cast<const char*>(name), name_len);
+static void add_aggregation_stage(MongoExtensionByteView name,
+                                  MongoExtensionParseAggregationStage parser) {
+    auto name_sd = StringData(reinterpret_cast<const char*>(name.data), name.len);
     auto id = DocumentSource::allocateId(name_sd);
     LiteParsedDocumentSource::registerParser(name_sd.toString(),
                                              LiteParsedDocumentSourceDefault::parse,
@@ -25,11 +24,12 @@ static void add_aggregation_stage(const unsigned char* name,
             mongodb_aggregation_stage* stage = nullptr;
             const unsigned char* error = nullptr;
             size_t error_len = 0;
-            int code = parser(reinterpret_cast<const unsigned char*>(stage_def.objdata()),
-                              stage_def.objsize(),
-                              &stage,
-                              &error,
-                              &error_len);
+            int code = parser(
+                MongoExtensionByteView{reinterpret_cast<const unsigned char*>(stage_def.objdata()),
+                                       static_cast<size_t>(stage_def.objsize())},
+                &stage,
+                &error,
+                &error_len);
             uassert(code,
                     str::stream() << StringData(reinterpret_cast<const char*>(error), error_len),
                     code == 0);
@@ -54,7 +54,7 @@ MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
                           ("BeginDocumentSourceRegistration"),
                           ("EndDocumentSourceRegistration"))
 (InitializerContext*) {
-    mongodb_plugin_portal portal;
+    MongoExtensionPortal portal;
     portal.version = MONGODB_PLUGIN_VERSION_0;
     portal.add_aggregation_stage = &add_aggregation_stage;
     mongodb_initialize_plugin(&portal);

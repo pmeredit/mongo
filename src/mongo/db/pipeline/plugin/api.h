@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 extern "C" {
+
 enum MongoDBPluginVersion {
     MONGODB_PLUGIN_VERSION_0 = 0,
 };
@@ -11,6 +12,14 @@ enum mongodb_get_next_result {
     GET_NEXT_ADVANCED = 0,
     GET_NEXT_EOF = -1,
     GET_NEXT_PAUSE_EXECUTION = -2,
+};
+
+/**
+ * A read-only view of a byte array.
+ */
+struct MongoExtensionByteView {
+    const unsigned char* data;
+    size_t len;
 };
 
 // A function to get data from a source stage.
@@ -65,22 +74,21 @@ struct mongodb_aggregation_stage_vt {
     // closing.
     void (*close)(mongodb_aggregation_stage* stage);
 };
-typedef int (*mongodb_parse_aggregation_stage)(const unsigned char* stage_bson,
-                                               size_t stage_bson_len,
-                                               mongodb_aggregation_stage** stage,
-                                               const unsigned char** error,
-                                               size_t* error_len);
 
-// The plugin portal allows plugin functionality to register with the server.
-struct mongodb_plugin_portal {
+typedef int (*MongoExtensionParseAggregationStage)(MongoExtensionByteView stageBson,
+                                                   mongodb_aggregation_stage** stage,
+                                                   const unsigned char** error,
+                                                   size_t* error_len);
+
+// The portal allows plugin functionality to register with the server.
+struct MongoExtensionPortal {
     // Supported version of the plugin API.
     int version;
 
     // Invoke to add an aggregation stage. The `parser` function is responsible for parsing the
     // stage from a bson value and creating a mongodb_aggregation_stage object.
-    void (*add_aggregation_stage)(const unsigned char* name,
-                                  size_t name_len,
-                                  mongodb_parse_aggregation_stage parser);
+    void (*add_aggregation_stage)(MongoExtensionByteView name,
+                                  MongoExtensionParseAggregationStage parser);
 };
 
 }  // extern "C"

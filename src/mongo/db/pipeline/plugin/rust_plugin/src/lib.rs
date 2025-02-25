@@ -8,8 +8,8 @@ use std::num::NonZero;
 use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf};
 
 use plugin_api_bindgen::{
-    mongodb_aggregation_stage, mongodb_aggregation_stage_vt, mongodb_plugin_portal,
-    mongodb_source_get_next,
+    mongodb_aggregation_stage, mongodb_aggregation_stage_vt, mongodb_source_get_next,
+    MongoExtensionByteView, MongoExtensionPortal,
 };
 
 #[derive(Debug)]
@@ -161,25 +161,27 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         close: Some(Self::close),
     };
 
-    pub fn register(plugin_portal: *mut mongodb_plugin_portal) {
+    pub fn register(portal: *mut MongoExtensionPortal) {
         let stage_name = S::name();
+        let stage_view = MongoExtensionByteView {
+            data: stage_name.as_bytes().as_ptr(),
+            len: stage_name.as_bytes().len(),
+        };
         unsafe {
-            (*plugin_portal).add_aggregation_stage.expect("add stage")(
-                stage_name.as_bytes().as_ptr(),
-                stage_name.as_bytes().len(),
+            (*portal).add_aggregation_stage.expect("add stage")(
+                stage_view,
                 Some(Self::parse_external),
             );
         }
     }
 
     unsafe extern "C-unwind" fn parse_external(
-        stage_bson_ptr: *const u8,
-        stage_bson_len: usize,
+        stage_bson: MongoExtensionByteView,
         stage: *mut *mut mongodb_aggregation_stage,
         error: *mut *const u8,
         error_len: *mut usize,
     ) -> c_int {
-        match Self::parse(unsafe { std::slice::from_raw_parts(stage_bson_ptr, stage_bson_len) }) {
+        match Self::parse(unsafe { std::slice::from_raw_parts(stage_bson.data, stage_bson.len) }) {
             Ok(stage_impl) => {
                 let plugin_stage = Box::new(Self {
                     vtable: &Self::VTABLE,
@@ -379,7 +381,7 @@ impl AggregationStage for AddSomeCrabs {
 
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
-unsafe extern "C-unwind" fn initialize_rust_plugins(plugin_portal: *mut mongodb_plugin_portal) {
-    PluginAggregationStage::<EchoOxide>::register(plugin_portal);
-    PluginAggregationStage::<AddSomeCrabs>::register(plugin_portal);
+unsafe extern "C-unwind" fn initialize_rust_plugins(portal: *mut MongoExtensionPortal) {
+    PluginAggregationStage::<EchoOxide>::register(portal);
+    PluginAggregationStage::<AddSomeCrabs>::register(portal);
 }
