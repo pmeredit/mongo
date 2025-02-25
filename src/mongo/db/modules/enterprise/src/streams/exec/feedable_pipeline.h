@@ -5,7 +5,6 @@
 #pragma once
 
 #include "mongo/db/pipeline/pipeline.h"
-
 #include "streams/exec/document_source_feeder.h"
 
 namespace streams {

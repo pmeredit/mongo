@@ -1,6 +1,8 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/exec/executor.h"
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -21,7 +23,6 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/exec_internal_gen.h"
-#include "streams/exec/executor.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"

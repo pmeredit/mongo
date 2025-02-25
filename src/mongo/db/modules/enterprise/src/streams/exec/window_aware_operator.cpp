@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/window_aware_operator.h"
+
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/idl/idl_parser.h"

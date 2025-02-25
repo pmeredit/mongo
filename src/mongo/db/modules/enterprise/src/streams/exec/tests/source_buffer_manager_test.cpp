@@ -2,12 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/util/str.h"
+#include "streams/exec/source_buffer_manager.h"
+
 #include <cmath>
 #include <memory>
 
 #include "mongo/unittest/unittest.h"
-#include "streams/exec/source_buffer_manager.h"
+#include "mongo/util/str.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {

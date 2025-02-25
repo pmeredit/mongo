@@ -1,6 +1,8 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/exec/feature_flag.h"
+
 #include <boost/none.hpp>
 #include <string>
 
@@ -8,7 +10,6 @@
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "streams/exec/config_gen.h"
-#include "streams/exec/feature_flag.h"
 #include "streams/exec/operator.h"
 #include "streams/util/units.h"
 

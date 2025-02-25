@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/output_sampler.h"
+
 #include <fmt/format.h>
 
 #include "mongo/bson/json.h"
@@ -10,7 +12,6 @@
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/output_sampler.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"

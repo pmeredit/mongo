@@ -1,13 +1,15 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/exec/rate_limiter.h"
+
+#include <random>
+
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/tick_source.h"
 #include "mongo/util/tick_source_mock.h"
-#include "streams/exec/rate_limiter.h"
-#include <random>
 
 namespace streams {
 

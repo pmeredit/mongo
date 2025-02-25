@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/document_source_https_stub.h"
+
 #include "streams/exec/planner.h"
 
 namespace streams {

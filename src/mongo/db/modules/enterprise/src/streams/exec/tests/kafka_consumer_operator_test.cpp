@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_consumer_operator.h"
+
 #include <fmt/format.h>
 #include <memory>
 #include <openssl/bn.h>
@@ -21,7 +23,6 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/json_event_deserializer.h"
-#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/kafka_utils.h"
 #include "streams/exec/message.h"

@@ -9,7 +9,6 @@
 
 #include "mongo/bson/util/builder.h"
 #include "mongo/util/time_support.h"
-
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/util/units.h"
 

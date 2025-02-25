@@ -2,9 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/util/metric_manager.h"
+
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
-#include "streams/util/metric_manager.h"
 
 namespace streams {
 namespace {

@@ -1,13 +1,14 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/exec/json_event_deserializer.h"
+
 #include <bsoncxx/exception/exception.hpp>
 #include <exception>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
-#include "streams/exec/json_event_deserializer.h"
 
 namespace streams {
 namespace {

@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/validate_operator.h"
+
 #include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/logv2/log.h"

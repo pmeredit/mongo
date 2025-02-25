@@ -2,11 +2,12 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/stream_stats.h"
+
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/https_operator.h"
-#include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {

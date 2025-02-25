@@ -2,7 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/util/chunked_memory_aggregator.h"
 #include "streams/util/concurrent_memory_aggregator.h"
 
 #include <memory>
@@ -13,6 +12,7 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/unittest/unittest.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace mongo {
 

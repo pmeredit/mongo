@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/connection_status.h"
+
 #include "mongo/base/error_codes.h"
 #include "mongo/util/assert_util.h"
 

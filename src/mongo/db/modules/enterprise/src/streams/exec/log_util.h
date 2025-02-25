@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "streams/exec/message.h"
 #include <fmt/format.h>
 
+#include "streams/exec/message.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {

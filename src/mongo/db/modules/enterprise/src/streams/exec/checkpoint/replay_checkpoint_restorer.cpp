@@ -2,9 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/checkpoint/replay_checkpoint_restorer.h"
+
 #include <boost/none.hpp>
 
-#include "streams/exec/checkpoint/replay_checkpoint_restorer.h"
 #include "streams/exec/message.h"
 
 using namespace mongo;

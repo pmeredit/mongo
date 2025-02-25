@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/source_operator.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/constants.h"

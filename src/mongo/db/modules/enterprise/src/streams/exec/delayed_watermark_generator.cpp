@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/delayed_watermark_generator.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 

@@ -2,10 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/log_sink_operator.h"
-#include "streams/exec/log_util.h"
 
 #include "mongo/logv2/log.h"
 #include "streams/exec/context.h"
+#include "streams/exec/log_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

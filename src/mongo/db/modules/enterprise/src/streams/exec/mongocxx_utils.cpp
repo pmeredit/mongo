@@ -3,6 +3,8 @@
  */
 
 
+#include "streams/exec/mongocxx_utils.h"
+
 #include <boost/algorithm/string/replace.hpp>
 #include <bsoncxx/json.hpp>
 #include <exception>
@@ -18,7 +20,6 @@
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
-#include "streams/exec/mongocxx_utils.h"
 #include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

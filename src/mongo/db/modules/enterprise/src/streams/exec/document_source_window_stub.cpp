@@ -3,11 +3,13 @@
  */
 
 #include "streams/exec/document_source_window_stub.h"
+
+#include <chrono>
+
 #include "mongo/util/assert_util.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/message.h"
 #include "streams/exec/planner.h"
-#include <chrono>
 
 namespace streams {
 

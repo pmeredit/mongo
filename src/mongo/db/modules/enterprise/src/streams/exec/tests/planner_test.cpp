@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/planner.h"
+
 #include <aws/core/Aws.h>
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
@@ -48,7 +50,6 @@
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"

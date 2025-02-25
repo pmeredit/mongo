@@ -2,11 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/platform/basic.h"
-
 #include "mongo/db/commands.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
+#include "mongo/platform/basic.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/management/stream_manager.h"
 

@@ -3,6 +3,9 @@
  */
 #include "streams/exec/sort_operator.h"
 
+#include <algorithm>
+#include <memory>
+
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
@@ -13,8 +16,6 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_operator.h"
-#include <algorithm>
-#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

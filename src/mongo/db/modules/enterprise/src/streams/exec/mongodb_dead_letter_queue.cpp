@@ -2,7 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/mongodb_dead_letter_queue.h"
+
 #include <chrono>
+#include <exception>
+#include <mongocxx/exception/exception.hpp>
 
 #include "mongo/base/status.h"
 #include "mongo/platform/basic.h"
@@ -11,11 +15,8 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
-#include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/util/metric_manager.h"
-#include <exception>
-#include <mongocxx/exception/exception.hpp>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

@@ -1,14 +1,15 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/util/assert_util.h"
+#include "streams/management/container_stats.h"
+
 #include <boost/optional.hpp>
 #include <string>
 
 #include "mongo/logv2/log.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/timer.h"
-#include "streams/management/container_stats.h"
 
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

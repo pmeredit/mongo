@@ -4,9 +4,9 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
-#include "mongo/logv2/log.h"
-
 #include "streams/exec/in_memory_dead_letter_queue.h"
+
+#include "mongo/logv2/log.h"
 
 namespace streams {
 

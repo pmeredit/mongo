@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/stream_processor_feature_flags.h"
+
 #include "mongo/bson/bsontypes.h"
 #include "mongo/util/str.h"
 #include "streams/exec/feature_flag.h"

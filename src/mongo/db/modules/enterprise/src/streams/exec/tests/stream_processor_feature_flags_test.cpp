@@ -2,12 +2,13 @@
  *     Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/stream_processor_feature_flags.h"
+
 #include <fmt/format.h>
 
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/feature_flag.h"
-#include "streams/exec/stream_processor_feature_flags.h"
 
 
 namespace streams {

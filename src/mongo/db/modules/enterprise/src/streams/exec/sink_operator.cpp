@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/sink_operator.h"
+
 #include <algorithm>
 
 #include "mongo/logv2/log.h"
@@ -9,7 +11,6 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/output_sampler.h"
-#include "streams/exec/sink_operator.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

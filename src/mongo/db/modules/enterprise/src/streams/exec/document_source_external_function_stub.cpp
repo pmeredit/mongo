@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/document_source_external_function_stub.h"
+
 #include "streams/exec/planner.h"
 
 namespace streams {

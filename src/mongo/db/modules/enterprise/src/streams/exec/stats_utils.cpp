@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/stats_utils.h"
+
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/stream_stats.h"
 

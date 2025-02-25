@@ -3,10 +3,6 @@
  */
 #include "streams/exec/merge_operator.h"
 
-#include "mongo/util/duration.h"
-#include "streams/exec/constants.h"
-#include "streams/exec/message.h"
-#include "streams/util/exception.h"
 #include <boost/optional.hpp>
 #include <exception>
 #include <mongocxx/exception/bulk_write_exception.hpp>
@@ -25,14 +21,18 @@
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/database_name_util.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/namespace_string_util.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/log_util.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongo_process_interface_for_test.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/util.h"
+#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

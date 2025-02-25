@@ -4,13 +4,13 @@
 
 #pragma once
 
-#include "mongo/stdx/mutex.h"
-#include "streams/util/exception.h"
-
 #include <boost/optional.hpp>
 #include <deque>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
+
+#include "mongo/stdx/mutex.h"
+#include "streams/util/exception.h"
 
 namespace streams {
 

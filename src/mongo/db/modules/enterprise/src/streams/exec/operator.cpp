@@ -4,13 +4,14 @@
 
 #include "streams/exec/operator.h"
 
+#include <cstdint>
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
-#include <cstdint>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

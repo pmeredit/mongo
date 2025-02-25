@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "streams/util/metric_manager.h"
 #include <memory>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -16,6 +15,7 @@
 #include "mongo/util/producer_consumer_queue.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 
 namespace streams {

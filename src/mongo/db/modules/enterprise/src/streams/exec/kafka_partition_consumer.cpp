@@ -2,7 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/kafka_utils.h"
+#include "streams/exec/kafka_partition_consumer.h"
+
 #include <chrono>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -22,7 +23,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_event_callback.h"
-#include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/stream_stats.h"

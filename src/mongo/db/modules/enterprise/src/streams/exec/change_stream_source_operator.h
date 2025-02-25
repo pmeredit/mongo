@@ -4,10 +4,6 @@
 
 #pragma once
 
-#include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/pipeline/document_source_change_stream_gen.h"
-#include "streams/exec/util.h"
-#include "streams/util/metrics.h"
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -17,8 +13,10 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/timestamp.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -28,7 +26,9 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/exec/util.h"
 #include "streams/util/chunked_memory_aggregator.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 /**

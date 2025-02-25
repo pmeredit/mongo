@@ -1,7 +1,8 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/db/commands/test_commands_enabled.h"
+#include "streams/management/stream_manager.h"
+
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -11,6 +12,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/error_labels.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
@@ -49,7 +51,6 @@
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/timeseries_emit_operator.h"
 #include "streams/exec/util.h"
-#include "streams/management/stream_manager.h"
 
 namespace mongo {
 #if defined(MONGO_STACKTRACE_CAN_DUMP_ALL_THREADS)

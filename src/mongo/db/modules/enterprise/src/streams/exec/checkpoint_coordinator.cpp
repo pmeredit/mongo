@@ -3,11 +3,12 @@
  */
 
 
+#include "streams/exec/checkpoint_coordinator.h"
+
 #include <boost/none.hpp>
 #include <chrono>
 
 #include "mongo/logv2/log.h"
-#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 

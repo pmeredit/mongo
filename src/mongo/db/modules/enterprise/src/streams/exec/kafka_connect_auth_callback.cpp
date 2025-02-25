@@ -2,7 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/crypto/symmetric_crypto.h"
+#include "streams/exec/kafka_connect_auth_callback.h"
+
 #include <boost/algorithm/hex.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <cerrno>
@@ -15,10 +16,10 @@
 #include "mongo/base/data_range.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/json.h"
+#include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"
 #include "streams/exec/exec_internal_gen.h"
-#include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/log_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

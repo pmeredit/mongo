@@ -1,6 +1,7 @@
+#include <string>
+
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/util.h"
-#include <string>
 
 namespace streams {
 

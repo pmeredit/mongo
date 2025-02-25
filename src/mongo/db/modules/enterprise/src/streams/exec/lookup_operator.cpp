@@ -4,13 +4,13 @@
 
 #include "streams/exec/lookup_operator.h"
 
-#include "mongo/util/duration.h"
 #include <fmt/format.h>
 #include <mongocxx/exception/exception.hpp>
 
 #include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_remote_db_cursor.h"

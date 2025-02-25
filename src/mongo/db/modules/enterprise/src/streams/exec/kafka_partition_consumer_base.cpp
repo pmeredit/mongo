@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/kafka_partition_consumer_base.h"
+
 #include "mongo/logv2/log.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

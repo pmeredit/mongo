@@ -5,6 +5,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 #include "streams/exec/watermark_combiner.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 

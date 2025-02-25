@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/lookup_operator.h"
+
 #include <fmt/format.h>
 #include <memory>
 
@@ -13,7 +15,6 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
-#include "streams/exec/lookup_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/planner.h"

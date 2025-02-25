@@ -2,12 +2,12 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/source_buffer_manager.h"
+
 #include <cstdint>
 #include <memory>
 
-
 #include "mongo/util/assert_util.h"
-#include "streams/exec/source_buffer_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

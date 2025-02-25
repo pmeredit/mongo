@@ -2,24 +2,25 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/bson/simple_bsonobj_comparator.h"
-#include "mongo/db/exec/document_value/value_comparator.h"
-#include "mongo/db/pipeline/aggregation_request_helper.h"
-#include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/merge_operator.h"
+
 #include <fmt/format.h>
 #include <memory>
 
 #include "mongo/bson/json.h"
+#include "mongo/bson/simple_bsonobj_comparator.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
+#include "mongo/db/exec/document_value/value_comparator.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_source_operator.h"
-#include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongo_process_interface_for_test.h"
+#include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/tests/test_utils.h"

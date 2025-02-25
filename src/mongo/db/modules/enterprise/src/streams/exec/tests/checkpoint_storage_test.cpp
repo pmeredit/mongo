@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/checkpoint_storage.h"
+
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -9,7 +11,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/checkpoint_data_gen.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/common_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/stats_utils.h"

@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/latency_collector.h"
+
 #include "mongo/logv2/log.h"
 #include "streams/exec/log_util.h"
 

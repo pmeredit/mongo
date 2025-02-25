@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/operator_dag.h"
+
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/window_aware_operator.h"

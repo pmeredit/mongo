@@ -2,10 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/kafka_resolve_callback.h"
+
 #include <arpa/inet.h>
 
 #include "mongo/unittest/unittest.h"
-#include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/tests/test_utils.h"
 
 using namespace mongo;

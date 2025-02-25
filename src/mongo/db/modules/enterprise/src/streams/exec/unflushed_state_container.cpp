@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/unflushed_state_container.h"
+
 #include "mongo/base/error_codes.h"
 
 namespace streams {

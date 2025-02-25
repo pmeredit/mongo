@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/management/stream_manager.h"
+
 #include <boost/optional.hpp>
 #include <chrono>
 #include <exception>
@@ -34,7 +36,6 @@
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/management/stream_manager.h"
 #include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"

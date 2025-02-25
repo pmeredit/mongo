@@ -2,14 +2,15 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/unittest.h"
-#include "mongo/util/time_support.h"
+#include "streams/management/container_stats.h"
+
 #include <boost/optional.hpp>
 #include <tuple>
 
+#include "mongo/stdx/unordered_map.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/time_support.h"
 #include "streams/management/container_group_stats_provider.h"
-#include "streams/management/container_stats.h"
 #include "streams/util/metric_manager.h"
 
 using namespace mongo;

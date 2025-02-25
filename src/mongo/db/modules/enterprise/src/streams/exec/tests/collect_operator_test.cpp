@@ -2,11 +2,12 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/collect_operator.h"
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
-#include "streams/exec/collect_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"

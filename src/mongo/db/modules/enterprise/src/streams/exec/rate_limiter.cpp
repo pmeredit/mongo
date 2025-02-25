@@ -4,12 +4,12 @@
 
 #include "rate_limiter.h"
 
-#include "mongo/util/timer.h"
 #include <cmath>
 #include <cstdint>
 
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/timer.h"
 
 constexpr int kMicrosecondsPerSecond = 1'000'000;
 

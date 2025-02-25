@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "mongo/util/uuid.h"
@@ -14,7 +16,6 @@
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/stages_gen.h"
-#include <memory>
 
 namespace mongo {
 class ConcurrentMemoryAggregator;

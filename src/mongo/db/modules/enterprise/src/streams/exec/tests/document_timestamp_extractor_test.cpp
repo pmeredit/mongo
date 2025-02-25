@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/document_timestamp_extractor.h"
+
 #include <fmt/format.h>
 
 #include "mongo/bson/json.h"
@@ -9,7 +11,6 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/unittest/unittest.h"
-#include "streams/exec/document_timestamp_extractor.h"
 
 namespace streams {
 namespace {
