@@ -24,13 +24,13 @@ void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     invariant(id > _mostRecentCommitted);
     invariant(!_writer);
     _mostRecentCommitted = id;
-    _lastCheckpointSizeBytes = _currentMemoryBytes;
+    _lastCheckpointSizeBytes.store(_currentMemoryBytes);
     _currentMemoryBytes = 0;
 
     addUnflushedCheckpoint(id,
                            {*_mostRecentCommitted,
                             "inmemory",
-                            _lastCheckpointSizeBytes,
+                            _lastCheckpointSizeBytes.load(),
                             mongo::Date_t::now(),
                             Milliseconds{1} /* writeDurationMs */});
     _checkpoints[id].committed = true;
@@ -81,7 +81,7 @@ RestoredCheckpointInfo InMemoryCheckpointStorage::doStartCheckpointRestore(Check
             mongo::CheckpointDescription{
                 *_mostRecentCommitted,
                 "inmemory",
-                _lastCheckpointSizeBytes,
+                _lastCheckpointSizeBytes.load(),
                 mongo::Date_t::now(), /* we do not track the actual commit
                                          ts, so just return now() instead */
                 mongo::Milliseconds{1} /* writeDurationMs */},

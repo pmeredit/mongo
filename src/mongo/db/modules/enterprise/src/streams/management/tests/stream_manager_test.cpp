@@ -167,7 +167,7 @@ public:
         stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
         auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        info->context->checkpointStorage->_lastCheckpointSizeBytes = bytes;
+        info->context->checkpointStorage->_lastCheckpointSizeBytes.store(bytes);
     }
 
     void waitForLastCheckpointSize(ProcessorDetails details) {
@@ -176,7 +176,7 @@ public:
             stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
             auto info = getStreamProcessorInfo(lk, details);
             stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-            if (info->context->checkpointStorage->_lastCheckpointSizeBytes > 0) {
+            if (info->context->checkpointStorage->_lastCheckpointSizeBytes.load() > 0) {
                 return;
             }
             stdx::this_thread::sleep_for(std::chrono::milliseconds{100});

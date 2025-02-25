@@ -341,14 +341,14 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     addUnflushedCheckpoint(chkId,
                            CheckpointDescription{chkId,
                                                  directory,
-                                                 _lastCheckpointSizeBytes,
+                                                 _lastCheckpointSizeBytes.load(),
                                                  mongo::Date_t::now(),
                                                  Milliseconds{writeDurationMs}});
 
     _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
     // bookkeeping for checkpoint sizes
     _checkpointSizeBytes->increment(_activeCheckpointSave->checkpointSizeBytes);
-    _lastCheckpointSizeBytes = _activeCheckpointSave->checkpointSizeBytes;
+    _lastCheckpointSizeBytes.store(_activeCheckpointSave->checkpointSizeBytes);
     // Reset ActiveSaver
     _activeCheckpointSave.reset();
 
@@ -559,7 +559,7 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
     // Most of the time, we will be restoring from the last committed checkpoint, so using the size
     // of the checkpoint being restored as the lastCheckpointSizeBytes should be fine
     _lastCheckpointCommitTs = lastCheckpointCommitTs;
-    _lastCheckpointSizeBytes = lastCheckpointSizeBytes;
+    _lastCheckpointSizeBytes.store(lastCheckpointSizeBytes);
 
     LOGV2_INFO(7863452,
                "Checkpoint restore started",
@@ -595,7 +595,7 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
     CheckpointDescription details;
     details.setFilepath(_opts.restoreRootDir.string());
     details.setId(chkId);
-    details.setCheckpointSizeBytes(_lastCheckpointSizeBytes);
+    details.setCheckpointSizeBytes(_lastCheckpointSizeBytes.load());
     details.setCheckpointTimestamp(_lastCheckpointCommitTs);
     details.setWriteDurationMs(Milliseconds{writeDurationMs});
     info.description = std::move(details);
