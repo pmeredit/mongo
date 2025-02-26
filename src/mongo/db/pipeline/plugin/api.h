@@ -4,6 +4,8 @@
 
 extern "C" {
 
+struct MongoExtensionByteBuf;
+
 enum MongoDBPluginVersion {
     MONGODB_PLUGIN_VERSION_0 = 0,
 };
@@ -20,6 +22,30 @@ enum mongodb_get_next_result {
 struct MongoExtensionByteView {
     const unsigned char* data;
     size_t len;
+};
+
+/**
+ * Virtual function table for MongoExtensionByteBuf.
+ */
+struct MongoExtensionByteBufVTable {
+    /**
+     * Drop `buf` and free any associate resources.
+     */
+    void (*drop)(MongoExtensionByteBuf* buf);
+
+    /**
+     * Get a read-only view of the contents of `buf`.
+     */
+    MongoExtensionByteView (*get)(const MongoExtensionByteBuf* buf);
+};
+
+/**
+ * Prototype for an extension byte array buffer.
+ *
+ * MongoExtensionByteBuf owns the underlying buffer
+ */
+struct MongoExtensionByteBuf {
+    const MongoExtensionByteBufVTable* vtable;
 };
 
 // A function to get data from a source stage.
@@ -50,20 +76,17 @@ struct mongodb_aggregation_stage {
 // Your aggregation stage parser will heap allocate a `MyAggregationStage` and return it as a
 // `mongodb_aggregation_stage*`.
 struct mongodb_aggregation_stage_vt {
-    // Get the next result from stage and typically filling (result, result_len). Memory pointed to
-    // by result is owned by the stage and only valid until the next call on stage.
+    // Get the next result from stage and typically filling result. Memory pointed to by result is
+    // owned by the stage and only valid until the next call on stage.
     //
-    // Returns GET_NEXT_ADVANCED (0) on success filling (result, result_len) with a binary coded
-    // bson document. Returns GET_NEXT_EOF if exhausted and fills (result, result_len) with (NULL,
-    // 0). Returns GET_NEXT_WPAUSE_EXECUTION if there are no results now but there may be in the
-    // future. This also fills (result, result_len) with (NULL, 0). If a source stage returns this
-    // it must be propagated.
+    // Returns GET_NEXT_ADVANCED (0) on success fills result with a binary coded bson document.
+    // Returns GET_NEXT_EOF if exhausted and fills result an empty view.
+    // Returns GET_NEXT_PAUSE_EXECUTION if there are no results now but there may be in the future,
+    // and fills result with an empty view. If a source stage returns this it must be propagated.
     //
-    // Any positive value indicates an error. (result, result_len) will be filled with a utf8 string
+    // Any positive value indicates an error. result will be filled with a utf8 string
     // describing the error.
-    int (*get_next)(mongodb_aggregation_stage* stage,
-                    const unsigned char** result,
-                    size_t* result_len);
+    int (*get_next)(mongodb_aggregation_stage* stage, MongoExtensionByteView* result);
 
     // Set a source pointer and a source function for intermediate stages.
     void (*set_source)(mongodb_aggregation_stage* stage,
@@ -77,8 +100,7 @@ struct mongodb_aggregation_stage_vt {
 
 typedef int (*MongoExtensionParseAggregationStage)(MongoExtensionByteView stageBson,
                                                    mongodb_aggregation_stage** stage,
-                                                   const unsigned char** error,
-                                                   size_t* error_len);
+                                                   MongoExtensionByteBuf** error);
 
 // The portal allows plugin functionality to register with the server.
 struct MongoExtensionPortal {

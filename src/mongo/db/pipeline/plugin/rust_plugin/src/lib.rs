@@ -9,7 +9,8 @@ use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBu
 
 use plugin_api_bindgen::{
     mongodb_aggregation_stage, mongodb_aggregation_stage_vt, mongodb_source_get_next,
-    MongoExtensionByteView, MongoExtensionPortal,
+    MongoExtensionByteBuf, MongoExtensionByteBufVTable, MongoExtensionByteView,
+    MongoExtensionPortal,
 };
 
 #[derive(Debug)]
@@ -59,6 +60,44 @@ impl std::fmt::Display for Error {
             )
         } else {
             std::write!(f, "Plugin error code {}: {}", self.code.get(), self.message)
+        }
+    }
+}
+
+const VEC_BYTE_BUF_VTABLE: MongoExtensionByteBufVTable = MongoExtensionByteBufVTable {
+    drop: Some(VecByteBuf::drop),
+    get: Some(VecByteBuf::get),
+};
+
+struct VecByteBuf {
+    vtable: &'static MongoExtensionByteBufVTable,
+    buf: Vec<u8>,
+}
+
+impl VecByteBuf {
+    pub fn from_string(s: String) -> Box<Self> {
+        Box::new(Self {
+            vtable: &VEC_BYTE_BUF_VTABLE,
+            buf: s.into(),
+        })
+    }
+
+    pub fn from_vec(v: Vec<u8>) -> Box<Self> {
+        Box::new(Self {
+            vtable: &VEC_BYTE_BUF_VTABLE,
+            buf: v,
+        })
+    }
+
+    unsafe extern "C-unwind" fn drop(buf: *mut MongoExtensionByteBuf) {
+        let _ = Box::from_raw(buf as *mut VecByteBuf);
+    }
+
+    unsafe extern "C-unwind" fn get(buf: *const MongoExtensionByteBuf) -> MongoExtensionByteView {
+        let bytes = (buf as *const VecByteBuf).as_ref().unwrap().buf.as_slice();
+        MongoExtensionByteView {
+            data: bytes.as_ptr(),
+            len: bytes.len(),
         }
     }
 }
@@ -178,9 +217,10 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     unsafe extern "C-unwind" fn parse_external(
         stage_bson: MongoExtensionByteView,
         stage: *mut *mut mongodb_aggregation_stage,
-        error: *mut *const u8,
-        error_len: *mut usize,
+        error: *mut *mut MongoExtensionByteBuf,
     ) -> c_int {
+        *stage = std::ptr::null_mut();
+        *error = std::ptr::null_mut();
         match Self::parse(unsafe { std::slice::from_raw_parts(stage_bson.data, stage_bson.len) }) {
             Ok(stage_impl) => {
                 let plugin_stage = Box::new(Self {
@@ -189,16 +229,11 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                     buf: vec![],
                 });
                 *stage = Box::into_raw(plugin_stage) as *mut mongodb_aggregation_stage;
-                *error = std::ptr::null();
-                *error_len = 0;
                 0
             }
             Err(Error { code, message, .. }) => {
-                // TODO: fix the leak. We can either provide a way to free this or stash it in
-                // thread local memory until the next call.
-                *error = message.as_bytes().as_ptr();
-                *error_len = message.len();
-                std::mem::forget(message);
+                *error =
+                    Box::into_raw(VecByteBuf::from_string(message)) as *mut MongoExtensionByteBuf;
                 code.into()
             }
         }
@@ -237,33 +272,33 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
 
     unsafe extern "C-unwind" fn get_next(
         stage: *mut mongodb_aggregation_stage,
-        result: *mut *const u8,
-        result_len: *mut usize,
+        result: *mut MongoExtensionByteView,
     ) -> c_int {
         let rust_stage = (stage as *mut PluginAggregationStage<S>)
             .as_mut()
             .expect("non-null stage pointer");
+        *result = MongoExtensionByteView {
+            data: std::ptr::null(),
+            len: 0,
+        };
         match rust_stage.get_next() {
-            Ok(GetNextResult::EOF) => {
-                *result = std::ptr::null();
-                *result_len = 0;
-                plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF
-            }
+            Ok(GetNextResult::EOF) => plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF,
             Ok(GetNextResult::PauseExecution) => {
-                *result = std::ptr::null();
-                *result_len = 0;
                 plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION
             }
             Ok(GetNextResult::Advanced(doc)) => {
-                *result = doc.as_bytes().as_ptr();
-                *result_len = doc.as_bytes().len();
+                *result = MongoExtensionByteView {
+                    data: doc.as_bytes().as_ptr(),
+                    len: doc.as_bytes().len(),
+                };
                 plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED
             }
             Err(Error { code, message, .. }) => {
-                // XXX we leak memory right here. this memory needs to be owned by the stage.
                 rust_stage.buf = message.into_bytes();
-                *result = rust_stage.buf.as_ptr();
-                *result_len = rust_stage.buf.len();
+                *result = MongoExtensionByteView {
+                    data: rust_stage.buf.as_ptr(),
+                    len: rust_stage.buf.len(),
+                };
                 code.get()
             }
         }

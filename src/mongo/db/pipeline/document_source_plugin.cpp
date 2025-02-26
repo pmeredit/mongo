@@ -8,8 +8,18 @@
 
 namespace mongo {
 
-static void add_aggregation_stage(MongoExtensionByteView name,
-                                  MongoExtensionParseAggregationStage parser) {
+namespace {
+
+StringData byteViewAsStringData(const MongoExtensionByteView view) {
+    return StringData(reinterpret_cast<const char*>(view.data), view.len);
+}
+
+StringData byteBufAsStringData(const MongoExtensionByteBuf& buf) {
+    return byteViewAsStringData(buf.vtable->get(&buf));
+}
+
+void add_aggregation_stage(MongoExtensionByteView name,
+                           MongoExtensionParseAggregationStage parser) {
     auto name_sd = StringData(reinterpret_cast<const char*>(name.data), name.len);
     auto id = DocumentSource::allocateId(name_sd);
     LiteParsedDocumentSource::registerParser(name_sd.toString(),
@@ -22,24 +32,20 @@ static void add_aggregation_stage(MongoExtensionByteView name,
             -> boost::intrusive_ptr<DocumentSource> {
             BSONObj stage_def = specElem.wrap();
             mongodb_aggregation_stage* stage = nullptr;
-            const unsigned char* error = nullptr;
-            size_t error_len = 0;
+            MongoExtensionByteBuf* error = nullptr;
             int code = parser(
                 MongoExtensionByteView{reinterpret_cast<const unsigned char*>(stage_def.objdata()),
                                        static_cast<size_t>(stage_def.objsize())},
                 &stage,
-                &error,
-                &error_len);
-            uassert(code,
-                    str::stream() << StringData(reinterpret_cast<const char*>(error), error_len),
-                    code == 0);
+                &error);
+            uassert(code, str::stream() << byteBufAsStringData(*error), code == 0);
             return boost::intrusive_ptr(
                 new DocumentSourcePlugin(specElem.fieldNameStringData(), expCtx, id, stage));
         },
         boost::none);
 }
 
-static bool is_valid_bson_document(const unsigned char* bson_value, size_t bson_value_len) {
+bool is_valid_bson_document(const unsigned char* bson_value, size_t bson_value_len) {
     if (bson_value_len < BSONObj::kMinBSONLength) {
         return false;
     }
@@ -49,6 +55,8 @@ static bool is_valid_bson_document(const unsigned char* bson_value, size_t bson_
         ((int32_t)bson_value[2] << 16) | ((int32_t)bson_value[3] << 24);
     return document_len >= 0 && (size_t)document_len == bson_value_len;
 }
+
+}  // anonymous namespace
 
 MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
                           ("BeginDocumentSourceRegistration"),
@@ -89,24 +97,21 @@ int DocumentSourcePlugin::sourceGetNext(const unsigned char** result, size_t* le
 }
 
 DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
-    const unsigned char* result = nullptr;
-    size_t result_len = 0;
-    int code = _plugin_stage->vtable->get_next(_plugin_stage.get(), &result, &result_len);
+    MongoExtensionByteView result{nullptr, 0};
+    int code = _plugin_stage->vtable->get_next(_plugin_stage.get(), &result);
     switch (code) {
         case GET_NEXT_ADVANCED:
             // Ensure that the result buffer contains a document bound to result_len.
             tassert(123456,
                     str::stream() << "plugin returned an invalid BSONObj.",
-                    is_valid_bson_document(result, result_len));
-            return GetNextResult(Document(BSONObj(reinterpret_cast<const char*>(result))));
+                    is_valid_bson_document(result.data, result.len));
+            return GetNextResult(Document(BSONObj(reinterpret_cast<const char*>(result.data))));
         case GET_NEXT_EOF:
             return GetNextResult::makeEOF();
         case GET_NEXT_PAUSE_EXECUTION:
             return GetNextResult::makePauseExecution();
         default:
-            uassert(code,
-                    str::stream() << StringData(reinterpret_cast<const char*>(result), result_len),
-                    false);
+            uassert(code, str::stream() << byteViewAsStringData(result), false);
             return GetNextResult::makeEOF();
     }
 }
