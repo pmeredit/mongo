@@ -142,13 +142,8 @@ function testRunner({
             jsTestLog("current oplog size: " + dataSize +
                       " bytes. Waiting until it is <= " + targetSize + " bytes.");
 
-            // these insertions are added to see if we can avoid an intermittent issue in this test
-            // where the oplog isn't truncating. If this ends up fixing the issue we should reach
-            // out to the appropriate team to see why this workaround was needed.
-            test.inputColl.insertOne({a: -1});
-
             return dataSize <= targetSize;
-        }, "waiting for oplog to be truncated", 5 * 60 * 1000, 5 * 1000);
+        }, "waiting for oplog to be truncated", 10 * 60 * 1000, 5 * 1000);
     }
 
     // Validate the modify request and, if validateShouldSucceed=true, start the modified processor.
