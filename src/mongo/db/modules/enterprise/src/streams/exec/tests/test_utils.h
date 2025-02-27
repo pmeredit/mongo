@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/constants.h"
@@ -16,6 +17,7 @@
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/util/metrics.h"
 
 namespace mongo {
 class ConcurrentMemoryAggregator;
@@ -107,38 +109,44 @@ public:
         return _callbackGauges;
     }
 
+    const auto& histograms() {
+        return _histograms;
+    }
+
     void visit(Counter* counter,
                const std::string& name,
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        _counters[getProcessorIdLabel(labels)][name] = counter;
+        _counters[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = counter;
     }
 
     void visit(Gauge* gauge,
                const std::string& name,
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        _gauges[getProcessorIdLabel(labels)][name] = gauge;
+        _gauges[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = gauge;
     }
 
     void visit(IntGauge* gauge,
                const std::string& name,
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        _intGauges[getProcessorIdLabel(labels)][name] = gauge;
+        _intGauges[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = gauge;
     }
 
     void visit(CallbackGauge* gauge,
                const std::string& name,
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        _callbackGauges[getProcessorIdLabel(labels)][name] = gauge;
+        _callbackGauges[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = gauge;
     }
 
     void visit(Histogram* histogram,
                const std::string& name,
                const std::string& description,
-               const MetricManager::LabelsVec& labels) {}
+               const MetricManager::LabelsVec& labels) {
+        _histograms[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = histogram;
+    }
 
 private:
     std::string getProcessorIdLabel(const MetricManager::LabelsVec& labels) {
@@ -149,15 +157,21 @@ private:
         return result->second;
     }
 
+    std::string getLabelsAsStrs(const MetricManager::LabelsVec& labels);
+
     using ProcessorId = std::string;
     using MetricName = std::string;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, Counter*>>
-        _counters;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, Gauge*>> _gauges;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, IntGauge*>>
-        _intGauges;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, CallbackGauge*>>
-        _callbackGauges;
+
+    template <typename T>
+    using MetricMap = mongo::stdx::unordered_map<
+        ProcessorId,
+        mongo::stdx::unordered_map<MetricName, mongo::stdx::unordered_map<std::string, T*>>>;
+
+    MetricMap<Counter> _counters;
+    MetricMap<Gauge> _gauges;
+    MetricMap<IntGauge> _intGauges;
+    MetricMap<CallbackGauge> _callbackGauges;
+    MetricMap<Histogram> _histograms;
 };
 
 // StubbableMockHttpClient composes MockHttpClient in order to add custom functionality to

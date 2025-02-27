@@ -98,6 +98,5 @@ void ExternalFunctionOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg
     // Let the control message flow to the next operator.
     sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
 }
-
 }  // namespace streams
 //
