@@ -354,6 +354,27 @@ crates_repository(
         "bson": crate.spec(
             version = "2.13.0",
         ),
+        "bytes": crate.spec(
+            version = "1.10.0",
+        ),
+        "once_cell": crate.spec(
+            version = "1.20.3",
+        ),
+        "tonic-build": crate.spec(
+            version = "0.12.3",
+        ),
+        "tonic": crate.spec(
+            version = "0.12.3",
+            features = ["default"]
+        ),
+        "tokio": crate.spec(
+            version = "1.43.0",
+            features = ["full"]
+        ),
+        "serde": crate.spec(
+            version = "1.0.217",
+            features = ["derive"]
+        ),
     },
     render_config = render_config(default_package_name = "")
 )

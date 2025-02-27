@@ -2,6 +2,10 @@
 // The entry point is an exported function called from a .cpp file.
 #![allow(dead_code)]
 
+mod vector;
+mod mongot_client;
+mod command_service;
+
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
 
@@ -12,6 +16,8 @@ use plugin_api_bindgen::{
     MongoExtensionByteBuf, MongoExtensionByteBufVTable, MongoExtensionByteView,
     MongoExtensionPortal,
 };
+
+use crate::vector::PluginVectorSearch;
 
 #[derive(Debug)]
 pub struct Error {
@@ -419,4 +425,5 @@ impl AggregationStage for AddSomeCrabs {
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal: *mut MongoExtensionPortal) {
     PluginAggregationStage::<EchoOxide>::register(portal);
     PluginAggregationStage::<AddSomeCrabs>::register(portal);
+    PluginAggregationStage::<PluginVectorSearch>::register(portal);
 }
