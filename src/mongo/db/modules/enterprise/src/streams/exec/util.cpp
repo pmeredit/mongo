@@ -91,10 +91,6 @@ bool isMergeStage(mongo::StringData name) {
     return name == mongo::StringData(kMergeStageName);
 }
 
-bool isLimitStage(mongo::StringData name) {
-    return name == mongo::StringData(kLimitStageName);
-}
-
 bool isExternalFunctionStage(mongo::StringData name) {
     return name == mongo::StringData(kExternalFunctionStageName);
 }

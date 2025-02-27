@@ -58,7 +58,7 @@ const windowGroupMTFunc = function testWindowGroup(docs,
     assert.commandWorked(result);
     assert.soon(() => { return outColl.find().itcount() >= expectedResults.length; },
                 () => { jsTestLog(`${outColl.find().itcount()}`); });
-    var fieldNames = [];
+    var fieldNames = ['_ts', '_stream_meta'];
     if (stripIds) {
         fieldNames.push('_id');
     }

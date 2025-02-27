@@ -490,14 +490,13 @@ function mongoToKafkaToMongo({
     // kafkaToMongo uses the default kafka startAt behavior, which starts reading
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
-    let kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
         connName: connectionName,
         topicName: topicName1,
         collName: sinkColl1.getName(),
         sourceKeyFormat: sourceKeyFormat,
         sourceKeyFormatError: sourceKeyFormatError
     });
-    kafkaToMongoStartCmd.pipeline.splice(1, 0, {$addFields: {_stream_meta: {$meta: "stream"}}});
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
@@ -965,7 +964,6 @@ function mongoToKafkaToMongoGroupStreamMeta({
                 timeField: {$toDate: {$toLong: "$a"}},
             }
         },
-        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$addFields: {topic: "$_stream_meta.source.topic"}},
         {$addFields: {partition: "$_stream_meta.source.partition"}},
         {
@@ -984,7 +982,6 @@ function mongoToKafkaToMongoGroupStreamMeta({
                 idleTimeout: {size: NumberInt(2), unit: 'second'}
             },
         },
-        {$addFields: {_stream_meta: {$meta: "stream"}}},
         // These will not get added since topic/partition no longer are projected
         {$addFields: {topicAfterGroup: "$_stream_meta.source.topic"}},
         {$addFields: {partitionAfterGroup: "$_stream_meta.source.partition"}},
@@ -1113,11 +1110,10 @@ function mongoToKafkaToMongoMultiTopic({
     // kafkaToMongo uses the default kafka startAt behavior, which starts reading
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
-    let kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
         topicName: topicNames,
         collName: sinkColl1.getName(),
     });
-    kafkaToMongoStartCmd.pipeline.splice(1, 0, {$addFields: {_stream_meta: {$meta: "stream"}}});
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 

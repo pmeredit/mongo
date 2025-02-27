@@ -55,7 +55,6 @@ mongo_cc_library(
         "//src/mongo/db/matcher:parsed_match_expression_for_test",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
         "//src/mongo/db/modules/enterprise/src/streams/third_party/mongocxx",
-        "//src/mongo/idl:server_parameter_test_util",
         "//src/mongo/unittest",
         "//src/mongo/util/net:mock_http_client",
     ],

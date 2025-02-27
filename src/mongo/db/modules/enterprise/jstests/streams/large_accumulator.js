@@ -195,7 +195,7 @@ testLargeAccumulator(
         // No dlq's
         assert.eq(inMemoryOpStats["dlqMessageCount"], 0);
         assert.eq(inMemoryOpStats["dlqMessageSize"], 0);
-        assert.gte(inMemoryOpStats["stateSize"], inMemoryOpStats["inputMessageSize"]);
+        assert.gt(inMemoryOpStats["stateSize"], inMemoryOpStats["inputMessageSize"]);
         assert.eq(dlqColl.count(), 0);
         assert.eq(inMemoryOpStats["inputMessageSize"], inMemoryOpStats["outputMessageSize"]);
 

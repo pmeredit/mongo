@@ -190,8 +190,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                         min: "$minIdx",
                         max: "$maxIdx",
                         sum: "$sum",
-                    },
-                    _stream_meta: {$meta: "stream"}
+                    }
                 }
             }
         ];
@@ -394,7 +393,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             const output = getResults();
             assert.eq(expectedOutput.length, output.length);
             for (let i = 0; i < output.length; i++) {
-                verifyDocsEqual(expectedOutput[i], output[i], ["_id"] /*ignoreFields*/);
+                verifyDocsEqual(
+                    expectedOutput[i], output[i], ["_id", "_ts", "_stream_meta"] /*ignoreFields*/);
             }
         };
 
@@ -451,10 +451,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         let statsAfterCheckpoint = test.stats();
 
         // Verify expected state size (if any).
-        assert.soon(() => {
-            const stateSize = statsAfterCheckpoint["stateSize"];
-            return stateSize >= (0.8 * minimumExpectedStateSize);
-        });
+        assert.soon(
+            () => { return statsAfterCheckpoint["stateSize"] >= minimumExpectedStateSize; });
 
         // Wait for all the output.
         assert.neq(expectedOutput, null);
@@ -511,7 +509,6 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                     ]
                 }
             },
-            {$addFields: {_stream_meta: {$meta: "stream"}}},
             {$project: {_id: 0, results: 1, _stream_meta: 1}}
         ];
         const docTs = ISODate("2023-12-01T01:00:00.000Z");
@@ -664,7 +661,15 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             inputBeforeStop: input,
             inputAfterStop: closeWindowInput,
             expectedOutput: [
-                {count: 1, id: id},
+                {
+                    _stream_meta: {
+                        "sourceType": "atlas",
+                        "windowStartTimestamp": ISODate("2023-12-01T01:00:00Z"),
+                        "windowEndTimestamp": ISODate("2023-12-01T02:00:00Z")
+                    },
+                    count: 1,
+                    id: id
+                },
             ],
             minimumExpectedStateSize: state,
             shouldHeapProfile: true,
@@ -698,16 +703,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                         }]
                     }
                 },
-                {
-                    $project: {
-                        customerId: "$_id",
-                        max: 1,
-                        min: 1,
-                        sum: 1,
-                        _id: 0,
-                        _stream_meta: {$meta: "stream"}
-                    }
-                }
+                {$project: {customerId: "$_id", max: 1, min: 1, sum: 1, _id: 0}}
             ],
             inputBeforeStop: [
                 {ts: ISODate("2023-12-01T01:00:00.000Z"), customerId: 0, a: 1},

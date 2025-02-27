@@ -635,7 +635,7 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
     ASSERT_EQUALS(2, statsReply.getInputMessageCount());
-    ASSERT_EQUALS(250, statsReply.getInputMessageSize());
+    ASSERT_EQUALS(506, statsReply.getInputMessageSize());
     ASSERT_EQUALS(1, statsReply.getOutputMessageCount());
     ASSERT_EQUALS(253, statsReply.getOutputMessageSize());
 

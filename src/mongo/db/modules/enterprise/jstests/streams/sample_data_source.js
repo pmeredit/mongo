@@ -53,7 +53,7 @@ function sampleDataSourceWindowMerge() {
     let results = db.getSiblingDB("test").sp1.find({}).toArray();
     assert.gte(results.length, 1);
     for (let result of results) {
-        for (let field of ["_id", "pushAll", "sumTemp", "sumWatts"]) {
+        for (let field of ["_id", "_stream_meta", "pushAll", "sumTemp", "sumWatts"]) {
             assert(result.hasOwnProperty(field));
         }
     }

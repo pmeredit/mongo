@@ -32,7 +32,6 @@ bool hasPayloadStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline);
 bool isLookUpStage(mongo::StringData name);
 bool isEmitStage(mongo::StringData name);
 bool isMergeStage(mongo::StringData name);
-bool isLimitStage(mongo::StringData name);
 bool isWindowAwareStage(mongo::StringData name);
 bool isBlockingWindowAwareStage(mongo::StringData name);
 bool hasBlockingStage(const BSONPipeline& pipeline);

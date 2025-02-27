@@ -115,7 +115,7 @@ const testCases = [
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}]
                 }
             },
-            {$project: {_id: {$meta: "stream.window.start"}, count: 1}}
+            {$project: {_id: "$_stream_meta.window.start", count: 1}}
         ],
         expectedOutput: [
             {"count": 2},
@@ -156,7 +156,6 @@ const testCases = [
                     pipeline: [{$group: allAccumulators}]
                 }
             },
-            {$addFields: {_stream_meta: {$meta: "stream"}}},
             {$set: {_id: "$_stream_meta.window.start"}}
         ],
         expectedOutput: [

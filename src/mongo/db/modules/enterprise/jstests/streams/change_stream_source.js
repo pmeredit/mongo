@@ -124,14 +124,8 @@ function runChangeStreamSourceTest({
     }
 
     const processorName = "changeStreamSourceProcessor";
-    let addFields = {};
-    addFields[streamMetaFieldName ? streamMetaFieldName : "_stream_meta"] = {$meta: "stream"};
-    addFields["_ts"] = {$meta: "stream.source.ts"};
-    sp.createStreamProcessor(processorName, [
-        {$source: sourceSpec},
-        {$addFields: addFields},
-        {$emit: {connectionName: '__testMemory'}}
-    ]);
+    sp.createStreamProcessor(processorName,
+                             [{$source: sourceSpec}, {$emit: {connectionName: '__testMemory'}}]);
 
     const processor = sp[processorName];
     let startResult = processor.start({featureFlags: {}, shouldStartSample: true});
@@ -327,12 +321,8 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
     }
 
     const processorName = "changeStreamFullDocument";
-    let addFields = {};
-    addFields["_stream_meta"] = {$meta: "stream"};
-    addFields["_ts"] = {$meta: "stream.source.ts"};
     sp.createStreamProcessor(processorName, [
         {$source: sourceSpec},
-        {$addFields: addFields},
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
 
@@ -476,7 +466,6 @@ function testChangeStreamSourceWindowPipeline() {
                 ]
             }
         },
-        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
 
