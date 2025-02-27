@@ -467,7 +467,8 @@ std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
 // Utility which configures options common to all $source stages.
 SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsFieldName,
                                                  DocumentTimestampExtractor* timestampExtractor,
-                                                 bool enableDataFlow) {
+                                                 bool enableDataFlow,
+                                                 bool oldStreamMetaEnabled) {
     SourceOperator::Options options;
     options.enableDataFlow = enableDataFlow;
     if (tsFieldName) {
@@ -475,10 +476,13 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
         uassert(7756300,
                 "'tsFieldOverride' cannot be a dotted path",
                 options.timestampOutputFieldName->find('.') == std::string::npos);
-    } else {
+    } else if (oldStreamMetaEnabled) {
+        // If using old stream meta, default to project assigned timestamp into
+        // _ts.
         options.timestampOutputFieldName = kDefaultTimestampOutputFieldName;
     }
-    if (options.timestampOutputFieldName->empty()) {
+
+    if (options.timestampOutputFieldName && options.timestampOutputFieldName->empty()) {
         options.timestampOutputFieldName = boost::none;
     }
     options.timestampExtractor = timestampExtractor;
@@ -562,8 +566,11 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    InMemorySourceOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    InMemorySourceOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
 
@@ -586,8 +593,11 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    SampleDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    SampleDataSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
@@ -609,8 +619,11 @@ void Planner::planDocumentsSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    DocumentsDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    DocumentsDataSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     internalOptions.documents = std::visit(
@@ -663,8 +676,11 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    KafkaConsumerOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    KafkaConsumerOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
 
@@ -846,8 +862,10 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         tsFieldName = options.getTsFieldOverride();
     }
     ChangeStreamSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(
-            std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow),
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta),
         std::move(clientOptions));
 
     if (useWatermarks) {
@@ -1490,7 +1508,7 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
             // they are read.
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, the pipeline cannot use "
-                    "_stream_meta.window until after the first $group or $sort.",
+                    "stream meta until after the first $group or $sort.",
                     false);
         } else if (_windowPlanningInfo->limitBeforeFirstBlocking) {
             // Else, if there's a limit operator before the first blocking window aware operator,
@@ -1866,7 +1884,7 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
                 ++_windowPlanningInfo->numWindowAwareStages;
                 if (isBlockingWindowAwareStage(stage->getSourceName())) {
                     ++_windowPlanningInfo->numBlockingWindowAwareStages;
-                } else if (stage->getSourceName() == kLimitStageName) {
+                } else if (isLimitStage(stage->getSourceName())) {
                     _windowPlanningInfo->limitBeforeFirstBlocking |=
                         _windowPlanningInfo->numBlockingWindowAwareStages == 0;
                 }
@@ -1916,14 +1934,15 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
                 _context->projectStreamMetaPriorToSinkStage |= hasStreamMetaDependency;
             }
 
-            if (isBlockingWindowAwareStage(stage->getSourceName())) {
-                ++blockingWindowAwareOperators;
-            }
             bool usesStreamMetaExpr =
                 deps.metadataDeps().test(DocumentMetadataFields::MetaType::kStream);
             if (_windowPlanningInfo && (hasStreamMetaDependency || usesStreamMetaExpr) &&
-                blockingWindowAwareOperators <= 1) {
+                blockingWindowAwareOperators == 0) {
                 _windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking = true;
+            }
+
+            if (isBlockingWindowAwareStage(stage->getSourceName())) {
+                ++blockingWindowAwareOperators;
             }
 
             // If the expression is used, set the switch to write to DocumentMetadataFields.

@@ -45,17 +45,7 @@ function lateDataExample() {
             }
         ])),
         [
-            {
-                _id: null,
-                count: 2,
-                _stream_meta: {
-                    source: {type: "generated"},
-                    window: {
-                        start: ISODate("2024-03-01T02:00:00Z"),
-                        end: ISODate("2024-03-01T02:00:10Z")
-                    }
-                }
-            },
+            {_id: null, count: 2},
             {
                 _dlqMessage: {
                     "_stream_meta": {"source": {"type": "generated"}},

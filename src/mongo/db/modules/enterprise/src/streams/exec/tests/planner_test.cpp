@@ -28,6 +28,7 @@
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/idl/idl_parser.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
@@ -182,6 +183,7 @@ protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     Aws::SDKOptions _sdkOptions;
+    mongo::RAIIServerParameterControllerForTest _featureFlagController{"featureFlagStreams", true};
 };
 
 namespace {
@@ -819,7 +821,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         std::string bootstrapServers;
         std::vector<std::string> topicNames;
         bool hasTimestampExtractor = false;
-        std::string timestampOutputFieldName = std::string(kDefaultTsFieldName);
+        boost::optional<std::string> timestampOutputFieldName;
         int partitionCount = 1;
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
         BSONObj auth;
@@ -955,7 +957,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
               {options2.getBootstrapServers().toString(),
                {topic2},
                true,
-               tsField,
+               boost::optional<std::string>(tsField),
                partitionCount,
                RdKafka::Topic::OFFSET_END,
                options2.getAuth()->toBSON()});
@@ -967,12 +969,12 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                      << kafka2.getName() << "topic" << topic2 << "timeField"
                      << BSON("$toDate"
                              << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
-                     << "tsFieldName" << tsField << "testOnlyPartitionCount" << partitionCount
-                     << "config" << BSON("auto_offset_reset" << autoOffsetReset))),
+                     << "testOnlyPartitionCount" << partitionCount << "config"
+                     << BSON("auto_offset_reset" << autoOffsetReset))),
             {options2.getBootstrapServers().toString(),
              {topic2},
              true,
-             tsField,
+             boost::none,
              partitionCount,
              expectedOffset,
              options2.getAuth()->toBSON()});
@@ -1031,7 +1033,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     struct ExpectedResults {
         std::string expectedUri;
         bool hasTimestampExtractor = false;
-        std::string expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
+        boost::optional<std::string> expectedTimestampOutputFieldName;
 
         std::string expectedDatabase;
         std::string expectedCollection;
@@ -1106,7 +1108,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
                          results);
 
     // Reset 'expectedTimestampOutputFieldName' and 'hasTimestampExtractor'.
-    results.expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
+    results.expectedTimestampOutputFieldName = boost::none;
     results.hasTimestampExtractor = false;
 
     // Configure options specific to change streams $source.
@@ -2055,6 +2057,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         { $tumblingWindow: {
             interval: { size: 1, unit: "hour" },
             pipeline: [
+                { $addFields: { "_stream_meta":  {$meta: "stream"} } },
                 { $match: { "_stream_meta.window.start": "foo" } },
                 { $group: { 
                     _id: "$customerId", 
@@ -2077,6 +2080,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
               // The LimitOperator is a dummy window assigning operator, it's limit is infinity.
               {"ChangeStreamConsumerOperator",
                "LimitOperator",
+               "AddFieldsOperator",
                "MatchOperator",
                "GroupOperator",
                "MergeOperator"});
@@ -2095,7 +2099,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         { $tumblingWindow: {
             interval: { size: 1, unit: "hour" },
             pipeline: [
-                { $project: { a: "$_stream_meta.window.start" } },
+                { $project: { a: {$meta: "stream.window"} } },
                 { $group: { 
                     _id: "$customerId", 
                     sum: { $sum: "$value" }, 

@@ -36,6 +36,7 @@ try {
     const featureFlags = {enableExternalFunctionOperator: true};
 
     const projectStages = [
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$project: {makeARequest: 1, requestID: 1, response: 1, payloadToSend: 1, _stream_meta: 1}},
         {$project: {"_stream_meta.source": 0}},
         {$set: {"_stream_meta.externalFunction.responseTimeMs": 1}},

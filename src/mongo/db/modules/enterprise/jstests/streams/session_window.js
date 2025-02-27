@@ -26,6 +26,10 @@ const groupOp = {
     $group: {_id: null, allIds: {$push: "$id"}}
 };
 
+const groupOpWithStreamMetaDep = {
+    $group: {_id: null, allIds: {$push: {$meta: "stream"}}}
+};
+
 const matchOp = {
     $match: {b: 1},
 };
@@ -39,19 +43,23 @@ const sortWindowIdOp = {
 };
 
 const addFieldWindowIdOp = {
-    $addFields: {x: "$_stream_meta.window.start"}
+    $addFields: {x: {$meta: "stream.window.start"}}
+};
+
+const addStreamMeta = {
+    $addFields: {_stream_meta: {$meta: "stream"}}
 };
 
 const noBlockingWindowAwarePipeline = [matchOp, {$addFields: {allIds: ["$id"]}}];
 const streamMetaDepBeforeFirstBlockingPipeline = [addFieldWindowIdOp, matchOp, sortOp, groupOp];
 // extra sort to undo 1st sort
-const streamMetaDepInFirstBlockingPipeline = [sortWindowIdOp, groupOp];
-const streamMetaDepAfterFirstBlockingPipeline = [groupOp, sortWindowIdOp];
+const streamMetaDepInFirstBlockingPipeline = [groupOpWithStreamMetaDep];
+const streamMetaDepAfterFirstBlockingPipeline = [groupOp, addStreamMeta, sortWindowIdOp];
 // limit is super big so doesn't actually limit anything for these tests
 const limitBeforeFirstBlockingPipeline = [limitOp, sortOp, groupOp];
-const limitAfterFirstBlockingPipeline = [sortOp, limitOp, groupOp];
-const firstOperatorWindowAwarePipeline = [sortOp, groupOp];
-const firstOperatorNOTWindowAwarePipeline = [matchOp, sortOp, groupOp];
+const limitAfterFirstBlockingPipeline = [sortOp, limitOp, groupOp, addStreamMeta];
+const firstOperatorWindowAwarePipeline = [sortOp, groupOp, addStreamMeta];
+const firstOperatorNOTWindowAwarePipeline = [matchOp, sortOp, groupOp, addStreamMeta];
 
 const validPipelines = [
     firstOperatorWindowAwarePipeline,
@@ -145,7 +153,7 @@ function testRunner(
     for (let doc of windowResults) {
         delete doc._stream_meta.source;
     }
-    verifyInputEqualsOutput(windowResults, expectedWindows, ["_id", "_ts"]);
+    verifyInputEqualsOutput(windowResults, expectedWindows, ["_id"]);
     return windowResults;
 }
 
@@ -177,6 +185,7 @@ function invalidPipelinesShouldError() {
     ];
 
     for (const pipeline of invalidPipelines) {
+        jsTestLog(pipeline);
         testRunner(pipeline, gap, partitionBy, [docs1], [], true);
     }
 }
