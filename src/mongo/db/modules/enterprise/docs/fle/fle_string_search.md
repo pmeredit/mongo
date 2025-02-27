@@ -1,5 +1,11 @@
 # Queryable Encryption Substring/Suffix/Prefix Search
 
+- [Parameters](#parameters)
+- [Client Side Processing of Inserts](#client-side-processing-of-inserts)
+  - [StrEncode](#strencode)
+    - [StrEncode: Substring](#strencode-substring)
+    - [StrEncode: Suffix and Prefix](#strencode-suffix-and-prefix)
+
 The addition of the following query types in Queryable Encryption enables indexing an encrypted
 field for string search using substring, suffix, or prefix queries:
 
@@ -129,7 +135,7 @@ to `TextSearchTokenSets.suffix_sets`, and to convert `T_prefix` to `TextSearchTo
 > 1 byte null terminator. This is done in order to be consistent with the way the user value is
 > encrypted using AES-256-CBC, and with how tokens are derived for equality-indexed strings.
 
-#### Substrings
+#### StrEncode: Substring
 
 For substring-indexed values, `T_substr` lists all unique substrings of `s_` with codepoint lengths
 between the min and max (inclusive) specified in `strMinQueryLength` and `strMaxQueryLength`,
@@ -163,7 +169,7 @@ in the range `[strMinQueryLength..min(padlen, strMaxQueryLength)]`.
 Finally, the number of `pad` values to add to `T_substr` is simply `msize` minus the number of
 unique substrings of `s_`.
 
-#### Suffixes and Prefixes
+#### StrEncode: Suffix and Prefix
 
 For suffix/prefix indexed values, `T_suffix` lists all the suffixes of `s_` with codepoint lengths
 between the min and max lengths (inclusive) specified in `strMinQueryLength` and `strMaxQueryLength`,
