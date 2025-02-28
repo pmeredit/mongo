@@ -828,6 +828,9 @@ protected:
         ensureNotEncryptedEnterEval("a key string value generation computing operation",
                                     subtreeStack);
     }
+    void visit(ExpressionUUID*) final {
+        ensureNotEncryptedEnterEval("a $uuid expression", subtreeStack);
+    }
 
     bool isEncryptedFieldPath(ExpressionFieldPath* fieldPathExpr) {
         if (fieldPathExpr) {
@@ -1041,6 +1044,7 @@ protected:
     void visit(ExpressionInternalOwningShard*) override {}
     void visit(ExpressionInternalIndexKey*) override {}
     void visit(ExpressionInternalKeyStringValue*) override {}
+    void visit(ExpressionUUID*) override {}
 
 
 public:
@@ -1536,6 +1540,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalKeyStringValue*) override {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionUUID*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 

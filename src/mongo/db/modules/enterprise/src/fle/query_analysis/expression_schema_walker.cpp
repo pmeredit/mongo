@@ -612,6 +612,10 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
 
+    void visit(const ExpressionUUID*) override {
+        _tracker.enterEvaluateOrCompare();
+    }
+
 private:
     void throwNotSupported(std::string expr) {
         uasserted(31128, str::stream() << expr << " not supported with client-side encryption");
@@ -778,6 +782,7 @@ public:
     void visit(const ExpressionInternalOwningShard*) override {}
     void visit(const ExpressionInternalIndexKey*) override {}
     void visit(const ExpressionInternalKeyStringValue*) override {}
+    void visit(const ExpressionUUID*) override {}
 
 
     void visit(const ExpressionCond*) override {
@@ -1257,6 +1262,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalKeyStringValue*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionUUID*) override {
         _tracker.exitEvaluateOrCompare();
     }
 
