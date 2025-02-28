@@ -135,16 +135,9 @@ private:
 
     int64_t _rateLimitPerSec{0};
     RateLimiter _rateLimiter;
-
     std::shared_ptr<Counter> _throttleDurationCounter;
-    std::shared_ptr<Histogram> _successfulRequestTimeHistogram;
-    std::shared_ptr<Histogram> _failedRequestTimeHistogram;
 
     stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
-
-    static constexpr std::chrono::milliseconds kRequestTimeHistogramBucketStartMs{4};
-    static constexpr int kRequestTimeHistogramExpFactor{4};
-    static constexpr int kRequestTimeHistogramBucketCount{9};
 };
 
 }  // namespace streams

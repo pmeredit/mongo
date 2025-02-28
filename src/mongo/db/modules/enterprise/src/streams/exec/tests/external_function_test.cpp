@@ -240,8 +240,7 @@ public:
                             fmt::underlying(request.GetInvocationType()),
                             body),
                 it != _expectations.end());
-        auto outcome = std::move(it->second.first);
-        sleepFor(Milliseconds(it->second.second));
+        auto outcome = std::move(it->second);
         if (request.GetInvocationType() != Aws::Lambda::Model::InvocationType::DryRun) {
             _expectations.erase(it);
         }
@@ -267,8 +266,7 @@ public:
     }
 
     void expect(Aws::Lambda::Model::InvokeRequest& request,
-                Aws::Lambda::Model::InvokeOutcome outcome,
-                int expectedDelay = 0) {
+                Aws::Lambda::Model::InvokeOutcome outcome) {
         std::string body;
         if (request.GetBody()) {
             std::stringstream tempStream;
@@ -278,13 +276,11 @@ public:
         _expectations.emplace(ComparableInvokeRequest{.functionName = request.GetFunctionName(),
                                                       .invocationType = request.GetInvocationType(),
                                                       .payloadBody = body},
-                              std::make_pair<Aws::Lambda::Model::InvokeOutcome, int64_t>(
-                                  std::move(outcome), expectedDelay));
+                              std::move(outcome));
     }
 
 private:
-    mutable stdx::unordered_map<ComparableInvokeRequest,
-                                std::pair<Aws::Lambda::Model::InvokeOutcome, int64_t>>
+    mutable stdx::unordered_map<ComparableInvokeRequest, Aws::Lambda::Model::InvokeOutcome>
         _expectations;
 };
 
@@ -730,16 +726,14 @@ TEST_F(ExternalFunctionTest, IsThrottledWithDefaultThrottleFnAndTimer) {
     TestMetricsVisitor metrics;
     _executor->getMetricManager()->visitAllMetrics(&metrics);
     const auto& operatorCounters = metrics.counters().find(_context->streamProcessorId);
-    ASSERT_NOT_EQUALS(operatorCounters, metrics.counters().end());
-
-    auto operatorCountersByLabel = operatorCounters->second.find(
-        std::string{"external_function_operator_throttle_duration_micros"});
-    ASSERT_NOT_EQUALS(operatorCountersByLabel, operatorCounters->second.end());
-
-    auto it = operatorCountersByLabel->second.find("");
-    ASSERT_NOT_EQUALS(it, operatorCountersByLabel->second.end());
-
-    auto metricThrottleDuration = it->second->value();
+    long metricThrottleDuration = -1;
+    if (operatorCounters != metrics.counters().end()) {
+        auto it = operatorCounters->second.find(
+            std::string{"external_function_operator_throttle_duration_micros"});
+        if (it != operatorCounters->second.end()) {
+            metricThrottleDuration = it->second->value();
+        }
+    }
     ASSERT_GREATER_THAN_OR_EQUALS(
         Microseconds(metricThrottleDuration),
         minTestDuration - Milliseconds(20));  // metric is a hair flakey based on host and build
@@ -1718,100 +1712,5 @@ TEST_F(ExternalFunctionTest, ShouldLogDifferentIDWithinAMinute) {
     ASSERT_EQ(count, 7);
     tryLog(2, incCount);
     ASSERT_EQ(count, 8);
-}
-
-TEST_F(ExternalFunctionTest, ShouldReportCorrectRequestRoundtripTimes) {
-    auto mockClient = std::make_unique<MockLambdaClient>();
-
-    const auto functionName = "foo";
-    mockClient->expectValidation(functionName);
-
-    auto rawMockClient = mockClient.get();
-    auto options = ExternalFunction::Options{
-        .lambdaClient = std::move(mockClient),
-        .functionName = "foo",
-        .execution = mongo::ExternalFunctionExecutionEnum::Sync,
-        .as = boost::optional<std::string>("response"),
-    };
-
-    _externalFunction = std::make_unique<ExternalFunction>(
-        _context.get(), std::move(options), _context->streamName, 100);
-    _externalFunction->doRegisterMetrics(_executor->getMetricManager());
-
-    const auto payload = R"({"data":"foo"})";
-    auto addMockClientExpectation = [&](int delayMs, bool isError) {
-        Aws::Lambda::Model::InvokeRequest req;
-        req.SetFunctionName(functionName);
-        req.SetInvocationType(Aws::Lambda::Model::InvocationType::RequestResponse);
-
-        std::shared_ptr<Aws::IOStream> body = std::make_shared<Aws::StringStream>(payload);
-        req.SetBody(body);
-
-        if (isError) {
-            Aws::Lambda::LambdaError error = Aws::Client::AWSError<Aws::Lambda::LambdaErrors>(
-                Aws::Lambda::LambdaErrors::UNKNOWN, Aws::Client::RetryableType::NOT_RETRYABLE);
-            error.SetResponseCode(Aws::Http::HttpResponseCode::BAD_REQUEST);
-            error.SetMessage("Not Found");
-            error.SetRequestId("r1");
-            rawMockClient->expect(
-                req, Aws::Lambda::Model::InvokeOutcome(std::move(error)), delayMs);
-            return;
-        }
-
-        Aws::Lambda::Model::InvokeResult result;
-        result.SetStatusCode(200);
-        result.SetExecutedVersion("foo123");
-        auto responseBody = Aws::Utils::Stream::DefaultResponseStreamFactoryMethod();
-        *responseBody << R"({"ack":"ok"})";
-        result.ReplaceBody(responseBody);
-        rawMockClient->expect(req, Aws::Lambda::Model::InvokeOutcome(std::move(result)), delayMs);
-    };
-
-    auto retrieveBucketCounts = [&](std::string result) {
-        TestMetricsVisitor metrics;
-        _executor->getMetricManager()->visitAllMetrics(&metrics);
-
-        const auto& processorHistograms = metrics.histograms().find(_context->streamProcessorId);
-        ASSERT_NOT_EQUALS(processorHistograms, metrics.histograms().end());
-
-        auto histogramsByName =
-            processorHistograms->second.find("external_function_operator_aws_sdk_request_time");
-        ASSERT_NOT_EQUALS(histogramsByName, processorHistograms->second.end());
-
-        auto histogramsByLabels = histogramsByName->second.find(fmt::format("result={},", result));
-        ASSERT_NOT_EQUALS(histogramsByLabels, histogramsByName->second.end());
-
-        histogramsByLabels->second->takeSnapshot();
-        return histogramsByLabels->second->snapshotValue();
-    };
-
-    auto runTestAndAssert = [&](int delayMs, int bucketIndex, std::string expectedResult) {
-        auto buckets = retrieveBucketCounts(expectedResult);
-        ASSERT_GT(buckets.size(), bucketIndex);
-        ASSERT_EQ(buckets[bucketIndex].count, 0);
-
-        bool isError{false};
-        if (expectedResult == "fail") {
-            isError = true;
-        }
-        addMockClientExpectation(delayMs, isError);
-
-        auto doc = StreamDocument{Document{fromjson(payload)}};
-        _externalFunction->processStreamDoc(&doc);
-
-        buckets = retrieveBucketCounts(expectedResult);
-        ASSERT_GT(buckets.size(), bucketIndex);
-        ASSERT_EQ(buckets[bucketIndex].count, 1);
-    };
-
-    auto delayMs = 1;
-    for (int i = 0; i < 5; i++) {
-        runTestAndAssert(delayMs, i, "success");
-        runTestAndAssert(delayMs, i, "fail");
-
-        // Multiply delay by a value greater than the histogram's bucket factor and starting
-        // boundary, but lesser that the factor's square
-        delayMs *= 5;
-    }
 }
 };  // namespace streams

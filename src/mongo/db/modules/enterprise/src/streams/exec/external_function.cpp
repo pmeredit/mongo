@@ -46,34 +46,11 @@ MONGO_FAIL_POINT_DEFINE(awsLambdaBadRequestContent);
 using namespace mongo;
 
 void ExternalFunction::doRegisterMetrics(MetricManager* metricManager) {
-    auto defaultLabels = getDefaultMetricLabels(_context);
-
     _throttleDurationCounter =
         metricManager->registerCounter("external_function_operator_throttle_duration_micros",
                                        "Time slept by the external_function operator to not exceed "
                                        "the rate limiter in microseconds",
-                                       defaultLabels);
-
-    constexpr StringData resultLabelKey{"result"};
-    auto successfulRequestTimeLabels = defaultLabels;
-    successfulRequestTimeLabels.push_back(std::make_pair(resultLabelKey.toString(), "success"));
-    _successfulRequestTimeHistogram = metricManager->registerHistogram(
-        "external_function_operator_aws_sdk_request_time",
-        "AWS SDK request round-trip time",
-        successfulRequestTimeLabels,
-        makeExponentialDurationBuckets(kRequestTimeHistogramBucketStartMs,
-                                       kRequestTimeHistogramExpFactor,
-                                       kRequestTimeHistogramBucketCount));
-
-    auto failedRequestTimeLabels = defaultLabels;
-    failedRequestTimeLabels.push_back(std::make_pair(resultLabelKey.toString(), "fail"));
-    _failedRequestTimeHistogram = metricManager->registerHistogram(
-        "external_function_operator_aws_sdk_request_time",
-        "AWS SDK request round-trip time",
-        failedRequestTimeLabels,
-        makeExponentialDurationBuckets(kRequestTimeHistogramBucketStartMs,
-                                       kRequestTimeHistogramExpFactor,
-                                       kRequestTimeHistogramBucketCount));
+                                       getDefaultMetricLabels(_context));
 }
 
 ExternalFunction::ExternalFunction(Context* context,
@@ -266,7 +243,6 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
         }
 
         if (outcome.IsSuccess()) {
-            _successfulRequestTimeHistogram->increment(responseTimeMs);
             invokeResult = outcome.GetResultWithOwnership();
             if (_options.execution == mongo::ExternalFunctionExecutionEnum::Sync) {
                 std::stringstream tempStream;
@@ -282,7 +258,6 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
             }
         } else {
             // AWS Error
-            _failedRequestTimeHistogram->increment(responseTimeMs);
             lambdaError = outcome.GetError();
             uasserted(ErrorCodes::StreamProcessorExternalFunctionConnectionError,
                       fmt::format("Received error response from external function. Error: {}",

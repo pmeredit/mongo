@@ -5,7 +5,6 @@
 #include "streams/exec/tests/test_utils.h"
 
 #include <memory>
-#include <sstream>
 
 #include "mongo/db/service_context.h"
 #include "mongo/util/net/http_client_mock.h"
@@ -17,7 +16,6 @@
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/test_constants.h"
 #include "streams/util/concurrent_memory_aggregator.h"
-#include "streams/util/metric_manager.h"
 
 using namespace mongo;
 
@@ -180,20 +178,6 @@ std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue) {
         queue.pop_front();
     }
     return result;
-}
-
-std::string TestMetricsVisitor::getLabelsAsStrs(const MetricManager::LabelsVec& labels) {
-    std::stringstream labelsStr;
-    for (const auto& label : labels) {
-        if (label.first == kProcessorIdLabelKey || label.first == kTenantIdLabelKey ||
-            label.first == kProcessorNameLabelKey) {
-            continue;
-        }
-
-        labelsStr << label.first << "=" << label.second << ",";
-    }
-
-    return labelsStr.str();
 }
 
 StubbableMockHttpClient::StubbableMockHttpClient(boost::optional<std::function<void()>> stubFn)

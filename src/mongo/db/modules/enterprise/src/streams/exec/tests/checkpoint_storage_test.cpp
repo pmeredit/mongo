@@ -58,27 +58,17 @@ Metrics getMetrics(Executor* executor, std::string processorId) {
     TestMetricsVisitor metrics;
     executor->getMetricManager()->visitAllMetrics(&metrics);
     const auto& callbackGauges = metrics.callbackGauges().find(processorId);
-    ASSERT_NOT_EQUALS(callbackGauges, metrics.callbackGauges().end());
-
-    auto callbackGaugesByLabel = callbackGauges->second.find("duration_since_last_checkpoint_ms");
-    ASSERT_NOT_EQUALS(callbackGaugesByLabel, callbackGauges->second.end());
-
-    auto callbackGaugesIt = callbackGaugesByLabel->second.find("");
-    ASSERT_NOT_EQUALS(callbackGaugesIt, callbackGaugesByLabel->second.end());
-    auto durationSinceLastCommitted = callbackGaugesIt->second->value();
-
-    const auto& gauges = metrics.gauges().find(processorId);
-    ASSERT_NOT_EQUALS(gauges, metrics.gauges().end());
-
-    auto gaugesByLabel = gauges->second.find(std::string{"checkpoint_num_ongoing"});
-    ASSERT_NOT_EQUALS(gaugesByLabel, gauges->second.end());
-
-    auto gaugesIt = gaugesByLabel->second.find("");
-    ASSERT_NOT_EQUALS(gaugesIt, gaugesByLabel->second.end());
-    auto numOngoing = gaugesIt->second->value();
-
+    double durationSinceLastCommitted = -1;
+    if (callbackGauges != metrics.callbackGauges().end()) {
+        auto it = callbackGauges->second.find(std::string{"duration_since_last_checkpoint_ms"});
+        if (it != callbackGauges->second.end()) {
+            durationSinceLastCommitted = it->second->value();
+        }
+    }
+    const auto& gauges = metrics.gauges().find(processorId)->second;
+    auto numOngoing = gauges.find(std::string{"checkpoint_num_ongoing"});
     return Metrics{.durationSinceLastCommittedMs = durationSinceLastCommitted,
-                   .numOngoing = numOngoing};
+                   .numOngoing = numOngoing != gauges.end() ? numOngoing->second->value() : -1};
 }
 
 void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
