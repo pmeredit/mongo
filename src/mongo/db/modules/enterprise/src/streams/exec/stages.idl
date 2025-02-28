@@ -90,9 +90,9 @@ enums:
         type: string
         description: "Kafka security.protocol options."
         values:
-            Plaintext: "PLAINTEXT"
             SaslPlaintext: "SASL_PLAINTEXT"
             SaslSSL: "SASL_SSL"
+            SSL: "SSL"
 
     KafkaTLSValidationAlgorithm:
         type: string
@@ -219,6 +219,18 @@ structs:
             validateTLSAlgorithm:
                 description: "If using TLS, specify algorithm to verify hostnames (https or none)."
                 type: KafkaTLSValidationAlgorithm
+                optional: true
+            sslCertificate:
+                description: "SSL certificate used for mTLS authentication"
+                type: string
+                optional: true
+            sslKey:
+                description: "SSL key used for mTLS authentication"
+                type: string
+                optional: true
+            sslKeyPassword:
+                description: "Password for the ssl key used in mTLS authentication"
+                type: string
                 optional: true
 
     KafkaConnectionOptions:

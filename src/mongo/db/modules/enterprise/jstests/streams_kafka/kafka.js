@@ -27,6 +27,8 @@ import {
 
 const kafkaPlaintextName = "kafka1";
 const kafkaSASLSSLName = "kafkaSSL1";
+const kafkaSSLName = "kafkaSSL2";
+const kafkaSSLWithPasswordName = "kafkaSSL3";
 const kafkaWithCompressionTypeGzip = "kafkaWithCompressionTypeGzip";
 const kafkaWithGroupId = "kafkaWithGroupId";
 const kafkaWithAutoOffsetResetEarliest = "kafkaWithAutoOffsetResetEarliest";
@@ -35,6 +37,7 @@ const dbConnName = "db1";
 const uri = 'mongodb://' + db.getMongo().host;
 const kafkaUri = 'localhost:9092';
 const kafkaUriSASLSSL = 'localhost:9093';
+const kafkaUriSSL = 'localhost:9094';
 const topicName1 = 'outputTopic1';
 const topicName2 = 'outputTopic2';
 const topicName3 = 'outputTopic3';
@@ -67,6 +70,105 @@ const startOptions = {
     featureFlags: {useExecutionPlanFromCheckpoint: true},
 };
 const groupIdFromConnectionValue = "groupIdFromTheKafkaConnection";
+const clientCrt =
+    `-----BEGIN CERTIFICATE-----
+MIIC6TCCAdECFEQhw5wzoBDvKycYMbug4+CGuN3DMA0GCSqGSIb3DQEBCwUAMEUx
+CzAJBgNVBAYTAlVTMRAwDgYDVQQKDAdNb25nb0RCMQ8wDQYDVQQHDAZBdXN0aW4x
+EzARBgNVBAMMCm1vbmdvZGItY2EwHhcNMjUwMTI0MjEyNTQwWhcNMzUwMTIyMjEy
+NTQwWjAdMRswGQYDVQQDDBJjbGllbnQuZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3
+DQEBAQUAA4IBDwAwggEKAoIBAQDwT67cdz0nXe4u4mXfshNaOozcoO3+sm/jLhlM
+RtYO2NDR49J8u6qxTYscq5g7LotNPES5lbGU3FTcDnHEtlu/OOpvsfeFQOZfd2Id
+om0a1nPgHyPWEKj4qufmUpZsKdyGdLNlqfHYUkK3KMbXNF/+iyv7mfpm12wvnFP1
+wSArRvzqFcsoWHMr6taHmDWK2UgUqAiamEAT2nGo2xhExsZ0hSswnv61/mWaVH2/
+3zuy21Ay3RB3XcDxaOVgl/d+qN+uy713tY+7ZHinuSBtZTe/GQh48DcpeTucSKv2
+zHfschd18FmD1TvOu79OTGgt1aqRITXpP9YUqp5nQcmXePotAgMBAAEwDQYJKoZI
+hvcNAQELBQADggEBAA4MscCe4cUH7GUq2qBgM1S8NoX9PIGfcebJtAFD7UocwVWB
+j31pJ23sb6kru9YbHWP2YoxrI1FNXmOodaeQjOo0CkzEN3bneBs8PEzfK+Q3DEuL
+YmYGSTOZLjhVWyDLMUd5RcCmIlnEO0lySf6uU8iO3rzIKREgf+FPU9V7YibvMq5v
+M8yo/+tG7LATQ+Eigy/qJxEmO9V7VEkQvadA9VM8wrGlAR9usXFn3kwITOZh6Lwn
+uZFV0/ksZmYhkuaNu5NgfQaVFyb1ki8a8bLhI9Dszl4hH9WFIs20N03CVqv62NPc
+rFL9uymL2+evlSPoxY/qXdxU3ldNcwsVJyDziv4=
+-----END CERTIFICATE-----`;
+const clientKey =
+    `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDwT67cdz0nXe4u
+4mXfshNaOozcoO3+sm/jLhlMRtYO2NDR49J8u6qxTYscq5g7LotNPES5lbGU3FTc
+DnHEtlu/OOpvsfeFQOZfd2Idom0a1nPgHyPWEKj4qufmUpZsKdyGdLNlqfHYUkK3
+KMbXNF/+iyv7mfpm12wvnFP1wSArRvzqFcsoWHMr6taHmDWK2UgUqAiamEAT2nGo
+2xhExsZ0hSswnv61/mWaVH2/3zuy21Ay3RB3XcDxaOVgl/d+qN+uy713tY+7ZHin
+uSBtZTe/GQh48DcpeTucSKv2zHfschd18FmD1TvOu79OTGgt1aqRITXpP9YUqp5n
+QcmXePotAgMBAAECggEAMMeL8BaIJFCNw5iTI0grY3pVE4fbJ4Mi8RNvcStD0jmy
+kZhUJpuVd24NGeG/AexdvGzKan13UYcz9oM8FrkJgJRWChwu6S6WVLSQBwHscbEs
+Tkcj6BTzp55RelAzVntc1zIjJDTN8aIpBrLRQefQwIORhv3ndS6vOC7cYBs2o3Hd
+uZtXDjNv/G7nsxWpJYa3LjzM/dZFzjOZomvRlTP856chnqsNgt/NFA2jXaOFcIdv
+KPFqu+8/i7+XRAlDXFMON/i2xSeW0KCncQilTuOViBAEIVsEqKFpmgBUX729jiGV
+5F8yXKWl0ZPZKnWN1P8d78/0lmcjLmcwN0XPJvkCYQKBgQD0EsxDAetaYrINGQoT
+4+m9bkLQnDZi1oztwvQFAKMM7OgZd3iuZMjCNtTnwAaiyl7GuFWmMOkFkbAtFvir
+XFOK1NFRPOsm8lcLcawbXiTskHKfZ4AiX2flizerrtWJXRAYEwDzwpn2lB/cWLsd
+qpoqIK4zx5dSCbVUl8O8053H6QKBgQD8DdKmd8eFDdP3VBaL0QFZBWvpQU6bqrIk
+5B+dCC8nSK+JuzcNaHMzM0J6l0cOGg+VsPB0MsAtc3t3dmRxOY10gckHaf0eBOQ+
+W8lGa5+Urldab4l7k728m9qXemZ7fBkLQr0UgrVTI0q4ouHlzKESWNHpNDIAWONr
+Dg2tYLp5pQKBgQCYgpJ+IFnm3ZryUj4Y1aY9hwNbBPF66yOegd4mrhI0Rmh1WVDg
+b/t+V/LLaRL8b8WvGIn0UcWZhEJ4ukziDsvpCThOMemiKXW4oevwIfCinVPyRSMs
+1z69kTNVJOcrcSpYUK+coXHBQSdzcUJitDKmtksD8eidC5Hx7O8TM4v42QKBgAIK
+zqEgqVIvqX8AhGo/mEYzYAt0xwFF4cmgu4zXKyKjWSDBjpGiPgS1Lp21qhK4LVYm
+J9yZKKt1mxN9txSfxcCi6JERz8Y1fe/vaHMUnidjPjvyWWfR66CilqPRjxEDEWTg
+9o06/eMdjxZt42ysOsXeSF0eWiVckwMkCwJTnU8tAoGAJvDpsRqAWD78sSIZEg1e
+WkE+A6ENwN4OLyT81Wi1tW4j+Z7hPiFj7uMKCoH22yoD4xAiPcS6nVKN+F4cPwaY
+zS5O9R6HBBckidJpZ0B0JZHQen+WLXNJFjIU7+VrO52XSyiTsl+OnAnmT+9pZIcS
+tHcLYeEKex+3vW2s6WagydY=
+-----END PRIVATE KEY-----`;
+const clientWithPasswordCrt =
+    `-----BEGIN CERTIFICATE-----
+MIIC6TCCAdECFGxU5JTlU5bi+vOg9w6H9QKRLBIBMA0GCSqGSIb3DQEBCwUAMEUx
+CzAJBgNVBAYTAlVTMRAwDgYDVQQKDAdNb25nb0RCMQ8wDQYDVQQHDAZBdXN0aW4x
+EzARBgNVBAMMCm1vbmdvZGItY2EwHhcNMjUwMTMxMjA0MDE2WhcNMzUwMTI5MjA0
+MDE2WjAdMRswGQYDVQQDDBJjbGllbnQuZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3
+DQEBAQUAA4IBDwAwggEKAoIBAQCoaHYKDvKxCcU5TgELNdOrzf/OOF94oF9Vp+14
+mDeBxQlQ+oGy/K4C/E7mKVMBg4U/qN8ZBfTTd4PjX6j9+Z5HnaPEdLKxjVJYEoRO
+1BNPg0xoBJoMcoHosO8Y/KeaI5xXqN/uSgsYK1+LmFgUU7F4deV6PZcQX995UMCU
+rA6C4H+fgl7BHSXn0hIF8TwQggpy3s6gPAgxqSNSHJlTYZYHONw+/Uvp8R04LR1k
+5v9RvFtLQ4Utkes1xSOyASRde6YCZKBlUyGy7ZGtJq5vk51hybraQqSBoCJk2Cd3
+duw1KVfiGDy/OxxTlpM9VG4EdOD2lMMmBKqPJ5X1TVZ2msalAgMBAAEwDQYJKoZI
+hvcNAQELBQADggEBAIdlnK8JrZVTEbNWpbAMp9/55YvTSfkT55bB59Jl2O8Xsz5z
+h6KinRuxaCyygZGH62laMy1/JSRQmJHqG2q3IdQdetMPtBP0L8MsaOhPTQ4UQ3Dl
+cqi47tbb9stJ4pxQ3FO7iIBD8aqQBe2zwkFsjEBh2l/N9fSaVFlif2shPh48JqyT
+GgyCAAvf4G5ciPApTra5PAWWiF//vnLowq2lm03N6wVtk+YUwEK+psxTyixjF8xH
+Y2xSzMfXGynGiokVYPfhg3iedUEius/M2VD/uTdYTPQvYnBdooR3/3KhzpMMSuPE
+5tYCSVqp74kP5f15V52Y/XphW4viMTGK86N8G6c=
+-----END CERTIFICATE-----`;
+const clientWithPasswordKey =
+    `-----BEGIN ENCRYPTED PRIVATE KEY-----
+MIIFLTBXBgkqhkiG9w0BBQ0wSjApBgkqhkiG9w0BBQwwHAQILjXMmhr6Ks0CAggA
+MAwGCCqGSIb3DQIJBQAwHQYJYIZIAWUDBAEqBBAJSK+KHh3liTQccMvBC3YqBIIE
+0CRhWD9n8igZ/ZE4u2x5RXmbDEK2BAXeIhI+whr8pjCeckMn0oMHtWB8tbib2g9S
+rkFJo/OwT+ZRG8ZmfF6spyofTXEc4E+sPL/7ZFOMLGnzXGZUYjJWf7cy0wGYc23F
+ujdXtcP7pZbIByB5JJvQeVRGM9xgSt9dOFwT6TzflWObWugtyoGHRrOLzmODp4NN
+t4PThjUxlmXeB/DCu5Ej8yQytVYnBo1/AMnVmyYTQrhQDo1ADM2FSP9NJjEUi68z
+6jyYQAJ7HF0B1DAqlG829MZN8wCMQi9yVEONX0pcJiBbcTD8rglGfbhQVrup0t/F
+vEpQeeRwYVtqUXjzivsEx9ra/Rm3e/b2M7oZO9Ft/8xAcQ/0WG3+N/OkAuCRLOBw
+jytSxY1WtBHZCybeF8KP3b4QZpdXfB2P2T2nMVTQyLUHrMOBk01hQw5zu7PU+eHI
+RHCUjvZnTFzlQvtRgtM4Grs0fTDan+u3r+w6aub9P3FBtqqtmumiTXGrk/mN19TZ
+3zpQ4VsnUjyf9LAC+1JFSgjivCQQhB+qzDNZCqKZeyog/QvfcWiUEnsB2GgwzFl0
+bbr4itpQg6u/gXVkL8fBvc82tH+KWHTiAe8OeWTK7+GhnV5VIaL0x3Q3g4f69tzk
+Wa7SdcUkCLrY4alIN/WtGZbZbC/4j3GwT0LdEr5SyRgYSP0yL9Y/IaB7O3ZmiWQJ
++KbcSTEUDgqAVLZ6UeXWKsHpTbgo2XIkyb2J7Nbv5fMrWTLB/tgneB2VRm0ZU9GA
+zNmCibse6KXbLe34Gj4Tb3Kxbw+39gUZBWMLmveazQR4W/FOXxji3pJasC1ikmv/
+4BaTQ/vhzj9YTMLuWiEiD4yKLFxMPUKwK2Q+E/rpib8w2++YDWvuPpZkBILfMaOO
+Za4zOjQjtOuiFwqUTp9XkWieUXa89Z3TONHpFTMaVpXD3oqlBxylU/ia8JRsp8pj
+J7hLYQYou9US/8PHZhqIN58RiuR/yJXk3Sx40EyLa2TaknF9LQU3QxiIGsno1BiJ
+2dEsUKlwDyZ/OdmjgDlJT2uNak9Xxcs4qqzRiQwj8Mfwl/GTPsiHFHYXWYawsR1N
+096TKu5TcbO49M3YS2ke1dThCEuLtnYVBREHKLU1Csv65BRm/DbiVQ13G5f0BL+M
+pXbWJJkmVDxbfm96dTKHAALP1vKlA2eILDM3NCId0YFBTnOYTvdfgpZfDO6xyUbG
+GBYyUsT/9GgWNfhCDVxDWVRysECW+czMfgkQwgFo5SAmTmQ6lEzOvQhCjEhUPMy9
+jtG3zpp6HS53iiCLvh1dqi60zIK1BLVkL2EaK78DO8ZbBYvu3sVo4G1wJdWXZ+PA
+mZAh50n+hpWoGkeZe9j9klF/FbRtoWqSxEB1lb9uxDSfGX9nlEVt6Mbkdfv/pk2S
+vFPT9nGFRUCOs24xw60KD2W211mUR2niCop6HBq26syyttrDYHZWV5M/yxRE0mwC
+zvkACFSBJrcH9gHGdukRuizS58masm518ClEx03l6Svjg81ldLUWcSzjwvwt7ZXw
+2o7BqupXvu3M2a4K7Ql3991fUybQoPz8WOhfnhOedDTYC1ujVGoOiYooGduHZ/eg
+f5Jn05RP4IJo8L7Q2qOtqKcvVVG5Mjcj0cGr47k0Eq4/
+-----END ENCRYPTED PRIVATE KEY-----`;
+
 const connectionRegistry = [
     {name: dbConnName, type: 'atlas', options: {uri: uri}},
     {
@@ -84,6 +186,36 @@ const connectionRegistry = [
                 saslUsername: "kafka",
                 saslPassword: "kafka",
                 securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSSLName,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSSL,
+            auth: {
+                securityProtocol: "SSL",
+                sslCertificate: clientCrt,
+                sslKey: clientKey,
+                sslKeyPassword: "",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSSLWithPasswordName,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSSL,
+            auth: {
+                securityProtocol: "SSL",
+                sslCertificate: clientWithPasswordCrt,
+                sslKey: clientWithPasswordKey,
+                sslKeyPassword: "mongo123",
                 caCertificatePath:
                     "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
             }
@@ -1317,11 +1449,9 @@ function mongoToKafkaToMongoGetConnectionNames() {
               kafkaToMongoStartResult);
 }
 
-// This test uses the same logic as the mongoToKafka test, but uses the connection
-// registry entry for the SASL_SSL authenticated listener + SSL validation.
-function mongoToKafkaSASLSSL() {
+function mongoToKafkaValidation(connectionName = kafkaPlaintextName) {
     // Prepare a topic 'topicName1'.
-    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLName);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, connectionName);
     // Cleanup the source collection.
     sourceColl1.drop();
 
@@ -1347,7 +1477,7 @@ function mongoToKafkaSASLSSL() {
 
     // Start the mongoToKafka streamProcessor.
     assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
-        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaSASLSSLName})));
+        {collName: sourceColl1.getName(), topicName: topicName1, connName: connectionName})));
 
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
@@ -2838,7 +2968,10 @@ runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({
                     } /* nonGroupWindowStage
                        */));
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
-runKafkaTest(kafka, mongoToKafkaSASLSSL);
+runKafkaTest(kafka, mongoToKafkaValidation);
+runKafkaTest(kafka, () => mongoToKafkaValidation(kafkaSASLSSLName));
+runKafkaTest(kafka, () => mongoToKafkaValidation(kafkaSSLName));
+runKafkaTest(kafka, () => mongoToKafkaValidation(kafkaSSLWithPasswordName));
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka));
 runKafkaTest(kafka,

@@ -282,6 +282,16 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
         authConfig.emplace("ssl.endpoint.identification.algorithm",
                            KafkaTLSValidationAlgorithm_serializer(*tlsAlgorithm).toString());
     }
+    if (auto sslCertificate = authOptions.getSslCertificate(); sslCertificate) {
+        authConfig.emplace("ssl.certificate.pem", *sslCertificate);
+    }
+    if (auto sslKey = authOptions.getSslKey(); sslKey) {
+        authConfig.emplace("ssl.key.pem", *sslKey);
+    }
+    if (auto sslKeyPassword = authOptions.getSslKeyPassword(); sslKeyPassword) {
+        authConfig.emplace("ssl.key.password", *sslKeyPassword);
+    }
+
     return authConfig;
 }
 
