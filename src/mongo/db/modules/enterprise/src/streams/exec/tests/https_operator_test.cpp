@@ -705,6 +705,77 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                 ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
+        {
+            "should make 1 basic GET request and deserialize response fields that are json",
+            [&] {
+                std::string uri = "http://localhost:10000/";
+                // Set up mock http client.
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri,
+                    },
+                    MockHttpClient::Response{
+                        .code = 200,
+                        .body =
+                            R"({"content": "{\"foo\": \"bar\"}", "nested": { "data": "{\"abc\": \"xyz\"}"}})"});
+
+                return HttpsOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .url = uri,
+                    .as = "response",
+                    .fieldsToParseFromJson = std::vector<std::string>{"content", "nested.data"},
+                };
+            },
+            std::vector<StreamDocument>{Document{fromjson("{'foo': 'bar'}")}},
+            [this](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                auto doc = msg.dataMsg->docs[0].doc.toBson();
+                auto response = doc["response"].Obj();
+                ASSERT_TRUE(!response.isEmpty());
+
+                auto ack = response["content"];
+                ASSERT_TRUE(ack.ok());
+                auto content = ack.Obj();
+                ASSERT_TRUE(!content.isEmpty());
+
+                auto foo = content["foo"];
+                ASSERT_TRUE(foo.ok());
+                ASSERT_EQ(foo.valueStringData(), "bar");
+
+                ack = response["nested"];
+                ASSERT_TRUE(ack.ok());
+                auto nested = ack.Obj();
+                ASSERT_TRUE(!nested.isEmpty());
+
+                ack = nested["data"];
+                ASSERT_TRUE(ack.ok());
+                auto data = ack.Obj();
+                ASSERT_TRUE(!data.isEmpty());
+
+                auto abc = data["abc"];
+                ASSERT_TRUE(abc.ok());
+                ASSERT_EQ(abc.valueStringData(), "xyz");
+
+                StreamMetaHttps expectedStreamMetaHttps;
+                expectedStreamMetaHttps.setUrl(StringData{"http://localhost:10000"});
+                expectedStreamMetaHttps.setMethod(HttpMethodEnum::MethodGet);
+                expectedStreamMetaHttps.setHttpStatusCode(200);
+                assertStreamMetaHttps(expectedStreamMetaHttps,
+                                      doc[*_context->streamMetaFieldName].Obj()["https"].Obj());
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 76);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
+        },
     };
 
     for (const auto& tc : tests) {

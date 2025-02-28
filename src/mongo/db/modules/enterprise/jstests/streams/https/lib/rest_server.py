@@ -115,6 +115,34 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         self.wfile.write(os.urandom(10000))
 
+    def _object_with_serialized_fields(self, parsed_path, response_code):
+        received_request = self._extract_received_request(parsed_path)
+
+        self._write_request_to_disk(parsed_path, received_request)
+
+        self.send_response(response_code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(
+            json.dumps({"content": '{"foo": "bar"}', "nested": {"data": '{"abc": "xyz"}'}}).encode(
+                "utf-8"
+            )
+        )
+
+    def _array_with_serialized_fields(self, parsed_path, response_code):
+        received_request = self._extract_received_request(parsed_path)
+
+        self._write_request_to_disk(parsed_path, received_request)
+
+        self.send_response(response_code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(
+            json.dumps([{"content": '{"foo": "bar"}'}, {"content": '{"abc": "xyz"}'}]).encode(
+                "utf-8"
+            )
+        )
+
     def _echo_handle(self, parsed_path):
         received_request = self._extract_received_request(parsed_path)
 
@@ -140,6 +168,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._plain_text_handle(parsed_path, 200)
         elif parsed_path.path.startswith("/largepayload"):
             self._large_payload_handle(parsed_path, 200)
+        elif parsed_path.path.startswith("/jsonObjectWithSerializedFields"):
+            self._object_with_serialized_fields(parsed_path, 200)
+        elif parsed_path.path.startswith("/jsonArrayWithSerializedFields"):
+            self._array_with_serialized_fields(parsed_path, 200)
         else:
             self._echo_handle(parsed_path)
 

@@ -768,7 +768,7 @@ structs:
             timeseries:
                 type: TimeseriesOptions
                 description: Sepcifies the details of the target Time Series collection
-                optional: true 
+                optional: true
 
     HttpsConfigOptions:
         description: "Optional configuration options for the $https operator"
@@ -788,6 +788,10 @@ structs:
                 validator:
                     gt: 0
                     lt: 900
+            parseResponseFields:
+                description: "Fields that are json strings that need to be deserialized into bson."
+                type: array<string>
+                optional: true
 
     HttpsOptions:
         description: "$https stage options."

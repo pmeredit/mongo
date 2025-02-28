@@ -782,6 +782,60 @@ const testCases = [
         allowAllTraffic: true,
     },
     {
+        description: "should deserialize json object with json encoded strings",
+        spName: "jsonObjectWithSerializedFields",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/jsonObjectWithSerializedFields",
+                method: "GET",
+                as: "response",
+                config: {parseResponseFields: ["content", "nested.data"]}
+            },
+        },
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/jsonObjectWithSerializedFields", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            _stream_meta: {https: {
+                url: restServerUrl + "/jsonObjectWithSerializedFields",
+                method: "GET",
+                httpStatusCode: 200,
+            }},
+            fullDocument: {foo: "bar"},
+            response: {"content": {"foo": "bar"}, "nested": { "data": {"abc": "xyz"}}}
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should deserialize json array with json encoded strings",
+        spName: "jsonArrayWithSerializedFields",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/jsonArrayWithSerializedFields",
+                method: "GET",
+                as: "response",
+                config: {parseResponseFields: ["content"]}
+            },
+        },
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/jsonArrayWithSerializedFields", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            _stream_meta: {https: {
+                url: restServerUrl + "/jsonArrayWithSerializedFields",
+                method: "GET",
+                httpStatusCode: 200,
+            }},
+            fullDocument: {foo: "bar"},
+            response: [{"content": {"foo": "bar"}}, {"content": {"abc": "xyz"}}]
+        }],
+        allowAllTraffic: true,
+    },
+    {
         description: "error responses should put SP with error",
         spName: "tcShouldAlwaysFail",
         stage: {

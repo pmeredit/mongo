@@ -77,6 +77,9 @@ public:
 
         // Specifies how error responses are handled
         mongo::OnErrorEnum onError{mongo::OnErrorEnum::DLQ};
+
+        // Fields that are json strings we should attempt to parse from json.
+        std::vector<std::string> fieldsToParseFromJson;
     };
     struct UrlComponents {
         std::string scheme;
@@ -147,6 +150,9 @@ private:
 
     // parseContentTypeFromHeaders will extract the content-type value if present
     static boost::optional<std::string> parseContentTypeFromHeaders(StringData rawHeaders);
+
+    // parseAndDeserializeResponse will convert a json response to a mongo value
+    mongo::Value parseAndDeserializeJsonResponse(StringData contentType, StringData rawResponse);
 
     // makeDocumentWithAPIResponse sets the api response as a value in the input document using
     // a user-configured key.

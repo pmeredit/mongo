@@ -424,23 +424,11 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             responseAsValue = Value(rawResponse.toString());
         } else if ((contentType && *contentType == kApplicationJson) || !contentType) {
             try {
-                // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
-                if (rawResponse.front() == '[') {
-                    std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse.data());
-                    auto responseView =
-                        bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
-                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                    responseAsValue = Value(std::move(responseAsBson.firstElement()));
-                } else {
-                    auto responseView =
-                        bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
-                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                    responseAsValue = Value(std::move(responseAsBson));
-                }
+                responseAsValue = parseAndDeserializeJsonResponse(kApplicationJson, rawResponse);
             } catch (const bsoncxx::exception& e) {
                 tryLog(9604801, [&](int logID) {
                     LOGV2_INFO(logID,
-                               "Error occured while reading response in HttpsOperator",
+                               "Error occured while parsing response in HttpsOperator",
                                "context"_attr = _context,
                                "error"_attr = e.what());
                 });
@@ -608,6 +596,55 @@ boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringDa
         }
     }
     return boost::none;
+}
+
+mongo::Value HttpsOperator::parseAndDeserializeJsonResponse(StringData contentType,
+                                                            StringData rawResponse) {
+
+    auto parseAndUpdateJsonFields = [&](MutableDocument& doc) {
+        for (const auto& field : _options.fieldsToParseFromJson) {
+            auto fieldValue = doc.peek().getNestedField(field);
+            if (fieldValue.getType() == BSONType::String) {
+                auto value = fieldValue.getStringData();
+                auto serializedValue = fromBsoncxxDocument(
+                    bsoncxx::from_json(bsoncxx::stdx::string_view{value.data(), value.size()}));
+                doc.setNestedField(field, Value(std::move(serializedValue)));
+            }
+        }
+    };
+    // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
+
+    // json object response
+    if (rawResponse.front() == '[') {
+        std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse.data());
+        auto responseView = bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
+        auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+        if (_options.fieldsToParseFromJson.empty()) {
+            return Value(std::move(responseAsBson.firstElement()));
+        }
+        auto responseArray = responseAsBson.firstElement().Array();
+        std::vector<mongo::Value> finalArray;
+        finalArray.reserve(responseArray.size());
+        for (size_t i = 0; i < responseArray.size(); i++) {
+            if (responseArray[i].type() != BSONType::Object) {
+                continue;
+            }
+            MutableDocument finalDocument(mongo::Document(std::move(responseArray[i].Obj())));
+            parseAndUpdateJsonFields(finalDocument);
+            finalArray.emplace_back(finalDocument.freezeToValue());
+        }
+        return Value(finalArray);
+    }
+
+    // json object response
+    auto responseView = bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
+    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+    if (_options.fieldsToParseFromJson.empty()) {
+        return Value(std::move(responseAsBson));
+    }
+    MutableDocument finalDocument(mongo::Document(std::move(responseAsBson)));
+    parseAndUpdateJsonFields(finalDocument);
+    return finalDocument.freezeToValue();
 }
 
 mongo::Document HttpsOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
@@ -800,9 +837,9 @@ void HttpsOperator::validateOptions() {
     bool queryOptDefined = !_options.queryParams.empty();
 
     // These validations generally prevent users from making the operator interpolate parts of
-    // an url that the base url has already defined a later part for. For example, appending path on
-    // a base url that contains query params.
-    // ie: adding "/foo/bar" path to "http://localhost:80?foo=bar".
+    // an url that the base url has already defined a later part for. For example, appending
+    // path on a base url that contains query params. ie: adding "/foo/bar" path to
+    // "http://localhost:80?foo=bar".
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             fmt::format("The url defined in {}.connection.url contains a fragment that can "
                         "conflict with a query "
