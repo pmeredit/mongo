@@ -845,14 +845,16 @@ TEST_F(HttpsOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
     TestMetricsVisitor metrics;
     _executor->getMetricManager()->visitAllMetrics(&metrics);
     const auto& operatorCounters = metrics.counters().find(_context->streamProcessorId);
-    long metricThrottleDuration = -1;
-    if (operatorCounters != metrics.counters().end()) {
-        auto it =
-            operatorCounters->second.find(std::string{"rest_operator_throttle_duration_micros"});
-        if (it != operatorCounters->second.end()) {
-            metricThrottleDuration = it->second->value();
-        }
-    }
+    ASSERT_NOT_EQUALS(operatorCounters, metrics.counters().end());
+
+    auto operatorCountersByLabel =
+        operatorCounters->second.find(std::string{"rest_operator_throttle_duration_micros"});
+    ASSERT_NOT_EQUALS(operatorCountersByLabel, operatorCounters->second.end());
+
+    auto it = operatorCountersByLabel->second.find("");
+    ASSERT_NOT_EQUALS(it, operatorCountersByLabel->second.end());
+
+    auto metricThrottleDuration = it->second->value();
     ASSERT_GREATER_THAN_OR_EQUALS(
         Microseconds(metricThrottleDuration),
         minTestDuration - Milliseconds(5));  // metric is a hair flakey based on host configuration
