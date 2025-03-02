@@ -29,6 +29,7 @@ commonTest({
                     [{$group: {_id: "$ad", sum: {$sum: "$value"}}}, {$sort: {sum: -1}}, {$limit: 1}]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $project: {
                 customer: "$_stream_meta.window.partition",
@@ -77,6 +78,7 @@ commonTest({
                 ]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $project: {
                 _id: 1,
@@ -133,6 +135,7 @@ commonTest({
                 ]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $project: {
                 customer: "$_stream_meta.window.partition",
@@ -178,6 +181,7 @@ commonTest({
                 ]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $project: {
                 customer: "$_stream_meta.window.partition",

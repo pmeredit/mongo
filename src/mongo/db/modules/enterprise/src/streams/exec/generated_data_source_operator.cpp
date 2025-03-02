@@ -123,11 +123,11 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
     if (!doc.streamMeta.getSource()) {
         StreamMetaSource streamMetaSource;
         doc.streamMeta.setSource(streamMetaSource);
+        if (!_context->oldStreamMetaEnabled()) {
+            doc.streamMeta.getSource()->setTs(timestamp);
+        }
     }
     doc.streamMeta.getSource()->setType(StreamMetaSourceTypeEnum::Generated);
-    if (_context->shouldUseDocumentMetadataFields) {
-        doc.streamMeta.getSource()->setTs(timestamp);
-    }
     doc.onMetaUpdate(_context);
 
     doc.minProcessingTimeMs = _windowBoundary == mongo::WindowBoundaryEnum::processingTime

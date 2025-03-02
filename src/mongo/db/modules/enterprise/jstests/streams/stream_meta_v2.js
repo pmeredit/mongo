@@ -30,21 +30,18 @@ commonTest({
             ad: 1,
             value: 2,
             sourceMeta: {type: "generated"},
-            _stream_meta: {source: {type: "generated"}}
         },
         {
             customer: 1,
             ad: 2,
             value: 4,
             sourceMeta: {type: "generated"},
-            _stream_meta: {source: {type: "generated"}}
         },
         {
             customer: 1,
             ad: 3,
             value: 6,
             sourceMeta: {type: "generated"},
-            _stream_meta: {source: {type: "generated"}}
         },
     ],
     expectedChangestreamOutput: [
@@ -53,21 +50,18 @@ commonTest({
             ad: 1,
             value: 2,
             sourceMeta: {type: "atlas"},
-            _stream_meta: {source: {type: "atlas"}}
         },
         {
             customer: 1,
             ad: 2,
             value: 4,
             sourceMeta: {type: "atlas"},
-            _stream_meta: {source: {type: "atlas"}}
         },
         {
             customer: 1,
             ad: 3,
             value: 6,
             sourceMeta: {type: "atlas"},
-            _stream_meta: {source: {type: "atlas"}}
         },
     ],
     expectedTestKafkaOutput: [
@@ -77,10 +71,6 @@ commonTest({
             value: 2,
             sourceMeta:
                 {type: "kafka", topic: "t1", partition: 0, offset: 0, key: null, headers: []},
-            _stream_meta: {
-                source:
-                    {type: "kafka", topic: "t1", partition: 0, offset: 0, key: null, headers: []}
-            }
         },
         {
             customer: 1,
@@ -88,10 +78,6 @@ commonTest({
             value: 4,
             sourceMeta:
                 {type: "kafka", topic: "t1", partition: 0, offset: 1, key: null, headers: []},
-            _stream_meta: {
-                source:
-                    {type: "kafka", topic: "t1", partition: 0, offset: 1, key: null, headers: []}
-            }
         },
         {
             customer: 1,
@@ -99,10 +85,6 @@ commonTest({
             value: 6,
             sourceMeta:
                 {type: "kafka", topic: "t1", partition: 0, offset: 2, key: null, headers: []},
-            _stream_meta: {
-                source:
-                    {type: "kafka", topic: "t1", partition: 0, offset: 2, key: null, headers: []}
-            }
         },
     ],
 });
@@ -138,11 +120,6 @@ commonTest({
                 _id: 1
             }
         },
-        {
-            $project: {
-                _stream_meta: 0,
-            }
-        },
     ],
     expectedOutput: [{
         _id: 1,
@@ -168,11 +145,6 @@ commonTest({
                 meta: {$meta: "stream"},
             }
         },
-        {
-            $project: {
-                _stream_meta: 0,
-            }
-        },
     ],
     expectedGeneratedOutput: [
         {
@@ -180,7 +152,6 @@ commonTest({
             ad: 1,
             value: 2,
             ts: ISODate("2023-01-01T00:59:57"),
-            _ts: ISODate("2023-01-01T00:59:57"),
             sourceMeta: {type: "generated", ts: ISODate("2023-01-01T00:59:57")},
             windowStart: ISODate("2023-01-01T00:59:55Z"),
             windowEnd: ISODate("2023-01-01T01:00:00Z"),
@@ -197,7 +168,6 @@ commonTest({
             ad: 1,
             value: 1,
             ts: ISODate("2023-01-01T00:59:57"),
-            _ts: ISODate("2023-01-01T00:59:57"),
             windowStart: ISODate("2023-01-01T00:59:55Z"),
             windowEnd: ISODate("2023-01-01T01:00:00Z"),
             sourceMeta: {
@@ -222,7 +192,6 @@ commonTest({
             ad: 1,
             value: 2,
             ts: ISODate("2023-01-01T00:59:57"),
-            _ts: ISODate("2023-01-01T00:59:57"),
             sourceMeta: {
                 type: "kafka",
                 topic: "t1",
@@ -256,7 +225,6 @@ commonTest({
             ad: 1,
             value: 1,
             ts: ISODate("2023-01-01T00:59:57"),
-            _ts: ISODate("2023-01-01T00:59:57"),
             sourceMeta: {
                 type: "kafka",
                 topic: "t1",
@@ -291,7 +259,6 @@ commonTest({
             ad: 1,
             value: 2,
             ts: ISODate("2023-01-01T00:59:57"),
-            // No _ts because of the $replaceRoot the test helper adds.
             sourceMeta: {type: "atlas", ts: ISODate("2023-01-01T00:59:57")},
             windowStart: ISODate("2023-01-01T00:59:55Z"),
             windowEnd: ISODate("2023-01-01T01:00:00Z"),

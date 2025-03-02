@@ -136,7 +136,7 @@ import {
     assert.eq('InMemorySinkOperator', sinkStats['name']);
     assert.eq(verboseStats['outputMessageCount'], sinkStats['inputMessageCount']);
     assert.eq(verboseStats['outputMessageSize'], sinkStats['inputMessageSize']);
-    assert.eq(2216, sinkStats['stateSize']);
+    assert.eq(490, sinkStats['stateSize']);
 
     const totalStateSize =
         verboseStats["operatorStats"].reduce((sum, stats) => sum + stats["stateSize"], 0);
@@ -295,7 +295,7 @@ import {
     assert.eq('InMemorySinkOperator', sinkStats['name']);
     assert.eq(verboseStats['outputMessageCount'], sinkStats['inputMessageCount']);
     assert.eq(verboseStats['outputMessageSize'], sinkStats['inputMessageSize']);
-    assert.eq(2216, sinkStats['stateSize']);
+    assert.eq(490, sinkStats['stateSize']);
 
     const totalStateSize =
         verboseStats["operatorStats"].reduce((sum, stats) => sum + stats["stateSize"], 0);

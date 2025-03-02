@@ -905,6 +905,7 @@ function timeseriesEmitUpdateFailure() {
 
     sp.createStreamProcessor(spName, [
         {$source: {connectionName: connectionName, db: dbName, coll: inputColl}},
+        {$addFields: {_ts: {$meta: "stream.source.ts"}}},
         {
             $emit: {
                 connectionName: connectionName,

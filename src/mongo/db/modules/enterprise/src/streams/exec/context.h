@@ -119,6 +119,10 @@ struct Context {
                               .tenantId = tenantId};
     }
 
+    bool oldStreamMetaEnabled() {
+        return projectStreamMeta;
+    }
+
     ~Context();
 };
 

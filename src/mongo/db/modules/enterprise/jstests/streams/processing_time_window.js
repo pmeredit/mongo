@@ -145,7 +145,9 @@ function testWindowsClosingAsExpected(
     inputColl.drop();
     outputColl.drop();
     const processorName = "windowsClosingAsExpectedProcessor";
-    sp.createStreamProcessor(processorName, [...sourceSpec, windowSpec, emitSpec]);
+    sp.createStreamProcessor(
+        processorName,
+        [...sourceSpec, windowSpec, {$addFields: {_stream_meta: {$meta: "stream"}}}, emitSpec]);
     const processor = sp[processorName];
     const startResult =
         processor.start({featureFlags: {processingTimeWindows: true}, shouldStartSample: true});

@@ -879,7 +879,7 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Atlas);
-    if (_context->shouldUseDocumentMetadataFields) {
+    if (!_context->oldStreamMetaEnabled()) {
         streamMetaSource.setTs(ts.assignedTimestamp);
     }
     streamDoc.streamMeta.setSource(std::move(streamMetaSource));

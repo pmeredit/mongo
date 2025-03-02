@@ -115,7 +115,7 @@ const testCases = [
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}]
                 }
             },
-            {$project: {_id: "$_stream_meta.window.start", count: 1}}
+            {$project: {_id: {$meta: "stream.window.start"}, count: 1}}
         ],
         expectedOutput: [
             {"count": 2},
@@ -156,6 +156,7 @@ const testCases = [
                     pipeline: [{$group: allAccumulators}]
                 }
             },
+            {$addFields: {_stream_meta: {$meta: "stream"}}},
             {$set: {_id: "$_stream_meta.window.start"}}
         ],
         expectedOutput: [
@@ -606,7 +607,8 @@ const testCases = [
                 }
             },
             {$set: {foo: "one"}},
-            {$set: {_id: {start: "$_stream_meta.window.start", customerId: "$_id"}}}
+            {$addFields: {_stream_meta: {$meta: "stream"}}},
+            {$set: {_id: {start: {$meta: "stream.window.start"}, customerId: "$_id"}}}
         ],
         modifiedPipeline: [
             {$match: {"fullDocument.a": {$gte: 1}}},
@@ -629,7 +631,8 @@ const testCases = [
                     ]
                 }
             },
-            {$set: {_id: {start: "$_stream_meta.window.start", customerId: "$_id"}}}
+            {$addFields: {_stream_meta: {$meta: "stream"}}},
+            {$set: {_id: {start: {$meta: "stream.window.start"}, customerId: "$_id"}}}
         ],
         expectedOutput: [
             {

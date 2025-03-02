@@ -104,28 +104,18 @@ protected:
         // Used by checkpointing to ensure that the queue is drained and that the inflight
         // document batch has been written out to mongodb.
         bool flushSignal{false};
+
+        // The size of the message, calculated at message creation time, the sum of
+        // each Document->getApproximateSize(). Calculate this only once because it
+        // might return different results on the second call.
+        int64_t size{0};
     };
 
-    // Cost function for the queue so that we limit the max queue size based on the
-    // byte size of the documents rather than having the same weight for each document.
+    // Cost function for the queue
     struct QueueCostFunc {
         size_t operator()(const Message& msg) const {
-            if (!msg.data) {
-                // This is only the case for internal `flush()` messages.
-                return 1;
-            }
-
-            auto size = msg.data->getByteSize();
-            if (size > maxSizeBytes) {
-                // ProducerConsumerQueue will throw ProducerConsumerQueueBatchTooLarge if a single
-                // item is larger than the max queue size. We want to allow a single large
-                // StreamDataMsg in the queue.
-                return maxSizeBytes;
-            }
-            return size;
+            return msg.size;
         }
-
-        int64_t maxSizeBytes{0};
     };
 
     // Starts up the background consumer thread.
@@ -221,6 +211,9 @@ private:
 
     // MetricManager used by this Operator and its WriterThreads.
     MetricManager* _metricManager{nullptr};
+
+    // Max queue size in bytes.
+    int64_t _maxQueueSizeBytes{0};
 };
 
 }  // namespace streams

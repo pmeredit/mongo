@@ -221,7 +221,7 @@ const FeatureFlagDefinition FeatureFlags::kProcessingTimeWindows{
 const FeatureFlagDefinition FeatureFlags::kOldStreamMeta{
     "oldStreamMeta",
     "If true, the old _stream_meta and _ts projection behavior enabled.",
-    mongo::Value(true)};
+    mongo::Value(false)};
 
 const FeatureFlagDefinition FeatureFlags::kEnableMetadataRefreshInterval{
     "enableMetadataRefreshInterval",

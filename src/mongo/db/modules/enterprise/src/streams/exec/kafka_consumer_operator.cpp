@@ -1183,7 +1183,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         }
         streamMetaSource.setKey(std::move(key));
         streamMetaSource.setHeaders(std::move(sourceDoc.headers));
-        if (_context->shouldUseDocumentMetadataFields) {
+        if (!_context->oldStreamMetaEnabled()) {
             streamMetaSource.setTs(ts);
         }
         StreamMeta streamMeta;

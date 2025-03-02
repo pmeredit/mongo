@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 #include <memory>
+#include <set>
 
 #include "mongo/bson/json.h"
 #include "mongo/bson/simple_bsonobj_comparator.h"
@@ -15,7 +16,9 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_merge.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/scopeguard.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/message.h"
@@ -590,6 +593,8 @@ TEST_F(MergeOperatorTest, Parallelism) {
         Executor executor{_context.get(), std::move(executorOpts)};
         auto future = executor.start();
         poll([&]() { return executor.isConnected(); }, "waiting for connected");
+        ScopeGuard stopper([&]() { executor.stop(StopReason::ExternalStopRequest, false); });
+
         // Validate the sink is using the expected number of writers.
         ASSERT_EQ(c.parallelism ? *c.parallelism : 1, getNumWriters(sink));
 
@@ -618,16 +623,33 @@ TEST_F(MergeOperatorTest, Parallelism) {
             "waiting for expected stats");
 
         // Validate expected results.
-        auto docsEq = [&](const auto& l, const auto& r) {
-            ASSERT_EQ(l.size(), r.size());
-            for (size_t i = 0; i < l.size(); ++i) {
-                auto it = std::find_if(r.begin(), r.end(), [&](auto result) {
-                    // Find a result equal to this input[i].
-                    return SimpleBSONObjComparator::kInstance.evaluate(l[i] == result) == 0;
+        auto docsEq = [&](const auto& input, const auto& results) {
+            ASSERT_EQ(input.size(), results.size());
+
+            auto sortedInput = input;
+            auto sortedResults = results;
+            auto sort = [](auto& container) {
+                std::sort(container.begin(), container.end(), [](auto a, auto b) {
+                    return SimpleBSONObjComparator::kInstance.evaluate(a < b);
                 });
-                if (it == r.end()) {
-                    return false;
+            };
+            sort(sortedInput);
+            sort(sortedResults);
+
+            for (size_t i = 0; i < input.size(); ++i) {
+                auto in = input[i];
+                auto result = results[i];
+                if (!in.hasField("_id")) {
+                    MutableDocument doc{Document{result}};
+                    doc.remove("_id");
+                    result = doc.freeze().toBson();
                 }
+
+                if (!SimpleBSONObjComparator::kInstance.evaluate(in == result)) {
+                    fmt::print("Did not find a match for {}\n", in.toString());
+                }
+
+                return true;
             }
             return true;
         };
@@ -686,8 +708,8 @@ TEST_F(MergeOperatorTest, Parallelism) {
                     return false;
                 }
                 for (size_t valueIdx = 0; valueIdx < lPart.second.size(); ++valueIdx) {
-                    if (SimpleBSONObjComparator::kInstance.evaluate(lPart.second[valueIdx] ==
-                                                                    rv[valueIdx]) != 0) {
+                    if (!SimpleBSONObjComparator::kInstance.evaluate(lPart.second[valueIdx] ==
+                                                                     rv[valueIdx])) {
                         return false;
                     }
                 }
@@ -738,8 +760,6 @@ TEST_F(MergeOperatorTest, Parallelism) {
                 ASSERT_EQ(1, threadsForPartition[partition].size());
             }
         }
-
-        executor.stop(StopReason::ExternalStopRequest, false);
     };
 
     for (auto parallelNum = 0; parallelNum < 16; ++parallelNum) {

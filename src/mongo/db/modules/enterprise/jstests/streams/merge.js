@@ -866,12 +866,14 @@ const runAll = (parallelism) => {
         startStreamProcessor([
             {'$source': {'connectionName': 'db1', 'db': 'test', 'coll': inputColl.getName()}},
             {"$replaceRoot": {"newRoot": "$fullDocument"}},
+            {$addFields: {foo: new Array(4096).join('a')}},
             {$merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}}}
         ]);
 
         // Leave space for timeField and _id.
         const seed = Array(16 * 1024 * 1024 - 44).toString();
-        inputColl.insert({_id: 1, ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed});
+        assert.commandWorked(
+            inputColl.insert({_id: 1, ts: ISODate("2024-03-01T01:00:01.000Z"), seed: seed}));
         assert.eq(inputColl.count(), 1);
 
         assert.soon(() => {

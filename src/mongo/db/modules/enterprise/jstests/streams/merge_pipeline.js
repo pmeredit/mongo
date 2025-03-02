@@ -41,6 +41,7 @@ function makeMergePipeline({vars, mergePipeline}) {
 
     const pipeline = [
         {$source: {connectionName: "__testMemory"}},
+        {$addFields: {_ts: {$meta: "stream.source.ts"}, _stream_meta: {$meta: "stream"}}},
         mergeSpec,
     ];
     return pipeline;

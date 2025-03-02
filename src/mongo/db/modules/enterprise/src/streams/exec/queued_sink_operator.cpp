@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 
 #include "mongo/base/error_codes.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/connection_status.h"
@@ -25,22 +26,22 @@ namespace streams {
 using namespace mongo;
 
 QueuedSinkOperator::QueuedSinkOperator(Context* context, int32_t numInputs, int32_t parallelism)
-    : SinkOperator(context, numInputs), _parallelism(parallelism) {}
+    : SinkOperator(context, numInputs), _parallelism(parallelism) {
+    _maxQueueSizeBytes = getMaxQueueSizeBytes(_context->featureFlags);
+    if (_parallelism > 1) {
+        _maxQueueSizeBytes = (_maxQueueSizeBytes / _parallelism) * 2;
+    }
+}
 
 std::unique_ptr<QueuedSinkOperator::WriterThread> QueuedSinkOperator::makeThread(
     std::unique_ptr<SinkWriter> writer) {
     auto thread = std::make_unique<WriterThread>();
-    int64_t maxQueueSizeBytes = getMaxQueueSizeBytes(_context->featureFlags);
-    if (_parallelism > 1) {
-        maxQueueSizeBytes = (maxQueueSizeBytes / _parallelism) * 2;
-    }
     thread->writer = std::move(writer);
     thread->context = _context;
     thread->queue =
         std::make_unique<mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc>>(
             mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc>::Options{
-                .maxQueueDepth = static_cast<size_t>(maxQueueSizeBytes),
-                .costFunc = QueueCostFunc{.maxSizeBytes = maxQueueSizeBytes}});
+                .maxQueueDepth = static_cast<size_t>(_maxQueueSizeBytes)});
     return thread;
 }
 
@@ -145,7 +146,7 @@ void QueuedSinkOperator::WriterThread::flush() {
 
     dassert(!pendingFlush);
     pendingFlush = true;
-    queue->push(Message{.flushSignal = true});
+    queue->push(Message{.flushSignal = true, .size = 1});
     flushedCv.wait(lock, [this]() -> bool { return !consumerThreadRunning || !pendingFlush; });
 
     // Make sure that an error wasn't encountered in the background consumer thread while
@@ -192,10 +193,41 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
             "Size of threads should be greater than or equal to 1",
             _threads.size());
 
-    auto sendMsg = [](WriterThread* thread, StreamDataMsg dataMsg) {
+    // Without this extra copy, some hopping window tests can fail with thread
+    // sanitizer errors. This can also happen when using $unwind or other stages that
+    // copy Documents. Why?
+    // Often with a $hoppingWindow, a Document will be copied across multiple
+    // windows. Under the hood this just increments a refcount to the same underlying storage.
+    // So the following can happen:
+    // The Executor thread closes window1 and sends its Documents to this QueuedSinkOperator.
+    // Then the Executor thread closes window2, which happens to be operating on a copy
+    // of some of window1's documents.
+    // This might cause a race, the Executor thread calls DocumentStorage::currentApproximateSize()
+    // while closing window2, while a WriterThread calls DocumentStorage::alloc(). Both these
+    // threads are operating on copied Document instances which share their DocumentStorage.
+    for (auto& doc : dataMsg.docs) {
+        MutableDocument mut{doc.doc};
+        mut.makeOwned();
+        doc.doc = mut.freeze();
+    }
+
+    auto sendMsg = [this](WriterThread* thread, StreamDataMsg dataMsg) {
+        auto size = dataMsg.getByteSize();
         thread->queueSizeGauge->incBy(int64_t(dataMsg.docs.size()));
         thread->queueByteSizeGauge->incBy(dataMsg.getByteSize());
-        thread->queue->push(Message{.data = std::move(dataMsg)});
+        if (size > _maxQueueSizeBytes) {
+            // ProducerConsumerQueue will throw ProducerConsumerQueueBatchTooLarge if a single
+            // item is larger than the max queue size. So we do this to allow a single large
+            // StreamDataMsg in the queue.
+            size = _maxQueueSizeBytes;
+        }
+        if (size == 0) {
+            // It's possiblefor dataMsg.getByteSize() / getApproximateSize() to return zero
+            // in some unlucky cases. A size of zero causes an invariant in ProducerConsumerQueue.
+            LOGV2_WARNING(9934300, "Unexpected zero size message", "context"_attr = _context);
+            size = 1;
+        }
+        thread->queue->push(Message{.data = std::move(dataMsg), .size = size});
     };
 
     if (_threads.size() == 1) {

@@ -124,8 +124,14 @@ function runChangeStreamSourceTest({
     }
 
     const processorName = "changeStreamSourceProcessor";
-    sp.createStreamProcessor(processorName,
-                             [{$source: sourceSpec}, {$emit: {connectionName: '__testMemory'}}]);
+    let addFields = {};
+    addFields[streamMetaFieldName ? streamMetaFieldName : "_stream_meta"] = {$meta: "stream"};
+    addFields["_ts"] = {$meta: "stream.source.ts"};
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {$addFields: addFields},
+        {$emit: {connectionName: '__testMemory'}}
+    ]);
 
     const processor = sp[processorName];
     let startResult = processor.start({featureFlags: {}, shouldStartSample: true});
@@ -321,8 +327,12 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
     }
 
     const processorName = "changeStreamFullDocument";
+    let addFields = {};
+    addFields["_stream_meta"] = {$meta: "stream"};
+    addFields["_ts"] = {$meta: "stream.source.ts"};
     sp.createStreamProcessor(processorName, [
         {$source: sourceSpec},
+        {$addFields: addFields},
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
 
@@ -449,7 +459,7 @@ function testChangeStreamSourceWindowPipeline() {
     clearState();
     const processorName = "changeStreamSourceAndWindowProcessor";
     sp.createStreamProcessor(processorName, [
-        {$source: {connectionName: connectionName, db: writeDBOne}},
+        {$source: {connectionName: connectionName, db: writeDBOne, tsFieldName: "_ts"}},
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -466,6 +476,7 @@ function testChangeStreamSourceWindowPipeline() {
                 ]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
 

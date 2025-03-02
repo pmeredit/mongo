@@ -56,6 +56,7 @@ function runTest({
             }
         },
         stage,
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $merge: {
                 into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName},

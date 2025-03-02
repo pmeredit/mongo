@@ -401,6 +401,7 @@ const testCases = [
                     pipeline: [{$group: {_id: null, count: {$count: {}}}}],
                 }
             },
+            {$addFields: {_stream_meta: {$meta: "stream"}}},
             {$project: {start: "$_stream_meta.window.start", count: 1}}
         ],
         inputForOriginalPipeline: [
