@@ -853,6 +853,8 @@ commands:
         api_version: ""
         namespace: ignored
         reply_type: UpdateFeatureFlagsReply
+        access_check:
+            none: true
         fields:
             tenantId:
                 description: "Tenant id."
@@ -860,8 +862,6 @@ commands:
             featureFlags:
                 description: "Bson object containing all feature flags for this instance."
                 type: object
-        access_check:
-            none: true
 
     streams_updateConnection:
         description: "Command to update connection details for stream processors running"
@@ -870,6 +870,8 @@ commands:
         api_version: ""
         namespace: ignored
         reply_type: UpdateConnectionReply
+        access_check:
+            none: true
         fields:
             tenantId:
                 description: "Tenant id."
@@ -891,6 +893,8 @@ commands:
         api_version: ""
         namespace: ignored
         reply_type: GetFeatureFlagsReply
+        access_check:
+            none: true
         fields:
             tenantId:
                 description: "Tenant id."
@@ -898,5 +902,3 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-        access_check:
-            none: true
