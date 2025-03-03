@@ -62,16 +62,21 @@ The OCSF Base Class fields `dst_endpoint` and `src_endpoint` are auto-serialized
 When connections represent ip:port combinations, the mapping is essentially identical:
 
 ```
-{ src_endpoint: { ip: "192.168.123.45", port: 61060 }
+{ src_endpoint: { ip: "192.168.123.45", intermediate_ips: [{ip: "192.168.123.46", port: 89030}] port: 61060 }
   dst_endpoint: { ip: "172.31.0.1", port: 27017 } }
 ```
+
+Note that the `intermediates` property from the `mongo` schema log entry is mapped to the `intermediate_ips` field within
+`src_endpoint`. `dst_endpoint`does not include this field - it simply represents the local endpoint.
 
 However, a Unix endpoint is remapped as using the "unix" `interface`, with the path entered in the `ip` field.
 
 ```
-{ src_endpoint: { interface: "unix", ip: "anonumous" },
+{ src_endpoint: { interface: "unix", ip: "anonymous" },
   dst_endpoint: { interface: "unix", ip: "/var/run/mongod.sock" } }
 ```
+
+In compliance with the OCSF spec, only audit logs with activity IDs belonging to the API Activity, Authentication, and Network Activity classes include both `dst_endpoint` and `src_endpoint`. Audit logs belonging to the Entity Management and Account Change classes include `src_endpoint` only. Audit logs belonging to all other classes do not embed either field.
 
 ### Actor
 
