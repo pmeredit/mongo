@@ -44,6 +44,11 @@ boost::optional<bool> FeatureFlagValue::getBool() const {
     return returnValue;
 }
 
+bool FeatureFlagValue::isTrue() const {
+    auto flag = getBool();
+    return flag && *flag;
+}
+
 boost::optional<std::string> FeatureFlagValue::getString() const {
     boost::optional<std::string> returnValue;
     if (_value.getType() != mongo::BSONType::String) {
@@ -228,6 +233,10 @@ const FeatureFlagDefinition FeatureFlags::kEnableMetadataRefreshInterval{
     "If true, enable librdakfka's metadata refresh interval.",
     mongo::Value(true)};
 
+const FeatureFlagDefinition FeatureFlags::kChangestreamPredicatePushdown{
+    "changestreamPredicatePushdown",
+    "If true, changestream predicate pushdown optimization rule is enabled.",
+    mongo::Value(false)};
 
 const FeatureFlagDefinition FeatureFlags::kEnableExternalFunctionOperator{
     "enableExternalFunctionOperator",

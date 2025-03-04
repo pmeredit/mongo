@@ -32,6 +32,8 @@ public:
     const mongo::Value& getValue() const {
         return _value;
     }
+    // Returns true if the flag is a bool and set to true.
+    bool isTrue() const;
 
 private:
     mongo::Value _value;
@@ -70,6 +72,7 @@ public:
     static const FeatureFlagDefinition kOldStreamMeta;
     static const FeatureFlagDefinition kEnableMetadataRefreshInterval;
     static const FeatureFlagDefinition kEnableS3Emit;
+    static const FeatureFlagDefinition kChangestreamPredicatePushdown;
     static const FeatureFlagDefinition kEnableExternalFunctionOperator;
     static const FeatureFlagDefinition kExternalFunctionRateLimitPerSecond;
     static const FeatureFlagDefinition kKafkaEmitMessageMaxBytes;

@@ -29,6 +29,16 @@ static constexpr int32_t kDataMsgMaxByteSize = 1 * 1024 * 1024;
  */
 class Operator {
 public:
+    // Encapsulates metadata for an operator attached at the output of this
+    // operator.
+    struct OutputInfo {
+        // The operator attached at the output of this operator.
+        Operator* oper{nullptr};
+
+        // The input of 'oper' at which this operator is attached to it.
+        int32_t operInputIdx{0};
+    };
+
     Operator(Context* context, int32_t numInputs, int32_t numOutputs);
 
     virtual ~Operator() = default;
@@ -88,17 +98,11 @@ public:
      */
     virtual void registerMetrics(MetricManager* metricManager){};
 
+    const std::vector<OutputInfo>& getOutputInfo() const {
+        return _outputs;
+    }
+
 protected:
-    // Encapsulates metadata for an operator attached at the output of this
-    // operator.
-    struct OutputInfo {
-        // The operator attached at the output of this operator.
-        Operator* oper{nullptr};
-
-        // The input of 'oper' at which this operator is attached to it.
-        int32_t operInputIdx{0};
-    };
-
     virtual void doStart() {}
 
     virtual void doStop() {}

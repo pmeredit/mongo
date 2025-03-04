@@ -83,6 +83,10 @@ public:
         return std::move(_operators);
     }
 
+    OperatorDag::Options moveOptions() {
+        return std::move(_options);
+    }
+
     bool needsWindowReplay() {
         return _options.needsWindowReplay;
     }
@@ -90,6 +94,10 @@ public:
     // Returns true if this DAG should report e2e latency.
     // Returns false if there is a window in the DAG.
     bool shouldReportLatency();
+
+    const OperatorDag::Options& options() const {
+        return _options;
+    }
 
 private:
     friend class OperatorDagTest;

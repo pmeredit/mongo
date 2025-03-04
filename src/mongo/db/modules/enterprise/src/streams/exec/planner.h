@@ -135,6 +135,7 @@ private:
     void planEmitSink(const mongo::BSONObj& spec);
     void planExternalFunctionSink(const mongo::BSONObj& spec);
 
+    std::unique_ptr<OperatorDag> optimizeDag(std::unique_ptr<OperatorDag> dag);
 
     // Methods that are used to plan a window stage.
     // All return a BSONObj that represents the optimized window stage.

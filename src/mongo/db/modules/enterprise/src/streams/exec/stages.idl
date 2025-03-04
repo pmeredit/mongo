@@ -579,6 +579,11 @@ structs:
                 description: "Additional configuration options for the change stream $source."
                 type: ChangeStreamConfigOptions
                 optional: true
+            $_internalPredicate:
+                description: Internal field used to push down a $match stage following a changestream $source stage.
+                type: object
+                cpp_name: internalPredicate
+                optional: true
 
     TumblingWindowOptions:
         description: "$tumblingWindow stage options"

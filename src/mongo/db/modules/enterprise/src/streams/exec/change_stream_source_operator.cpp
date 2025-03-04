@@ -191,6 +191,10 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     for (const auto& stage : _options.pipeline) {
         _pipeline.append_stage(toBsoncxxView(stage));
     }
+    if (_options.internalPredicate) {
+        // Append a pushed down $match.
+        _pipeline.append_stage(toBsoncxxView(*_options.internalPredicate));
+    }
 
     auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
     auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";

@@ -77,6 +77,7 @@
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/optimize.h"
 #include "streams/exec/project_operator.h"
 #include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/redact_operator.h"
@@ -877,6 +878,10 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
                                  _options.enableDataFlow,
                                  _context->projectStreamMeta),
         std::move(clientOptions));
+
+    if (options.getInternalPredicate()) {
+        internalOptions.internalPredicate = options.getInternalPredicate()->getOwned();
+    }
 
     if (useWatermarks) {
         internalOptions.useWatermarks = true;
@@ -2373,8 +2378,30 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
         }
     }
 
+    if (_options.planningUserPipeline) {
+        return optimizeDag(std::move(dag));
+    }
+
     return dag;
 }
+
+std::unique_ptr<OperatorDag> Planner::optimizeDag(std::unique_ptr<OperatorDag> dag) {
+    auto opts = this->_options;
+    opts.shouldValidateModifyRequest = false;
+    opts.planningUserPipeline = false;
+
+    auto plan = dag->options().optimizedPipeline;
+    for (const auto& rule : optimize::Rule::getRules(_context)) {
+        if (rule->checkPattern(*dag)) {
+            plan = rule->transform(std::move(*dag));
+            Planner planner{_context, opts};
+            dag = planner.plan(plan);
+        }
+    }
+
+    return dag;
+}
+
 
 std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
     const std::vector<BSONObj>& pipeline) {

@@ -168,6 +168,72 @@ public:
         return BSON("$limit" << 10);
     }
 
+    // Parse and optimize the user pipeline, which returns an OperatorDag and
+    // executionPlan. Then the test supplies the executionPlan to another Planner instance with
+    // optimization turned off, and verifies the resulting OperatorDag matches the first one.
+    void executionPlanCommonTest(
+        std::string userPipeline,
+        std::vector<std::string> expectedOperators,
+        std::function<void(std::unique_ptr<OperatorDag>& dag)> extraValidation,
+        mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap) {
+        auto context = get<0>(getTestContext(nullptr));
+        StreamProcessorFeatureFlags spFeatureFlags{
+            featureFlagsMap,
+            std::chrono::time_point<std::chrono::system_clock>{
+                std::chrono::system_clock::now().time_since_epoch()}};
+        context->featureFlags->updateFeatureFlags(spFeatureFlags);
+        context->isEphemeral = false;
+        KafkaConnectionOptions options1{"localhost:9092"};
+        options1.setIsTestKafka(true);
+        AtlasConnectionOptions options2{"mongodb://localhost:270"};
+        HttpsConnectionOptions options3{"https://localhost:12345"};
+        AWSIAMConnectionOptions options4{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
+        context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+            Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+            Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
+            Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()},
+            Connection{
+                "s3Bucket1",
+                ConnectionTypeEnum::S3,
+                options3.toBSON()},  // TODO(SERVER-99973): Use S3ConnectionOptions when available
+            Connection{"awsIAMLambda1", ConnectionTypeEnum::AWSIAMLambda, options4.toBSON()}});
+
+        Planner planner(context.get(), Planner::Options{});
+        auto bson = parsePipeline(userPipeline);
+        auto dag = planInner(&planner, bson);
+
+        // Print some information to make debugging easier.
+        fmt::print("User pipeline\n{}\n", userPipeline);
+        fmt::print("Plan\n{}\n", Value(dag->optimizedPipeline()).toString());
+        BSONArrayBuilder opArr;
+        for (const auto& op : dag->operators()) {
+            opArr.append(op->getName());
+        }
+        fmt::print("Operators\n{}\n", tojson(opArr.obj()));
+
+        ASSERT_EQ(expectedOperators.size(), dag->operators().size());
+        for (size_t i = 0; i < expectedOperators.size(); ++i) {
+            ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
+        }
+
+        extraValidation(dag);
+
+        Planner plannerAfterRestore(context.get(), Planner::Options{.planningUserPipeline = false});
+        auto dag2 = planInner(&plannerAfterRestore, dag->optimizedPipeline());
+        // Assert the operators produced from plan with no optimization are equal to the operators
+        // produced from the user's BSON pipeline with optimization
+        ASSERT_EQ(expectedOperators.size(), dag2->operators().size());
+        for (size_t i = 0; i < expectedOperators.size(); ++i) {
+            ASSERT_EQ(expectedOperators[i], dag2->operators()[i]->getName());
+        }
+        // Assert the execution plan equals plan
+        ASSERT_EQ(dag2->optimizedPipeline().size(), dag->optimizedPipeline().size());
+        for (size_t i = 0; i < dag->optimizedPipeline().size(); ++i) {
+            ASSERT_BSONOBJ_EQ(dag->optimizedPipeline()[i], dag2->optimizedPipeline()[i]);
+        }
+    }
+
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(
         KafkaConsumerOperator* kafkaConsumerOperator, size_t idx) {
         return kafkaConsumerOperator->_consumers[idx];
@@ -1711,73 +1777,42 @@ TEST_F(PlannerTest, LookupStagingWithPipelineMissingDocuments) {
 // Test the execution plan the Planner chooses for various pipelines.
 // Currently, Planner changes that create different execution plans for existing stream
 // processors will cause issues in checkpoint restore.
-// WARNING: If your changes break this test, your changes might cause issues with stream processors
-// running in production. Don't change this test without consulting the streams engine team in
-// #streams-engine.
 TEST_F(PlannerTest, ExecutionPlan) {
-    // The test parses and optimies the user pipeline, which returns an OperatorDag and
-    // executionPlan. Then the test supplies the executionPlan to another Planner instance with
-    // optimization turned off, and verifies the resulting OperatorDag matches the first one.
     auto innerTest = [&](std::string userPipeline, std::vector<std::string> expectedOperators) {
-        // Setup the context.
-        auto context = get<0>(getTestContext(nullptr));
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
         featureFlagsMap.emplace(std::make_pair(FeatureFlags::kEnableS3Emit.name, true));
         featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
-        StreamProcessorFeatureFlags spFeatureFlags{
-            featureFlagsMap,
-            std::chrono::time_point<std::chrono::system_clock>{
-                std::chrono::system_clock::now().time_since_epoch()}};
-        context->featureFlags->updateFeatureFlags(spFeatureFlags);
-        context->isEphemeral = false;
-        KafkaConnectionOptions options1{"localhost:9092"};
-        options1.setIsTestKafka(true);
-        AtlasConnectionOptions options2{"mongodb://localhost:270"};
-        HttpsConnectionOptions options3{"https://localhost:12345"};
-        AWSIAMConnectionOptions options4{
-            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
-        context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
-            Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
-            Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
-            Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()},
-            Connection{
-                "s3Bucket1",
-                ConnectionTypeEnum::S3,
-                options3.toBSON()},  // TODO(SERVER-99973): Use S3ConnectionOptions when available
-            Connection{"awsIAMLambda1", ConnectionTypeEnum::AWSIAMLambda, options4.toBSON()}});
-
-        Planner planner(context.get(), Planner::Options{});
-        auto bson = parsePipeline(userPipeline);
-        auto dag = planInner(&planner, bson);
-
-        // Print some information to make debugging easier.
-        fmt::print("User pipeline\n{}\n", userPipeline);
-        fmt::print("Plan\n{}\n", Value(dag->optimizedPipeline()).toString());
-        BSONArrayBuilder opArr;
-        for (const auto& op : dag->operators()) {
-            opArr.append(op->getName());
-        }
-        fmt::print("Operators\n{}\n", tojson(opArr.obj()));
-
-        ASSERT_EQ(expectedOperators.size(), dag->operators().size());
-        for (size_t i = 0; i < expectedOperators.size(); ++i) {
-            ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
-        }
-
-        Planner plannerAfterRestore(context.get(), Planner::Options{.planningUserPipeline = false});
-        auto dag2 = planInner(&plannerAfterRestore, dag->optimizedPipeline());
-        // Assert the operators produced from plan with no optimization are equal to the operators
-        // produced from the user's BSON pipeline with optimization
-        ASSERT_EQ(expectedOperators.size(), dag2->operators().size());
-        for (size_t i = 0; i < expectedOperators.size(); ++i) {
-            ASSERT_EQ(expectedOperators[i], dag2->operators()[i]->getName());
-        }
-        // Assert the execution plan equals plan
-        ASSERT_EQ(dag2->optimizedPipeline().size(), dag->optimizedPipeline().size());
-        for (size_t i = 0; i < dag->optimizedPipeline().size(); ++i) {
-            ASSERT_BSONOBJ_EQ(dag->optimizedPipeline()[i], dag2->optimizedPipeline()[i]);
-        }
+        featureFlagsMap[FeatureFlags::kChangestreamPredicatePushdown.name] = mongo::Value(true);
+        executionPlanCommonTest(
+            userPipeline, expectedOperators, [](auto& dag) {}, featureFlagsMap);
     };
+
+    // match should get absorbed
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "MergeOperator"});
 
     innerTest(R"(
     [
@@ -2010,7 +2045,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
     ])",
               {"ChangeStreamConsumerOperator", "MergeOperator"});
 
-    // $project and $match get re-ordered
+    // $project and $match get re-ordered, match gets absorbed into changestream.config.pipeline
     innerTest(
         R"(
     [
@@ -2027,11 +2062,6 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         },
         {
-            $match: {
-                a: 1
-            }
-        },
-        {
             $merge: {
                 into: {
                     connectionName: "atlas1",
@@ -2041,7 +2071,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-        {"ChangeStreamConsumerOperator", "MatchOperator", "ProjectOperator", "MergeOperator"});
+        {"ChangeStreamConsumerOperator", "ProjectOperator", "MergeOperator"});
 
     // Validate the window unnesting logic will prepend a window assigner before a $match that
     // depends on the window boundaries.
@@ -2277,7 +2307,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-              {"ChangeStreamConsumerOperator", "MatchOperator", "LookUpOperator", "MergeOperator"});
+              {"ChangeStreamConsumerOperator", "LookUpOperator", "MergeOperator"});
 
     innerTest(R"(
     [
@@ -2322,7 +2352,8 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "UnwindOperator",
                "MergeOperator"});
 
-    innerTest(R"(
+    innerTest(
+        R"(
     [
         {
             $source: {
@@ -2359,11 +2390,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-              {"ChangeStreamConsumerOperator",
-               "MatchOperator",
-               "LookUpOperator",
-               "UnwindOperator",
-               "MergeOperator"});
+        {"ChangeStreamConsumerOperator", "LookUpOperator", "UnwindOperator", "MergeOperator"});
 
     innerTest(R"(
     [
@@ -3439,6 +3466,114 @@ TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
         ASSERT_EQ(actualOper->getOptions().as, boost::none);
         ASSERT_EQ(actualOper->getOptions().onError, OnErrorEnum::DLQ);
     }
+}
+
+/**
+ * Test changestream $match pushdown.
+ */
+TEST_F(PlannerTest, Optimize_ChangestreamPredicatePushdown) {
+    executionPlanCommonTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+                            {"ChangeStreamConsumerOperator", "MergeOperator"},
+                            [](auto& dag) {
+                                auto source =
+                                    dynamic_cast<ChangeStreamSourceOperator*>(dag->source());
+                                ASSERT(source->getOptions().internalPredicate);
+                                ASSERT_BSONOBJ_EQ(*source->getOptions().internalPredicate,
+                                                  BSON("$match" << BSON("fullDocument.a" << 5)));
+                            },
+                            {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(true)}});
+
+    executionPlanCommonTest(
+        R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl",
+                timeField: "$foo"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $tumblingWindow: {
+                interval: {size: 5, unit: "second"},
+                pipeline: [
+                    { $group: { _id : null, sum: {$sum: "$a"} }}
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+        {"ChangeStreamConsumerOperator", "MatchOperator", "GroupOperator", "MergeOperator"},
+        [](auto& dag) {
+            auto source = dynamic_cast<ChangeStreamSourceOperator*>(dag->source());
+            ASSERT(!source->getOptions().internalPredicate);
+        },
+        {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(true)}});
+
+    executionPlanCommonTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+                            {"ChangeStreamConsumerOperator", "MatchOperator", "MergeOperator"},
+                            [](auto& dag) {},
+                            {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(false)}});
 }
 
 }  // namespace

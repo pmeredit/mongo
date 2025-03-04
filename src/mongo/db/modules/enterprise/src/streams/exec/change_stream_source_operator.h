@@ -65,11 +65,14 @@ public:
         mongo::FullDocumentBeforeChangeModeEnum fullDocumentBeforeChangeMode{
             mongo::FullDocumentBeforeChangeModeEnum::kOff};
 
-        // The pipeline to pushdown for the change stream server to process.
+        // The user pipeline to pushdown for the change stream server to process.
         std::vector<mongo::BSONObj> pipeline;
+
+        // Used to push down a $match that follows a changestream $source.
+        boost::optional<mongo::BSONObj> internalPredicate;
     };
 
-    const SourceOperator::Options& getOptions() const override {
+    const ChangeStreamSourceOperator::Options& getOptions() const override {
         return _options;
     }
 

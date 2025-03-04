@@ -129,13 +129,19 @@ function runChangeStreamPipeline({
     fieldsToSkip,
     extraMergeParams,
     expectedOutputMessageCount,
-    beforeStopValidationFunc
+    beforeStopValidationFunc,
+    adjustPipeline = true,
+    waitForInsertsInStats = true,
+    expectedChangeStreamStats
 }) {
-    const newPipeline = [
-        {$match: {$or: [{operationType: "insert"}, {operationType: "replace"}]}},
-        {$replaceRoot: {newRoot: "$fullDocument"}},
-        ...pipeline,
-    ];
+    let newPipeline = pipeline;
+    if (adjustPipeline) {
+        newPipeline = [
+            {$match: {$or: [{operationType: "insert"}, {operationType: "replace"}]}},
+            {$replaceRoot: {newRoot: "$fullDocument"}},
+            ...pipeline,
+        ];
+    }
     const test = new TestHelper(input,
                                 newPipeline,
                                 undefined,     // interval
@@ -161,10 +167,12 @@ function runChangeStreamPipeline({
         let numInserts = 0;
         for (const doc of docs) {
             if (doc.hasOwnProperty(batchBreakerField)) {
-                // Wait for all other docs to be processed.
-                assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
-                            `waiting for inputMessageCount of ${numInserts}`,
-                            timeoutSecs * 1000);
+                if (waitForInsertsInStats) {
+                    // Wait for all other docs to be processed.
+                    assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
+                                `waiting for inputMessageCount of ${numInserts}`,
+                                timeoutSecs * 1000);
+                }
             } else {
                 if (doc.hasOwnProperty("_id")) {
                     assert.commandWorked(
@@ -176,9 +184,11 @@ function runChangeStreamPipeline({
             }
         }
 
-        assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
-                    `waiting for inputMessageCount of ${numInserts}`,
-                    timeoutSecs * 1000);
+        if (waitForInsertsInStats) {
+            assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
+                        `waiting for inputMessageCount of ${numInserts}`,
+                        timeoutSecs * 1000);
+        }
     };
 
     // Start the processor and write part of the input.
@@ -218,6 +228,18 @@ function runChangeStreamPipeline({
 
     if (beforeStopValidationFunc) {
         beforeStopValidationFunc(test);
+    }
+
+    if (expectedChangeStreamStats) {
+        const operatorStats = test.stats().operatorStats;
+        assert.eq(expectedChangeStreamStats.length, operatorStats.length)
+        for (let opIdx = 0; opIdx < operatorStats.length; opIdx += 1) {
+            const expectedStats = expectedChangeStreamStats[opIdx];
+            const actualStats = operatorStats[opIdx];
+            for (var prop in Object.getOwnPropertyNames(expectedStats)) {
+                assert.eq(expectedStats[prop], actualStats[prop]);
+            }
+        }
     }
 
     test.stop();
@@ -348,7 +370,10 @@ export function commonTest({
     extraMergeParams,
     expectedOutputMessageCount,
     beforeStopValidationFunc,
-    useGeneratedSourcePipeline = true
+    useGeneratedSourcePipeline = true,
+    adjustPipeline = true,
+    waitForInsertsInStats = true,
+    expectedChangeStreamStats
 }) {
     assert(expectedOutput ||
            (expectedGeneratedOutput && expectedChangestreamOutput && expectedTestKafkaOutput) ||
@@ -392,6 +417,9 @@ export function commonTest({
         fieldsToSkip: fieldsToSkip,
         extraMergeParams: extraMergeParams,
         expectedOutputMessageCount: expectedOutputMessageCount,
-        beforeStopValidationFunc: beforeStopValidationFunc
+        beforeStopValidationFunc: beforeStopValidationFunc,
+        adjustPipeline: adjustPipeline,
+        waitForInsertsInStats: waitForInsertsInStats,
+        expectedChangeStreamStats: expectedChangeStreamStats
     });
 }
