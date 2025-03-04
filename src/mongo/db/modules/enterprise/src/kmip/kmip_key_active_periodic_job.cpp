@@ -34,17 +34,25 @@ KMIPIsActivePollingJob* KMIPIsActivePollingJob::get(ServiceContext* service) {
     return getKMIPIsActivePollingJob(service).get();
 }
 
-const std::map<uint32_t, std::string> keyStateToString{{0x00, "stateless"},
-                                                       {0x01, "preActive"},
-                                                       {0x02, "active"},
-                                                       {0x03, "deactivated"},
-                                                       {0x04, "compromised"},
-                                                       {0x05, "destroyed"},
-                                                       {0x06, "destroyedCompromised"}};
-
-std::string kmipKeyStateToString(const StateName& name) {
-    const uint32_t num = static_cast<uint32_t>(name);
-    return keyStateToString.find(num)->second;
+StringData kmipKeyStateToString(const StateName& name) {
+    switch (name) {
+        case StateName::stateless:
+            return "stateless"_sd;
+        case StateName::preActive:
+            return "preActive"_sd;
+        case StateName::active:
+            return "active"_sd;
+        case StateName::deactivated:
+            return "deactivated"_sd;
+        case StateName::compromised:
+            return "compromised"_sd;
+        case StateName::destroyed:
+            return "destroyed"_sd;
+        case StateName::destroyedCompromised:
+            return "destroyedCompromised"_sd;
+        default:
+            return "unknown"_sd;
+    }
 }
 
 void run(std::string keyId) try {
