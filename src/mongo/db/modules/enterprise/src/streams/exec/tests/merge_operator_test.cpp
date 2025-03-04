@@ -616,6 +616,10 @@ TEST_F(MergeOperatorTest, Parallelism) {
             [&]() {
                 auto executorStats = executor.getExecutorStats();
                 auto stats = executorStats.operatorStats;
+                if (stats.empty()) {
+                    // this can happen before a runOnce has finished.
+                    return false;
+                }
                 auto sinkStats = stats.back();
                 return size_t(sinkStats.numInputDocs) == c.input.size() &&
                     size_t(sinkStats.numOutputDocs) == c.input.size();
