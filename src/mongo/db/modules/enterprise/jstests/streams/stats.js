@@ -129,7 +129,7 @@ import {
     // Group operator memory usage should align with the memory usage in
     // the stream summary stats, since the Group operator is the only stateful
     // operator.
-    assert.eq(160, groupStats['stateSize']);
+    assert.eq(192, groupStats['stateSize']);
 
     // The sink operator specific stats should match with the summary output stats.
     const sinkStats = verboseStats['operatorStats'][2];
@@ -288,7 +288,7 @@ import {
     // Group operator memory usage should align with the memory usage in
     // the stream summary stats, since the Group operator is the only stateful
     // operator.
-    assert.eq(480, groupStats['stateSize']);
+    assert.eq(576, groupStats['stateSize']);
 
     // The sink operator specific stats should match with the summary output stats.
     const sinkStats = verboseStats['operatorStats'][2];

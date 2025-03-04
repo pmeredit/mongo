@@ -1507,7 +1507,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp1);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 320);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 384);
     checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 0);
     ASSERT_EQUALS(kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
@@ -1521,8 +1521,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp2);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 320);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 160);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 384);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 192);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Add a new key to get $group state for sp1
@@ -1535,8 +1535,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp1);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 480);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 160);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 192);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Add a new key to get $group state for sp2
@@ -1549,8 +1549,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp2);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 480);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 320);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 384);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Open a new window for sp1
@@ -1563,8 +1563,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp1);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 640);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 320);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 768);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 384);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Close the first window while opening a third window for sp1
@@ -1582,8 +1582,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     // The first window that closed had 3 $group keys, so the memory should go down by
     // a total of 48 bytes, and the previous insert opened a new window with two new keys,
     // so that added a total of 32 bytes -- (64 - 48 + 32) = 48
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 480);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 320);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 384);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Insert documents into sp3 for the first time which should cause the approximate memory
