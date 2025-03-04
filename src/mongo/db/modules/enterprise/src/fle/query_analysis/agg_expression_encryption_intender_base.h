@@ -538,6 +538,11 @@ protected:
     void visit(ExpressionInternalFLEBetween*) final {
         ensureNotEncryptedEnterEval("a fle between match", subtreeStack);
     }
+    void visit(ExpressionEncStrStartsWith*) final {
+        // TODO SERVER-101122: Implement preVisit of $encStrStartsWith.
+        MONGO_UNREACHABLE_TASSERT(10111804);
+        ensureNotEncryptedEnterEval("a fle $encStrStartsWith", subtreeStack);
+    }
     void visit(ExpressionInternalRawSortKey*) final {
         ensureNotEncryptedEnterEval("a raw sort key metadata access", subtreeStack);
     }
@@ -932,6 +937,10 @@ protected:
     void visit(ExpressionLog10*) override {}
     void visit(ExpressionInternalFLEEqual*) override {}
     void visit(ExpressionInternalFLEBetween*) override {}
+    void visit(ExpressionEncStrStartsWith*) override {
+        // TODO SERVER-101122: Implement inVisit of $encStrStartsWith.
+        MONGO_UNREACHABLE_TASSERT(10111805);
+    }
     void visit(ExpressionInternalRawSortKey*) override {}
     void visit(ExpressionMap*) override {}
     void visit(ExpressionMeta*) override {}
@@ -1265,6 +1274,10 @@ protected:
     }
     void visit(ExpressionInternalFLEBetween*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionEncStrStartsWith*) override {
+        // TODO SERVER-101122: Implement postVisit of $encStrStartsWith.
+        MONGO_UNREACHABLE_TASSERT(10111806);
     }
     void visit(ExpressionInternalRawSortKey*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;

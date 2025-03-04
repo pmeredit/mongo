@@ -257,6 +257,9 @@ public:
     void visit(const ExpressionInternalFLEBetween*) override {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionEncStrStartsWith*) override {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionInternalRawSortKey*) override {
         _tracker.enterEvaluateOrCompare();
     }
@@ -684,6 +687,7 @@ public:
     void visit(const ExpressionLog10*) override {}
     void visit(const ExpressionInternalFLEEqual*) override {}
     void visit(const ExpressionInternalFLEBetween*) override {}
+    void visit(const ExpressionEncStrStartsWith*) override {}
     void visit(const ExpressionInternalRawSortKey*) override {}
     void visit(const ExpressionMap*) override {}
     void visit(const ExpressionMeta*) override {}
@@ -974,6 +978,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalFLEBetween*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrStartsWith*) override {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalRawSortKey*) override {
