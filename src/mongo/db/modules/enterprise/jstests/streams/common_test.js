@@ -232,7 +232,7 @@ function runChangeStreamPipeline({
 
     if (expectedChangeStreamStats) {
         const operatorStats = test.stats().operatorStats;
-        assert.eq(expectedChangeStreamStats.length, operatorStats.length)
+        assert.eq(expectedChangeStreamStats.length, operatorStats.length);
         for (let opIdx = 0; opIdx < operatorStats.length; opIdx += 1) {
             const expectedStats = expectedChangeStreamStats[opIdx];
             const actualStats = operatorStats[opIdx];

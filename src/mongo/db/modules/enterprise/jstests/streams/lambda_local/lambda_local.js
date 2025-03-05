@@ -6,7 +6,8 @@ import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkp
 import {
     commonFailureTest,
     commonSinkTest,
-    commonTest
+    commonTest,
+    sanitizeDlqDoc
 } from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 import {
     test as testConstants
