@@ -673,6 +673,135 @@ TEST_F(FLEPipelineTest, PropagateSchemaForLookupCsfleEncryptionSchemas) {
     }
 }
 
+TEST_F(FLEPipelineTest,
+       PropagateSchemaForLookupEmptyValidatorCsfleEncryptionSchemasWithEncryptionInformation) {
+    RAIIServerParameterControllerForTest quiesceController("featureFlagLookupEncryptionSchemasFLE",
+                                                           true);
+
+    const auto kValidEncryptionInformationWithCsfleCmd = fromjson(R"({
+                                                            "encryptionInformation": {
+                                                                 "type": 1,
+                                                                 "schema":{
+                                                                     "testdb.coll_a": {
+                                                                         "escCollection": "enxcol_.coll_a.esc",
+                                                                         "ecocCollection": "enxcol_.coll_a.ecoc",
+                                                                         "fields":
+                                                                             [
+                                                                                {
+                                                                                    "keyId": {
+                                                                                        "$uuid": "c7d050cb-e8c1-4108-8dd1-10f33f2c6dc3"
+                                                                                    },
+                                                                                    "path": "ssn_a",
+                                                                                    "bsonType": "string",
+                                                                                    "queries": { "queryType": "equality", "contention": 8 }
+                                                                                },
+                                                                                {
+                                                                                    "keyId": {
+                                                                                        "$uuid": "a0d8e31d-8475-40bf-aefd-b0a8459080e1"
+                                                                                    },
+                                                                                    "path": "age_a",
+                                                                                    "bsonType": "long",
+                                                                                    "queries": { "queryType": "equality", "contention": 8 }
+                                                                                }
+                                                                             ]
+                                                                        }
+                                                                    }   
+                                                                },
+                                                                "csfleEncryptionSchemas": {
+                                                                    "testdb.coll_b": {
+                                                                        "jsonSchema": { 
+                                                                            },
+                                                                            "isRemoteSchema": false 
+                                                                    }
+                                                                }
+                                                            })");
+
+    auto nsA = getExpCtx()->getNamespaceString();
+    auto nsB = NamespaceString::createNamespaceString_forTest("testdb.coll_b");
+    getExpCtx()->setResolvedNamespaces(
+        {{nsA, {nsA, std::vector<BSONObj>{}}}, {nsB, {nsB, std::vector<BSONObj>{}}}});
+
+    auto lookupSpec = fromjson(
+        "{$lookup: {from: 'coll_b', as: 'docs', localField: 'foo', foreignField: 'l_foo', "
+        "pipeline: [{$match: {street: {$in: [\"Broadway\", \"Gaglardi\"]}}}]}}");
+    {
+        auto& schema = getSchemaForStageMultiSchema(
+            {lookupSpec}, nsA, kValidEncryptionInformationWithCsfleCmd);
+
+        ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("docs.street")));
+        ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("ssn_a")));
+    }
+}
+
+TEST_F(FLEPipelineTest,
+       PropagateSchemaForLookupSchemaValidatorCsfleEncryptionSchemasWithEncryptionInformation) {
+    RAIIServerParameterControllerForTest quiesceController("featureFlagLookupEncryptionSchemasFLE",
+                                                           true);
+
+    const auto kValidEncryptionInformationWithCsfleCmd = fromjson(R"({
+                                                            "encryptionInformation": {
+                                                                 "type": 1,
+                                                                 "schema":{
+                                                                     "testdb.coll_a": {
+                                                                         "escCollection": "enxcol_.coll_a.esc",
+                                                                         "ecocCollection": "enxcol_.coll_a.ecoc",
+                                                                         "fields":
+                                                                             [
+                                                                                {
+                                                                                    "keyId": {
+                                                                                        "$uuid": "c7d050cb-e8c1-4108-8dd1-10f33f2c6dc3"
+                                                                                    },
+                                                                                    "path": "ssn_a",
+                                                                                    "bsonType": "string",
+                                                                                    "queries": { "queryType": "equality", "contention": 8 }
+                                                                                },
+                                                                                {
+                                                                                    "keyId": {
+                                                                                        "$uuid": "a0d8e31d-8475-40bf-aefd-b0a8459080e1"
+                                                                                    },
+                                                                                    "path": "age_a",
+                                                                                    "bsonType": "long",
+                                                                                    "queries": { "queryType": "equality", "contention": 8 }
+                                                                                }
+                                                                             ]
+                                                                        }
+                                                                    }   
+                                                                },
+                                                                "csfleEncryptionSchemas": {
+                                                                    "testdb.coll_b": {
+                                                                        "jsonSchema":  {
+                                                                            "bsonType": "object", 
+                                                                            title : "Address Object Validation",
+                                                                            required : [ "street"],
+                                                                            properties : {
+                                                                                street : {
+                                                                                    bsonType : "string",
+                                                                                    description : "'street' must be a string and is required"
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "isRemoteSchema": true 
+                                                                    }
+                                                                }
+                                                            })");
+
+    auto nsA = getExpCtx()->getNamespaceString();
+    auto nsB = NamespaceString::createNamespaceString_forTest("testdb.coll_b");
+    getExpCtx()->setResolvedNamespaces(
+        {{nsA, {nsA, std::vector<BSONObj>{}}}, {nsB, {nsB, std::vector<BSONObj>{}}}});
+
+    auto lookupSpec = fromjson(
+        "{$lookup: {from: 'coll_b', as: 'docs', localField: 'foo', foreignField: 'l_foo', "
+        "pipeline: [{$match: {street: {$in: [\"Broadway\", \"Gaglardi\"]}}}]}}");
+    {
+        auto& schema = getSchemaForStageMultiSchema(
+            {lookupSpec}, nsA, kValidEncryptionInformationWithCsfleCmd);
+
+        ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("docs.street")));
+        ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("ssn_a")));
+    }
+}
+
 TEST_F(FLEPipelineTest, PropagateSchemaForGraphLookupCsfleEncryptionSchemasFails) {
     RAIIServerParameterControllerForTest controller("featureFlagLookupEncryptionSchemasFLE", true);
 

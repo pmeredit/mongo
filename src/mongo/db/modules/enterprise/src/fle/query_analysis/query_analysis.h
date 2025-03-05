@@ -83,20 +83,28 @@ struct QueryAnalysisParams {
                         FleVersion fleVersion,
                         bool isMultiSchema);
 
+    // This constructor should only be used in multi-schema scenarios, when both
+    // encryptionInformation and csfleEncryptionSchemas are present.
+    // In this case, the fleVersion is FLE2, and all csfle schemas must be unencrypted.
+    QueryAnalysisParams(const NamespaceString& ns,
+                        const BSONObj& encryptionInformationSchemas,
+                        const BSONObj& csfleEncryptionSchemas,
+                        BSONObj strippedObj);
+
     FleVersion fleVersion() const {
-        return visit(OverloadedVisitor{
-                         [](const FLE1SchemaMap&) { return FleVersion::kFle1; },
-                         [](const FLE2SchemaMap&) { return FleVersion::kFle2; },
-                     },
-                     schema);
+        return _fleVersion;
     }
 
-    std::variant<FLE1SchemaMap, FLE2SchemaMap> schema;
+    FLE1SchemaMap fle1SchemaMap;
+    FLE2SchemaMap fle2SchemaMap;
 
     /**
      * Command object without the encryption-related fields.
      */
     BSONObj strippedObj;
+
+private:
+    FleVersion _fleVersion;
 };
 
 QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,

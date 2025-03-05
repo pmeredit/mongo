@@ -4409,23 +4409,6 @@ TEST_F(EncryptionSchemaTreeTest, QueryAnalysisParams_MultiSchemaAssertConstraint
                        AssertionException,
                        9686709);
 
-    // Test 7: Providing both encryptionInformation & csfleEncryptionSchemas is forbidden.
-    ASSERT_THROWS_CODE(extractCryptdParameters(fromjson(R"({
-                "encryptionInformation": {
-                    "type": 1,
-                    "schema":{
-                        "testdb.coll_a": {}
-                        }
-                },
-                "csfleEncryptionSchemas": {}
-
-           }
-    )"),
-                                               ns,
-                                               true),
-                       AssertionException,
-                       9686710);
-
     // Test 8: Providing csfleEncryptionSchemas when expecting a single schema should uassert.
     ASSERT_THROWS_CODE(extractCryptdParameters(fromjson(R"({
                 "csfleEncryptionSchemas": {}
@@ -4470,14 +4453,17 @@ void validateSchemaMapWithEncryptedFields(
     }
 }
 
-// Validates that provided params contain the expected variant type.
+// Validates that provided params have been populated with the expected schema map in the cases
+// where only encrypted schemas are expected.
 void validateQueryAnalysisParams(const QueryAnalysisParams& params, FleVersion fleVersion) {
     if (fleVersion == FleVersion::kFle1) {
-        ASSERT_TRUE(params.fleVersion() == FleVersion::kFle1 &&
-                    std::holds_alternative<QueryAnalysisParams::FLE1SchemaMap>(params.schema));
+        ASSERT_EQUALS(params.fleVersion(), FleVersion::kFle1);
+        ASSERT_TRUE(!params.fle1SchemaMap.empty());
+        ASSERT_TRUE(params.fle2SchemaMap.empty());
     } else {
-        ASSERT_TRUE(params.fleVersion() == FleVersion::kFle2 &&
-                    std::holds_alternative<QueryAnalysisParams::FLE2SchemaMap>(params.schema));
+        ASSERT_EQUALS(params.fleVersion(), FleVersion::kFle2);
+        ASSERT_TRUE(params.fle1SchemaMap.empty());
+        ASSERT_TRUE(!params.fle2SchemaMap.empty());
     }
 }
 
@@ -4598,6 +4584,83 @@ DEATH_TEST(EncryptionSchemaTreeTest,
     }
 }
 
+const auto kInvalidEncryptionInformationWithCsfleCmd = fromjson(R"({
+    "encryptionInformation": {
+         "type": 1,
+         "schema":{
+             "testdb.coll_a": {
+                 "escCollection": "enxcol_.coll_a.esc",
+                 "ecocCollection": "enxcol_.coll_a.ecoc",
+                 "fields":
+                     [
+                        {
+                            "keyId": {
+                                "$uuid": "c7d050cb-e8c1-4108-8dd1-10f33f2c6dc3"
+                            },
+                            "path": "ssn_a",
+                            "bsonType": "string",
+                            "queries": { "queryType": "equality", "contention": 8 }
+                        },
+                        {
+                            "keyId": {
+                                "$uuid": "a0d8e31d-8475-40bf-aefd-b0a8459080e1"
+                            },
+                            "path": "age_a",
+                            "bsonType": "long",
+                            "queries": { "queryType": "equality", "contention": 8 }
+                        }
+                     ]
+                }
+            }   
+        },
+        "csfleEncryptionSchemas": {
+            "testdb.coll_b": {
+                "jsonSchema": { 
+                        type: "object",
+                        properties: {
+                            b: {
+                                encrypt: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                }
+                            }
+                        }
+                    },
+                    "isRemoteSchema": false 
+            }
+        }
+    })");
+
+DEATH_TEST(EncryptionSchemaTreeTest,
+           QueryAnalysisParams_ParseMultiSchemaAsSingleSchema_EncryptionInformationAndCsfle,
+           "9686716") {
+
+    auto params =
+        extractCryptdParameters(kInvalidEncryptionInformationWithCsfleCmd,
+                                NamespaceString::createNamespaceString_forTest("testdb.coll_a"),
+                                true);
+
+    // Parsing QueryAnalysisParams when both FLE1 and FLE2 encryption schemas are present is not
+    // supported.
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params),
+        AssertionException,
+        9686716);
+}
+
+TEST_F(EncryptionSchemaTreeTest,
+       QueryAnalysisParams_ParseMultiSchemaAsSchemaMap_InvalidEncryptionInformationAndCsfle) {
+
+    auto params =
+        extractCryptdParameters(kInvalidEncryptionInformationWithCsfleCmd,
+                                NamespaceString::createNamespaceString_forTest("testdb.coll_a"),
+                                true);
+
+    // Parsing QueryAnalysisParams when both FLE1 and FLE2 encryption schemas are present is not
+    // supported.
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse<EncryptionSchemaMap>(params), AssertionException, 10026002);
+}
 /**
  * QueryAnalysisParams_ExtractAndParseSingleSchema_LegacyCsfle: Test that a legacy style
  * csfle encryption schema can be extracted as both a single schema or multi schema
@@ -4724,5 +4787,59 @@ TEST_F(EncryptionSchemaTreeTest,
                                   true /*testParseAsSingleSchema*/);
 }
 
+const auto kValidEncryptionInformationWithCsfleCmd = fromjson(R"({
+    "encryptionInformation": {
+         "type": 1,
+         "schema":{
+             "testdb.coll_a": {
+                 "escCollection": "enxcol_.coll_a.esc",
+                 "ecocCollection": "enxcol_.coll_a.ecoc",
+                 "fields":
+                     [
+                        {
+                            "keyId": {
+                                "$uuid": "c7d050cb-e8c1-4108-8dd1-10f33f2c6dc3"
+                            },
+                            "path": "ssn_a",
+                            "bsonType": "string",
+                            "queries": { "queryType": "equality", "contention": 8 }
+                        },
+                        {
+                            "keyId": {
+                                "$uuid": "a0d8e31d-8475-40bf-aefd-b0a8459080e1"
+                            },
+                            "path": "age_a",
+                            "bsonType": "long",
+                            "queries": { "queryType": "equality", "contention": 8 }
+                        }
+                     ]
+                }
+            }   
+        },
+        "csfleEncryptionSchemas": {
+            "testdb.coll_b": {
+                "jsonSchema": { 
+                    },
+                    "isRemoteSchema": false 
+            }
+        }
+    })");
+
+TEST_F(EncryptionSchemaTreeTest,
+       QueryAnalysisParams_ParseMultiSchemaAsSchemaMap_EncryptionInformationAndCsfle) {
+
+    auto params =
+        extractCryptdParameters(kValidEncryptionInformationWithCsfleCmd,
+                                NamespaceString::createNamespaceString_forTest("testdb.coll_a"),
+                                true);
+    {
+        auto schema = EncryptionSchemaTreeNode::parse<EncryptionSchemaMap>(params);
+        // All the encryption schemas should be FLE2, including the ones provided in
+        // csfleEncryptionSchemas.
+        for (const auto& nsAndSchema : schema) {
+            ASSERT_TRUE(nsAndSchema.second && nsAndSchema.second->parsedFrom == FleVersion::kFle2);
+        }
+    }
+}
 }  // namespace
 }  // namespace mongo
