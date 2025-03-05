@@ -1,4 +1,8 @@
+import {
+    resultsEq,
+} from "jstests/aggregation/extras/utils.js";
 import {getPython3Binary} from "jstests/libs/python.js";
+import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     commonFailureTest,
     commonSinkTest,
@@ -337,9 +341,108 @@ try {
         assert.commandWorked(
             db.adminCommand({'configureFailPoint': 'awsLambdaBadRequestContent', 'mode': 'off'}));
     }
+    awsLambdaUpdateConnectionTest({
+        input: [
+            {
+                payloadToSend: {
+                    success: "yes I worked",
+                    shouldBeExcludeFromRequest: true,
+                    randomArray: [1, 2, 3]
+                }
+            },
+        ],
+        pipeline: [
+            {
+                $externalFunction: {
+                    connectionName: testConstants.awsIAMLambdaConnection,
+                    functionName,
+                    execution: "async",
+                }
+            },
+        ],
+        expectedOutputMessageCount: 1,
+        expectedDlq: [],
+        useTimeField: false,
+        featureFlags
+    });
 } finally {
     // Stop the container
     const stop2_ret = runMongoProgram(
         getPython3Binary(), "-u", lambdaContainer, "-v", "stop", "--container", containerName);
     assert.eq(stop2_ret, 0, "Could not stop containers");
+}
+
+function awsLambdaUpdateConnectionTest({
+    input,
+    pipeline,
+    expectedOutputMessageCount,
+    expectedDlq,
+    useTimeField = true,
+    featureFlags = {},
+}) {
+    // Test with a changestream source and a checkpoint in the middle.
+    const newPipeline = [
+        {$match: {operationType: "insert"}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        ...pipeline,
+    ];
+    const test = new TestHelper(
+        input,
+        newPipeline,
+        undefined,  // interval
+        "atlas",    // sourcetype
+        undefined,  // useNewCheckpointing
+        undefined,  // useRestoredExecutionPlan
+        undefined,  // writeDir
+        undefined,  // restoreDir
+        undefined,  // dbForTest
+        undefined,  // targetSourceMergeDb
+        useTimeField,
+        "included",  // sinkType
+    );
+    test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
+
+    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
+
+    test.run();
+    assert.commandWorked(test.inputColl.insertMany(input));
+
+    var waitTimeMs = 1000 * 10;
+
+    assert.soon(() => { return test.stats()["inputMessageCount"] == input.length; },
+                tojson(test.stats()),
+                waitTimeMs);
+
+    const waitForCount = expectedOutputMessageCount + expectedDlq.length;
+    assert.soon(() => {
+        return test.stats()["outputMessageCount"] + test.stats()["dlqMessageCount"] == waitForCount;
+    }, tojson(test.stats()), waitTimeMs);
+
+    assert.eq(test.stats()["outputMessageCount"], expectedOutputMessageCount);
+    assert.eq(test.stats()["dlqMessageCount"], expectedDlq.length);
+    assert.soon(() => {
+        return resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
+                         expectedDlq,
+                         true /* verbose */,
+                         ["_id"]);
+    });
+
+    assert.commandWorked(db.runCommand({
+        streams_updateConnection: '',
+        tenantId: test.tenantId,
+        processorId: test.processorId,
+        processorName: test.spName,
+        connection: {
+            name: "StreamsAWSIAMLambdaConnection",
+            type: 'aws_iam_lambda',
+            options: {
+                accessKey: "newAccessKey",
+                accessSecret: "newAccessSecret",
+                sessionToken: "newSessionToken",
+                expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+            }
+        },
+    }));
+
+    test.stop();
 }

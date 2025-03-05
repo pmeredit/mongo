@@ -50,6 +50,7 @@ mongo_cc_library(
         "start_stream_processor.cpp",
         "start_stream_sample.cpp",
         "stop_stream_processor.cpp",
+        "update_connection.cpp",
         "update_feature_flags.cpp",
         "write_checkpoint.cpp",
     ],
