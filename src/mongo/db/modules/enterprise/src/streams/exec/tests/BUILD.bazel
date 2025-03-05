@@ -819,6 +819,7 @@ mongo_cc_unit_test(
     copts = MONGOCXX_COPTS,
     linkopts = RT_SYSDEP,
     tags = [
+        "compile_requires_large_memory_gcc",
         "compile_requires_large_memory_gcc_fission",
         "mongo_unittest_eighth_group",
     ],

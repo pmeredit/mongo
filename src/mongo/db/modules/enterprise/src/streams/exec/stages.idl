@@ -833,6 +833,10 @@ structs:
                 description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent. Only supported with POST, PUT, and PATCH"
                 type: pipeline
                 optional: true
+            urlEncodePath:
+                description: "If set and true, url encode the path."
+                type: bool
+                default: false
             config:
                 description: "Additional configuration options for the $https operator"
                 type: HttpsConfigOptions

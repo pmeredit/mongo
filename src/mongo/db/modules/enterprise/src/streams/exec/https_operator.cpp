@@ -723,16 +723,15 @@ void HttpsOperator::parseBaseUrl() {
 
     result = curl_url_get(handle, CURLUPART_PORT, &port, 0);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
+            "Parsing url port failed",
             result == CURLUE_OK || result == CURLUE_NO_PORT);
     if (port != nullptr) {
         out.port = std::string{port};
     }
 
     result = curl_url_get(handle, CURLUPART_PATH, &path, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
-            result == CURLUE_OK);
+    uassert(
+        ErrorCodes::StreamProcessorInvalidOptions, "Parsing url path failed", result == CURLUE_OK);
     if (path != nullptr) {
         out.path = std::string{path};
     }
@@ -795,7 +794,12 @@ std::string HttpsOperator::makeUrlString(std::string additionalPath,
 
     if (!_baseUrlComponents.path.empty() || !additionalPath.empty()) {
         auto path = joinPaths(_baseUrlComponents.path, additionalPath);
-        result = curl_url_set(handle, CURLUPART_PATH, path.c_str(), CURLU_URLENCODE);
+
+        unsigned int flags = 0;
+        if (_options.urlEncodePath) {
+            flags = CURLU_URLENCODE;
+        }
+        result = curl_url_set(handle, CURLUPART_PATH, path.c_str(), flags);
         uassert(
             ErrorCodes::StreamProcessorInvalidOptions, "Failed to set path.", result == CURLUE_OK);
     }

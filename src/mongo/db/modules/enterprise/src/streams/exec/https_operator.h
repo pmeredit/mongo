@@ -51,7 +51,8 @@ public:
         // Optional url path that is evaluated per document and appended to the url defined in
         // the connection.
         boost::intrusive_ptr<mongo::Expression> pathExpr{nullptr};
-
+        // Represents whether to url encode the path.
+        bool urlEncodePath{false};
         // Defined in the connection.
         std::vector<std::string> connectionHeaders;
         // Query parameters used when making a HTTP request. Evaluated at runtime on each

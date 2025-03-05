@@ -1685,6 +1685,7 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     HttpsOperator::Options options{
         .method = parseMethod(parsedOperatorOptions.getMethod()),
         .url = connOptions.getUrl().toString(),
+        .urlEncodePath = parsedOperatorOptions.getUrlEncodePath(),
         .queryParams = parseDynamicObject(_context->expCtx, parsedOperatorOptions.getParameters()),
         .as = parsedOperatorOptions.getAs().toString(),
         .onError = parsedOperatorOptions.getOnError(),

@@ -2886,6 +2886,7 @@ TEST_F(PlannerTest, Https) {
         ASSERT_EQ(actualOper->getOptions().requestTimeoutSecs, expectedOpts.requestTimeoutSecs);
         ASSERT_EQ(actualOper->getOptions().connectionTimeoutSecs,
                   expectedOpts.connectionTimeoutSecs);
+        ASSERT_EQ(actualOper->getOptions().urlEncodePath, expectedOpts.urlEncodePath);
 
         // The following assertions require evaluating the nested expressions with an input
         // document.
@@ -3123,6 +3124,7 @@ TEST_F(PlannerTest, Https) {
             $https: {
                 connectionName: "https1",
                 path: "$bar",
+                urlEncodePath: true,
                 as: "response",
                 method: "POST",
                 headers: {
@@ -3150,6 +3152,7 @@ TEST_F(PlannerTest, Https) {
                       {
                           .method = mongo::HttpClient::HttpMethod::kPOST,
                           .url = "https://mongodb.com",
+                          .urlEncodePath = true,
                           .pathExpr = barExpr,
                           .connectionHeaders = std::vector<std::string>{"httpsHeader: foobar"},
                           .queryParams = expectedParameters,
