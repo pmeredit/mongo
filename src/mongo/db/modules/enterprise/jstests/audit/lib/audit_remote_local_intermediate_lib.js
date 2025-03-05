@@ -47,7 +47,12 @@ export const kSchemaOCSF = "ocsf";
 
 function getAddress(host) {
     const match = host.match(/ip-([\d-]+)(?::|\.)/);
-    return match ? match[1].replace(/-/g, '.') : null;
+
+    // Fallback to hosts that do not return ip host address.
+    if (!match) {
+        return get_ipaddr();
+    }
+    return match[1].replace(/-/g, '.');
 }
 
 function getFixtureOptions(isSharded, proxy_server, schema) {
