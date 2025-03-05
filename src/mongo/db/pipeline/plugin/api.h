@@ -98,6 +98,25 @@ struct mongodb_aggregation_stage_vt {
     void (*close)(mongodb_aggregation_stage* stage);
 };
 
+// De-sugar a stage into other stages.
+//
+// stageBson contains a BSON document with a single (stageName, stageDefinition) element tuple.
+//
+// On a return code of zero *result contains a new BSON document with a single element tuple.
+// The tuple is keyed by the input stage name; the value is a stage definition or array of stage
+// definitions that will be created.
+typedef int (*MongoExtensionParseDesugarStage)(MongoExtensionByteView stageBson,
+                                               MongoExtensionByteBuf** result);
+
+// Create a concrete aggregation stage from stageBson.
+//
+// stageBson contains a BSON document with a single (stageName, stageDefinition) element tuple.
+//
+// On a return code of zero, fills *stage with an object owned by the caller, otherwise fills *error
+// with an object owned by the caller.
+//
+// NB: desugaring should form a DAG of stages -- desugaring a stage $foo should not generate another
+// $foo or a stage that may desugar into $foo or demons may fly out of your nose.
 typedef int (*MongoExtensionParseAggregationStage)(MongoExtensionByteView stageBson,
                                                    mongodb_aggregation_stage** stage,
                                                    MongoExtensionByteBuf** error);
@@ -106,6 +125,12 @@ typedef int (*MongoExtensionParseAggregationStage)(MongoExtensionByteView stageB
 struct MongoExtensionPortal {
     // Supported version of the plugin API.
     int version;
+
+    // Register a de-sugaring stage.
+    //
+    // De-sugar stages do not have a concrete implementation and instead expand to one or more other
+    // stages based on the stage definition.
+    void (*add_desugar_stage)(MongoExtensionByteView name, MongoExtensionParseDesugarStage parser);
 
     // Invoke to add an aggregation stage. The `parser` function is responsible for parsing the
     // stage from a bson value and creating a mongodb_aggregation_stage object.

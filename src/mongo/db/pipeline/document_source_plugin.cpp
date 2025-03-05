@@ -4,6 +4,7 @@
 
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsontypes.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
 
 namespace mongo {
@@ -18,9 +19,51 @@ StringData byteBufAsStringData(const MongoExtensionByteBuf& buf) {
     return byteViewAsStringData(buf.vtable->get(&buf));
 }
 
-void add_aggregation_stage(MongoExtensionByteView name,
-                           MongoExtensionParseAggregationStage parser) {
-    auto name_sd = StringData(reinterpret_cast<const char*>(name.data), name.len);
+void addDesugarStage(MongoExtensionByteView name, MongoExtensionParseDesugarStage parser) {
+    auto name_sd = byteViewAsStringData(name);
+    auto id = DocumentSource::allocateId(name_sd);
+    LiteParsedDocumentSource::registerParser(name_sd.toString(),
+                                             LiteParsedDocumentSourceDefault::parse,
+                                             AllowedWithApiStrict::kAlways,
+                                             AllowedWithClientType::kAny);
+    DocumentSource::registerParser(
+        name_sd.toString(),
+        [id, parser](BSONElement specElem, const boost::intrusive_ptr<ExpressionContext>& expCtx)
+            -> std::list<boost::intrusive_ptr<DocumentSource>> {
+            BSONObj stage_def = specElem.wrap();
+            struct ResultDeleter {
+                void operator()(MongoExtensionByteBuf* buf) {
+                    buf->vtable->drop(buf);
+                }
+            };
+            MongoExtensionByteBuf* result_ptr = nullptr;
+            int code = parser(
+                MongoExtensionByteView{reinterpret_cast<const unsigned char*>(stage_def.objdata()),
+                                       static_cast<size_t>(stage_def.objsize())},
+                &result_ptr);
+            std::unique_ptr<MongoExtensionByteBuf, ResultDeleter> result(result_ptr);
+            uassert(code, str::stream() << byteBufAsStringData(*result), code == 0);
+
+            // TODO: verify result.len matches the length prefix of result.data.
+            BSONObj desugared(byteBufAsStringData(*result).data());
+            auto elem = desugared.firstElement();
+            std::list<boost::intrusive_ptr<DocumentSource>> desugared_sources;
+            if (elem.type() == BSONType::Array) {
+                for (auto stageElem : elem.embeddedObject()) {
+                    for (auto stage : DocumentSource::parse(expCtx, stageElem.embeddedObject())) {
+                        desugared_sources.push_back(stage);
+                    }
+                }
+            } else {
+                desugared_sources = DocumentSource::parse(expCtx, elem.embeddedObject());
+            }
+            return desugared_sources;
+        },
+        boost::none);
+}
+
+void addAggregationStage(MongoExtensionByteView name, MongoExtensionParseAggregationStage parser) {
+    auto name_sd = byteViewAsStringData(name);
     auto id = DocumentSource::allocateId(name_sd);
     LiteParsedDocumentSource::registerParser(name_sd.toString(),
                                              LiteParsedDocumentSourceDefault::parse,
@@ -64,7 +107,8 @@ MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
 (InitializerContext*) {
     MongoExtensionPortal portal;
     portal.version = MONGODB_PLUGIN_VERSION_0;
-    portal.add_aggregation_stage = &add_aggregation_stage;
+    portal.add_desugar_stage = &addDesugarStage;
+    portal.add_aggregation_stage = &addAggregationStage;
     mongodb_initialize_plugin(&portal);
 }
 

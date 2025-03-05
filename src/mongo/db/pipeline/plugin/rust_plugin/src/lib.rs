@@ -2,9 +2,10 @@
 // The entry point is an exported function called from a .cpp file.
 #![allow(dead_code)]
 
-mod vector;
-mod mongot_client;
 mod command_service;
+mod desugar;
+mod mongot_client;
+mod vector;
 
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
@@ -17,6 +18,7 @@ use plugin_api_bindgen::{
     MongoExtensionPortal,
 };
 
+use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
 use crate::vector::PluginVectorSearch;
 
 #[derive(Debug)]
@@ -35,15 +37,16 @@ impl Error {
         }
     }
 
-    pub fn with_source(
+    // TODO: source could be <E: Error + 'static> and this method could box it.
+    pub fn with_source<E: std::error::Error + 'static>(
         code: i32,
         message: String,
-        source: Box<dyn std::error::Error + 'static>,
+        source: E,
     ) -> Self {
         Self {
             code: NonZero::new(code).unwrap(),
             message,
-            source: Some(source),
+            source: Some(Box::new(source)),
         }
     }
 }
@@ -70,29 +73,37 @@ impl std::fmt::Display for Error {
     }
 }
 
-const VEC_BYTE_BUF_VTABLE: MongoExtensionByteBufVTable = MongoExtensionByteBufVTable {
-    drop: Some(VecByteBuf::drop),
-    get: Some(VecByteBuf::get),
-};
-
-struct VecByteBuf {
+// TODO: structs like this that are cast to an extension type should have a lint that errors if
+// they are not #[repr(C)]. When using the rust ABI they may be reordered(!) which is problematic
+// given the C bindings expect vtable access.
+#[repr(C)]
+pub struct VecByteBuf {
     vtable: &'static MongoExtensionByteBufVTable,
     buf: Vec<u8>,
 }
 
 impl VecByteBuf {
+    const VTABLE: MongoExtensionByteBufVTable = MongoExtensionByteBufVTable {
+        drop: Some(VecByteBuf::drop),
+        get: Some(VecByteBuf::get),
+    };
+
     pub fn from_string(s: String) -> Box<Self> {
         Box::new(Self {
-            vtable: &VEC_BYTE_BUF_VTABLE,
+            vtable: &Self::VTABLE,
             buf: s.into(),
         })
     }
 
     pub fn from_vec(v: Vec<u8>) -> Box<Self> {
         Box::new(Self {
-            vtable: &VEC_BYTE_BUF_VTABLE,
+            vtable: &Self::VTABLE,
             buf: v,
         })
+    }
+
+    pub fn into_byte_buf(self: Box<Self>) -> *mut MongoExtensionByteBuf {
+        Box::into_raw(self) as *mut MongoExtensionByteBuf
     }
 
     unsafe extern "C-unwind" fn drop(buf: *mut MongoExtensionByteBuf) {
@@ -426,4 +437,5 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal: *mut MongoExtensionP
     PluginAggregationStage::<EchoOxide>::register(portal);
     PluginAggregationStage::<AddSomeCrabs>::register(portal);
     PluginAggregationStage::<PluginVectorSearch>::register(portal);
+    PluginDesugarAggregationStage::<EchoWithSomeCrabs>::register(portal);
 }
