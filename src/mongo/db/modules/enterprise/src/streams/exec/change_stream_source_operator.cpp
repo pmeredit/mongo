@@ -444,8 +444,7 @@ void ChangeStreamSourceOperator::fetchLoop() {
                     restoredCheckpointInfo.description.getCheckpointTimestamp();
 
                 extraDetails.append("checkpoint.timestamp", checkpointTimestamp.toString());
-            }
-            if (_options.userSpecifiedStartingPoint) {
+            } else if (_options.userSpecifiedStartingPoint) {
                 const auto& startingPoint = *_options.userSpecifiedStartingPoint;
                 if (auto resumeToken = std::get_if<mongo::BSONObj>(&startingPoint)) {
                     extraDetails.append(
