@@ -79,6 +79,33 @@ void verifyBinData(const char* rawBuffer, int length) {
     	    })"));
 }
 
+void verifyFLE2TextSearchBinData(const Value binData, const BSONObj expectedPlaceholderBSON) {
+    ASSERT_EQ(binData.getType(), BSONType::BinData);
+
+    auto binDataElem = binData.getBinData();
+    ASSERT_EQ(binDataElem.type, BinDataType::Encrypt);
+
+    auto rawBuffer = static_cast<const char*>(binDataElem.data);
+    ASSERT(rawBuffer);
+
+    // First byte is the type, with '3' indicating that this is a FLE2 intent-to-encrypt marking.
+    ASSERT_GT(binDataElem.length, 1);
+    ASSERT_EQ(rawBuffer[0], 3);
+
+    // The remaining bytes are encoded as BSON.
+    BSONObj placeholderBSON(&rawBuffer[1]);
+
+    // Confirm type and algorithm type.
+    ASSERT_EQ(placeholderBSON.getIntField(FLE2EncryptionPlaceholder::kTypeFieldName),
+              static_cast<int>(Fle2PlaceholderType::kFind));
+    ASSERT_EQ(placeholderBSON.getIntField(FLE2EncryptionPlaceholder::kAlgorithmFieldName),
+              static_cast<int>(Fle2AlgorithmInt::kTextSearch));
+
+    // Confirm placeholder value is as expected.
+    ASSERT_BSONOBJ_EQ(placeholderBSON.getField(FLE2EncryptionPlaceholder::kValueFieldName).Obj(),
+                      expectedPlaceholderBSON);
+}
+
 void assertEncryptedCorrectly(const ResolvedEncryptionInfo& info,
                               const PlaceHolderResult& response,
                               BSONElement elem,
@@ -282,6 +309,83 @@ TEST(FLE2BuildEncryptPlaceholderValueTest, SucceedsForRandomQueryableEncryption)
 
     ASSERT_EQ(binData.getType(), BSONType::BinData);
     ASSERT_EQ(binData.getBinData().type, BinDataType::Encrypt);
+}
+
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyCorrectPlaceholderForTextSearchPrefixComparison) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    const auto placeholderType = EncryptionPlaceholderContext::kTextPrefixComparison;
+    const auto binData =
+        buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    verifyFLE2TextSearchBinData(
+        binData,
+        fromjson(R"({ v: "string", casef: false, diacf: false, prefix: { ub: 10, lb: 1 } })"));
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyOnlyGeneratedPrefixPlaceholder) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    QueryTypeConfig qtc1;
+    qtc1.setQueryType(QueryTypeEnum::SuffixPreview);
+    qtc1.setStrMinQueryLength(1);
+    qtc1.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc, qtc1};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    const auto placeholderType = EncryptionPlaceholderContext::kTextPrefixComparison;
+    const auto binData =
+        buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    verifyFLE2TextSearchBinData(
+        binData,
+        fromjson(R"({ v: "string", casef: false, diacf: false, prefix: { ub: 10, lb: 1 } })"));
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyTextSearchFailsWithIncorrectPlaceholderContext) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(
+            Value("5"_sd), metadata, EncryptionPlaceholderContext::kComparison, nullptr),
+        AssertionException,
+        63165);
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyTextSearchFailsWithIncorrectAlgorithm) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::Equality);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value("string"_sd),
+                                               metadata,
+                                               EncryptionPlaceholderContext::kTextPrefixComparison,
+                                               nullptr),
+                       AssertionException,
+                       10113904);
 }
 
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {
@@ -681,6 +785,18 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
                                            << "boo"
                                            << "foo" << correctField["foo"]));
     ASSERT_BSONOBJ_EQ(correctBSON, newUpdate);
+}
+
+TEST(BuildEncryptPlaceholderValueTest, VerifyTextSearchFailsForCSFLE) {
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{std::vector<UUID>{uassertStatusOK(
+                                        UUID::parse("01234567-89ab-cdef-edcb-a98765432101"))}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    MatcherTypeSet{BSONType::String}};
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(
+            Value("5"_sd), metadata, EncryptionPlaceholderContext::kTextPrefixComparison, nullptr),
+        AssertionException,
+        10113900);
 }
 
 TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {

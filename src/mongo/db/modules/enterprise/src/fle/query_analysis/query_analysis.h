@@ -134,6 +134,7 @@ PlaceHolderResult parsePlaceholderResult(BSONObj obj);
 enum class EncryptionPlaceholderContext {
     kComparison,
     kWrite,
+    kTextPrefixComparison,
 };
 
 /*
@@ -277,6 +278,13 @@ Value buildEncryptPlaceholder(Value input,
  * written to mongod, callers must pass the 'kWrite' EncryptionPlaceholderContext. Conversely, if
  * 'elem' is a constant against which we're making a comparison in a query, then callers should pass
  * the 'kComparison' context.
+ *
+ * There are also special comparison contexts, such as 'kTextPrefixComparison' used for text search
+ * comparisons. These comparison contexts are required because we need to identify the comparison
+ * type in order to generate the corresponding placeholder payload. Although it's possible to
+ * identify the encrypted index type from the ResolvedEncryptionInfo, a single encrypted text search
+ * indexed field supports multiple text search indexes (i.e. prefix and suffix). This means it's not
+ * possible to deduce the comparison type purely based on the index in the encryption metadata.
  *
  * If the 'placeholderContext' is 'kComparison', callers must pass the appropriate 'collator'. This
  * function will throw an assertion if a collation-aware comparison would be required against an

@@ -1197,9 +1197,11 @@ void processQueryCommand(OperationContext* opCtx,
 BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                                     const ResolvedEncryptionInfo& metadata,
                                     BSONElement elem) {
-    auto placeholderType = ctx == EncryptionPlaceholderContext::kComparison
-        ? Fle2PlaceholderType::kFind
-        : Fle2PlaceholderType::kInsert;
+    // There are multiple EncryptionPlaceholderContexts that correspond to kFind, such as
+    // kComparison and kTextPrefixComparison.
+    auto placeholderType = ctx == EncryptionPlaceholderContext::kWrite
+        ? Fle2PlaceholderType::kInsert
+        : Fle2PlaceholderType::kFind;
     auto algorithm = get<Fle2AlgorithmInt>(metadata.algorithm);
     auto ki = metadata.keyId.uuids()[0];
     auto cm = algorithm == Fle2AlgorithmInt::kUnindexed
@@ -1261,24 +1263,39 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 FLE2TextSearchInsertSpec spec(elem.String(), caseFold, diacriticFold);
 
                 for (auto& qtc : metadata.fle2SupportedQueries.value()) {
+                    tassert(10113901,
+                            "Encrypted text search query must specify string max query length.",
+                            qtc.getStrMaxQueryLength().has_value());
+                    tassert(
+                        10113902,
+                        "Encrypted text search query type must specify string min query length.",
+                        qtc.getStrMinQueryLength().has_value());
+                    auto lb = qtc.getStrMinQueryLength().value();
+                    auto ub = qtc.getStrMaxQueryLength().value();
+
                     switch (qtc.getQueryType()) {
                         case QueryTypeEnum::SubstringPreview: {
-                            auto mlen = qtc.getStrMaxLength().value();
-                            auto lb = qtc.getStrMinQueryLength().value();
-                            auto ub = qtc.getStrMaxQueryLength().value();
-                            spec.setSubstringSpec(FLE2SubstringInsertSpec(mlen, ub, lb));
+                            if (ctx == EncryptionPlaceholderContext::kWrite) {
+                                tassert(10113903,
+                                        "Encrypted text substring search query must specify string "
+                                        "max length.",
+                                        qtc.getStrMaxLength().has_value());
+                                auto mlen = qtc.getStrMaxLength().value();
+                                spec.setSubstringSpec(FLE2SubstringInsertSpec(mlen, ub, lb));
+                            }
                             break;
                         }
                         case QueryTypeEnum::SuffixPreview: {
-                            auto lb = qtc.getStrMinQueryLength().value();
-                            auto ub = qtc.getStrMaxQueryLength().value();
-                            spec.setSuffixSpec(FLE2SuffixInsertSpec(ub, lb));
+                            if (ctx == EncryptionPlaceholderContext::kWrite) {
+                                spec.setSuffixSpec(FLE2SuffixInsertSpec(ub, lb));
+                            }
                             break;
                         }
                         case QueryTypeEnum::PrefixPreview: {
-                            auto lb = qtc.getStrMinQueryLength().value();
-                            auto ub = qtc.getStrMaxQueryLength().value();
-                            spec.setPrefixSpec(FLE2PrefixInsertSpec(ub, lb));
+                            if (ctx == EncryptionPlaceholderContext::kWrite ||
+                                ctx == EncryptionPlaceholderContext::kTextPrefixComparison) {
+                                spec.setPrefixSpec(FLE2PrefixInsertSpec(ub, lb));
+                            }
                             break;
                         }
                         default:
@@ -1648,6 +1665,11 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
             default:
                 break;
         }
+    } else if (placeholderContext == EncryptionPlaceholderContext::kTextPrefixComparison) {
+        uassert(10113900, "Cannot use text search with CSFLE.", metadata.isFle2Encrypted());
+        uassert(10113904,
+                "Can only execute encrypted prefix search queries with a text search index.",
+                metadata.algorithmIs(Fle2AlgorithmInt::kTextSearch));
     }
 
     if (metadata.bsonTypeSet) {
