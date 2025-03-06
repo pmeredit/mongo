@@ -403,8 +403,7 @@ private:
         // Adds the collection to the durable catalog.
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
         std::pair<RecordId, std::unique_ptr<RecordStore>> catalogIdRecordStorePair =
-            uassertStatusOK(storageEngine->getCatalog()->createCollection(
-                opCtx, nss, newOptions, /*allocateDefaultSpace=*/true));
+            uassertStatusOK(storageEngine->getCatalog()->createCollection(opCtx, nss, newOptions));
         auto& catalogId = catalogIdRecordStorePair.first;
         auto catalogEntry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, catalogId);
         auto metadata = catalogEntry->metadata;
