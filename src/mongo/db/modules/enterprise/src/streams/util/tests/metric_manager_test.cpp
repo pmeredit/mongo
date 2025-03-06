@@ -4,19 +4,79 @@
 
 #include "streams/util/metric_manager.h"
 
-#include <memory>
-#include <string>
-#include <vector>
-
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/util/assert_util.h"
-#include "streams/exec/tests/test_utils.h"
-#include "streams/util/metrics.h"
 
 namespace streams {
 namespace {
 
 using namespace mongo;
+
+// A visitor class that can be used with MetricManager::visitAllMetrics().
+class TestMetricsVisitor {
+public:
+    const auto& counters() {
+        return _counters;
+    }
+
+    const auto& gauges() {
+        return _gauges;
+    }
+
+    const auto& intGauges() {
+        return _intGauges;
+    }
+
+    const auto& callbackGauges() {
+        return _callbackGauges;
+    }
+
+    const auto& histograms() {
+        return _histograms;
+    }
+
+    void visit(Counter* counter,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _counters[name] = counter;
+    }
+
+    void visit(Gauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _gauges[name] = gauge;
+    }
+
+    void visit(IntGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _intGauges[name] = gauge;
+    }
+
+    void visit(CallbackGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _callbackGauges[name] = gauge;
+    }
+
+    void visit(Histogram* histogram,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _histograms[name] = histogram;
+    }
+
+private:
+    stdx::unordered_map<std::string, Counter*> _counters;
+    stdx::unordered_map<std::string, Gauge*> _gauges;
+    stdx::unordered_map<std::string, IntGauge*> _intGauges;
+    stdx::unordered_map<std::string, CallbackGauge*> _callbackGauges;
+    stdx::unordered_map<std::string, Histogram*> _histograms;
+};
 
 TEST(MetricManagerTest, Counter) {
     MetricManager manager;
@@ -31,23 +91,14 @@ TEST(MetricManagerTest, Counter) {
     ASSERT_EQUALS(2, counter2->value());
     ASSERT_EQUALS(3, counter3->value());
 
-    auto assertCounter = [&](auto counters, Counter* counter) {
-        ASSERT_TRUE(counters.contains(""));
-        ASSERT_TRUE(counters.at("").contains(counter->getName()));
-        ASSERT_TRUE(counters.at("").at(counter->getName()).at(""));
-        ASSERT_EQUALS(counters.at("").at(counter->getName()).at(""), counter);
-    };
-
     {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& counters = visitor.counters();
-
-        assertCounter(counters, counter1.get());
-        assertCounter(counters, counter2.get());
-        assertCounter(counters, counter3.get());
-
-        ASSERT_EQUALS(counters.at("").size(), 3);
+        ASSERT_EQUALS(3, counters.size());
+        ASSERT_EQUALS(counter1.get(), counters.at("counter1"));
+        ASSERT_EQUALS(counter2.get(), counters.at("counter2"));
+        ASSERT_EQUALS(counter3.get(), counters.at("counter3"));
     }
     {
         counter1.reset();
@@ -55,55 +106,11 @@ TEST(MetricManagerTest, Counter) {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& counters = visitor.counters();
-        assertCounter(counters, counter3.get());
-
-        ASSERT_EQUALS(1, counters.at("").size());
+        ASSERT_EQUALS(1, counters.size());
+        ASSERT_EQUALS(counter3.get(), counters.at("counter3"));
     }
     {
         counter3.reset();
-        TestMetricsVisitor visitor;
-        manager.visitAllMetrics(&visitor);
-        const auto& counters = visitor.counters();
-        ASSERT_TRUE(counters.empty());
-    }
-}
-
-TEST(MetricManagerTest, CounterVec) {
-    MetricManager manager;
-
-    const std::string counterVec1Name{"counters1"};
-    const std::string counterVec1Desc{"countervec1 description"};
-    const std::vector<std::string> counterVec1ExtraLabelNames{"label1", "label2"};
-    auto counterVec = manager.registerCounterVec(
-        counterVec1Name, counterVec1Desc, {}, counterVec1ExtraLabelNames);
-
-    auto assertCounter = [&](std::vector<std::string> labelValues, int expectedCount) {
-        auto expectedCounter = counterVec->withLabels(std::move(labelValues));
-        expectedCounter->increment();
-
-        TestMetricsVisitor visitor;
-        manager.visitAllMetrics(&visitor);
-        const auto& counters = visitor.counters();
-
-        ASSERT_TRUE(counters.contains(""));
-        ASSERT_TRUE(counters.at("").contains(expectedCounter->getName()));
-
-        auto labels = expectedCounter->getLabels();
-        auto labelStr = fmt::format("label1={},label2={},", labels[0].second, labels[1].second);
-        ASSERT_TRUE(counters.at("").at(expectedCounter->getName()).contains(labelStr));
-
-        auto counter = counters.at("").at(expectedCounter->getName()).at(labelStr);
-        ASSERT_EQUALS(counter, expectedCounter.get());
-    };
-
-    assertCounter(std::vector<std::string>{"0", "0"}, 1);
-    assertCounter(std::vector<std::string>{"0", "1"}, 1);
-    assertCounter(std::vector<std::string>{"1", "0"}, 1);
-    assertCounter(std::vector<std::string>{"1", "1"}, 1);
-
-    {
-        counterVec.reset();
-
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& counters = visitor.counters();
@@ -124,22 +131,14 @@ TEST(MetricManagerTest, Gauge) {
     ASSERT_EQUALS(2, gauge2->value());
     ASSERT_EQUALS(3, gauge3->value());
 
-    auto assertGauge = [&](auto gauges, GaugeBase<double>* gauge) {
-        ASSERT_TRUE(gauges.contains(""));
-        ASSERT_TRUE(gauges.at("").contains(gauge->getName()));
-        ASSERT_TRUE(gauges.at("").at(gauge->getName()).at(""));
-        ASSERT_EQUALS(gauges.at("").at(gauge->getName()).at(""), gauge);
-    };
-
     {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& gauges = visitor.gauges();
-
-        assertGauge(gauges, gauge1.get());
-        assertGauge(gauges, gauge2.get());
-        assertGauge(gauges, gauge3.get());
-        ASSERT_EQUALS(3, gauges.at("").size());
+        ASSERT_EQUALS(3, gauges.size());
+        ASSERT_EQUALS(gauge1.get(), gauges.at("gauge1"));
+        ASSERT_EQUALS(gauge2.get(), gauges.at("gauge2"));
+        ASSERT_EQUALS(gauge3.get(), gauges.at("gauge3"));
         ASSERT_TRUE(visitor.callbackGauges().empty());
     }
     {
@@ -148,8 +147,8 @@ TEST(MetricManagerTest, Gauge) {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& gauges = visitor.gauges();
-        assertGauge(gauges, gauge3.get());
-        ASSERT_EQUALS(1, gauges.at("").size());
+        ASSERT_EQUALS(1, gauges.size());
+        ASSERT_EQUALS(gauge3.get(), gauges.at("gauge3"));
     }
     {
         gauge3.reset();
@@ -173,21 +172,14 @@ TEST(MetricManagerTest, CallbackGauge) {
     ASSERT_EQUALS(2, gauge2->value());
     ASSERT_EQUALS(3, gauge3->value());
 
-    auto assertGauge = [&](auto gauges, CallbackGauge* gauge) {
-        ASSERT_TRUE(gauges.contains(""));
-        ASSERT_TRUE(gauges.at("").contains(gauge->getName()));
-        ASSERT_TRUE(gauges.at("").at(gauge->getName()).at(""));
-        ASSERT_EQUALS(gauges.at("").at(gauge->getName()).at(""), gauge);
-    };
-
     {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& gauges = visitor.callbackGauges();
-        assertGauge(gauges, gauge1.get());
-        assertGauge(gauges, gauge2.get());
-        assertGauge(gauges, gauge3.get());
-        ASSERT_EQUALS(3, gauges.at("").size());
+        ASSERT_EQUALS(3, gauges.size());
+        ASSERT_EQUALS(gauge1.get(), gauges.at("gauge1"));
+        ASSERT_EQUALS(gauge2.get(), gauges.at("gauge2"));
+        ASSERT_EQUALS(gauge3.get(), gauges.at("gauge3"));
         ASSERT_TRUE(visitor.gauges().empty());
     }
     {
@@ -196,8 +188,8 @@ TEST(MetricManagerTest, CallbackGauge) {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& gauges = visitor.callbackGauges();
-        assertGauge(gauges, gauge3.get());
-        ASSERT_EQUALS(1, gauges.at("").size());
+        ASSERT_EQUALS(1, gauges.size());
+        ASSERT_EQUALS(gauge3.get(), gauges.at("gauge3"));
     }
     {
         gauge3.reset();
@@ -252,20 +244,13 @@ TEST(MetricManagerTest, Histogram) {
         {5, 0}, {10, 0}, {20, 2}, {boost::none, 1}};
     assertBucketsEqual(expectedHistogram2, histogram2->snapshotValue());
 
-    auto assertHistogram = [&](auto histograms, Histogram* histogram) {
-        ASSERT_TRUE(histograms.contains(""));
-        ASSERT_TRUE(histograms.at("").contains(histogram->getName()));
-        ASSERT_TRUE(histograms.at("").at(histogram->getName()).at(""));
-        ASSERT_EQUALS(histograms.at("").at(histogram->getName()).at(""), histogram);
-    };
-
     {
         TestMetricsVisitor visitor;
         manager.visitAllMetrics(&visitor);
         const auto& histograms = visitor.histograms();
-        assertHistogram(histograms, histogram1.get());
-        assertHistogram(histograms, histogram2.get());
-        ASSERT_EQUALS(2, histograms.at("").size());
+        ASSERT_EQUALS(2, histograms.size());
+        ASSERT_EQUALS(histogram1.get(), histograms.at("histogram1"));
+        ASSERT_EQUALS(histogram2.get(), histograms.at("histogram2"));
     }
 }
 

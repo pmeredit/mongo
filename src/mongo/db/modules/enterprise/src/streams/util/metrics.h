@@ -5,68 +5,27 @@
 #pragma once
 
 #include <atomic>
-#include <boost/container_hash/hash_fwd.hpp>
 #include <boost/optional.hpp>
-#include <cstddef>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/chrono.h"
-#include "mongo/stdx/mutex.h"
-#include "mongo/stdx/unordered_map.h"
-#include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/histogram.h"
 
 namespace streams {
 
-// Base class of all types metrics that can be used to collect metrics. All Collectors are
-// thread-safe.
-class Collector {
+// Base class of all metrics. All metrics are thread-safe.
+class Metric {
 public:
-    Collector(std::string name, std::string description)
-        : _name{std::move(name)}, _description{std::move(description)} {}
-
-    virtual ~Collector() = default;
+    virtual ~Metric() = default;
     virtual void takeSnapshot() = 0;
-
-    const std::string& getName() const {
-        return _name;
-    }
-
-    const std::string& getDescription() const {
-        return _description;
-    }
-
-protected:
-    std::string _name;
-    std::string _description;
-};
-
-// A single sample value a unique set label names and values
-class Metric : public Collector {
-public:
-    using LabelsVec = std::vector<std::pair<std::string, std::string>>;
-
-    Metric(std::string name, std::string description, LabelsVec labels)
-        : Collector{std::move(name), std::move(description)}, _labels{std::move(labels)} {}
-
-    const LabelsVec& getLabels() const {
-        return _labels;
-    }
-
-protected:
-    LabelsVec _labels;
 };
 
 // A metric that represents a single monotonically increasing counter.
 class Counter : public Metric {
 public:
-    Counter(std::string name, std::string description, LabelsVec labels)
-        : Metric{std::move(name), std::move(description), std::move(labels)} {}
-
     void increment(int64_t val = 1) {
         _value.fetchAndAddRelaxed(val);
     }
@@ -89,50 +48,10 @@ private:
     mongo::AtomicWord<int64_t> _snapshotValue{0};
 };
 
-// Collector that bundles with a common name, description and set of label names.
-class CounterVec : public Collector {
-public:
-    using LabelNames = std::vector<std::string>;
-    using LabelValues = std::vector<std::string>;
-
-    // Constructs a CounterVec with specified base labels that should be constrained.
-    CounterVec(std::string name,
-               std::string description,
-               Metric::LabelsVec baseLabels,
-               LabelNames extraLabelNames)
-        : Collector{std::move(name), std::move(description)},
-          _baseLabels{std::move(baseLabels)},
-          _extraLabelNames{std::move(extraLabelNames)} {}
-
-    // Retrieves a counter with the base labels and specified additional labels.
-    std::shared_ptr<Counter> withLabels(LabelValues extraLabelValues);
-
-    std::vector<std::shared_ptr<Counter>> getCounters();
-
-    void takeSnapshot() override;
-
-private:
-    std::size_t operator()(const LabelValues& labelValues) const {
-        size_t seed{0};
-        for (const auto& value : labelValues) {
-            boost::hash_combine(seed, value);
-        }
-        return seed;
-    }
-
-    Metric::LabelsVec _baseLabels;
-    LabelNames _extraLabelNames;
-    mongo::stdx::unordered_map<LabelValues, std::shared_ptr<Counter>> _countersByExtraLabelValues;
-    mongo::stdx::mutex _mutex;
-};
-
 // A metric that represents a single numerical value that can arbitrarily go up and down.
 template <typename T>
 class GaugeBase : public Metric {
 public:
-    GaugeBase(std::string name, std::string description, LabelsVec labels)
-        : Metric{std::move(name), std::move(description), std::move(labels)} {}
-
     void set(T val) {
         _value.storeRelaxed(val);
     }
@@ -169,9 +88,7 @@ class CallbackGauge : public Metric {
 public:
     using CallbackFn = std::function<double()>;
 
-    CallbackGauge(std::string name, std::string description, LabelsVec labels, CallbackFn fn)
-        : Metric{std::move(name), std::move(description), std::move(labels)},
-          _callbackFn(std::move(fn)) {}
+    CallbackGauge(CallbackFn fn) : Metric(), _callbackFn(std::move(fn)) {}
 
     double value() const {
         return _callbackFn();
@@ -212,10 +129,7 @@ public:
         std::atomic_int64_t count;
     };
 
-    Histogram(std::string name,
-              std::string description,
-              LabelsVec labels,
-              std::vector<int64_t> buckets);
+    Histogram(std::vector<int64_t> buckets);
 
     void takeSnapshot() override {
         for (size_t i = 0; i < _counts.size(); ++i) {

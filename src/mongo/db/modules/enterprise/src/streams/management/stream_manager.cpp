@@ -144,10 +144,10 @@ void validateOperatorsInCheckpoint(const std::vector<CheckpointOperatorInfo>& ch
     }
 }
 
-using MetricKey = std::pair<Metric::LabelsVec, std::string>;
+using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
 
 auto toMetricManagerLabels(const std::vector<MetricLabel>& labels) {
-    Metric::LabelsVec metricManagerLabels;
+    MetricManager::LabelsVec metricManagerLabels;
     metricManagerLabels.reserve(labels.size());
     for (const auto& label : labels) {
         metricManagerLabels.push_back(
@@ -168,7 +168,7 @@ public:
                    MetricContainer<HistogramMetricValue>* histogramMap)
         : _counterMap(counterMap), _gaugeMap(gaugeMap), _histogramMap(histogramMap) {}
 
-    auto toMetricLabels(const Metric::LabelsVec& labels) {
+    auto toMetricLabels(const MetricManager::LabelsVec& labels) {
         std::vector<MetricLabel> metricLabels;
         metricLabels.reserve(labels.size());
         for (const auto& label : labels) {
@@ -180,15 +180,18 @@ public:
         return metricLabels;
     }
 
-    void visit(Counter* counter) {
+    void visit(Counter* counter,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
         CounterMetricValue metricValue;
-        metricValue.setName(counter->getName());
-        metricValue.setDescription(counter->getDescription());
+        metricValue.setName(name);
+        metricValue.setDescription(description);
         // Counter and Gauge are thread-safe. We call value() here so that we get their
         // latest values even when Executor has not taken a snapshot of metrics in a while because
         // of a long-running runOnce() cycle.
         metricValue.setValue(counter->value());
-        metricValue.setLabels(toMetricLabels(counter->getLabels()));
+        metricValue.setLabels(toMetricLabels(labels));
         auto [it, inserted] =
             _counterMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
                                                 metricValue.getName().toString()),
@@ -198,23 +201,32 @@ public:
         }
     }
 
-    void visit(Gauge* gauge) {
-        visitGaugeBase(gauge);
+    void visit(Gauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        visitGaugeBase(gauge, name, description, labels);
     }
 
-    void visit(IntGauge* gauge) {
-        visitGaugeBase(gauge);
+    void visit(IntGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        visitGaugeBase(gauge, name, description, labels);
     }
 
-    void visit(CallbackGauge* gauge) {
+    void visit(CallbackGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
         GaugeMetricValue metricValue;
-        metricValue.setName(gauge->getName());
-        metricValue.setDescription(gauge->getDescription());
+        metricValue.setName(name);
+        metricValue.setDescription(description);
         // CallbackGauge is not thread-safe. So we call snapshotValue() here instead of value().
         // This causes CallbackGauge values to always be a little stale compared to Counter/Gauge
         // values. This is not ideal, but also not easy to fix. We choose to live with it for now.
         metricValue.setValue(gauge->snapshotValue());
-        metricValue.setLabels(toMetricLabels(gauge->getLabels()));
+        metricValue.setLabels(toMetricLabels(labels));
         auto [it, inserted] =
             _gaugeMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
                                               metricValue.getName().toString()),
@@ -224,11 +236,14 @@ public:
         }
     }
 
-    void visit(Histogram* histogram) {
+    void visit(Histogram* histogram,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
         HistogramMetricValue metricValue;
-        metricValue.setName(histogram->getName());
-        metricValue.setDescription(histogram->getDescription());
-        metricValue.setLabels(toMetricLabels(histogram->getLabels()));
+        metricValue.setName(name);
+        metricValue.setDescription(description);
+        metricValue.setLabels(toMetricLabels(labels));
 
         auto buckets = histogram->snapshotValue();
         std::vector<HistogramBucket> bucketsReply;
@@ -262,15 +277,18 @@ public:
 
 private:
     template <typename GaugeType>
-    void visitGaugeBase(GaugeType* gauge) {
+    void visitGaugeBase(GaugeType* gauge,
+                        const std::string& name,
+                        const std::string& description,
+                        const MetricManager::LabelsVec& labels) {
         GaugeMetricValue metricValue;
-        metricValue.setName(gauge->getName());
-        metricValue.setDescription(gauge->getDescription());
+        metricValue.setName(name);
+        metricValue.setDescription(description);
         // Counter and Gauge are thread-safe. We call value() here so that we get their
         // latest values even when Executor has not taken a snapshot of metrics in a while because
         // of a long-running runOnce() cycle.
         metricValue.setValue(gauge->value());
-        metricValue.setLabels(toMetricLabels(gauge->getLabels()));
+        metricValue.setLabels(toMetricLabels(labels));
         auto [it, inserted] =
             _gaugeMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
                                               metricValue.getName().toString()),
@@ -358,7 +376,7 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
 }
 
 void StreamManager::registerTenantMetrics(mongo::WithLock, const std::string& tenantId) {
-    Metric::LabelsVec labels;
+    MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
     for (size_t i = 0; i < idlEnumCount<StreamStatusEnum>; ++i) {
         labels.push_back(std::make_pair(kStatusLabelKey,
@@ -1835,7 +1853,7 @@ void StreamManager::testOnlyInsertDocuments(const mongo::TestOnlyInsertCommand& 
     processorInfo->executor->testOnlyInsertDocuments(std::move(docs));
 }
 
-using MetricKey = std::pair<Metric::LabelsVec, std::string>;
+using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
 
 GetMetricsReply StreamManager::getExternalMetrics() {
     GetMetricsReply reply;

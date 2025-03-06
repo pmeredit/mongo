@@ -42,7 +42,7 @@ public:
         // MetricManager instance with which all the metrics are registered.
         MetricManager* metricManager{nullptr};
         // Labels to use for the metrics.
-        Metric::LabelsVec metricLabels;
+        MetricManager::LabelsVec metricLabels;
     };
 
     // An entity that represents a buffer created in the source operator to hold input docs.

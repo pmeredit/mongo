@@ -4,79 +4,14 @@
 
 #include "streams/util/metrics.h"
 
-#include <cstddef>
-#include <cstdio>
-#include <fmt/format.h>
-#include <iostream>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "mongo/base/string_data.h"
-#include "mongo/stdx/mutex.h"
-#include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 
 using namespace mongo;
 
 namespace streams {
 
-std::shared_ptr<Counter> CounterVec::withLabels(LabelValues extraLabelValues) {
-    tassert(10092201,
-            fmt::format("Provided {} label values but expected {}",
-                        extraLabelValues.size(),
-                        _extraLabelNames.size()),
-            extraLabelValues.size() == _extraLabelNames.size());
-
-    stdx::lock_guard<stdx::mutex> lock(_mutex);
-    auto it = _countersByExtraLabelValues.find(extraLabelValues);
-
-    if (it == _countersByExtraLabelValues.end()) {
-        Metric::LabelsVec counterLabels{_baseLabels.begin(), _baseLabels.end()};
-        for (size_t i = 0; i < _extraLabelNames.size(); i++) {
-            counterLabels.push_back({_extraLabelNames[i], extraLabelValues[i]});
-        }
-
-        it = _countersByExtraLabelValues
-                 .insert({std::move(extraLabelValues),
-                          std::make_shared<Counter>(_name, _description, std::move(counterLabels))})
-                 .first;
-    }
-
-    return it->second;
-}
-
-std::vector<std::shared_ptr<Counter>> CounterVec::getCounters() {
-    stdx::lock_guard<stdx::mutex> lock(_mutex);
-    std::vector<std::shared_ptr<Counter>> counters;
-    counters.reserve(_countersByExtraLabelValues.size());
-
-    auto it = _countersByExtraLabelValues.begin();
-    while (it != _countersByExtraLabelValues.end()) {
-        counters.push_back(it->second);
-        ++it;
-    }
-
-    return counters;
-}
-
-void CounterVec::takeSnapshot() {
-    stdx::lock_guard<stdx::mutex> lock(_mutex);
-    auto it = _countersByExtraLabelValues.begin();
-    while (it != _countersByExtraLabelValues.end()) {
-        it->second->takeSnapshot();
-    }
-}
-
-Histogram::Histogram(std::string name,
-                     std::string description,
-                     LabelsVec labels,
-                     std::vector<int64_t> buckets)
-    : Metric{std::move(name), std::move(description), std::move(labels)},
-      BaseHistogram(std::move(buckets)),
-      _snapshot(_counts.size()) {
+Histogram::Histogram(std::vector<int64_t> buckets)
+    : BaseHistogram(std::move(buckets)), _snapshot(_counts.size()) {
 
     // `_counts` is one element larger than `_partitions` because the last item
     // in `_counts` is the catch-all bucket for +Inf.

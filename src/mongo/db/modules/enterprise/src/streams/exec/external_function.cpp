@@ -74,12 +74,6 @@ void ExternalFunction::doRegisterMetrics(MetricManager* metricManager) {
         makeExponentialDurationBuckets(kRequestTimeHistogramBucketStartMs,
                                        kRequestTimeHistogramExpFactor,
                                        kRequestTimeHistogramBucketCount));
-
-    _responseCodesCounterVec = metricManager->registerCounterVec(
-        "external_function_operator_request_counter",
-        "The number of occasions a request has completed a a roundtrip to AWS",
-        std::move(defaultLabels),
-        {"response_code"});
 }
 
 ExternalFunction::ExternalFunction(Context* context,
@@ -353,10 +347,6 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
             }
         }
     }
-
-
-    _responseCodesCounterVec->withLabels({std::to_string(invokeResult.GetStatusCode())})
-        ->increment();
 
     writeToStreamMeta(streamDoc, _options.functionName, invokeResult, responseTimeMs);
     if (!responseAsValue.missing()) {

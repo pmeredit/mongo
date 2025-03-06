@@ -38,7 +38,7 @@ int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
 }
 
 void DeadLetterQueue::registerMetrics(MetricManager* metricManager) {
-    Metric::LabelsVec labels;
+    MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
     labels.push_back(std::make_pair(kProcessorNameLabelKey, _context->streamName));
