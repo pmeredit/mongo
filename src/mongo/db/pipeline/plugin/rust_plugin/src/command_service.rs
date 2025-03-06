@@ -2,7 +2,7 @@
 The file below is generated using tonic-build:
 
 fn main() -> () {
-    let vector_service = tonic_build::manual::Service::builder()
+    let service = tonic_build::manual::Service::builder()
         .package("mongodb")
         .name("CommandService")
         .method(
@@ -12,12 +12,23 @@ fn main() -> () {
                 .input_type("VectorSearchCommand")
                 .output_type("MongotCursorBatch")
                 .codec_path("BsonCodec")
-                .build())
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("search")
+                .route_name("search")
+                .input_type("SearchCommand")
+                .output_type("MongotCursorBatch")
+                .codec_path("BsonCodec")
+                .client_streaming()
+                .server_streaming()
+                .build(),
+        )
         .build();
-
     tonic_build::manual::Builder::new()
         .out_dir("src")
-        .compile(&[vector_service]);
+        .compile(&[service]);
 }
  */
 
@@ -28,11 +39,11 @@ pub mod command_service_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use crate::mongot_client::{BsonCodec, MongotCursorBatch, VectorSearchCommand};
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    use crate::mongot_client::{BsonCodec, MongotCursorBatch, SearchCommand, VectorSearchCommand};
 
     #[derive(Debug, Clone)]
     pub struct CommandServiceClient<T> {
@@ -77,8 +88,9 @@ pub mod command_service_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             CommandServiceClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -117,15 +129,46 @@ pub mod command_service_client {
             &mut self,
             request: impl tonic::IntoRequest<VectorSearchCommand>,
         ) -> std::result::Result<tonic::Response<MongotCursorBatch>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = BsonCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/mongodb.CommandService/vectorSearch");
+            let path = http::uri::PathAndQuery::from_static(
+                "/mongodb.CommandService/vectorSearch",
+            );
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("mongodb.CommandService", "vectorSearch"));
             self.inner.unary(req, path, codec).await
+        }
+        pub async fn search(
+            &mut self,
+            request: impl tonic::IntoStreamingRequest<Message = SearchCommand>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<MongotCursorBatch>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = BsonCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/mongodb.CommandService/search",
+            );
+            let mut req = request.into_streaming_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("mongodb.CommandService", "search"));
+            self.inner.streaming(req, path, codec).await
         }
     }
 }
@@ -136,10 +179,10 @@ pub mod command_service_server {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use crate::mongot_client::{BsonCodec, MongotCursorBatch, VectorSearchCommand};
     use tonic::codegen::*;
+    use crate::mongot_client::{BsonCodec, MongotCursorBatch, SearchCommand, VectorSearchCommand};
 
     /// Generated trait containing gRPC methods that should be implemented for use with CommandServiceServer.
     #[async_trait]
@@ -148,6 +191,16 @@ pub mod command_service_server {
             &self,
             request: tonic::Request<VectorSearchCommand>,
         ) -> std::result::Result<tonic::Response<MongotCursorBatch>, tonic::Status>;
+        /// Server streaming response type for the search method.
+        type searchStream: tonic::codegen::tokio_stream::Stream<
+            Item = std::result::Result<MongotCursorBatch, tonic::Status>,
+        >
+        + std::marker::Send
+        + 'static;
+        async fn search(
+            &self,
+            request: tonic::Request<tonic::Streaming<SearchCommand>>,
+        ) -> std::result::Result<tonic::Response<Self::searchStream>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct CommandServiceServer<T> {
@@ -170,7 +223,10 @@ pub mod command_service_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -225,9 +281,15 @@ pub mod command_service_server {
                 "/mongodb.CommandService/vectorSearch" => {
                     #[allow(non_camel_case_types)]
                     struct vectorSearchSvc<T: CommandService>(pub Arc<T>);
-                    impl<T: CommandService> tonic::server::UnaryService<VectorSearchCommand> for vectorSearchSvc<T> {
+                    impl<
+                        T: CommandService,
+                    > tonic::server::UnaryService<VectorSearchCommand>
+                    for vectorSearchSvc<T> {
                         type Response = MongotCursorBatch;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<VectorSearchCommand>,
@@ -261,19 +323,68 @@ pub mod command_service_server {
                     };
                     Box::pin(fut)
                 }
-                _ => Box::pin(async move {
-                    let mut response = http::Response::new(empty_body());
-                    let headers = response.headers_mut();
-                    headers.insert(
-                        tonic::Status::GRPC_STATUS,
-                        (tonic::Code::Unimplemented as i32).into(),
-                    );
-                    headers.insert(
-                        http::header::CONTENT_TYPE,
-                        tonic::metadata::GRPC_CONTENT_TYPE,
-                    );
-                    Ok(response)
-                }),
+                "/mongodb.CommandService/search" => {
+                    #[allow(non_camel_case_types)]
+                    struct searchSvc<T: CommandService>(pub Arc<T>);
+                    impl<
+                        T: CommandService,
+                    > tonic::server::StreamingService<SearchCommand> for searchSvc<T> {
+                        type Response = MongotCursorBatch;
+                        type ResponseStream = T::searchStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<tonic::Streaming<SearchCommand>>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as CommandService>::search(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = searchSvc(inner);
+                        let codec = BsonCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
             }
         }
     }

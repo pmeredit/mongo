@@ -1,21 +1,16 @@
 use crate::command_service::command_service_client::CommandServiceClient;
-use crate::mongot_client::{MongotCursorBatch, VectorSearchCommand};
+use crate::mongot_client::{MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS};
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
-use bson::{bson, doc, to_raw_document_buf, Bson, RawArray, RawArrayBuf, Uuid};
-use bson::{Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use bson::{doc, to_raw_document_buf, RawArrayBuf, Uuid};
+use bson::{Document, RawBsonRef, RawDocumentBuf};
 use bytes::Buf;
 use std::collections::VecDeque;
 use std::num::NonZero;
-use std::sync::OnceLock;
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::Builder;
 use tonic::codec::{Codec, Decoder, Encoder};
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::{Request, Response};
-
-static MONGOT_ENDPOINT: &str = "http://localhost:27030";
-static RUNTIME_THREADS: usize = 4;
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
 pub struct PluginVectorSearch {
     client: CommandServiceClient<Channel>,
@@ -184,42 +179,5 @@ impl PluginVectorSearch {
         let result = self.client.vectorSearch(request).await?;
 
         Ok(result)
-    }
-
-    fn extract_vector(document: &RawDocument, path: &str) -> Result<Vec<f64>, Error> {
-        let raw_array = document.get_array(path).map_err(|_| Error {
-            code: NonZero::new(1).unwrap(),
-            message: String::from("Vector field is expected to be an array"),
-            source: None,
-        })?;
-
-        let mut query_vector = Vec::new();
-
-        for bson in raw_array.into_iter() {
-            let value = match bson {
-                Ok(bson) => match bson {
-                    RawBsonRef::Double(v) => v,
-                    RawBsonRef::Int32(v) => v as f64,
-                    RawBsonRef::Int64(v) => v as f64,
-                    _ => {
-                        return Err(Error {
-                            code: NonZero::new(1).unwrap(),
-                            message: String::from("Invalid type in vector field, expected numbers"),
-                            source: None,
-                        })
-                    }
-                },
-                Err(_) => {
-                    return Err(Error {
-                        code: NonZero::new(1).unwrap(),
-                        message: String::from("Invalid type in vector field, expected numbers"),
-                        source: None,
-                    })
-                }
-            };
-            query_vector.push(value);
-        }
-
-        Ok(query_vector)
     }
 }

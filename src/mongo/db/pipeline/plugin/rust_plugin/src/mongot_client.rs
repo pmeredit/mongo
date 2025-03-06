@@ -1,10 +1,17 @@
-use std::io::Write;
-use std::marker::PhantomData;
 use bson::{Bson, Document, RawArrayBuf, Uuid};
 use bytes::{Buf, BufMut};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::marker::PhantomData;
+use std::sync::OnceLock;
+use tokio::runtime::Runtime;
 use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 use tonic::Status;
+
+pub(crate) static MONGOT_ENDPOINT: &str = "http://localhost:27030";
+pub(crate) static RUNTIME_THREADS: usize = 4;
+pub(crate) static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MongotCursorBatch {
@@ -17,25 +24,26 @@ pub struct MongotCursorBatch {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MongotCursorResult {
-    pub id: u32,
+    pub id: u64,
     #[serde(rename = "nextBatch")]
-    pub next_batch: Vec<VectorSearchResult>,
-    pub ns: String,
-    pub r#type: Option<ResultType>,
+    pub next_batch: Vec<MongotResult>,
+    ns: String,
+    r#type: Option<ResultType>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct VectorSearchResult {
-    #[serde(rename = "_id")]
-    pub id: Bson,
-    #[serde(rename = "$vectorSearchScore")]
-    pub score: f32
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-enum ResultType {
+pub enum ResultType {
     Results,
     Meta,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MongotResult {
+    #[serde(rename = "_id")]
+    pub id: Bson,
+    #[serde(alias = "$searchScore", rename = "$vectorSearchScore")]
+    #[serde(skip_serializing)]
+    pub score: f32
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,6 +63,39 @@ pub struct VectorSearchCommand {
     pub num_candidates: i64,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SearchCommand {
+    Initial(InitialSearchCommand),
+    GetMore(GetMoreSearchCommand),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InitialSearchCommand {
+    #[serde(rename = "search")]
+    pub search: String,
+    #[serde(rename = "$db")]
+    pub db: String,
+    #[serde(rename = "collectionUUID")]
+    pub collection_uuid: Uuid,
+    #[serde(rename = "query")]
+    pub query: Document,
+    #[serde(rename = "cursorOptions")]
+    pub cursor_options: Option<CursorOptions>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetMoreSearchCommand {
+    #[serde(rename = "getMore")]
+    pub cursor_id: u64,
+    pub cursor_options: Option<CursorOptions>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CursorOptions {
+    #[serde(rename = "batchSize")]
+    pub batch_size: i64,
+}
 #[derive(Debug)]
 pub struct BsonEncoder<T>(PhantomData<T>);
 
