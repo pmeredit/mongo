@@ -62,7 +62,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 jsTestLog("Test cleanup on unencrypted collection fails");
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     assert.commandWorked(edb.createCollection("unencrypted"));
-    assert.commandFailedWithCode(edb.unencrypted.cleanup(), 6346807);
+    assert.soonNoExcept(() => assert.commandFailedWithCode(edb.unencrypted.cleanup(), 6346807));
 });
 
 jsTestLog("Test cleanup on empty encrypted collection");
