@@ -137,6 +137,7 @@ private:
     RateLimiter _rateLimiter;
 
     std::shared_ptr<Counter> _throttleDurationCounter;
+    std::shared_ptr<CounterVec> _responseCodesCounterVec;
     std::shared_ptr<Histogram> _successfulRequestTimeHistogram;
     std::shared_ptr<Histogram> _failedRequestTimeHistogram;
 

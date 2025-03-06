@@ -66,7 +66,7 @@ int MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
 }
 
 void MongoDBDeadLetterQueue::registerMetrics(MetricManager* metricManager) {
-    MetricManager::LabelsVec labels = getDefaultMetricLabels(_context);
+    Metric::LabelsVec labels = getDefaultMetricLabels(_context);
 
     DeadLetterQueue::registerMetrics(metricManager);
     labels.push_back(std::make_pair("kind", "mongodb"));

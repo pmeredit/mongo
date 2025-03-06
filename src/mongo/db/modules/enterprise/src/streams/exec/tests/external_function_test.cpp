@@ -1820,4 +1820,76 @@ TEST_F(ExternalFunctionTest, ShouldReportCorrectRequestRoundtripTimes) {
         delayMs *= 5;
     }
 }
+
+TEST_F(ExternalFunctionTest, ShouldReportCorrectRequestCounts) {
+    auto mockClient = std::make_unique<MockLambdaClient>();
+
+    const auto functionName = "foo";
+    mockClient->expectValidation(functionName);
+
+    auto rawMockClient = mockClient.get();
+    auto options = ExternalFunction::Options{
+        .lambdaClient = std::move(mockClient),
+        .functionName = "foo",
+        .execution = mongo::ExternalFunctionExecutionEnum::Sync,
+        .as = boost::optional<std::string>("response"),
+    };
+
+    _externalFunction = std::make_unique<ExternalFunction>(
+        _context.get(), std::move(options), _context->streamName, 100);
+    _externalFunction->doRegisterMetrics(_executor->getMetricManager());
+
+    const auto payload = R"({"data":"foo"})";
+    auto addMockClientExpectation = [&](int responseCode) {
+        Aws::Lambda::Model::InvokeRequest req;
+        req.SetFunctionName(functionName);
+        req.SetInvocationType(Aws::Lambda::Model::InvocationType::RequestResponse);
+
+        std::shared_ptr<Aws::IOStream> body = std::make_shared<Aws::StringStream>(payload);
+        req.SetBody(body);
+
+        Aws::Lambda::Model::InvokeResult result;
+        result.SetStatusCode(responseCode);
+        result.SetExecutedVersion("foo123");
+        auto responseBody = Aws::Utils::Stream::DefaultResponseStreamFactoryMethod();
+        *responseBody << R"({"ack":"ok"})";
+        result.ReplaceBody(responseBody);
+        rawMockClient->expect(req, Aws::Lambda::Model::InvokeOutcome(std::move(result)));
+    };
+
+    auto retrieveRequestCounts = [&](int responseCode) {
+        TestMetricsVisitor metrics;
+        _executor->getMetricManager()->visitAllMetrics(&metrics);
+
+        const auto& countersByName = metrics.counters().find(_context->streamProcessorId);
+        ASSERT_NOT_EQUALS(countersByName, metrics.counters().end());
+
+        auto countersByLabel =
+            countersByName->second.find("external_function_operator_request_counter");
+        ASSERT_NOT_EQUALS(countersByLabel, countersByName->second.end());
+
+        auto it = countersByLabel->second.find(
+            fmt::format("response_code={},", std::to_string(responseCode)));
+        ASSERT_NOT_EQUALS(it, countersByLabel->second.end());
+
+        it->second->takeSnapshot();
+        return it->second->snapshotValue();
+    };
+
+    auto runTestAndAssert = [&](int initRequestCount, int responseCode) {
+        addMockClientExpectation(responseCode);
+
+        auto doc = StreamDocument{Document{fromjson(payload)}};
+        _externalFunction->processStreamDoc(&doc);
+
+        auto count = retrieveRequestCounts(responseCode);
+        ASSERT_EQ(count, initRequestCount + 1);
+    };
+
+    for (int i = 0; i < 5; i++) {
+        runTestAndAssert(i, 200);
+        runTestAndAssert(i, 300);
+        runTestAndAssert(i, 400);
+    }
+}
 };  // namespace streams

@@ -182,7 +182,7 @@ std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue) {
     return result;
 }
 
-std::string TestMetricsVisitor::getLabelsAsStrs(const MetricManager::LabelsVec& labels) {
+std::string TestMetricsVisitor::getLabelsAsStrs(const Metric::LabelsVec& labels) {
     std::stringstream labelsStr;
     for (const auto& label : labels) {
         if (label.first == kProcessorIdLabelKey || label.first == kTenantIdLabelKey ||

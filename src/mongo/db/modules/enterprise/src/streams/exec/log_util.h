@@ -42,7 +42,7 @@ mongo::BSONObj toBSON(const LoggingContext& loggingContext);
             assertion);
 
 // Get default labels for a specific streamProcessor's metrics.
-MetricManager::LabelsVec getDefaultMetricLabels(Context* context);
+Metric::LabelsVec getDefaultMetricLabels(Context* context);
 
 // Allows StreamDataMsg to be use in LOGV2 statements.
 mongo::BSONObj toBSON(const StreamDataMsg& msg);

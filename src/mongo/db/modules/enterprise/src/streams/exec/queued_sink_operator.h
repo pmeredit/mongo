@@ -54,7 +54,7 @@ public:
     }
 
     // Register metrics for this writer.
-    void registerMetrics(MetricManager* metricManager, const MetricManager::LabelsVec& labels) {
+    void registerMetrics(MetricManager* metricManager, const Metric::LabelsVec& labels) {
         _writeLatencyMs = metricManager->registerHistogram(
             fmt::format("{}_write_latency_ms", boost::algorithm::to_lower_copy(getName())),
             /* description */ "Latency for sync batch writes to the sink.",
