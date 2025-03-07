@@ -45,7 +45,7 @@ const ExternalFunction::Options& ExternalFunctionSinkOperator::getOptions() {
     return _externalFunction.getOptions();
 }
 
-std::unique_ptr<SinkWriter> ExternalFunctionSinkOperator::makeWriter(int id) {
+std::unique_ptr<SinkWriter> ExternalFunctionSinkOperator::makeWriter() {
     return std::make_unique<ExternalFunctionWriter>(_context, this, &_externalFunction);
 }
 

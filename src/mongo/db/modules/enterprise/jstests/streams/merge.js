@@ -419,6 +419,7 @@ const runAll = (parallelism) => {
                     },
                     whenMatched: 'keepExisting',
                     whenNotMatched: 'insert',
+                    parallelism: NumberInt(1)
                 }
             }
         ]);
@@ -512,6 +513,7 @@ const runAll = (parallelism) => {
                     },
                     whenMatched: 'keepExisting',
                     whenNotMatched: 'insert',
+                    parallelism: NumberInt(1)
                 }
             }
         ]);
@@ -570,6 +572,7 @@ const runAll = (parallelism) => {
                         },
                         whenMatched: 'keepExisting',
                         whenNotMatched: 'insert',
+                        parallelism: NumberInt(1)
                     }
                 }
             ]);
@@ -625,6 +628,7 @@ const runAll = (parallelism) => {
                     },
                     whenMatched: 'keepExisting',
                     whenNotMatched: 'insert',
+                    parallelism: NumberInt(1)
                 }
             }
         ]);

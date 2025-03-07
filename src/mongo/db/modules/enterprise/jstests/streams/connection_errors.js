@@ -197,7 +197,7 @@ function badMergeStartError() {
     };
 
     test();
-    test(4);
+    test(2);
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.

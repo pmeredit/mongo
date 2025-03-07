@@ -186,13 +186,6 @@ BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMe
     return objBuilder;
 }
 
-mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
-                                           const StreamDocument& streamDoc,
-                                           const std::string& operatorName,
-                                           mongo::Status status) {
-    return toDeadLetterQueueMsg(streamMetaFieldName, streamDoc, operatorName, status.reason());
-}
-
 BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
                                     const StreamMeta& streamMeta,
                                     const Document& doc,

@@ -17,7 +17,7 @@ public:
     S3EmitOperator(Context* context, Options options);
 
     // Make a SinkWriter instance.
-    std::unique_ptr<SinkWriter> makeWriter(int id) override;
+    std::unique_ptr<SinkWriter> makeWriter() override;
 
     std::string doGetName() const override {
         return "S3EmitOperator";

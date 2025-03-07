@@ -16,7 +16,6 @@
 #include "streams/exec/message.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/stream_stats.h"
-#include "streams/exec/util.h"
 #include "streams/util/metrics.h"
 
 namespace streams {
@@ -45,7 +44,7 @@ public:
 
     // Return the docs partition. QueuedSinkOperator uses this to partition messages to different
     // writer threads. The partition implementation can modify the doc if needed.
-    virtual mongo::StatusWith<size_t> partition(StreamDocument& doc) {
+    virtual size_t partition(StreamDocument& doc) {
         MONGO_UNIMPLEMENTED;
     }
 
@@ -128,7 +127,7 @@ protected:
     ConnectionStatus doGetConnectionStatus() override;
 
     // Make a SinkWriter instance.
-    virtual std::unique_ptr<SinkWriter> makeWriter(int id) = 0;
+    virtual std::unique_ptr<SinkWriter> makeWriter() = 0;
 
     // Connection type of this QueuedSinkOperator.
     virtual mongo::ConnectionTypeEnum getConnectionType() const = 0;
@@ -143,11 +142,6 @@ protected:
 
     // Merges `_consumerStats` into `_stats` before returning.
     OperatorStats doGetStats() override;
-
-    // Returns true if this writerID will handle partitioning (for now, writerID==0).
-    bool isPartitioner(int writerID) {
-        return writerID == 0;
-    }
 
 private:
     friend class MergeOperatorTest;

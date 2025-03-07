@@ -34,7 +34,7 @@ public:
         : QueuedSinkOperator(context, 1 /* numInputs */, 1 /* parallelism */),
           _options(std::move(options)) {}
 
-    std::unique_ptr<SinkWriter> makeWriter(int id) override;
+    std::unique_ptr<SinkWriter> makeWriter() override;
 
     std::string doGetName() const override {
         return "TimeseriesEmitOperator";

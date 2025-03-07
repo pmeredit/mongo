@@ -17,7 +17,7 @@ void S3EmitWriter::connect() {
     return;
 }
 
-std::unique_ptr<SinkWriter> S3EmitOperator::makeWriter(int id) {
+std::unique_ptr<SinkWriter> S3EmitOperator::makeWriter() {
     return std::make_unique<S3EmitWriter>(_context, this);
 }
 

@@ -16,7 +16,6 @@
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/stream_processor_feature_flags.h"
-#include "streams/exec/util.h"
 #include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"
 
@@ -52,9 +51,9 @@ void QueuedSinkOperator::doStart() {
             _parallelism >= 1);
 
     // Create WriterThreads.
-    for (int writerID = 0; writerID < _parallelism; ++writerID) {
+    for (int threadId = 0; threadId < _parallelism; ++threadId) {
         // SinkWriter instances are duplicates of one another.
-        auto writer = makeWriter(writerID);
+        auto writer = makeWriter();
         _threads.push_back(makeThread(std::move(writer)));
     }
 
@@ -253,15 +252,8 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
 
         // Partition the documents.
         for (auto& doc : dataMsg.docs) {
-            auto result = writer->partition(doc);
-            if (!result.isOK()) {
-                _context->dlq->addMessage(toDeadLetterQueueMsg(
-                    _context->streamMetaFieldName, doc, getName(), result.getStatus()));
-                _stats.numDlqBytes += doc.doc.getApproximateSize();
-                _stats.numDlqDocs++;
-                continue;
-            }
-            auto idx = result.getValue() % _threads.size();
+            size_t hash = writer->partition(doc);
+            auto idx = hash % _threads.size();
             msgs[idx].docs.push_back(std::move(doc));
         }
 

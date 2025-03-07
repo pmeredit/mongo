@@ -37,7 +37,7 @@ public:
     void registerMetrics(MetricManager* metricManager) override;
 
     // Make a SinkWriter instance.
-    std::unique_ptr<SinkWriter> makeWriter(int id) override;
+    std::unique_ptr<SinkWriter> makeWriter() override;
 
 protected:
     mongo::ConnectionTypeEnum getConnectionType() const override {

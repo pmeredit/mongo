@@ -26,7 +26,9 @@ for (let parallelism of [0, 2, 4, 8]) {
         useGeneratedSourcePipeline = true,
     }) => {
         var extras = {};
-        extras.parallelism = NumberInt(parallelism > 0 ? parallelism : 1);
+        if (parallelism > 0) {
+            extras.parallelism = NumberInt(parallelism);
+        }
         if (on) {
             extras.on = on;
         }
@@ -169,6 +171,35 @@ const expectFailureTest = (pipeline, errmsg) => {
     assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorInvalidOptions);
     assert.eq(errmsg, result.errmsg);
 };
+
+const errmsg =
+    "StreamProcessorInvalidOptions: $merge.into.db and $merge.into.coll must be literals if $merge.parallelism is greater than 1";
+expectFailureTest(
+    [
+        {$source: {connectionName: constants.atlasConnection, db: "db", coll: "coll"}},
+        {
+            $merge: {
+                into: {connectionName: constants.atlasConnection, db: "$db", coll: "coll"},
+                parallelism: NumberInt(2)
+            }
+        }
+    ],
+    errmsg);
+expectFailureTest(
+    [
+        {$source: {connectionName: constants.atlasConnection, db: "db", coll: "coll"}},
+        {
+            $merge: {
+                into: {
+                    connectionName: constants.atlasConnection,
+                    db: "db",
+                    coll: {$toString: "$foo"}
+                },
+                parallelism: NumberInt(4)
+            }
+        }
+    ],
+    errmsg);
 expectFailureTest(
     [
         {$source: {connectionName: constants.atlasConnection, db: "db", coll: "coll"}},

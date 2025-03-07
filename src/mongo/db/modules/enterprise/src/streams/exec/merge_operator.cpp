@@ -12,7 +12,6 @@
 #include <utility>
 
 #include "mongo/bson/json.h"
-#include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/expression.h"
@@ -85,6 +84,14 @@ MergeOperator::MergeOperator(Context* context, Options options)
             << maxMergeParallelism,
         _options.spec.getParallelism() >= 1 &&
             _options.spec.getParallelism() <= maxMergeParallelism);
+
+    auto targetCollection = parseAtlasConnection();
+    // TODO(SERVER-100768): Support this.
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "$merge.into.db and $merge.into.coll must be literals if $merge.parallelism is greater "
+            "than 1",
+            _options.spec.getParallelism() == 1 ||
+                (targetCollection.getDb().isLiteral() && targetCollection.getColl().isLiteral()));
 }
 
 boost::intrusive_ptr<DocumentSource> MergeOperator::makeDocumentSourceMerge() {
@@ -118,7 +125,7 @@ mongo::AtlasCollection MergeOperator::parseAtlasConnection() {
     return AtlasCollection::parse(IDLParserContext("AtlasCollection"), _options.spec.getInto());
 }
 
-std::unique_ptr<SinkWriter> MergeOperator::makeWriter(int id) {
+std::unique_ptr<SinkWriter> MergeOperator::makeWriter() {
     MergeWriter::Options opts;
     auto stage = makeDocumentSourceMerge();
     opts.documentSource = dynamic_cast<DocumentSourceMerge*>(stage.get());
@@ -127,25 +134,7 @@ std::unique_ptr<SinkWriter> MergeOperator::makeWriter(int id) {
     opts.db = targetCollection.getDb();
     opts.coll = targetCollection.getColl();
     opts.onFieldPaths = _onFieldPaths;
-    if (isPartitioner(id)) {
-        // The first writer will partition the input stream.
-        opts.partitionerMongoProcessInterface = makeMongoProcessInterface();
-    }
     return std::make_unique<MergeWriter>(_context, this, std::move(opts));
-}
-
-std::unique_ptr<MongoDBProcessInterface> MergeOperator::makeMongoProcessInterface() {
-    if (_options.isTest) {
-        if (_onFieldPaths) {
-            return std::make_unique<MongoProcessInterfaceForTest>(*_onFieldPaths);
-        } else {
-            return std::make_unique<MongoProcessInterfaceForTest>();
-        }
-    }
-
-    MongoCxxClientOptions clientOptions(_options.atlasOptions, _context);
-    clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
-    return std::make_unique<MongoDBProcessInterface>(clientOptions);
 }
 
 boost::intrusive_ptr<mongo::ExpressionContext> MergeOperator::makeExpressionContext() {
@@ -153,9 +142,25 @@ boost::intrusive_ptr<mongo::ExpressionContext> MergeOperator::makeExpressionCont
                                   .opCtx(_context->opCtx.get())
                                   .ns(NamespaceString(DatabaseName::kLocal))
                                   .build();
-    mergeExpressionCtx->setMongoProcessInterface(makeMongoProcessInterface());
+
+    if (_options.isTest) {
+        if (_onFieldPaths) {
+            mergeExpressionCtx->setMongoProcessInterface(
+                std::make_shared<MongoProcessInterfaceForTest>(*_onFieldPaths));
+        } else {
+            mergeExpressionCtx->setMongoProcessInterface(
+                std::make_shared<MongoProcessInterfaceForTest>());
+        }
+    } else {
+        MongoCxxClientOptions clientOptions(_options.atlasOptions, _context);
+        clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
+        mergeExpressionCtx->setMongoProcessInterface(
+            std::make_shared<MongoDBProcessInterface>(clientOptions));
+    }
+
     return mergeExpressionCtx;
 }
+
 
 MergeWriter::MergeWriter(Context* context, SinkOperator* sinkOperator, MergeWriter::Options options)
     : SinkWriter(context, sinkOperator),
@@ -169,69 +174,54 @@ OperatorStats MergeWriter::processDataMsg(StreamDataMsg dataMsg) {
     auto [docPartitions, partitionStats] = partitionDocsByTargets(dataMsg);
     stats += partitionStats;
 
-    auto mongoProcessInterface = getWriterThreadMongoInterface();
-
     // Process each document partition.
+    auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+        _options.mergeExpCtx->getMongoProcessInterface().get());
+    invariant(mongoProcessInterface);
+
     for (const auto& [nsKey, docIndices] : docPartitions) {
         auto outputNs = getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
-        ensureCollectionExists(mongoProcessInterface, outputNs);
+        // Create necessary collection instances first so that we need not do that in
+        // MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey() which is
+        // declared const.
+        try {
+            // This might fail due to auth or connection reasons.
+            // This won't throw an exception if the collection doesn't exist.
+            mongoProcessInterface->ensureCollectionExists(outputNs);
+        } catch (const mongocxx::exception& e) {
+            errorOut(e, outputNs);
+        }
         stats += processStreamDocs(dataMsg, outputNs, docIndices, kSinkDataMsgMaxDocSize);
     }
 
     return stats;
 }
 
-streams::MongoDBProcessInterface* MergeWriter::getWriterThreadMongoInterface() {
-    auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
-        _options.mergeExpCtx->getMongoProcessInterface().get());
-    invariant(mongoProcessInterface);
-    return mongoProcessInterface;
-}
-
-void MergeWriter::ensureCollectionExists(MongoDBProcessInterface* mongoProcessInterface,
-                                         const mongo::NamespaceString& outputNs) {
-    // Create necessary collection instances first so that we need not do that in
-    // MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey() which is
-    // declared const.
-    try {
-        // This might fail due to auth or connection reasons.
-        // This won't throw an exception if the collection doesn't exist.
-        mongoProcessInterface->ensureCollectionExists(outputNs);
-    } catch (const mongocxx::exception& e) {
-        errorOut(e, outputNs);
-    }
-}
-
-auto MergeWriter::getNsKey(const StreamDocument& streamDoc)
-    -> mongo::StatusWith<MergeWriter::NsKey> {
-    const auto& doc = streamDoc.doc;
-    try {
-        return std::make_pair(_options.db.evaluate(_options.mergeExpCtx.get(), doc),
-                              _options.coll.evaluate(_options.mergeExpCtx.get(), doc));
-    } catch (const DBException& e) {
-        return e.toStatus().withContext(
-            fmt::format("Failed to evaluate target namespace in {}", getName()));
-    }
-};
-
 auto MergeWriter::partitionDocsByTargets(const StreamDataMsg& dataMsg)
     -> std::tuple<DocPartitions, OperatorStats> {
     OperatorStats stats;
+    auto getNsKey = [&](const StreamDocument& streamDoc) -> boost::optional<NsKey> {
+        const auto& doc = streamDoc.doc;
+        try {
+            return std::make_pair(_options.db.evaluate(_options.mergeExpCtx.get(), doc),
+                                  _options.coll.evaluate(_options.mergeExpCtx.get(), doc));
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to evaluate target namespace in "
+                                              << getName() << " with error: " << e.what();
+            stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
+                _context->streamMetaFieldName, streamDoc, getName(), std::move(error)));
+            ++stats.numDlqDocs;
+            return boost::none;
+        }
+    };
 
     DocPartitions docPartitions;
     for (size_t docIdx = 0; docIdx < dataMsg.docs.size(); ++docIdx) {
-        auto result = getNsKey(dataMsg.docs[docIdx]);
-        if (!result.isOK()) {
-            stats.numDlqBytes +=
-                _context->dlq->addMessage(toDeadLetterQueueMsg(_context->streamMetaFieldName,
-                                                               dataMsg.docs[docIdx],
-                                                               getName(),
-                                                               result.getStatus()));
-            ++stats.numDlqDocs;
+        auto nsKey = getNsKey(dataMsg.docs[docIdx]);
+        if (!nsKey) {
             continue;
         }
-        auto [it, inserted] =
-            docPartitions.try_emplace(std::move(result.getValue()), std::vector<size_t>{});
+        auto [it, inserted] = docPartitions.try_emplace(*nsKey, std::vector<size_t>{});
         if (inserted) {
             it->second.reserve(dataMsg.docs.size());
         }
@@ -299,43 +289,37 @@ std::string MergeWriter::getErrorPrefix(const mongo::NamespaceString& outputNs) 
     return fmt::format("$merge to {} failed", outputNs.toStringForErrorMsg());
 }
 
-mongo::StatusWith<std::set<mongo::FieldPath>> MergeWriter::getDynamicMergeOnFieldPaths(
-    MongoDBProcessInterface* mongoProcessInterface, const NamespaceString& outputNs) {
-    // For the given 'on' field paths, retrieve the list of field paths that can be used to
-    // uniquely identify the doc.
-    try {
-        return std::set<FieldPath>(
-            std::get<0>(mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
-                _options.mergeExpCtx,
-                _options.onFieldPaths,
-                /*targetCollectionPlacementVersion*/ boost::none,
-                outputNs)));
-    } catch (const DBException& e) {
-        return e.toStatus().withContext(
-            fmt::format("Failed to process input document in {}", getName()));
-    }
-}
-
 OperatorStats MergeWriter::processStreamDocs(const StreamDataMsg& dataMsg,
                                              const NamespaceString& outputNs,
                                              const DocIndices& docIndices,
                                              size_t maxBatchDocSize) {
     OperatorStats stats;
+    auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+        _options.mergeExpCtx->getMongoProcessInterface().get());
 
     std::set<FieldPath> dynamicMergeOnFieldPaths;
     if (!_literalMergeOnFieldPaths) {
-        auto result = getDynamicMergeOnFieldPaths(getWriterThreadMongoInterface(), outputNs);
-        if (!result.isOK()) {
+        try {
+            // For the given 'on' field paths, retrieve the list of field paths that can be used to
+            // uniquely identify the doc.
+            dynamicMergeOnFieldPaths =
+                std::get<0>(mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+                    _options.mergeExpCtx,
+                    _options.onFieldPaths,
+                    /*targetCollectionPlacementVersion*/ boost::none,
+                    outputNs));
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to process input document in " << getName()
+                                              << " with error: " << e.what();
             // Add all the docs to the dlq.
             for (size_t docIdx : docIndices) {
                 const auto& streamDoc = dataMsg.docs[docIdx];
                 stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                    _context->streamMetaFieldName, streamDoc, getName(), result.getStatus()));
+                    _context->streamMetaFieldName, streamDoc, getName(), error));
                 ++stats.numDlqDocs;
             }
             return stats;
         }
-        dynamicMergeOnFieldPaths = std::move(result.getValue());
     }
 
     auto& mergeOnFieldPaths =
@@ -471,45 +455,11 @@ OperatorStats MergeWriter::processStreamDocs(const StreamDataMsg& dataMsg,
     return stats;
 }
 
-mongo::StatusWith<size_t> MergeWriter::partition(StreamDocument& doc) {
-    std::vector<Value> hashValues;
+size_t MergeWriter::partition(StreamDocument& doc) {
+    tassert(
+        ErrorCodes::InternalError, "Expected literal $merge.on fields", _literalMergeOnFieldPaths);
+    bool mergeOnFieldPathsIncludeId{_literalMergeOnFieldPaths->contains(kIdFieldName)};
 
-    std::set<FieldPath> dynamicMergeOnFieldPaths;
-    if (!_literalMergeOnFieldPaths) {
-        // TODO(SERVER-101438): In the parallel dynamic db or coll case, there are a few
-        // inefficiencies.
-        //  * We might need to populate the collection cache by making a remote RPC on the executor
-        //  thread.
-        //  * We use a separate MongoDBProcessInterface on the executor thread vs writer thread.
-        //  * We execute the db and coll expressions here, and later in the writer thread.
-
-        auto result = getNsKey(doc);
-        if (!result.isOK()) {
-            return result.getStatus();
-        }
-        const auto& nsKey = result.getValue();
-        auto outputNs = getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
-        hashValues.reserve(2);
-        hashValues.emplace_back(nsKey.first);
-        hashValues.emplace_back(nsKey.second);
-
-        tassert(ErrorCodes::InternalError,
-                "Expected partitionerMongoProcessInterface to be set",
-                _options.partitionerMongoProcessInterface);
-        auto mongoInterface = _options.partitionerMongoProcessInterface.get();
-        ensureCollectionExists(mongoInterface, outputNs);
-
-        auto onFieldPathsResult = getDynamicMergeOnFieldPaths(mongoInterface, outputNs);
-        if (!result.isOK()) {
-            return result.getStatus();
-        }
-        dynamicMergeOnFieldPaths = std::move(onFieldPathsResult.getValue());
-    }
-
-    const auto& mergeOnFieldPaths =
-        _literalMergeOnFieldPaths ? *_literalMergeOnFieldPaths : dynamicMergeOnFieldPaths;
-
-    bool mergeOnFieldPathsIncludeId{mergeOnFieldPaths.contains(kIdFieldName)};
     if (mergeOnFieldPathsIncludeId && doc.doc.getField(kIdFieldName).missing()) {
         // Add the _id field if it doesn't already exist.
         // (merge_processor also does this)
@@ -518,12 +468,13 @@ mongo::StatusWith<size_t> MergeWriter::partition(StreamDocument& doc) {
         doc.doc = mutableDoc.freeze();
     }
 
-    hashValues.reserve(hashValues.size() + mergeOnFieldPaths.size());
-    for (const auto& field : mergeOnFieldPaths) {
-        hashValues.push_back(doc.doc[field.fullPath()]);
+    std::vector<Value> onFieldValues;
+    onFieldValues.reserve(_literalMergeOnFieldPaths->size());
+    for (const auto& field : *_literalMergeOnFieldPaths) {
+        onFieldValues.push_back(doc.doc[field.fullPath()]);
     }
 
-    return {_hash(Value{std::move(hashValues)})};
+    return _hash(Value{std::move(onFieldValues)});
 }
 
 }  // namespace streams
