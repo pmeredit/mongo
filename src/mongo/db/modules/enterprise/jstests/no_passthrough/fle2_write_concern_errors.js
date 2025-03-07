@@ -291,17 +291,13 @@ function runFindAndModifyTests(conn, sharded) {
     };
 
     function runCommandsAndCompareResults(
-        command, pdb, edb, errorCode, lastErrorObject, expectedOk = 1, fleWCEMasked = false) {
+        command, pdb, edb, errorCode, lastErrorObject, expectedOk = 1) {
         let pres = assert.commandFailedWithCode(pdb.runCommand(command), errorCode);
         let eres = assert.commandFailedWithCode(edb.erunCommand(command), errorCode);
         print("Unencrypted result: " + tojson(pres));
         print("Encrypted result: " + tojson(eres));
         checkHasWCE(pres, ErrorCodes.UnsatisfiableWriteConcern);
-        if (!fleWCEMasked) {
-            checkHasWCE(eres, ErrorCodes.UnsatisfiableWriteConcern);
-        } else {
-            assert(!eres.hasOwnProperty("writeConcernError"));
-        }
+        checkHasWCE(eres, ErrorCodes.UnsatisfiableWriteConcern);
         if (lastErrorObject !== undefined) {
             assert.eq(pres.lastErrorObject.n, lastErrorObject.n);
             assert.eq(eres.lastErrorObject.n, lastErrorObject.n);
@@ -359,13 +355,8 @@ function runFindAndModifyTests(conn, sharded) {
     client.assertEncryptedCollectionCounts(collName, 5, 8, 8);
 
     print("FINDANDMODIFY: modification of immutable field with unsatisfiable WC");
-    // TODO: SERVER-99915 FindAndModify handles WCEs returned by the TXN API differently from the
-    // other FLE2 crud operations and as a result will not report WCEs along with write errors. This
-    // is acceptable in this case because because a findAndModify updating an immutable field could
-    // never have succeeded, and therefore there is no issue with the user thinking their write has
-    // been acknowledged when it has not been.
     runCommandsAndCompareResults(
-        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, undefined, 0, true);
+        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, undefined, 0);
     client.assertEncryptedCollectionCounts(collName, 5, 8, 8);
 }
 
