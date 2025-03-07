@@ -367,7 +367,7 @@ export function commonTest({
     expectedDlq = [],
     useKafka = true,
     fieldsToSkip = ["_id"],
-    extraMergeParams,
+    extraMergeParams = {},
     expectedOutputMessageCount,
     beforeStopValidationFunc,
     useGeneratedSourcePipeline = true,
@@ -394,6 +394,10 @@ export function commonTest({
     }
 
     if (useKafka) {
+        if (!extraMergeParams.hasOwnProperty("parallelism")) {
+            extraMergeParams.parallelism = NumberInt(2);
+        }
+
         runKafkaPipeline({
             input: documentsSourceInput,
             pipeline: pipeline,
@@ -407,6 +411,9 @@ export function commonTest({
         });
     }
 
+    if (!extraMergeParams.hasOwnProperty("parallelism")) {
+        extraMergeParams.parallelism = NumberInt(1);
+    }
     runChangeStreamPipeline({
         input: documentsSourceInput,
         pipeline: pipeline,

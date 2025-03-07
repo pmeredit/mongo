@@ -60,6 +60,12 @@ mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& s
                                            const std::string& operatorName,
                                            boost::optional<std::string> error);
 
+// Builds a DLQ message for the given Status
+mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                           const StreamDocument& streamDoc,
+                                           const std::string& operatorName,
+                                           mongo::Status status);
+
 // Gets the namespace string for the given 'db' and 'coll' literals.
 mongo::NamespaceString getNamespaceString(const std::string& dbStr, const std::string& collStr);
 

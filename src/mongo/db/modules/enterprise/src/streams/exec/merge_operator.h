@@ -10,11 +10,13 @@
 #include <tuple>
 #include <vector>
 
+#include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/stdx/unordered_map.h"
 #include "streams/exec/queued_sink_operator.h"
+#include "streams/exec/util.h"
 
 namespace mongo {
 class DocumentSourceMerge;
@@ -25,6 +27,7 @@ namespace streams {
 
 struct Context;
 class MetricManager;
+class MongoDBProcessInterface;
 
 /**
  * MergeOperator is the operator for the $merge stage. MergeOperator
@@ -46,7 +49,9 @@ public:
     MergeOperator(Context* context, Options options);
 
     // Make a SinkWriter instance.
-    std::unique_ptr<SinkWriter> makeWriter() override;
+    std::unique_ptr<SinkWriter> makeWriter(int id) override;
+
+    std::unique_ptr<MongoDBProcessInterface> makeMongoProcessInterface();
 
     std::string doGetName() const override {
         return "MergeOperator";
@@ -88,6 +93,8 @@ public:
         mongo::NameExpression coll;
         // $merge.on fields to merge based on.
         boost::optional<std::set<mongo::FieldPath>> onFieldPaths;
+        // Used for partition(), which runs on the Executor thread.
+        std::unique_ptr<MongoDBProcessInterface> partitionerMongoProcessInterface;
     };
 
     MergeWriter(Context* context, SinkOperator* sinkOperator, Options options);
@@ -101,7 +108,7 @@ protected:
 
     void connect() override;
 
-    size_t partition(StreamDocument& doc) override;
+    mongo::StatusWith<size_t> partition(StreamDocument& doc) override;
 
 private:
     friend class MergeOperatorTest;
@@ -110,10 +117,20 @@ private:
     using DocIndices = std::vector<size_t>;
     using DocPartitions = mongo::stdx::unordered_map<NsKey, DocIndices>;
 
+    auto getNsKey(const StreamDocument& streamDoc) -> mongo::StatusWith<NsKey>;
+
     // End the operator in error.
     void errorOut(const mongocxx::exception& e, const mongo::NamespaceString& outputNs);
 
     std::tuple<DocPartitions, OperatorStats> partitionDocsByTargets(const StreamDataMsg& dataMsg);
+
+    mongo::StatusWith<std::set<mongo::FieldPath>> getDynamicMergeOnFieldPaths(
+        MongoDBProcessInterface* mongoProcessInterface, const mongo::NamespaceString& outputNs);
+
+    void ensureCollectionExists(MongoDBProcessInterface* mongoProcessInterface,
+                                const mongo::NamespaceString& outputNs);
+
+    MongoDBProcessInterface* getWriterThreadMongoInterface();
 
     // Processes the docs at the indexes in 'docIndices' each of which points to a doc in 'dataMsg'.
     // This returns the stats for the batch of messages passed in.

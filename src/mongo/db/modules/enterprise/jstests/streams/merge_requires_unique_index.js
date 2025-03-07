@@ -204,7 +204,7 @@ const runAll = (parallelism) => {
                     whenMatched: 'replace',
                     whenNotMatched: 'insert',
                     on: ["a", "b"],
-                    parallelism: NumberInt(1)
+                    parallelism: parallelism
                 }
             }
         ]);
