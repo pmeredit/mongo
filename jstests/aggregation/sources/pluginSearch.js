@@ -14,7 +14,7 @@ coll.insertMany([
   { _id: ObjectId("67c52a1d33a2e15c422984cf"), title: "Star Universe" }
 ]);
 
-// with no limit
+// no limit, score projected
 let fullResults = coll.aggregate([
     {
       $pluginSearch: {
@@ -24,12 +24,21 @@ let fullResults = coll.aggregate([
         },
         "index": "default"
       }
+    },
+    {
+      $addFields: {
+        "score": { 
+          "$meta": "searchScore" 
+        }
+      }
     }
   ]).toArray();
 
 printjson(fullResults);
 assert.eq(fullResults.length, 10);
-assert(fullResults.every(doc => Object.keys(doc).length === 2 && "_id" in doc && "title" in doc));
+assert(resultsWithScore.every(doc => 
+  ["_id", "title", "score"].every(key => key in doc) && Object.keys(doc).length === 3
+));
 
 // with limit
 let limitedResults = coll.aggregate([
@@ -49,10 +58,11 @@ let limitedResults = coll.aggregate([
 
 printjson(limitedResults);
 assert.eq(limitedResults.length, 7);
-assert(limitedResults.every(doc => Object.keys(doc).length === 2 && "_id" in doc && "title" in doc));
+assert(resultsWithScore.every(doc => 
+  ["_id", "title"].every(key => key in doc) && Object.keys(doc).length === 2
+));
 
 // with stored source
-
 let storedSourceResults = coll.aggregate([
   {
     $pluginSearch: {
@@ -68,4 +78,7 @@ let storedSourceResults = coll.aggregate([
 
 printjson(storedSourceResults);
 assert.eq(storedSourceResults.length, 10);
-assert(storedSourceResults.every(doc => Object.keys(doc).length === 1 && "_id"));
+
+assert(resultsWithScore.every(doc => 
+  ["_id"].every(key => key in doc) && Object.keys(doc).length === 1
+));

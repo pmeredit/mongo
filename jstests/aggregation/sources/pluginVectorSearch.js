@@ -28,4 +28,32 @@ let results = coll.aggregate([
 
 printjson(results);
 assert.eq(results.length, 5);
-assert(results.every(doc => Object.keys(doc).length === 3 && "_id" in doc && "title" in doc && "description" in doc));
+assert(resultsWithScore.every(doc => 
+  ["_id", "title", "description"].every(key => key in doc) && Object.keys(doc).length === 3
+));
+
+// with score projected
+let resultsWithScore = coll.aggregate([
+  {
+    $pluginVectorSearch: {
+      path: "description",
+      index: "default",
+      queryVector: [0.714, 0.632],
+      numCandidates: 10,
+      limit: 5
+    }
+  },
+  {
+    $addFields: {
+      "score": { 
+        "$meta": "vectorSearchScore"
+      }
+    }
+  }
+]).toArray();
+
+printjson(resultsWithScore);
+assert.eq(resultsWithScore.length, 5);
+assert(resultsWithScore.every(doc => 
+  ["_id", "title", "description", "score"].every(key => key in doc) && Object.keys(doc).length === 4
+));

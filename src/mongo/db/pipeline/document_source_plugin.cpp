@@ -149,7 +149,7 @@ DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
             tassert(123456,
                     str::stream() << "plugin returned an invalid BSONObj.",
                     is_valid_bson_document(result.data, result.len));
-            return GetNextResult(Document(BSONObj(reinterpret_cast<const char*>(result.data))));
+            return GetNextResult(Document::fromBsonWithMetaData(BSONObj(reinterpret_cast<const char*>(result.data))));
         case GET_NEXT_EOF:
             return GetNextResult::makeEOF();
         case GET_NEXT_PAUSE_EXECUTION:
