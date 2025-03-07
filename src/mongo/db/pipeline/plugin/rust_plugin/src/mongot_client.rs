@@ -40,10 +40,12 @@ pub enum ResultType {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MongotResult {
     #[serde(rename = "_id")]
-    pub id: Bson,
+    pub id: Option<Bson>,
     #[serde(alias = "$searchScore", rename = "$vectorSearchScore")]
     #[serde(skip_serializing)]
-    pub score: f32
+    pub score: f32,
+    #[serde(rename = "storedSource")]
+    pub stored_source: Option<Document>
 }
 
 #[derive(Serialize, Deserialize)]

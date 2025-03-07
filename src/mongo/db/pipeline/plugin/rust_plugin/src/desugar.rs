@@ -2,9 +2,8 @@ use std::ffi::c_int;
 use std::marker::PhantomData;
 
 use bson::{to_vec, Bson, Document, RawBsonRef, RawDocument};
-use plugin_api_bindgen::{MongoExtensionByteBuf, MongoExtensionByteView, MongoExtensionPortal};
 use serde::{Deserialize, Deserializer, Serialize};
-
+use plugin_api_bindgen::{MongoExtensionByteBuf, MongoExtensionByteView, MongoExtensionPortal};
 use super::{Error, VecByteBuf};
 
 /// Trait for implementing de-sugaring of a stage.

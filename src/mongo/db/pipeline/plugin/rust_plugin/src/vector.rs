@@ -1,5 +1,9 @@
 use crate::command_service::command_service_client::CommandServiceClient;
-use crate::mongot_client::{MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS};
+use crate::desugar::DesugarAggregationStage;
+use crate::mongot_client::{
+    MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
+};
+use crate::search::PluginSearch;
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf, RawArrayBuf, Uuid};
 use bson::{Document, RawBsonRef, RawDocumentBuf};
@@ -12,7 +16,7 @@ use tonic::codegen::tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::{Request, Response};
 
-pub struct PluginVectorSearch {
+pub struct InternalPluginVectorSearch {
     client: CommandServiceClient<Channel>,
     source: Option<AggregationSource>,
     documents: Option<VecDeque<Document>>,
@@ -24,9 +28,9 @@ pub struct PluginVectorSearch {
     limit: i64,
 }
 
-impl AggregationStage for PluginVectorSearch {
+impl AggregationStage for InternalPluginVectorSearch {
     fn name() -> &'static str {
-        "$pluginVectorSearch"
+        "$_internalPluginVectorSearch"
     }
 
     fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
@@ -35,7 +39,7 @@ impl AggregationStage for PluginVectorSearch {
             _ => {
                 return Err(Error::new(
                     1,
-                    format!("$pluginVectorSearch stage definition must contain a document."),
+                    format!("$_internalPluginVectorSearch stage definition must contain a document."),
                 ))
             }
         };
@@ -125,7 +129,7 @@ impl AggregationStage for PluginVectorSearch {
     }
 }
 
-impl PluginVectorSearch {
+impl InternalPluginVectorSearch {
     fn populate_documents(&mut self) -> Result<(), Error> {
         let result = RUNTIME
             .get()
@@ -179,5 +183,32 @@ impl PluginVectorSearch {
         let result = self.client.vectorSearch(request).await?;
 
         Ok(result)
+    }
+}
+
+pub struct PluginVectorSearch;
+
+impl DesugarAggregationStage for PluginVectorSearch {
+    fn name() -> &'static str {
+        "$pluginVectorSearch"
+    }
+
+    fn desugar(stage_definition: RawBsonRef<'_>) -> Result<Vec<Document>, Error> {
+        let query = match stage_definition {
+            RawBsonRef::Document(doc) => doc.to_owned(),
+            _ => {
+                return Err(Error::new(
+                    1,
+                    "$pluginVectorSearch stage definition must contain a document.".to_string(),
+                ))
+            }
+        }
+        .to_document()
+        .unwrap();
+
+        Ok(vec![
+            doc! {"$_internalPluginVectorSearch": query},
+            doc! {"$_internalSearchIdLookup": doc!{}},
+        ])
     }
 }

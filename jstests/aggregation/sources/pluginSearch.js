@@ -1,7 +1,21 @@
 const coll = db.docs;
-coll.drop(); // no need for a collection as the remote mongot we test here gets the docs from a remote mongod
+coll.drop();
 
-let fullResults = db.coll.aggregate([
+coll.insertMany([
+  { _id: ObjectId("67c52a1933a2e15c422984c7"), title: "Star Trek" },
+  { _id: ObjectId("67c52a1933a2e15c422984c6"), title: "Star Wars" },
+  { _id: ObjectId("67c52a1b33a2e15c422984c8"), title: "Star Chronicles" },
+  { _id: ObjectId("67c52a1b33a2e15c422984c9"), title: "Star Quest" },
+  { _id: ObjectId("67c52a1c33a2e15c422984ca"), title: "Star Legends" },
+  { _id: ObjectId("67c52a1c33a2e15c422984cb"), title: "Star Empire" },
+  { _id: ObjectId("67c52a1d33a2e15c422984cc"), title: "Star Rising" },
+  { _id: ObjectId("67c52a1d33a2e15c422984cd"), title: "Star Hunters" },
+  { _id: ObjectId("67c52a1d33a2e15c422984ce"), title: "Star Rebels" },
+  { _id: ObjectId("67c52a1d33a2e15c422984cf"), title: "Star Universe" }
+]);
+
+// with no limit
+let fullResults = coll.aggregate([
     {
       $pluginSearch: {
         "text": {
@@ -13,23 +27,45 @@ let fullResults = db.coll.aggregate([
     }
   ]).toArray();
 
-assert.eq(fullResults.length, 58);
-assert(fullResults.every(doc => Object.keys(doc).length === 2 && "_id" in doc && "$searchScore" in doc));
+printjson(fullResults);
+assert.eq(fullResults.length, 10);
+assert(fullResults.every(doc => Object.keys(doc).length === 2 && "_id" in doc && "title" in doc));
 
-let limitedResults = db.coll.aggregate([
+// with limit
+let limitedResults = coll.aggregate([
   {
     $pluginSearch: {
       "text": {
          "path": "title",
-         "query": "Trek"
+         "query": "Star"
       },
       "index": "default"
     }
   },
   {
-    $limit: 17
+    $limit: 7
   }
 ]).toArray();
 
-assert.eq(limitedResults.length, 17);
-assert(limitedResults.every(doc => Object.keys(doc).length === 2 && "_id" in doc && "$searchScore" in doc));
+printjson(limitedResults);
+assert.eq(limitedResults.length, 7);
+assert(limitedResults.every(doc => Object.keys(doc).length === 2 && "_id" in doc && "title" in doc));
+
+// with stored source
+
+let storedSourceResults = coll.aggregate([
+  {
+    $pluginSearch: {
+      "text": {
+        "path": "title",
+        "query": "Star"
+      },
+      "index": "default",
+      "returnStoredSource": true
+    }
+  }
+]).toArray();
+
+printjson(storedSourceResults);
+assert.eq(storedSourceResults.length, 10);
+assert(storedSourceResults.every(doc => Object.keys(doc).length === 1 && "_id"));

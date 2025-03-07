@@ -1,4 +1,5 @@
 use crate::command_service::command_service_client::CommandServiceClient;
+use crate::desugar::DesugarAggregationStage;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotCursorBatch, SearchCommand,
     MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
@@ -20,12 +21,13 @@ use tonic::{Status, Streaming};
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 
-pub struct PluginSearch {
+pub struct InternalPluginSearch {
     initialized: bool,
     client: CommandServiceClient<Channel>,
     source: Option<AggregationSource>,
     last_document: RawDocumentBuf,
     query: Document,
+    stored_source: bool,
     result_tx: Sender<Payload>,
     result_rx: Receiver<Payload>,
     shutdown_tx: watch::Sender<bool>,
@@ -37,15 +39,15 @@ enum Payload {
     EOF,
 }
 
-impl Drop for PluginSearch {
+impl Drop for InternalPluginSearch {
     fn drop(&mut self) {
         let _ = self.shutdown_tx.send(true);
     }
 }
 
-impl AggregationStage for PluginSearch {
+impl AggregationStage for InternalPluginSearch {
     fn name() -> &'static str {
-        "$pluginSearch"
+        "$_internalPluginSearch"
     }
 
     fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
@@ -54,12 +56,14 @@ impl AggregationStage for PluginSearch {
             _ => {
                 return Err(Error::new(
                     1,
-                    "$pluginSearch stage definition must contain a document.".to_string(),
+                    "$_internalPluginSearch stage definition must contain a document.".to_string(),
                 ))
             }
         }
         .to_document()
         .unwrap();
+
+        let stored_source = query.get_bool("returnStoredSource").unwrap_or(false);
 
         let client = RUNTIME
             .get_or_init(|| {
@@ -85,6 +89,7 @@ impl AggregationStage for PluginSearch {
             source: None,
             last_document: RawDocumentBuf::new(),
             query,
+            stored_source,
             result_tx,
             result_rx,
             shutdown_tx,
@@ -119,7 +124,7 @@ impl AggregationStage for PluginSearch {
     }
 }
 
-impl PluginSearch {
+impl InternalPluginSearch {
     /// Performs an initial query to mongot and if results are not exhausted in the first batch,
     /// starts a background getmore loop that is later terminated either when mongot returns
     /// cursor_id == 0 or when the shutdown signal comes from mongod when the pipeline
@@ -148,20 +153,26 @@ impl PluginSearch {
         let mut inbound_stream: Streaming<MongotCursorBatch> = response.into_inner();
 
         let cursor_id: u64 = if let Some(received) = inbound_stream.next().await {
-            PluginSearch::flush_batch_into_channel(received, self.result_tx.clone()).await
+            InternalPluginSearch::flush_batch_into_channel(
+                received,
+                self.result_tx.clone(),
+                self.stored_source,
+            )
+            .await
         } else {
             0
         };
 
         if cursor_id == 0 {
             // if we have exhausted the cursor in the initial query, flush EOF and return
-            PluginSearch::flush_eof_into_channel(self.result_tx.clone()).await;
+            InternalPluginSearch::flush_eof_into_channel(self.result_tx.clone()).await;
             return Ok(());
         }
 
         // init an async getmore prefetch loop
         let mut shutdown_rx = self.shutdown_rx.clone();
         let result_tx = self.result_tx.clone();
+        let stored_source = self.stored_source;
 
         // spawn a background task that is terminated on the stage drop
         tokio::spawn(async move {
@@ -181,17 +192,17 @@ impl PluginSearch {
 
                         if let Err(err) = sender.send(request).await {
                             eprintln!("Failed to send request: {:?}", err);
-                            PluginSearch::flush_eof_into_channel(result_tx.clone()).await;
+                            InternalPluginSearch::flush_eof_into_channel(result_tx.clone()).await;
                             return;
                         }
 
                         if let Some(received) = inbound_stream.next().await {
-                            exhausted = PluginSearch::flush_batch_into_channel(
-                                received, result_tx.clone()).await == 0;
+                            exhausted = InternalPluginSearch::flush_batch_into_channel(
+                                received, result_tx.clone(), stored_source).await == 0;
                         }
                     } => {
                         if exhausted {
-                            PluginSearch::flush_eof_into_channel(result_tx.clone()).await;
+                            InternalPluginSearch::flush_eof_into_channel(result_tx.clone()).await;
                             return;
                         }
                     }
@@ -205,17 +216,18 @@ impl PluginSearch {
     async fn flush_batch_into_channel(
         received: Result<MongotCursorBatch, Status>,
         result_tx: Sender<Payload>,
+        stored_source: bool,
     ) -> u64 {
         if let Some(cursor) = received.unwrap().cursor {
             for result in &cursor.next_batch {
-                result_tx
-                    .send(Entry(
-                        doc! { "_id": result.id.clone(), "$searchScore": result.score },
-                    ))
-                    .await
-                    .unwrap_or_else(|err| {
-                        eprintln!("Failed to flush result: {:?}", err);
-                    });
+                let doc = if stored_source {
+                    result.stored_source.clone().unwrap()
+                } else {
+                    doc! { "_id": result.id.clone(), "$searchScore": result.score }
+                };
+                result_tx.send(Entry(doc)).await.unwrap_or_else(|err| {
+                    eprintln!("Failed to flush result: {:?}", err);
+                });
             }
             cursor.id
         } else {
@@ -225,5 +237,36 @@ impl PluginSearch {
 
     async fn flush_eof_into_channel(result_tx: Sender<Payload>) {
         let _ = result_tx.send(EOF).await;
+    }
+}
+
+pub struct PluginSearch;
+
+impl DesugarAggregationStage for PluginSearch {
+    fn name() -> &'static str {
+        "$pluginSearch"
+    }
+
+    fn desugar(stage_definition: RawBsonRef<'_>) -> Result<Vec<Document>, Error> {
+        let query = match stage_definition {
+            RawBsonRef::Document(doc) => doc.to_owned(),
+            _ => {
+                return Err(Error::new(
+                    1,
+                    "$pluginSearch stage definition must contain a document.".to_string(),
+                ))
+            }
+        }
+        .to_document()
+        .unwrap();
+
+        if query.get_bool("returnStoredSource").unwrap_or(false) {
+            return Ok(vec![doc! {"$_internalPluginSearch": query}]);
+        }
+
+        Ok(vec![
+            doc! {"$_internalPluginSearch": query},
+            doc! {"$_internalSearchIdLookup": doc!{}},
+        ])
     }
 }

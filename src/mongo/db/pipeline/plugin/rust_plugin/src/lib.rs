@@ -20,8 +20,8 @@ use plugin_api_bindgen::{
 };
 
 use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
-use crate::vector::PluginVectorSearch;
-use crate::search::PluginSearch;
+use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
+use crate::search::{InternalPluginSearch, PluginSearch};
 
 #[derive(Debug)]
 pub struct Error {
@@ -156,7 +156,7 @@ impl AggregationSource {
                     RawDocument::from_bytes(unsafe {
                         std::slice::from_raw_parts(result_ptr, result_len)
                     })
-                    .unwrap(),
+                        .unwrap(),
                 ))
             }
             _ => Err(Error::new(
@@ -438,7 +438,9 @@ impl AggregationStage for AddSomeCrabs {
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal: *mut MongoExtensionPortal) {
     PluginAggregationStage::<EchoOxide>::register(portal);
     PluginAggregationStage::<AddSomeCrabs>::register(portal);
-    PluginAggregationStage::<PluginVectorSearch>::register(portal);
     PluginDesugarAggregationStage::<EchoWithSomeCrabs>::register(portal);
-    PluginAggregationStage::<PluginSearch>::register(portal);
+    PluginAggregationStage::<InternalPluginSearch>::register(portal);
+    PluginDesugarAggregationStage::<PluginSearch>::register(portal);
+    PluginAggregationStage::<InternalPluginVectorSearch>::register(portal);
+    PluginDesugarAggregationStage::<PluginVectorSearch>::register(portal);
 }
