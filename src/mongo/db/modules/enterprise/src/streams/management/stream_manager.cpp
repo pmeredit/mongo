@@ -557,9 +557,7 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
         auto connections = Planner::parseConnectionInfo(request.getPipeline());
         auto dlqOptions = request.getOptions().getDlq();
         if (dlqOptions) {
-            ParsedConnectionInfo conn{dlqOptions->getConnectionName().toString()};
-            conn.setStage(std::string("dlq"));
-            connections.push_back(std::move(conn));
+            connections.push_back(ParsedConnectionInfo{dlqOptions->getConnectionName().toString()});
         }
         StartStreamProcessorReply startReply;
         startReply.setConnections(std::move(connections));
