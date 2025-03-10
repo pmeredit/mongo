@@ -2608,4 +2608,15 @@ bool Planner::shouldValidateDLQ() {
     // TODO(SERVER-99672): Figure out a safe way to ship this.
     return false && !_context->isEphemeral && _options.planningUserPipeline;
 }
+
+// TODO(STREAMS-1620): Remove this if/when we change the $uuid expression name everywhere.
+// We added this to workaround issues with extended JSON and the $uuid expression. Extended
+// json parsers expect $uuid to precede a string denoting a UUID literal.
+REGISTER_EXPRESSION_WITH_FEATURE_FLAG(createUUID,
+                                      ExpressionUUID::parse,
+                                      AllowedWithApiStrict::kNeverInVersion1,
+                                      AllowedWithClientType::kAny,
+                                      feature_flags::gFeatureFlagUUIDExpression);
+
+
 };  // namespace streams

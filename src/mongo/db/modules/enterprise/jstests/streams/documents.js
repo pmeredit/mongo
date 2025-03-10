@@ -1,6 +1,7 @@
 /**
  * @tags: [
  *  featureFlagStreams,
+ *  featureFlagUUIDExpression
  * ]
  */
 import {
@@ -64,4 +65,26 @@ function lateDataExample() {
         ));
 }
 
+// TODO(STREAMS-1620): Remove this if/when we change the $uuid expression name everywhere, we'll
+// just change the existing tests in uuid.js
+function uuidExample() {
+    const results = sp.process([
+        {
+            $source: {
+                documents: [
+                    {a: 1},
+                    {a: 1},
+                ],
+            }
+        },
+        {$addFields: {uuid: {$createUUID: {}}}},
+        {$addFields: {uuidStrField: {$toString: "$uuid"}}}
+    ]);
+    assert.eq(2, results.length);
+    for (const result of results) {
+        assert.eq(`UUID("${result.uuidStrField}")`, result.uuid.toString());
+    }
+}
+
 lateDataExample();
+uuidExample();
