@@ -23,10 +23,14 @@ namespace streams {
 class MongoProcessInterfaceForTest : public MongoDBProcessInterface {
 public:
     MongoProcessInterfaceForTest(
+        const Context* const context,
         std::set<mongo::FieldPath> documentKey = {"_id"},
         MongoProcessInterface::SupportingUniqueIndex supportingUniqueIndex =
             MongoProcessInterface::SupportingUniqueIndex::NotNullish)
-        : _documentKey(std::move(documentKey)), _supportingUniqueIndex(supportingUniqueIndex) {}
+        : MongoDBProcessInterface(context),
+          _documentKey(std::move(documentKey)),
+          _supportingUniqueIndex(supportingUniqueIndex) {}
+
 
     struct InsertInfo {
         mongo::BSONObj obj;

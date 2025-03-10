@@ -1584,7 +1584,8 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
 
         MongoCxxClientOptions clientOptions(atlasOptions, _context);
         clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
-        auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
+        auto foreignMongoDBClient =
+            std::make_shared<MongoDBProcessInterface>(clientOptions, _context);
 
         options.foreignMongoDBClient = std::move(foreignMongoDBClient);
         options.foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl());

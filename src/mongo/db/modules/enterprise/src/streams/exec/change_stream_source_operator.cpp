@@ -76,12 +76,14 @@ static constexpr char kErrorCodeFieldName[] = "code";
 static constexpr ErrorCodes::Error kEmptyPipelineErrorCode{40323};
 static constexpr ErrorCodes::Error kUnrecognizedPipelineStageNameErrorCode{40324};
 static constexpr ErrorCodes::Error kInvalidFieldPathNameErrorCode{16410};
+}  // namespace
 
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
-mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
-                                    mongocxx::client* client,
-                                    bool shouldUseWatchToInitClusterChangestream) {
+mongo::Timestamp ChangeStreamSourceOperator::getLatestOplogTime(
+    mongocxx::database* database,
+    mongocxx::client* client,
+    bool shouldUseWatchToInitClusterChangestream) {
     if (!database && shouldUseWatchToInitClusterChangestream) {
         // When targetting a whole cluster change stream, use a client_session
         // and dummy watch call to get an initial clusterTime. Prior to this, we were
@@ -108,13 +110,13 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
     if (database) {
         // TODO(SERVER-95515): Remove this block once shouldUseWatchToInitClusterChangestream
         // feature flag is removed.
-        helloResponse = callHello(*database);
+        helloResponse = callHello(*database, _context);
     } else {
         // Use the config database because the driver requires us to call run_command under a
         // particular DB.
         const std::string defaultDb{"config"};
         auto configDatabase = client->database(defaultDb);
-        helloResponse = callHello(configDatabase);
+        helloResponse = callHello(configDatabase, _context);
     }
 
     auto operationTime = helloResponse.find("operationTime");
@@ -128,8 +130,6 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
     auto timestamp = operationTime->get_timestamp();
     return {timestamp.timestamp, timestamp.increment};
 }
-
-};  // namespace
 
 int ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
     int docSize = doc.objsize();
@@ -360,7 +360,12 @@ void ChangeStreamSourceOperator::fetchLoop() {
         }
 
         // Establish the connection and start the changestream.
+        LOGV2_INFO(10162900,
+                   "establishing the connection and starting the change stream",
+                   "context"_attr = _context);
         connectToSource();
+        LOGV2_INFO(10162901, "change stream started", "context"_attr = _context);
+
         bool enableDataFlow = getOptions().enableDataFlow;
         if (!enableDataFlow) {
             // If data flow is disabled, read a single change event.
@@ -379,6 +384,8 @@ void ChangeStreamSourceOperator::fetchLoop() {
         }
 
         // Start reading events in a loop.
+        LOGV2_INFO(
+            10162902, "starting to read change stream events in a loop", "context"_attr = _context);
         while (true) {
             {
                 stdx::unique_lock lock(_mutex);

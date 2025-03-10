@@ -89,7 +89,7 @@ requires std::is_convertible_v<T, bsoncxx::document::view> mongo::BSONObj fromBs
  * The runCommand will be retried if there are operation_exceptions thrown. For the last attempt,
  * operation_exceptions are not caught and should be handled by the caller.
  */
-bsoncxx::document::value callHello(mongocxx::database& db);
+bsoncxx::document::value callHello(mongocxx::database& db, const Context* context);
 
 /**
  * Wraps a func that might return mongocxx exceptions. Sanitizes the error message so that the

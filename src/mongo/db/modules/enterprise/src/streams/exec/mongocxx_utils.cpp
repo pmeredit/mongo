@@ -195,13 +195,19 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
     return clientOptions;
 }
 
-bsoncxx::document::value callHello(mongocxx::database& db) {
+bsoncxx::document::value callHello(mongocxx::database& db, const Context* const context) {
     int numRetries = 3;
     for (int i = 0; i < numRetries - 1; i++) {
         try {
             auto response = db.run_command(make_document(kvp("hello", "1")));
             return response;
-        } catch (const mongocxx::operation_exception&) {
+        } catch (const mongocxx::operation_exception& e) {
+            LOGV2_INFO(10162904,
+                       "hello operation failed. Re-attempting",
+                       "context"_attr = context->toBSON(),
+                       "code"_attr = int(e.code().value()),
+                       "exception"_attr = e.what());
+
             // We have to wait at least 500ms (i.e. the value of
             // MONGOC_TOPOLOGY_MIN_HEARTBEAT_FREQUENCY_MS) Otherwise, we will self inflict a "No
             // servers yet eligible for rescan" error which is due to trying to re-scan too soon.

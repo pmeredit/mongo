@@ -84,7 +84,7 @@ void MongoDBDeadLetterQueue::doStart() {
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() {
-        auto status = runMongocxxNoThrow([this]() { callHello(*_database); },
+        auto status = runMongocxxNoThrow([this]() { callHello(*_database, _context); },
                                          _context,
                                          ErrorCodes::Error{8191500},
                                          _errorPrefix,

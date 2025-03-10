@@ -167,6 +167,10 @@ private:
 
     void registerMetrics(MetricManager* metricManager) override;
 
+    mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
+                                        mongocxx::client* client,
+                                        bool shouldUseWatchToInitClusterChangestream);
+
     Options _options;
 
     // These fields must be set.

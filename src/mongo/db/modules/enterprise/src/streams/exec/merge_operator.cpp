@@ -146,16 +146,16 @@ boost::intrusive_ptr<mongo::ExpressionContext> MergeOperator::makeExpressionCont
     if (_options.isTest) {
         if (_onFieldPaths) {
             mergeExpressionCtx->setMongoProcessInterface(
-                std::make_shared<MongoProcessInterfaceForTest>(*_onFieldPaths));
+                std::make_shared<MongoProcessInterfaceForTest>(_context, *_onFieldPaths));
         } else {
             mergeExpressionCtx->setMongoProcessInterface(
-                std::make_shared<MongoProcessInterfaceForTest>());
+                std::make_shared<MongoProcessInterfaceForTest>(_context));
         }
     } else {
         MongoCxxClientOptions clientOptions(_options.atlasOptions, _context);
         clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
         mergeExpressionCtx->setMongoProcessInterface(
-            std::make_shared<MongoDBProcessInterface>(clientOptions));
+            std::make_shared<MongoDBProcessInterface>(clientOptions, _context));
     }
 
     return mergeExpressionCtx;

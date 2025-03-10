@@ -42,7 +42,7 @@ public:
     void setUp() override {
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
         _context->expCtx->setMongoProcessInterface(
-            std::make_shared<MongoProcessInterfaceForTest>());
+            std::make_shared<MongoProcessInterfaceForTest>(_context.get()));
         _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 
@@ -254,8 +254,8 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
 
 // Test that {whenMatched: merge, on: [...]} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedMerge) {
-    _context->expCtx->setMongoProcessInterface(
-        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"}));
+    _context->expCtx->setMongoProcessInterface(std::make_shared<MongoProcessInterfaceForTest>(
+        _context.get(), std::set<FieldPath>{"customerId"}));
 
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
@@ -298,8 +298,8 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
 
 // Test that dead letter queue works as expected.
 TEST_F(MergeOperatorTest, DeadLetterQueue) {
-    _context->expCtx->setMongoProcessInterface(
-        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"}));
+    _context->expCtx->setMongoProcessInterface(std::make_shared<MongoProcessInterfaceForTest>(
+        _context.get(), std::set<FieldPath>{"customerId"}));
 
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
@@ -531,7 +531,7 @@ TEST_F(MergeOperatorTest, Parallelism) {
                                  c.input.size());
 
         _context->expCtx->setMongoProcessInterface(
-            std::make_shared<MongoProcessInterfaceForTest>());
+            std::make_shared<MongoProcessInterfaceForTest>(_context.get()));
         _context->dlq->registerMetrics(_executor->getMetricManager());
 
         Connection atlasConn;

@@ -68,14 +68,16 @@ MongoProcessInterface::SupportingUniqueIndex supportsUniqueKey(
 
 }  // namespace
 
-MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& options)
-    : MongoProcessInterface(nullptr) {
+MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& options,
+                                                 const Context* const context)
+    : MongoProcessInterface(nullptr), _context(context) {
     _instance = getMongocxxInstance(options.svcCtx);
     _uri = makeMongocxxUri(options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, options.toMongoCxxClientOptions());
 }
 
-MongoDBProcessInterface::MongoDBProcessInterface() : MongoProcessInterface(nullptr) {}
+MongoDBProcessInterface::MongoDBProcessInterface(const Context* const context)
+    : MongoProcessInterface(nullptr), _context(context) {}
 
 std::unique_ptr<MongoProcessInterface::WriteSizeEstimator>
 MongoDBProcessInterface::getWriteSizeEstimator(OperationContext* opCtx,
@@ -164,7 +166,7 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
     }
 
     if (!_isInstanceSharded) {
-        auto helloResponse = fromBsoncxxDocument(callHello(*db));
+        auto helloResponse = fromBsoncxxDocument(callHello(*db, _context));
         auto msgElement = helloResponse["msg"];
         uassert(8429101,
                 fmt::format("Unexpected hello response: {}", helloResponse.toString()),
@@ -369,7 +371,7 @@ void MongoDBProcessInterface::fetchCollection(mongo::NamespaceString nss) {
 
 void MongoDBProcessInterface::testConnection(const mongo::NamespaceString& nss) {
     auto db = getDb(nss.dbName());
-    callHello(*db);
+    callHello(*db, _context);
     fetchCollection(nss);
 }
 

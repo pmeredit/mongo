@@ -133,19 +133,6 @@ BSONObj sanitizeDoc(const BSONObj& obj) {
     return obj.removeFields(StringDataSet{"_ts", "_stream_meta"});
 }
 
-std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
-    ServiceContext* serviceContext,
-    const std::string& uri,
-    const std::string& database,
-    const std::string& collection) {
-    MongoCxxClientOptions options;
-    options.svcCtx = serviceContext;
-    options.uri = uri;
-    options.database = database;
-    options.collection = collection;
-    return std::make_shared<MongoDBProcessInterface>(std::move(options));
-}
-
 size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag) {
     size_t accum = 0;
     for (const auto& op : dag.operators()) {

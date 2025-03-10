@@ -86,6 +86,12 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
                 context->connections->contains(connectionName));
         const auto& connection = context->connections->at(connectionName);
+
+        LOGV2_INFO(10162903,
+                   "creating dlq",
+                   "context"_attr = context,
+                   "connectionType"_attr = ConnectionType_serializer(connection.getType()));
+
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "DLQ must be an Atlas collection",
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);

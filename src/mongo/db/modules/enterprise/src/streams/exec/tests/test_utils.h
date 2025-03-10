@@ -70,12 +70,6 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 // `_stream_meta`) for easier comparison checks.
 mongo::BSONObj sanitizeDoc(const mongo::BSONObj& obj);
 
-std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
-    mongo::ServiceContext* serviceContext,
-    const std::string& uri,
-    const std::string& database,
-    const std::string& collection);
-
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,
                                              std::unique_ptr<Executor>& executor,
