@@ -99,7 +99,7 @@ public:
 
         // We're using a WT-based engine; register the ServerStatusSection for it.
         *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(
-             std::string{kWiredTigerEngineName})
+             std::string{WiredTigerServerStatusSection::kServerStatusSectionName})
              .forShard();
 
         StorageEngineOptions options;
