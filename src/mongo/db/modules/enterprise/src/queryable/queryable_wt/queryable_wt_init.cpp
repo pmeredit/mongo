@@ -85,13 +85,13 @@ public:
 
         WiredTigerExtensions::get(getGlobalServiceContext())->addExtension(fsOptions);
 
+        WiredTigerKVEngine::WiredTigerConfig wtConfig = getWiredTigerConfigFromStartupOptions();
+        wtConfig.cacheSizeMB = cacheMB;
         auto kv =
             std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
                                                  dbpath,
                                                  getGlobalServiceContext()->getFastClockSource(),
-                                                 wiredTigerGlobalOptions.engineConfig,
-                                                 cacheMB,
-                                                 wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
+                                                 std::move(wtConfig),
                                                  kEphemeral,
                                                  params.repair);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);

@@ -76,7 +76,7 @@ public:
     // WiredTiger. Don't use in-memory mode. We can't open backup cursors on in-memory
     // WiredTiger.
     BackupCursorServiceTest()
-        : ServiceContextMongoDTest(Options{}.forceDisableTableLogging().ephemeral(false)) {}
+        : ServiceContextMongoDTest(Options{}.forceDisableTableLogging().inMemory(false)) {}
 
     void setUp() override {
         ServiceContextMongoDTest::setUp();
