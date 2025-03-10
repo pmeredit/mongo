@@ -19,7 +19,7 @@ namespace mongo::audit::bm {
 template <typename F>
 void warmup(F&& func, int iterations = 5) {
     for (int i = 0; i < iterations; i++) {
-        std::invoke(std::forward<F>(func));
+        std::invoke(func);
     }
 }
 

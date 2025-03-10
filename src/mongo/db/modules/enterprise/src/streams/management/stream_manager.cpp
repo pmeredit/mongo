@@ -294,7 +294,7 @@ private:
 template <typename M, typename V>
 void mapToVec(const M& m, V& v) {
     v.reserve(m.size());
-    for (auto [_, elem] : m) {
+    for (auto&& [_, elem] : m) {
         v.push_back(elem);
     }
 }

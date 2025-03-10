@@ -672,7 +672,7 @@ BSONObj Executor::testOnlyGetFeatureFlags() const {
     stdx::lock_guard<stdx::mutex> lock(_mutex);
     mongo::MutableDocument doc;
     if (_context->featureFlags) {
-        for (auto [k, v] : _context->featureFlags->testOnlyGetFeatureFlags()) {
+        for (auto&& [k, v] : _context->featureFlags->testOnlyGetFeatureFlags()) {
             doc.addField(k, v);
         }
     }
