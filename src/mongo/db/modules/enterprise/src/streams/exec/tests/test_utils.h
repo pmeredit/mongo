@@ -107,51 +107,44 @@ public:
         return _histograms;
     }
 
-    void visit(Counter* counter,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _counters[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = counter;
+    void visit(Counter* counter) {
+        _counters[getProcessorIdLabel(counter->getLabels())][counter->getName()]
+                 [getLabelsAsStrs(counter->getLabels())] = counter;
     }
 
-    void visit(Gauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _gauges[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = gauge;
+    void visit(Gauge* gauge) {
+        _gauges[getProcessorIdLabel(gauge->getLabels())][gauge->getName()]
+               [getLabelsAsStrs(gauge->getLabels())] = gauge;
     }
 
-    void visit(IntGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _intGauges[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = gauge;
+    void visit(IntGauge* gauge) {
+        _intGauges[getProcessorIdLabel(gauge->getLabels())][gauge->getName()]
+                  [getLabelsAsStrs(gauge->getLabels())] = gauge;
     }
 
-    void visit(CallbackGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _callbackGauges[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = gauge;
+    void visit(CallbackGauge* gauge) {
+        _callbackGauges[getProcessorIdLabel(gauge->getLabels())][gauge->getName()]
+                       [getLabelsAsStrs(gauge->getLabels())] = gauge;
     }
 
-    void visit(Histogram* histogram,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _histograms[getProcessorIdLabel(labels)][name][getLabelsAsStrs(labels)] = histogram;
+    void visit(Histogram* histogram) {
+        _histograms[getProcessorIdLabel(histogram->getLabels())][histogram->getName()]
+                   [getLabelsAsStrs(histogram->getLabels())] = histogram;
     }
 
 private:
-    std::string getProcessorIdLabel(const MetricManager::LabelsVec& labels) {
+    std::string getProcessorIdLabel(const Metric::LabelsVec& labels) {
         auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {
             return l.first == kProcessorIdLabelKey;
         });
-        invariant(result != labels.end());
+
+        if (result == labels.end()) {
+            return "";
+        }
         return result->second;
     }
 
-    std::string getLabelsAsStrs(const MetricManager::LabelsVec& labels);
+    std::string getLabelsAsStrs(const Metric::LabelsVec& labels);
 
     using ProcessorId = std::string;
     using MetricName = std::string;

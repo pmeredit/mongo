@@ -74,6 +74,12 @@ void ExternalFunction::doRegisterMetrics(MetricManager* metricManager) {
         makeExponentialDurationBuckets(kRequestTimeHistogramBucketStartMs,
                                        kRequestTimeHistogramExpFactor,
                                        kRequestTimeHistogramBucketCount));
+
+    _responseCodesCounterVec = metricManager->registerCounterVec(
+        "external_function_operator_request_counter",
+        "The number of occasions a request has completed a a roundtrip to AWS",
+        std::move(defaultLabels),
+        {"response_code"});
 }
 
 ExternalFunction::ExternalFunction(Context* context,
@@ -267,7 +273,10 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
 
         if (outcome.IsSuccess()) {
             _successfulRequestTimeHistogram->increment(responseTimeMs);
+
             invokeResult = outcome.GetResultWithOwnership();
+            _responseCodesCounterVec->withLabels({std::to_string(invokeResult.GetStatusCode())})
+                ->increment();
             if (_options.execution == mongo::ExternalFunctionExecutionEnum::Sync) {
                 std::stringstream tempStream;
                 tempStream << invokeResult.GetPayload().rdbuf();
@@ -283,7 +292,11 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
         } else {
             // AWS Error
             _failedRequestTimeHistogram->increment(responseTimeMs);
+
             lambdaError = outcome.GetError();
+            _responseCodesCounterVec
+                ->withLabels({std::to_string(static_cast<int>(lambdaError.GetResponseCode()))})
+                ->increment();
             uasserted(ErrorCodes::StreamProcessorExternalFunctionConnectionError,
                       fmt::format("Received error response from external function. Error: {}",
                                   lambdaError.GetMessage()));

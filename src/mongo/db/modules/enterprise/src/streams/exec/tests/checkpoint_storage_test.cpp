@@ -160,7 +160,7 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
 class CheckpointStorageTest : public AggregationContextFixture {
 protected:
     auto makeContext(std::string tenantId, std::string streamProcessorId) {
-        MetricManager::LabelsVec labels;
+        Metric::LabelsVec labels;
         labels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
         labels.push_back(std::make_pair(kProcessorIdLabelKey, streamProcessorId));
         auto context = std::make_unique<Context>();
