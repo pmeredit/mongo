@@ -55,10 +55,10 @@ struct MongoExtensionByteBuf {
 // be filled with a utf8 error string. On non-zero codes (result, len) may be set to (NULL, 0).
 typedef int (*mongodb_source_get_next)(void* source_ptr, const unsigned char** result, size_t* len);
 
-struct mongodb_aggregation_stage_vt;
+struct MongoExtensionAggregationStageVTable;
 /// An opaque type to be used with a C++ style polymorphic object.
-struct mongodb_aggregation_stage {
-    const mongodb_aggregation_stage_vt* vtable;
+struct MongoExtensionAggregationStage {
+    const MongoExtensionAggregationStageVTable* vtable;
 };
 
 // Vtable for an aggregation stage provided by the plugin.
@@ -68,14 +68,14 @@ struct mongodb_aggregation_stage {
 //
 // ```c
 // struct MyAggregationStage {
-//   const mongodb_aggregation_stage_vt* vtable;
+//   const MongoExtensionAggregationStageVTable* vtable;
 //   // other state goes here.
 // }
 // ```
 //
 // Your aggregation stage parser will heap allocate a `MyAggregationStage` and return it as a
 // `mongodb_aggregation_stage*`.
-struct mongodb_aggregation_stage_vt {
+struct MongoExtensionAggregationStageVTable {
     // Get the next result from stage and typically filling result. Memory pointed to by result is
     // owned by the stage and only valid until the next call on stage.
     //
@@ -86,16 +86,17 @@ struct mongodb_aggregation_stage_vt {
     //
     // Any positive value indicates an error. result will be filled with a utf8 string
     // describing the error.
-    int (*get_next)(mongodb_aggregation_stage* stage, MongoExtensionByteView* result);
+    int (*get_next)(MongoExtensionAggregationStage* stage, MongoExtensionByteView* result);
 
     // Set a source pointer and a source function for intermediate stages.
-    void (*set_source)(mongodb_aggregation_stage* stage,
+    void (*set_source)(MongoExtensionAggregationStage* stage,
                        void* source_ptr,
                        mongodb_source_get_next source_get_next);
 
     // Close this stage and free any memory associated with it. It is an error to use stage after
     // closing.
-    void (*close)(mongodb_aggregation_stage* stage);
+    // TODO: rename to drop and make it first in the vtable ABI.
+    void (*close)(MongoExtensionAggregationStage* stage);
 };
 
 // De-sugar a stage into other stages.
@@ -105,20 +106,27 @@ struct mongodb_aggregation_stage_vt {
 // On a return code of zero *result contains a new BSON document with a single element tuple.
 // The tuple is keyed by the input stage name; the value is a stage definition or array of stage
 // definitions that will be created.
+//
+// NB: desugaring should form a DAG of stages -- desugaring a stage $foo should not generate another
+// $foo or a stage that may desugar into $foo or demons may fly out of your nose.
 typedef int (*MongoExtensionParseDesugarStage)(MongoExtensionByteView stageBson,
                                                MongoExtensionByteBuf** result);
 
 // Create a concrete aggregation stage from stageBson.
 //
 // stageBson contains a BSON document with a single (stageName, stageDefinition) element tuple.
+// contextBson contains a BSON document with additional context:
+// - namespace (object)
+//   - db ("string"; serialized NamespaceString)
+//   - collection (string; optional)
+//   - collectionUUID (UUID; optional)
+// - inRouter (bool)
 //
 // On a return code of zero, fills *stage with an object owned by the caller, otherwise fills *error
 // with an object owned by the caller.
-//
-// NB: desugaring should form a DAG of stages -- desugaring a stage $foo should not generate another
-// $foo or a stage that may desugar into $foo or demons may fly out of your nose.
 typedef int (*MongoExtensionParseAggregationStage)(MongoExtensionByteView stageBson,
-                                                   mongodb_aggregation_stage** stage,
+                                                   MongoExtensionByteView contextBson,
+                                                   MongoExtensionAggregationStage** stage,
                                                    MongoExtensionByteBuf** error);
 
 // The portal allows plugin functionality to register with the server.

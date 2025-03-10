@@ -6,10 +6,19 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
+#include "mongo/util/database_name_util.h"
+#include "mongo/util/serialization_context.h"
 
 namespace mongo {
 
 namespace {
+
+struct PluginObjectDeleter {
+    template <typename T>
+    void operator()(T* obj) {
+        obj->vtable->drop(obj);
+    }
+};
 
 StringData byteViewAsStringData(const MongoExtensionByteView view) {
     return StringData(reinterpret_cast<const char*>(view.data), view.len);
@@ -17,6 +26,26 @@ StringData byteViewAsStringData(const MongoExtensionByteView view) {
 
 StringData byteBufAsStringData(const MongoExtensionByteBuf& buf) {
     return byteViewAsStringData(buf.vtable->get(&buf));
+}
+
+MongoExtensionByteView objAsByteView(const BSONObj& obj) {
+    return MongoExtensionByteView{reinterpret_cast<const unsigned char*>(obj.objdata()),
+                                  static_cast<size_t>(obj.objsize())};
+}
+
+BSONObj createContext(const ExpressionContext& ctx) {
+    BSONObjBuilder b;
+    b.append("$db",
+             DatabaseNameUtil::serialize(ctx.getNamespaceString().dbName(),
+                                         SerializationContext::stateCommandRequest()));
+    if (!ctx.getNamespaceString().coll().empty()) {
+        b.append("collection", ctx.getNamespaceString().coll());
+    }
+    if (ctx.getUUID()) {
+        (*ctx.getUUID()).appendToBuilder(&b, "collectionUUID");
+    }
+    b.append("inRouter", ctx.getInRouter());
+    return b.obj();
 }
 
 void addDesugarStage(MongoExtensionByteView name, MongoExtensionParseDesugarStage parser) {
@@ -31,17 +60,10 @@ void addDesugarStage(MongoExtensionByteView name, MongoExtensionParseDesugarStag
         [id, parser](BSONElement specElem, const boost::intrusive_ptr<ExpressionContext>& expCtx)
             -> std::list<boost::intrusive_ptr<DocumentSource>> {
             BSONObj stage_def = specElem.wrap();
-            struct ResultDeleter {
-                void operator()(MongoExtensionByteBuf* buf) {
-                    buf->vtable->drop(buf);
-                }
-            };
             MongoExtensionByteBuf* result_ptr = nullptr;
-            int code = parser(
-                MongoExtensionByteView{reinterpret_cast<const unsigned char*>(stage_def.objdata()),
-                                       static_cast<size_t>(stage_def.objsize())},
-                &result_ptr);
-            std::unique_ptr<MongoExtensionByteBuf, ResultDeleter> result(result_ptr);
+            int code = parser(objAsByteView(stage_def), &result_ptr);
+
+            std::unique_ptr<MongoExtensionByteBuf, PluginObjectDeleter> result(result_ptr);
             uassert(code, str::stream() << byteBufAsStringData(*result), code == 0);
 
             // TODO: verify result.len matches the length prefix of result.data.
@@ -74,13 +96,11 @@ void addAggregationStage(MongoExtensionByteView name, MongoExtensionParseAggrega
         [id, parser](BSONElement specElem, const boost::intrusive_ptr<ExpressionContext>& expCtx)
             -> boost::intrusive_ptr<DocumentSource> {
             BSONObj stage_def = specElem.wrap();
-            mongodb_aggregation_stage* stage = nullptr;
-            MongoExtensionByteBuf* error = nullptr;
-            int code = parser(
-                MongoExtensionByteView{reinterpret_cast<const unsigned char*>(stage_def.objdata()),
-                                       static_cast<size_t>(stage_def.objsize())},
-                &stage,
-                &error);
+            BSONObj context = createContext(*expCtx);
+            MongoExtensionAggregationStage* stage = nullptr;
+            MongoExtensionByteBuf* error_ptr = nullptr;
+            int code = parser(objAsByteView(stage_def), objAsByteView(context), &stage, &error_ptr);
+            std::unique_ptr<MongoExtensionByteBuf, PluginObjectDeleter> error(error_ptr);
             uassert(code, str::stream() << byteBufAsStringData(*error), code == 0);
             return boost::intrusive_ptr(
                 new DocumentSourcePlugin(specElem.fieldNameStringData(), expCtx, id, stage));
@@ -149,7 +169,8 @@ DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
             tassert(123456,
                     str::stream() << "plugin returned an invalid BSONObj.",
                     is_valid_bson_document(result.data, result.len));
-            return GetNextResult(Document::fromBsonWithMetaData(BSONObj(reinterpret_cast<const char*>(result.data))));
+            return GetNextResult(Document::fromBsonWithMetaData(
+                BSONObj(reinterpret_cast<const char*>(result.data))));
         case GET_NEXT_EOF:
             return GetNextResult::makeEOF();
         case GET_NEXT_PAUSE_EXECUTION:

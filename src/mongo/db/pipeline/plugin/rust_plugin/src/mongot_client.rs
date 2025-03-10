@@ -12,7 +12,6 @@ pub(crate) static MONGOT_ENDPOINT: &str = "http://localhost:27030";
 pub(crate) static RUNTIME_THREADS: usize = 4;
 pub(crate) static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MongotCursorBatch {
     pub ok: u8,
@@ -45,7 +44,7 @@ pub struct MongotResult {
     #[serde(skip_serializing)]
     pub score: f32,
     #[serde(rename = "storedSource")]
-    pub stored_source: Option<Document>
+    pub stored_source: Option<Document>,
 }
 
 #[derive(Serialize, Deserialize)]

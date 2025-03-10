@@ -5,23 +5,24 @@
 mod command_service;
 mod desugar;
 mod mongot_client;
-mod vector;
 mod search;
+mod vector;
 
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
 
-use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid};
+use serde::{Deserialize, Serialize};
 
 use plugin_api_bindgen::{
-    mongodb_aggregation_stage, mongodb_aggregation_stage_vt, mongodb_source_get_next,
+    mongodb_source_get_next, MongoExtensionAggregationStage, MongoExtensionAggregationStageVTable,
     MongoExtensionByteBuf, MongoExtensionByteBufVTable, MongoExtensionByteView,
     MongoExtensionPortal,
 };
 
 use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
-use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
 use crate::search::{InternalPluginSearch, PluginSearch};
+use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
 
 #[derive(Debug)]
 pub struct Error {
@@ -31,23 +32,23 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(code: i32, message: String) -> Self {
+    pub fn new<S: Into<String>>(code: i32, message: S) -> Self {
         Self {
             code: NonZero::new(code).unwrap(),
-            message,
+            message: message.into(),
             source: None,
         }
     }
 
     // TODO: source could be <E: Error + 'static> and this method could box it.
-    pub fn with_source<E: std::error::Error + 'static>(
+    pub fn with_source<S: Into<String>, E: std::error::Error + 'static>(
         code: i32,
-        message: String,
+        message: S,
         source: E,
     ) -> Self {
         Self {
             code: NonZero::new(code).unwrap(),
-            message,
+            message: message.into(),
             source: Some(Box::new(source)),
         }
     }
@@ -121,6 +122,10 @@ impl VecByteBuf {
     }
 }
 
+unsafe fn byte_view_as_slice<'a>(buf: MongoExtensionByteView) -> &'a [u8] {
+    std::slice::from_raw_parts(buf.data, buf.len)
+}
+
 // TODO: add a map() fn that only maps over the Advanced state.
 #[derive(Debug)]
 pub enum GetNextResult<'a> {
@@ -156,7 +161,7 @@ impl AggregationSource {
                     RawDocument::from_bytes(unsafe {
                         std::slice::from_raw_parts(result_ptr, result_len)
                     })
-                        .unwrap(),
+                    .unwrap(),
                 ))
             }
             _ => Err(Error::new(
@@ -166,6 +171,29 @@ impl AggregationSource {
                     .to_owned(),
             )),
         }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AggregationStageContext {
+    // NB: this may contain a raw ObjectId so it probably shouldn't be a String.
+    // This isn't an issue in the C++ code base because std::string can be an arbitrary byte buffer
+    // and doesn't have to contain readable text in any character set.
+    #[serde(rename = "$db")]
+    pub db: String,
+    pub collection: Option<String>,
+    #[serde(rename = "collectionUUID")]
+    pub collection_uuid: Option<Uuid>,
+    #[serde(rename = "inRouter")]
+    pub in_router: bool,
+}
+
+impl TryFrom<&RawDocument> for AggregationStageContext {
+    type Error = Error;
+
+    fn try_from(value: &RawDocument) -> Result<AggregationStageContext, Self::Error> {
+        bson::from_slice(value.as_bytes())
+            .map_err(|e| Error::with_source(1, "Could not parse AggregationStageContext", e))
     }
 }
 
@@ -179,7 +207,11 @@ pub trait AggregationStage: Sized {
 
     /// Create a new stage from a document containing the stage definition.
     /// The stage definition is a bson value associated with the stage name.
-    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error>;
+    /// `context`` is a document containing additional data about this aggregation pipeline. It
+    /// is convertible to [AggregationStageContext].
+    // TODO: should we always parse Context? It depend on whether or not any non-trival agg stage
+    // would need access to the parsed context.
+    fn new(stage_definition: RawBsonRef<'_>, context: &RawDocument) -> Result<Self, Error>;
 
     /// Set a source for this stage. Used by intermediate stages to fetch documents to transform.
     fn set_source(&mut self, source: AggregationSource);
@@ -192,7 +224,7 @@ pub trait AggregationStage: Sized {
 /// Wrapper around an [AggregationStage] that binds to the C plugin API.
 #[repr(C)]
 pub struct PluginAggregationStage<S: AggregationStage> {
-    vtable: &'static mongodb_aggregation_stage_vt,
+    vtable: &'static MongoExtensionAggregationStageVTable,
     stage_impl: S,
     // This is a place to put errors or other things that might leak.
     buf: Vec<u8>,
@@ -213,7 +245,7 @@ impl<S: AggregationStage> std::ops::DerefMut for PluginAggregationStage<S> {
 }
 
 impl<S: AggregationStage> PluginAggregationStage<S> {
-    const VTABLE: mongodb_aggregation_stage_vt = mongodb_aggregation_stage_vt {
+    const VTABLE: MongoExtensionAggregationStageVTable = MongoExtensionAggregationStageVTable {
         get_next: Some(Self::get_next),
         set_source: Some(Self::set_source),
         close: Some(Self::close),
@@ -235,19 +267,26 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
 
     unsafe extern "C-unwind" fn parse_external(
         stage_bson: MongoExtensionByteView,
-        stage: *mut *mut mongodb_aggregation_stage,
+        context_bson: MongoExtensionByteView,
+        stage: *mut *mut MongoExtensionAggregationStage,
         error: *mut *mut MongoExtensionByteBuf,
     ) -> c_int {
+        let (stage_slice, context_slice) = unsafe {
+            (
+                byte_view_as_slice(stage_bson),
+                byte_view_as_slice(context_bson),
+            )
+        };
         *stage = std::ptr::null_mut();
         *error = std::ptr::null_mut();
-        match Self::parse(unsafe { std::slice::from_raw_parts(stage_bson.data, stage_bson.len) }) {
+        match Self::parse(stage_slice, context_slice) {
             Ok(stage_impl) => {
                 let plugin_stage = Box::new(Self {
                     vtable: &Self::VTABLE,
                     stage_impl,
                     buf: vec![],
                 });
-                *stage = Box::into_raw(plugin_stage) as *mut mongodb_aggregation_stage;
+                *stage = Box::into_raw(plugin_stage) as *mut MongoExtensionAggregationStage;
                 0
             }
             Err(Error { code, message, .. }) => {
@@ -259,15 +298,15 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     }
 
     /// Parse a generic [AggregationStage] from raw bson document bytes.
-    fn parse(bson_doc_bytes: &[u8]) -> Result<S, Error> {
-        let doc = RawDocument::from_bytes(bson_doc_bytes).map_err(|e| {
+    fn parse(stage_doc_bytes: &[u8], context_doc_bytes: &[u8]) -> Result<S, Error> {
+        let stage_doc = RawDocument::from_bytes(stage_doc_bytes).map_err(|e| {
             Error::with_source(
                 1,
                 format!("Error parsing stage definition for {}", S::name()),
-                Box::new(e),
+                e,
             )
         })?;
-        let element = doc
+        let element = stage_doc
             .iter()
             .next()
             .map(|el| {
@@ -286,11 +325,18 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                     S::name()
                 ),
             )))?;
-        S::new(element.1)
+        let context_doc = RawDocument::from_bytes(context_doc_bytes).map_err(|e| {
+            Error::with_source(
+                1,
+                format!("Error parsing context for stage {}", S::name()),
+                e,
+            )
+        })?;
+        S::new(element.1, context_doc)
     }
 
     unsafe extern "C-unwind" fn get_next(
-        stage: *mut mongodb_aggregation_stage,
+        stage: *mut MongoExtensionAggregationStage,
         result: *mut MongoExtensionByteView,
     ) -> c_int {
         let rust_stage = (stage as *mut PluginAggregationStage<S>)
@@ -324,7 +370,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     }
 
     unsafe extern "C-unwind" fn set_source(
-        stage: *mut mongodb_aggregation_stage,
+        stage: *mut MongoExtensionAggregationStage,
         source_ptr: *mut c_void,
         source_get_next: mongodb_source_get_next,
     ) {
@@ -334,9 +380,8 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         rust_stage.set_source(AggregationSource::new(source_ptr, source_get_next))
     }
 
-    unsafe extern "C-unwind" fn close(stage: *mut mongodb_aggregation_stage) {
-        let rust_stage = Box::from_raw(stage as *mut PluginAggregationStage<S>);
-        drop(rust_stage);
+    unsafe extern "C-unwind" fn close(stage: *mut MongoExtensionAggregationStage) {
+        let _ = Box::from_raw(stage as *mut PluginAggregationStage<S>);
     }
 }
 
@@ -350,7 +395,7 @@ impl AggregationStage for EchoOxide {
         "$echoOxide"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
         let document = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
@@ -391,7 +436,7 @@ impl AggregationStage for AddSomeCrabs {
         "$addSomeCrabs"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
         let num_crabs = match stage_definition {
             RawBsonRef::Int32(i) if i > 0 => i as usize,
             RawBsonRef::Int64(i) if i > 0 => i as usize,
@@ -399,7 +444,7 @@ impl AggregationStage for AddSomeCrabs {
             _ => {
                 return Err(Error::new(
                     1,
-                    "$addSomeCrabs should be followed with a positive integer value.".into(),
+                    "$addSomeCrabs should be followed with a positive integer value.",
                 ))
             }
         };

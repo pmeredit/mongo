@@ -136,9 +136,9 @@ impl DesugarAggregationStage for EchoWithSomeCrabs {
     fn desugar(stage_definition: RawBsonRef<'_>) -> Result<Vec<Document>, Error> {
         let input_stage_def: EchoWithSomeCrabsStageDefinition =
             bson::from_bson(stage_definition.try_into().map_err(|e| {
-                Error::with_source(1, "Could not convert $echoWithSomeCrabs to bson".into(), e)
+                Error::with_source(1, "Could not convert $echoWithSomeCrabs to bson", e)
             })?)
-            .map_err(|e| Error::with_source(1, "Could not parse $echoWithSomeCrabs".into(), e))?;
+            .map_err(|e| Error::with_source(1, "Could not parse $echoWithSomeCrabs", e))?;
 
         let mut stages = vec![Document::from_iter([(
             "$echoOxide".into(),

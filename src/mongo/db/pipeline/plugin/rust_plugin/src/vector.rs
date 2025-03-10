@@ -1,23 +1,22 @@
+use std::collections::VecDeque;
+
+use bson::{
+    doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument, RawDocumentBuf,
+};
+use tokio::runtime::Builder;
+use tonic::transport::Channel;
+use tonic::{Request, Response};
+
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::desugar::DesugarAggregationStage;
 use crate::mongot_client::{
     MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
 };
-use crate::search::PluginSearch;
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
-use bson::{doc, to_raw_document_buf, RawArrayBuf, Uuid};
-use bson::{Document, RawBsonRef, RawDocumentBuf};
-use bytes::Buf;
-use std::collections::VecDeque;
-use std::num::NonZero;
-use tokio::runtime::Builder;
-use tonic::codec::{Codec, Decoder, Encoder};
-use tonic::codegen::tokio_stream::StreamExt;
-use tonic::transport::Channel;
-use tonic::{Request, Response};
+use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 pub struct InternalPluginVectorSearch {
     client: CommandServiceClient<Channel>,
+    context: AggregationStageContext,
     source: Option<AggregationSource>,
     documents: Option<VecDeque<Document>>,
     last_document: RawDocumentBuf,
@@ -33,52 +32,53 @@ impl AggregationStage for InternalPluginVectorSearch {
         "$_internalPluginVectorSearch"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>, context: &RawDocument) -> Result<Self, Error> {
         let document = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
                 return Err(Error::new(
                     1,
-                    format!("$_internalPluginVectorSearch stage definition must contain a document."),
+                    "$_internalPluginVectorSearch stage definition must contain a document.",
                 ))
             }
         };
 
+        let context = AggregationStageContext::try_from(context)?;
+        if context.collection.is_none() {
+            return Err(Error::new(
+                1,
+                "$pluginVectorSearch context must contain a collection name",
+            ));
+        }
+        if context.collection_uuid.is_none() {
+            return Err(Error::new(
+                1,
+                "$pluginVectorSearch context must contain a collection UUID",
+            ));
+        }
+
         let query_vector = document
             .get_array("queryVector")
-            .map_err(|_| Error {
-                code: NonZero::new(1).unwrap(),
-                message: String::from("Vector field is expected to be an array"),
-                source: None,
-            })?
+            .map_err(|_| Error::new(1, "Vector field is expected to be an array"))?
             .to_owned();
 
         let path = document
             .get_str("path")
-            .map_err(|_| Error {
-                code: NonZero::new(1).unwrap(),
-                message: String::from("Missing 'path' field"),
-                source: None,
-            })?
+            .map_err(|_| Error::new(1, "Missing 'path' field"))?
             .to_string();
 
-        let index = document.get_str("index").map_err(|_| Error {
-            code: NonZero::new(1).unwrap(),
-            message: String::from("Missing 'limit' field"),
-            source: None,
-        })?;
+        let index = document
+            .get_str("index")
+            .map_err(|_| Error::new(1, "Missing 'limit' field"))?;
 
-        let num_candidates = document.get_f64("numCandidates").map_err(|_| Error {
-            code: NonZero::new(1).unwrap(),
-            message: String::from("Missing 'numCandidates' field"),
-            source: None,
-        })? as i64;
+        let num_candidates = document
+            .get_f64("numCandidates")
+            .map_err(|_| Error::new(1, "Missing 'numCandidates' field"))?
+            as i64;
 
-        let limit = document.get_f64("limit").map_err(|_| Error {
-            code: NonZero::new(1).unwrap(),
-            message: String::from("Missing 'limit' field"),
-            source: None,
-        })? as i64;
+        let limit = document
+            .get_f64("limit")
+            .map_err(|_| Error::new(1, "Missing 'limit' field"))? as i64;
 
         let client = RUNTIME
             .get_or_init(|| {
@@ -94,6 +94,7 @@ impl AggregationStage for InternalPluginVectorSearch {
 
         Ok(Self {
             client,
+            context,
             source: None,
             documents: None,
             last_document: RawDocumentBuf::new(),
@@ -134,7 +135,7 @@ impl InternalPluginVectorSearch {
         let result = RUNTIME
             .get()
             .unwrap()
-            .block_on(async { Self::query_mongot(self).await });
+            .block_on(async { self.query_mongot().await });
 
         let binding =
             result.map_err(|e| Error::new(1, format!("Error executing search query: {}", e)))?;
@@ -170,10 +171,17 @@ impl InternalPluginVectorSearch {
         &mut self,
     ) -> Result<Response<MongotCursorBatch>, Box<dyn std::error::Error>> {
         let request: Request<VectorSearchCommand> = Request::new(VectorSearchCommand {
-            vector_search: String::from("test"), // TODO pass this to plugin during stage creation
-            db: String::from("test"),            // TODO pass this to plugin during stage creation
-            collection_uuid: Uuid::parse_str("e954c0a6-61b3-477d-859c-2bac22e865a2").unwrap(), // TODO pass this to plugin during stage creation
-            index: String::from(self.index.clone()), // TODO avoid clone
+            vector_search: self
+                .context
+                .collection
+                .clone()
+                .expect("init verified collection exists"),
+            db: self.context.db.clone(),
+            collection_uuid: self
+                .context
+                .collection_uuid
+                .expect("init verified collectionUUID exists"),
+            index: String::from(self.index.clone()),
             path: String::from(self.path.clone()),
             query_vector: self.query_vector.clone(),
             num_candidates: self.num_candidates,

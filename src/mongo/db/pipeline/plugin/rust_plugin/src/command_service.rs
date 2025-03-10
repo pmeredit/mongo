@@ -38,6 +38,7 @@ pub mod command_service_client {
         unused_variables,
         dead_code,
         missing_docs,
+        non_snake_case,
         clippy::wildcard_imports,
         clippy::let_unit_value,
     )]
@@ -178,6 +179,8 @@ pub mod command_service_server {
         unused_variables,
         dead_code,
         missing_docs,
+        non_snake_case,
+        non_camel_case_types,
         clippy::wildcard_imports,
         clippy::let_unit_value,
     )]

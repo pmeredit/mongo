@@ -9,7 +9,7 @@ public:
     DocumentSourcePlugin(StringData name,
                          boost::intrusive_ptr<ExpressionContext> exprCtx,
                          Id id,
-                         mongodb_aggregation_stage* stage)
+                         MongoExtensionAggregationStage* stage)
         : DocumentSource(name, exprCtx),
           _stage_name(name.toString()),
           _id(id),
@@ -62,7 +62,7 @@ private:
     friend int source_get_next(void* source_ptr, const unsigned char** result, size_t* len);
 
     struct PluginStageDeleter {
-        void operator()(mongodb_aggregation_stage* stage) {
+        void operator()(MongoExtensionAggregationStage* stage) {
             stage->vtable->close(stage);
         }
     };
@@ -75,7 +75,7 @@ private:
     // returning the value as a const char* in getSourceName().
     std::string _stage_name;
     Id _id;
-    std::unique_ptr<mongodb_aggregation_stage, PluginStageDeleter> _plugin_stage;
+    std::unique_ptr<MongoExtensionAggregationStage, PluginStageDeleter> _plugin_stage;
     BSONObj _source_doc;
 };
 

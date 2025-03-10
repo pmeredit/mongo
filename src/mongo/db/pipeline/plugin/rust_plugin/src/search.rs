@@ -5,14 +5,13 @@ use crate::mongot_client::{
     MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
 };
 use crate::search::Payload::{Entry, EOF};
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
-use bson::{doc, to_raw_document_buf, Uuid};
-use bson::{Document, RawBsonRef, RawDocumentBuf};
+use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+use bson::{doc, to_raw_document_buf};
+use bson::{Document, RawBsonRef, RawDocument, RawDocumentBuf};
 use tokio::runtime::Builder;
 use tokio::select;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, watch};
-use tonic::codec::{Codec, Decoder, Encoder};
 use tonic::codegen::tokio_stream;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::transport::Channel;
@@ -24,6 +23,7 @@ static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 pub struct InternalPluginSearch {
     initialized: bool,
     client: CommandServiceClient<Channel>,
+    context: AggregationStageContext,
     source: Option<AggregationSource>,
     last_document: RawDocumentBuf,
     query: Document,
@@ -50,7 +50,7 @@ impl AggregationStage for InternalPluginSearch {
         "$_internalPluginSearch"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>, context: &RawDocument) -> Result<Self, Error> {
         let query = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
@@ -62,6 +62,14 @@ impl AggregationStage for InternalPluginSearch {
         }
         .to_document()
         .unwrap();
+
+        let context = AggregationStageContext::try_from(context)?;
+        if context.collection.is_none() {
+            return Err(Error::new(1, "$pluginSearch context must contain a collection name"));
+        }
+        if context.collection_uuid.is_none() {
+            return Err(Error::new(1, "$pluginSearch context must contain a collection UUID"));
+        }
 
         let stored_source = query.get_bool("returnStoredSource").unwrap_or(false);
 
@@ -85,6 +93,7 @@ impl AggregationStage for InternalPluginSearch {
 
         Ok(Self {
             initialized: false,
+            context,
             client,
             source: None,
             last_document: RawDocumentBuf::new(),
@@ -137,10 +146,9 @@ impl InternalPluginSearch {
         // execute the initial request to fetch first batch and obtain the cursor id
         sender
             .send(SearchCommand::Initial(InitialSearchCommand {
-                // TODO get db/coll/uuid from mongod
-                search: String::from("search-test"),
-                db: String::from("test"),
-                collection_uuid: Uuid::parse_str("f7f41b0c-cc12-435f-93cf-8da7f39fb4af").unwrap(),
+                search: self.context.collection.clone().expect("init verified collection name is present"),
+                db: self.context.db.clone(),
+                collection_uuid: self.context.collection_uuid.expect("verified collection UUID present at initialization"),
                 query: self.query.clone(),
                 // small batch_size is for test purposes, this allows us to send getMores
                 cursor_options: Some(CursorOptions { batch_size: 5 }),
