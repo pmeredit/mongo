@@ -6,13 +6,13 @@
 
 #include "ldap_connection_options.h"
 
+#include <absl/strings/str_split.h>
 #include <algorithm>
 #include <string>
 
 #include "ldap_host.h"
 #include "mongo/base/string_data.h"
 #include "mongo/util/str.h"
-#include "mongo/util/text.h"
 
 namespace mongo {
 
@@ -65,9 +65,7 @@ StatusWith<std::vector<LDAPHost>> LDAPConnectionOptions::parseHostURIs(const std
     }
 
     std::vector<LDAPHost> result;
-    StringSplitter splitter(hosts.c_str(), ",");
-    while (splitter.more()) {
-        std::string token = splitter.next();
+    for (const auto& token : absl::StrSplit(hosts, ",", absl::SkipEmpty())) {
 
         if (token.find("ldap://") == 0 || token.find("ldaps://") == 0) {
             return Status(ErrorCodes::FailedToParse,
@@ -75,7 +73,7 @@ StatusWith<std::vector<LDAPHost>> LDAPConnectionOptions::parseHostURIs(const std
         }
 
         auto type = LDAPHost::Type::kDefault;
-        auto token_sd = StringData(token);
+        auto token_sd = StringData(token.data(), token.size());
         if (token_sd.startsWith(srvPrefix)) {
             type = LDAPHost::Type::kSRV;
             token_sd = token_sd.substr(srvPrefix.size());

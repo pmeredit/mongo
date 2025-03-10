@@ -2,6 +2,7 @@
  *  Copyright (C) 2016-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <absl/strings/str_split.h>
 #include <fmt/format.h>
 #include <memory>
 
@@ -453,8 +454,8 @@ int ldapToolMain(int argc, char** argv) {
     if (globalLDAPParams->bindMethod == LDAPBindType::kSasl) {
         report.openSection("Checking that SASL mechanisms are supported by server...");
 
-        StringSplitter splitter(globalLDAPParams->bindSASLMechanisms.c_str(), ",");
-        std::vector<std::string> requestedSASLMechanisms = splitter.split();
+        std::vector<std::string> requestedSASLMechanisms =
+            absl::StrSplit(globalLDAPParams->bindSASLMechanisms, ",", absl::SkipEmpty());
 
         LDAPAttributeKeyValuesMap::iterator supportedSASLMechanisms;
         std::vector<std::string> remoteMechanismVector;

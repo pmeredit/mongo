@@ -4,6 +4,7 @@
 
 #include "streams/exec/https_operator.h"
 
+#include <absl/strings/str_split.h>
 #include <algorithm>
 #include <bsoncxx/exception/exception.hpp>
 #include <bsoncxx/json.hpp>
@@ -26,11 +27,11 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/ctype.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/overloaded_visitor.h"
 #include "mongo/util/str.h"
-#include "mongo/util/text.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/feature_flag.h"
@@ -579,19 +580,24 @@ std::vector<std::string> HttpsOperator::evaluateQueryParams(const mongo::Documen
 }
 
 boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringData rawHeaders) {
-    auto headerTokens = StringSplitter::split(rawHeaders.data(), "\r\n");
+    auto headerTokens = absl::StrSplit(rawHeaders.data(), "\r\n", absl::SkipEmpty());
+
+    auto convertToLower = [](std::string& s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](auto c) { return ctype::toLower(c); });
+    };
+
     for (const auto& headerToken : headerTokens) {
-        auto keyAndValue = StringSplitter::split(headerToken, ": ");
+        std::vector<std::string> keyAndValue = absl::StrSplit(headerToken, ": ", absl::SkipEmpty());
         if (keyAndValue.size() != 2) {
             // There is network related data before the actual headers skip this.
             continue;
         }
-        std::transform(
-            keyAndValue[0].begin(), keyAndValue[0].end(), keyAndValue[0].begin(), ::tolower);
+        convertToLower(keyAndValue[0]);
         if (keyAndValue[0] == "content-type") {
-            auto contentType = StringSplitter::split(keyAndValue[1], ";");
-            transform(
-                contentType[0].begin(), contentType[0].end(), contentType[0].begin(), ::tolower);
+            std::vector<std::string> contentType =
+                absl::StrSplit(keyAndValue[1], ";", absl::SkipEmpty());
+            uassert(ErrorCodes::FailedToParse, "No value for content-type", !contentType.empty());
+            convertToLower(contentType[0]);
             return contentType[0];
         }
     }
