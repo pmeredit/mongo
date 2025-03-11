@@ -51,6 +51,7 @@
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/s3_emit_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
@@ -108,8 +109,15 @@ public:
         awsIAMConn.setOptions(awsIAMConnOptions.toBSON());
         awsIAMConn.setType(ConnectionTypeEnum::AWSIAMLambda);
 
+        Connection awsS3Conn{};
+        awsS3Conn.setName("awsS3Conn1");
+        AWSIAMConnectionOptions awsS3ConnOptions{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
+        awsS3Conn.setOptions(awsS3ConnOptions.toBSON());
+        awsS3Conn.setType(ConnectionTypeEnum::S3);
+
         std::vector<Connection> connectionsVector{
-            atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment, awsIAMConn};
+            atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment, awsIAMConn, awsS3Conn};
 
         auto inMemoryConnection = testInMemoryConnections();
         connectionsVector.insert(
@@ -193,10 +201,7 @@ public:
             Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
             Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
             Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()},
-            Connection{
-                "s3Bucket1",
-                ConnectionTypeEnum::S3,
-                options3.toBSON()},  // TODO(SERVER-99973): Use S3ConnectionOptions when available
+            Connection{"s3Bucket1", ConnectionTypeEnum::S3, options4.toBSON()},
             Connection{"awsIAMLambda1", ConnectionTypeEnum::AWSIAMLambda, options4.toBSON()}});
 
         Planner planner(context.get(), Planner::Options{});
@@ -2503,7 +2508,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
                     }
                 ])",
               {"ChangeStreamConsumerOperator", "ExternalFunctionSinkOperator"});
-    // Ensure the planner is properly planning a S3EmitOperator
+    // Ensure the planner is properly planning an S3EmitOperator
     innerTest(R"(
     [
         {
@@ -2527,14 +2532,15 @@ TEST_F(PlannerTest, ExecutionPlan) {
         },
         {
             $emit: {
-              connectionName: "s3Bucket1"
+              connectionName: "s3Bucket1",
+              bucket: "foo",
+              path: "bar",
+              region: "us-east-1",
+              delimiter: "\n"
             }
         }
     ])",
-              {"ChangeStreamConsumerOperator",
-               "AddFieldsOperator",
-               "S3EmitOperator"});  // TODO(SERVER-99973) update $emit definition when required
-                                    // fields are added
+              {"ChangeStreamConsumerOperator", "AddFieldsOperator", "S3EmitOperator"});
 
 #if LIBCURL_VERSION_NUM >= 0x074e00
     innerTest(R"(
@@ -3577,6 +3583,252 @@ TEST_F(PlannerTest, Optimize_ChangestreamPredicatePushdown) {
                             {"ChangeStreamConsumerOperator", "MatchOperator", "MergeOperator"},
                             [](auto& dag) {},
                             {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(false)}});
+}
+
+/**
+ * Parse a pipeline containing $externalFunction in it. Verify that it fails when not supplied the
+ * correct feature flag.
+ */
+TEST_F(PlannerTest, S3EmitFailsWithoutFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $emit: {
+        connectionName: "awsS3Conn1",
+        bucket: "foo",
+        path: "bar"
+        } }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Creating an S3 $emit stage is not yet supported");
+}
+
+/**
+ * Parse a pipeline containing an S3 $emit in it. Verify that it still fails when the feature
+ * flag is defined but set to false.
+ */
+TEST_F(PlannerTest, S3EmitWithFalseFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $emit: {
+        connectionName: "awsS3Conn1",
+        bucket: "foo",
+        path: "bar"
+        } }
+]
+    )";
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableS3Emit.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Creating an S3 $emit stage is not yet supported");
+}
+
+/**
+ * Parse a pipeline containing S3 $emit in it, the expected feature flag, but missing
+ * required arguments.
+ */
+TEST_F(PlannerTest, S3EmitWithMissingRequiredArgs) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableS3Emit.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+    setupConnections();
+
+    {
+        // This pipeline is missing 'connectionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                bucket: "foo",
+                path: "bar"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: $emit must contain 'connectionName' field in it");
+    }
+
+    {
+        // This pipeline passes in an unexpected connectionName.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "unseenbeforelegendaryconnectionname",
+                bucket: "foo",
+                path: "bar"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: Invalid connectionName in $emit { connectionName: "
+            "\"unseenbeforelegendaryconnectionname\", bucket: \"foo\", path: \"bar\" }");
+    }
+
+    {
+        // This pipeline is missing 'bucket'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'emit.bucket' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse
+                                              // from reason.
+    }
+    {
+        // This pipeline is missing 'path'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'emit.path' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse
+                                              // from reason.
+    }
+
+    {
+        // unknown field
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo",
+                path: "bar",
+                randomField: "foo"
+            }
+        }
+    ])")),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLUnknownField: BSON field 'emit.randomField' is an unknown field.");
+    }
+}
+
+/**
+ * Parse a pipeline containing an S3 $emit in it. Verify that it does not fail when not
+ * supplied the expected feature flag.
+ */
+TEST_F(PlannerTest, S3EmitWithTrueFeatureFlag) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableS3Emit.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+
+    struct Expectation {
+        std::string bucket;
+        std::string path;
+        std::string delimiter;
+    };
+
+    auto planS3EmitTest = [&](const std::vector<BSONObj>& spec, const Expectation& expected) {
+        auto dag = addSourceSinkAndParse(spec);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 2 /* Source and Sink */);
+
+        auto actualOper = dynamic_cast<S3EmitOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->options_forTest().bucket.getLiteral(), expected.bucket);
+        ASSERT_EQ(actualOper->options_forTest().path.getLiteral(), expected.path);
+        ASSERT_EQ(actualOper->options_forTest().delimiter, expected.delimiter);
+    };
+
+    // delimiter defaults to \n
+    {
+        planS3EmitTest(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo",
+                path: "bar"
+            }
+        }
+    ])"),
+                       {
+                           .bucket = "foo",
+                           .path = "bar",
+                           .delimiter = "\n",
+                       });
+    }
+
+    // delimiter is correctly parsed
+    {
+        planS3EmitTest(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo",
+                path: "bar",
+                delimiter: "\t"
+            }
+        }
+    ])"),
+                       {
+                           .bucket = "foo",
+                           .path = "bar",
+                           .delimiter = "\t",
+                       });
+    }
 }
 
 }  // namespace

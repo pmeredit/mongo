@@ -868,3 +868,27 @@ structs:
                 description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent."
                 type: pipeline
                 optional: true
+
+    S3Options:
+        description: "s3 $emit stage options."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the connection used for auth."
+                type: string
+            region:
+                description: "Defines the region of the S3 bucket being written to. Defaults to SPI region."
+                type: string
+                optional: true
+            bucket:
+                description: "The target S3 bucket to upload files to."
+                type: 
+                    variant: [object, string]
+            path:
+                description: "The target path within the bucket to upload files to."
+                type: 
+                    variant: [object, string]
+            delimiter:
+                description: "The delimiter used to add between documents written to a file being uploaded to S3."
+                type: string
+                optional: true

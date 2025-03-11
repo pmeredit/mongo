@@ -518,6 +518,18 @@ void configureContextStreamMetaFieldName(Context* context, StringData streamMeta
         context->streamMetaFieldName = streamMetaFieldName.toString();
     }
 }
+
+NameExpression parseStringOrExpression(const std::variant<mongo::BSONObj, std::string>& strOrExpr) {
+    return std::visit(
+        OverloadedVisitor{[&](const BSONObj& bson) {
+                              uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                      "Expected emit bucket expression to have one field.",
+                                      bson.nFields() == 1);
+                              return NameExpression{bson.firstElement()};
+                          },
+                          [&](const std::string& str) { return NameExpression{str}; }},
+        strOrExpr);
+}
 }  // namespace
 
 Planner::Planner(Context* context, Options options)
@@ -1148,10 +1160,34 @@ void Planner::planEmitSink(const BSONObj& spec) {
             bool featureFlag =
                 *_context->featureFlags->getFeatureFlagValue(FeatureFlags::kEnableS3Emit).getBool();
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                    "Creating a S3 $emit stage is not yet supported",
+                    "Creating an S3 $emit stage is not yet supported",
                     featureFlag);
 
-            sinkOperator = std::make_unique<S3EmitOperator>(_context, S3EmitOperator::Options{});
+            auto parsedOptions = S3Options::parse(IDLParserContext("emit"), sinkSpec);
+
+            Aws::Client::ClientConfiguration clientConfig;
+            if (!parsedOptions.getRegion() || parsedOptions.getRegion()->empty()) {
+                clientConfig.region = _context->region;
+            } else {
+                clientConfig.region = std::string{*parsedOptions.getRegion()};
+            }
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    fmt::format("{} does not support non-AWS region '{}'",
+                                kEmitStageName,
+                                clientConfig.region),
+                    isAWSRegion(clientConfig.region));
+
+            S3EmitOperator::Options options{
+                .client = std::make_shared<AWSS3Client>(
+                    std::make_shared<AWSCredentialsProvider>(_context, connectionName),
+                    clientConfig),
+                .bucket = parseStringOrExpression(parsedOptions.getBucket()),
+                .path = parseStringOrExpression(parsedOptions.getPath()),
+                .delimiter = (parsedOptions.getDelimiter())
+                    ? std::string{*parsedOptions.getDelimiter()}
+                    : S3EmitOperator::kDefaultDelimiter,
+            };
+            sinkOperator = std::make_unique<S3EmitOperator>(_context, std::move(options));
             sinkOperator->setOperatorId(_nextOperatorId++);
         } else {
             // $emit to TimeSeries collection
@@ -1794,8 +1830,9 @@ ExternalFunction::Options Planner::planExternalFunctionOptions(const mongo::BSON
     Aws::Client::ClientConfiguration clientConfig;
     clientConfig.region = _context->region;
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            str::stream() << kExternalFunctionStageName << "does not support non-AWS region '"
-                          << clientConfig.region,
+            fmt::format("{} does not support non-AWS region '{}'",
+                        kExternalFunctionStageName,
+                        clientConfig.region),
             isAWSRegion(clientConfig.region));
     if (getTestCommandsEnabled()) {
         clientConfig.endpointOverride = "http://localhost:9000";

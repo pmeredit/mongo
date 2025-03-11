@@ -6,22 +6,24 @@
 
 #include <aws/core/Aws.h>
 #include <aws/core/Region.h>
+#include <aws/s3/S3ServiceClientModel.h>
+#include <aws/s3/model/ListBucketsResult.h>
 
 #include "mongo/base/string_data.h"
+#include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
-
 AWSCredentialsProvider::AWSCredentialsProvider(Context* context, std::string connectionName)
-    : Aws::Auth::AWSCredentialsProvider(), _context{context}, _connectionName{connectionName} {};
+    : Aws::Auth::AWSCredentialsProvider(), _context{context}, _connectionName{connectionName} {}
 
 Aws::Auth::AWSCredentials AWSCredentialsProvider::GetAWSCredentials() {
     RefreshIfExpired();
     Aws::Utils::Threading::ReaderLockGuard guard(m_reloadLock);
     return _credentials;
-};
+}
 
 void AWSCredentialsProvider::Reload() {
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
@@ -34,8 +36,8 @@ void AWSCredentialsProvider::Reload() {
     _credentials = Aws::Auth::AWSCredentials(connOptions.getAccessKey().toString(),
                                              connOptions.getAccessSecret().toString(),
                                              connOptions.getSessionToken().toString(),
-                                             Aws::Utils::DateTime(connOptions.getExpirationDate()));
-};
+                                             Aws::Utils::DateTime{connOptions.getExpirationDate()});
+}
 
 void AWSCredentialsProvider::RefreshIfExpired() {
     Aws::Utils::Threading::ReaderLockGuard guard(m_reloadLock);
@@ -50,18 +52,31 @@ void AWSCredentialsProvider::RefreshIfExpired() {
     }
 
     Reload();
-};
+}
 
 AWSLambdaClient::AWSLambdaClient(
     const std::shared_ptr<Aws::Auth::AWSCredentialsProvider>& credentialsProvider,
     const Aws::Client::ClientConfiguration& clientConfiguration)
-    : _client{credentialsProvider, clientConfiguration} {};
-
+    : _client{credentialsProvider, clientConfiguration} {}
 
 Aws::Lambda::Model::InvokeOutcome AWSLambdaClient::Invoke(
     const Aws::Lambda::Model::InvokeRequest& request) const {
     return _client.Invoke(request);
-};
+}
+
+AWSS3Client::AWSS3Client(std::shared_ptr<Aws::Auth::AWSCredentialsProvider> credentialsProvider,
+                         Aws::Client::ClientConfiguration clientConfiguration)
+    : _client{std::move(credentialsProvider), nullptr, std::move(clientConfiguration)} {}
+
+Aws::S3::Model::ListBucketsOutcome AWSS3Client::ListBuckets(
+    const Aws::S3::Model::ListBucketsRequest& request) {
+    return _client.ListBuckets(request);
+}
+
+void AWSS3Client::PutObjectAsync(const Aws::S3::Model::PutObjectRequest& request,
+                                 const Aws::S3::PutObjectResponseReceivedHandler& cb) {
+    _client.PutObjectAsync(request, cb);
+}
 
 bool isAWSRegion(mongo::StringData region) {
     if (region == Aws::Region::AF_SOUTH_1 || region == Aws::Region::AP_EAST_1 ||

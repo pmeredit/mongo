@@ -356,7 +356,7 @@ mongo_cc_unit_test(
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
     tags = [
-        "compile_requires_large_memory_gcc_fission",
+        "compile_requires_large_memory_gcc",
         "mongo_unittest_fifth_group",
     ],
     deps = [
@@ -503,7 +503,7 @@ mongo_cc_unit_test(
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
     tags = [
-        "compile_requires_large_memory_gcc_fission",
+        "compile_requires_large_memory_gcc",
         "mongo_unittest_eighth_group",
     ],
     deps = [
@@ -609,7 +609,7 @@ mongo_cc_unit_test(
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
     tags = [
-        "compile_requires_large_memory_gcc_fission",
+        "compile_requires_large_memory_gcc",
         "mongo_unittest_third_group",
     ],
     deps = [
@@ -917,8 +917,29 @@ mongo_cc_unit_test(
     copts = MONGOCXX_COPTS,
     linkopts = RT_SYSDEP,
     tags = [
-        "compile_requires_large_memory_gcc_fission",
+        "compile_requires_large_memory_gcc",
         "mongo_unittest_first_group",
+    ],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "s3_emit_operator_test",
+    srcs = [
+        "s3_emit_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = RT_SYSDEP,
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_eighth_group",
     ],
     deps = [
         "streams_test_utils",
