@@ -19,7 +19,6 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
