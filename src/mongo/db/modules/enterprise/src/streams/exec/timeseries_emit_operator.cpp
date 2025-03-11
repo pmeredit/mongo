@@ -351,7 +351,7 @@ boost::optional<TimeseriesOptions> TimeseriesWriter::getTimeseriesOptionsFromDb(
     return tsOptions;
 }
 
-std::unique_ptr<SinkWriter> TimeseriesEmitOperator::makeWriter() {
+std::unique_ptr<SinkWriter> TimeseriesEmitOperator::makeWriter(int id) {
     // TODO(SERVER-100880): Duplicate expressions.
     return std::make_unique<TimeseriesWriter>(_context, this, _options);
 }

@@ -8,6 +8,8 @@
 #include <memory>
 #include <set>
 
+#include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/bson/simple_bsonobj_comparator.h"
 #include "mongo/db/exec/document_value/document.h"
@@ -16,6 +18,7 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_merge.h"
+#include "mongo/db/pipeline/expression_context.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/scopeguard.h"
@@ -59,12 +62,6 @@ public:
         ASSERT(op->getConnectionStatus().isConnected());
     }
 
-    auto makeMergeOperator(MergeOperator::Options options, int parallelism = 1) {
-        options.spec.setParallelism(parallelism);
-        options.isTest = true;
-        return std::make_unique<MergeOperator>(_context.get(), std::move(options));
-    }
-
     std::unique_ptr<MergeOperator> createMergeStage(BSONObj spec,
                                                     bool allowMergeOnNullishValues = true) {
         MutableDocument mut{Document{spec.getField("$merge").Obj()}};
@@ -82,6 +79,17 @@ public:
         opts.spec =
             MergeOperatorSpec::parseOwned(IDLParserContext{"createMergeStage"}, std::move(bson));
         return std::make_unique<MergeOperator>(_context.get(), std::move(opts));
+    }
+
+    auto makeMergeOperator(BSONObj spec) {
+        auto mergeOperator = createMergeStage(std::move(spec));
+        mergeOperator->registerMetrics(_executor->getMetricManager());
+        start(mergeOperator.get());
+        return mergeOperator;
+    }
+
+    auto getWriter(MergeOperator* op) {
+        return op->_threads[0]->writer.get();
     }
 
     MongoProcessInterfaceForTest* getMongoProcessInterface(QueuedSinkOperator* op,
@@ -107,6 +115,10 @@ public:
 
     int getNumWriters(QueuedSinkOperator* op) {
         return op->_threads.size();
+    }
+
+    auto getMergeExpCtx(MergeWriter* op) {
+        return op->_options.mergeExpCtx;
     }
 
 protected:
@@ -886,6 +898,173 @@ TEST_F(MergeOperatorTest, LocalTest) {
         std::cout << "dlqDoc: " << dlqMsgs.front() << std::endl;
         dlqMsgs.pop();
     }
+}
+
+// Test partitioning logic
+TEST_F(MergeOperatorTest, Partitioning) {
+    auto makeOp = [&](std::string spec) {
+        _context->expCtx->setMongoProcessInterface(
+            std::make_shared<MongoProcessInterfaceForTest>(_context.get()));
+        _context->dlq->registerMetrics(_executor->getMetricManager());
+
+        Connection atlasConn;
+        atlasConn.setName("myconnection");
+        AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:27017"};
+        atlasConn.setOptions(atlasConnOptions.toBSON());
+        atlasConn.setType(ConnectionTypeEnum::Atlas);
+        std::vector<mongo::Connection> connections{
+            mongo::Connection{std::string("__testMemory"),
+                              mongo::ConnectionTypeEnum::InMemory,
+                              /* options */ mongo::BSONObj()}};
+        connections.push_back(std::move(atlasConn));
+        _context->connections = std::make_unique<ConnectionCollection>(connections);
+
+        std::vector<BSONObj> rawPipeline{BSON("$source" << BSON("connectionName"
+                                                                << "__testMemory")),
+                                         fromjson(spec)};
+
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
+        auto sink = dynamic_cast<MergeOperator*>(dag->operators().back().get());
+        setForTest(sink);
+        sink->registerMetrics(_executor->getMetricManager());
+        start(sink);
+        return std::make_tuple(std::move(dag), sink, getWriter(sink));
+    };
+
+    // literal case
+    std::unique_ptr<OperatorDag> dag;
+    MergeOperator* op{nullptr};
+    SinkWriter* writer{nullptr};
+    std::tie(dag, op, writer) = makeOp(R"({ "$merge": {
+        "into": {
+            "connectionName": "myconnection",
+            "db": "test",
+            "coll": "newColl2"
+        },
+        whenMatched: "replace"
+    }})");
+
+    auto eq = [&](auto one, auto two) {
+        StreamDocument doc1{Document(one)};
+        StreamDocument doc2{Document(two)};
+        fmt::print("eq: {} {}\n", doc1.doc.toString(), doc2.doc.toString());
+        auto result1 = writer->partition(doc1);
+        auto result2 = writer->partition(doc2);
+        ASSERT(result1.isOK());
+        ASSERT(result2.isOK());
+        ASSERT_EQ(result2.getValue(), result1.getValue());
+    };
+    auto ne = [&](auto one, auto two) {
+        StreamDocument doc1{Document(one)};
+        StreamDocument doc2{Document(two)};
+        fmt::print("ne: {} {}\n", doc1.doc.toString(), doc2.doc.toString());
+        auto result1 = writer->partition(doc1);
+        auto result2 = writer->partition(doc2);
+        ASSERT(result1.isOK());
+        ASSERT(result2.isOK());
+        ASSERT_NE(result2.getValue(), result1.getValue());
+    };
+    auto err = [&](auto doc, const std::string& errMsg) {
+        StreamDocument doc1{Document(doc)};
+        fmt::print("err: {}\n", doc1.doc.toString());
+        auto result = writer->partition(doc1);
+        fmt::print("actual error: {}\n", result.getStatus().reason());
+        ASSERT(!result.isOK());
+        ASSERT(result.getStatus().reason().find(errMsg) != std::string::npos);
+    };
+
+    // Verify the partition method adds _id.
+    StreamDocument doc(Document(BSON("a" << 1)));
+    ASSERT(writer->partition(doc).isOK());
+    ASSERT(!doc.doc["_id"].missing());
+    doc = (Document(BSON("a" << 2)));
+    ASSERT(writer->partition(doc).isOK());
+    ASSERT(!doc.doc["_id"].missing());
+
+    // Verify same _id leads to same partition.
+    eq(Document(BSON("a" << 2 << "_id" << 2)), Document(BSON("a" << 3 << "_id" << 2)));
+    eq(Document(BSON("_id" << -2)), Document(BSON("_id" << -2)));
+
+    // Different these different _id lead to different partition.
+    ne(Document(BSON("_id" << 2)), Document(BSON("_id" << 3)));
+    ne(Document(BSON("_id" << 2)), Document(BSON("_id" << -2)));
+
+    // literal case with custom on fields
+    op->stop();
+    std::tie(dag, op, writer) = makeOp(R"({ "$merge": {
+        "into": {
+            "connectionName": "myconnection",
+            "db": "test",
+            "coll": "newColl2"
+        },
+        on: ["foo", "bar"],
+        whenMatched: "replace"
+    }})");
+    // no on fields, _id specified
+    eq(Document(BSON("_id" << 2)), Document(BSON("_id" << 2)));
+    // no on fields, _id not specified
+    eq(Document(BSON("a" << 2)), Document(BSON("a" << 3)));
+    // no on fields, _id not specified, different non-on fields
+    eq(Document(BSON("a" << 2)), Document(BSON("a" << 2)));
+    // id specified
+    auto obj = BSON("foo" << 3 << "bar" << 4);
+    eq(obj, obj);
+    eq(obj, Document(BSONObjBuilder(obj).append("irrelevant", "field").obj()));
+    ne(BSON("foo" << 3 << "bar" << 5), obj);
+    ne(BSON("foo" << 4 << "bar" << 4), obj);
+    ne(BSON("foo" << 2 << "bar" << 3), obj);
+
+    // into.coll is an expression
+    op->stop();
+    std::tie(dag, op, writer) = makeOp(R"({ "$merge": {
+        "into": {
+            "connectionName": "myconnection",
+            "db": "test",
+            "coll": "$coll"
+        }
+    }})");
+    auto justColl1 = BSON("coll"
+                          << "one");
+    auto justColl2 = BSON("coll"
+                          << "two");
+
+    // id gets generated but coll is the same
+    ne(justColl1, justColl1);
+    // different id, same coll
+    ne(BSON("coll"
+            << "one"
+            << "_id" << 2),
+       BSON("coll"
+            << "one"
+            << "_id" << 3));
+    // same id, same coll
+    eq(BSON("coll"
+            << "one"
+            << "_id" << 2),
+       BSON("coll"
+            << "one"
+            << "_id" << 2));
+
+    // evaluates to null
+    err(BSON("coll" << BSONNULL << "_id" << 2),
+        "Failed to evaluate target namespace in MergeOperator :: caused by :: Expected string, but "
+        "got null");
+
+    // expression failure
+    op->stop();
+    std::tie(dag, op, writer) = makeOp(R"({ "$merge": {
+        "into": {
+            "connectionName": "myconnection",
+            "db": "test",
+            "coll": {"$divide": ["$one", "$two"]}
+        }
+    }})");
+    err(BSON("one" << 1 << "two" << 0),
+        "Failed to evaluate target namespace in MergeOperator :: caused by :: can't $divide by "
+        "zero");
+
+    op->stop();
 }
 
 }  // namespace streams

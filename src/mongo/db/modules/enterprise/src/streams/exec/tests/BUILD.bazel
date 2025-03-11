@@ -502,7 +502,10 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_eighth_group"],
+    tags = [
+        "compile_requires_large_memory_gcc_fission",
+        "mongo_unittest_eighth_group",
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
