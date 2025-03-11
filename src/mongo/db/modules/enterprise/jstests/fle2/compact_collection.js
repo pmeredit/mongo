@@ -43,7 +43,7 @@ function insertInitialTestData(client, coll) {
 jsTestLog("Test compact on unencrypted collection fails");
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     assert.commandWorked(edb.createCollection("unencrypted"));
-    assert.soonNoExcept(() => assert.commandFailedWithCode(edb.unencrypted.compact(), 6346807));
+    assert.commandFailedWithCode(edb.unencrypted.compact(), 6346807);
 });
 
 jsTestLog("Test compact on empty encrypted collection");
