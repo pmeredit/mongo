@@ -24,20 +24,7 @@ ServiceContext::ConstructorActionRegisterer auditClientObserverRegisterer{
 }  // namespace
 
 void AuditClientObserver::onCreateClient(Client* client) {
-    auto session = client->session();
-    if (!session) {
-        return;
-    }
-
-    auto local = session->local();
-    auto remote = session->getSourceRemoteEndpoint();
-    std::vector<HostAndPort> proxies;
-    if (auto proxyEndpoint = session->getProxiedDstEndpoint()) {
-        proxies.push_back(*proxyEndpoint);
-    }
-
-    rpc::AuditClientAttrs::set(
-        client, rpc::AuditClientAttrs(std::move(local), std::move(remote), std::move(proxies)));
+    rpc::AuditClientAttrs::resetToPeerClient(client);
 }
 
 }  // namespace mongo::audit
