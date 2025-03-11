@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {findMatchingLogLine} from "jstests/libs/log.js";
 import {
     startStreamProcessor,

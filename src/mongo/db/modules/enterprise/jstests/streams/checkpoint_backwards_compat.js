@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {
     documentEq,
 } from "jstests/aggregation/extras/utils.js";

@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 // Tests that the $merge stage enforces that the "on" fields argument can be used to uniquely
 // identify documents by checking that there is a supporting unique index.
 import {ShardingTest} from "jstests/libs/shardingtest.js";

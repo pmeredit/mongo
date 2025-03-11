@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {sequentialIds} from "jstests/query_golden/libs/example_data.js";
 import {
     dbName,

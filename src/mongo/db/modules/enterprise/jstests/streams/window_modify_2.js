@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {
     testRunner
 } from "src/mongo/db/modules/enterprise/jstests/streams/window_modify_test_utils.js";
