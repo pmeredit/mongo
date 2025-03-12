@@ -15,6 +15,7 @@
 #include "mongo/db/service_context.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 #include "streams/util/metric_manager.h"
 
@@ -39,6 +40,7 @@ public:
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
         std::unique_ptr<EventDeserializer> eventDeserializer;
         bool needsWindowReplay{false};
+        LoggingContext loggingContext;
     };
 
     OperatorDag(Options options, OperatorContainer operators)
@@ -101,6 +103,9 @@ public:
 
 private:
     friend class OperatorDagTest;
+
+    void cleanupOperators(size_t index);
+
     Options _options;
     // Note that Operator instances get destroyed in stop().
     OperatorContainer _operators;

@@ -115,13 +115,15 @@ Future<void> Executor::start() {
     dassert(!_executorThread.joinable());
     _executorThread = stdx::thread([this] {
         _executorTimer.reset();
-        bool started{false};
+        bool dlqStarted{false};
+        bool dagStarted{false};
         bool promiseFulfilled{false};
         Date_t deadline = Date_t::now() + _options.connectTimeout;
         try {
             _context->dlq->registerMetrics(_options.metricManager.get());
             // Start the DLQ.
             _context->dlq->start();
+            dlqStarted = true;
 
             const auto& operators = _options.operatorDag->operators();
             for (const auto& oper : operators) {
@@ -131,7 +133,7 @@ Future<void> Executor::start() {
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
-            started = true;
+            dagStarted = true;
             _startDurationGauge->set(_executorTimer.millis());
             _executorTimer.reset();
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
@@ -178,7 +180,7 @@ Future<void> Executor::start() {
             _promise.emplaceValue();
         }
 
-        if (started) {
+        if (dagStarted) {
             try {
                 LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
                 _options.operatorDag->stop();
@@ -192,7 +194,8 @@ Future<void> Executor::start() {
                               "reason"_attr = status.reason(),
                               "unsafeErrorMessage"_attr = status.unsafeReason());
             }
-
+        }
+        if (dlqStarted) {
             try {
                 LOGV2_INFO(8853600, "stopping DLQ", "context"_attr = _context);
                 _context->dlq->stop();

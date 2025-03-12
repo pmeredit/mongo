@@ -39,8 +39,9 @@
 namespace streams {
 
 // These failpoints throw an exception after a successful invoke simulating lambda errors.
+MONGO_FAIL_POINT_DEFINE(awsLambdaNotFoundAtConnectionValidation);
 MONGO_FAIL_POINT_DEFINE(awsUserFunctionError);
-MONGO_FAIL_POINT_DEFINE(awsLambdaNotFound);
+MONGO_FAIL_POINT_DEFINE(awsLambdaNotFoundAtProcessDocument);
 MONGO_FAIL_POINT_DEFINE(awsLambdaBadRequestContent);
 
 using namespace mongo;
@@ -171,6 +172,10 @@ void ExternalFunction::validateFunctionConnection() {
 
         Aws::Lambda::Model::InvokeOutcome outcome = _options.lambdaClient->Invoke(request);
 
+        if (MONGO_unlikely(awsLambdaNotFoundAtConnectionValidation.shouldFail())) {
+            outcome = simulateLambdaNotFound();
+        }
+
         if (outcome.IsSuccess()) {
             return;
         }
@@ -190,7 +195,7 @@ void ExternalFunction::validateFunctionConnection() {
         });
         // prevent error when retrieving error type.
         if (!lambdaError.GetRequestId().empty()) {
-            uassert(9929602,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     e.what(),
                     lambdaError.GetErrorType() != Aws::Lambda::LambdaErrors::RESOURCE_NOT_FOUND);
         }
@@ -264,7 +269,7 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
         if (MONGO_unlikely(awsUserFunctionError.shouldFail())) {
             outcome = simulateUserFunctionError();
         }
-        if (MONGO_unlikely(awsLambdaNotFound.shouldFail())) {
+        if (MONGO_unlikely(awsLambdaNotFoundAtProcessDocument.shouldFail())) {
             outcome = simulateLambdaNotFound();
         }
         if (MONGO_unlikely(awsLambdaBadRequestContent.shouldFail())) {
@@ -311,7 +316,7 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
         });
         // prevent error when retrieving error type.
         if (!lambdaError.GetRequestId().empty()) {
-            uassert(9929406,
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     e.what(),
                     lambdaError.GetErrorType() != Aws::Lambda::LambdaErrors::RESOURCE_NOT_FOUND);
             if (shouldFail(lambdaError)) {

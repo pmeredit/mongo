@@ -307,8 +307,8 @@ try {
 
     // Failure Tests
     try {
-        assert.commandWorked(
-            db.adminCommand({'configureFailPoint': 'awsLambdaNotFound', 'mode': 'alwaysOn'}));
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'awsLambdaNotFoundAtConnectionValidation', 'mode': 'alwaysOn'}));
         commonFailureTest({
             input: [
                 {makeARequest: true, requestID: 1},
@@ -319,13 +319,35 @@ try {
                         {connectionName: testConstants.awsIAMLambdaConnection, functionName, as: "response"}
                 },
             ],
-            expectedErrorCode: 9929406,
+            expectedErrorCode: ErrorCodes.StreamProcessorInvalidOptions,
+            useTimeField: false,
+            featureFlags,
+            failsOnStartup: true,
+        });
+    } finally {
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'awsLambdaNotFoundAtConnectionValidation', 'mode': 'off'}));
+    }
+    try {
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'awsLambdaNotFoundAtProcessDocument', 'mode': 'alwaysOn'}));
+        commonFailureTest({
+            input: [
+                {makeARequest: true, requestID: 1},
+            ],
+            pipeline: [
+                {
+                    $externalFunction:
+                        {connectionName: testConstants.awsIAMLambdaConnection, functionName, as: "response"}
+                },
+            ],
+            expectedErrorCode: ErrorCodes.StreamProcessorInvalidOptions,
             useTimeField: false,
             featureFlags
         });
     } finally {
-        assert.commandWorked(
-            db.adminCommand({'configureFailPoint': 'awsLambdaNotFound', 'mode': 'off'}));
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'awsLambdaNotFoundAtProcessDocument', 'mode': 'off'}));
     }
     try {
         assert.commandWorked(db.adminCommand(

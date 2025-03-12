@@ -254,6 +254,7 @@ export function commonFailureTest({
     expectedErrorCode,
     useTimeField = true,
     featureFlags = {},
+    failsOnStartup = false,
 }) {
     // Test with a changestream source and a checkpoint in the middle.
     const newPipeline = [
@@ -275,6 +276,11 @@ export function commonFailureTest({
     test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
 
     jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
+
+    if (failsOnStartup) {
+        assert.commandFailedWithCode(test.startFromLatestCheckpoint(false), expectedErrorCode);
+        return;
+    }
 
     test.run();
     assert.commandWorked(test.inputColl.insertMany(input));

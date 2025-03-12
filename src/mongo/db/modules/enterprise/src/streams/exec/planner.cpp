@@ -2399,6 +2399,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     options.timestampExtractor = std::move(_timestampExtractor);
     options.eventDeserializer = std::move(_eventDeserializer);
     options.needsWindowReplay = _needsWindowReplay;
+    options.loggingContext = _context->toLoggingContext();
     auto dag = make_unique<OperatorDag>(std::move(options), std::move(_operators));
 
     // Validate the operator IDs in the dag.
