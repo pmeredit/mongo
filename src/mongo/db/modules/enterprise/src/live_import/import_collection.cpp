@@ -206,9 +206,7 @@ Status doImportCollection(OperationContext* opCtx,
     // catalog entry. If this is a dryRun, we don't bother generating a new UUID (which
     // requires correcting the catalog entry metadata). Otherwise, we generate a new
     // collection UUID for the import as a primary.
-    ImportOptions::ImportCollectionUUIDOption uuidOption = importOplogSlot.isNull() || isDryRun
-        ? ImportOptions::ImportCollectionUUIDOption::kKeepOld
-        : ImportOptions::ImportCollectionUUIDOption::kGenerateNew;
+    bool generateNewUUID = !(importOplogSlot.isNull() || isDryRun);
 
     uassert(ErrorCodes::NamespaceExists,
             str::stream() << "Collection already exists. NS: " << nss.toStringForErrorMsg(),
@@ -217,15 +215,18 @@ Status doImportCollection(OperationContext* opCtx,
     // Create Collection object
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     auto durableCatalog = storageEngine->getCatalog();
-    auto opts = ImportOptions(uuidOption);
-    opts.panicOnCorruptWtMetadata = panicOnCorruptWtMetadata;
-    opts.repair = repair;
 
     if (!isDryRun && hangBeforeProductionImport.shouldFail()) {
         hangBeforeProductionImport.pauseWhileSet();
     }
 
-    auto status = durableCatalog->importCollection(opCtx, nss, catalogEntry, storageMetadata, opts);
+    auto status = durableCatalog->importCollection(opCtx,
+                                                   nss,
+                                                   catalogEntry,
+                                                   storageMetadata,
+                                                   generateNewUUID,
+                                                   panicOnCorruptWtMetadata,
+                                                   repair);
     if (!status.isOK()) {
         return status.getStatus();
     }
