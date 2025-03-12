@@ -1089,7 +1089,8 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
                             NamespaceString::kRangeDeletionNamespace,
                             NamespaceString::kDonorReshardingOperationsNamespace,
                             NamespaceString::kRecipientReshardingOperationsNamespace,
-                            NamespaceString::kShardingDDLCoordinatorsNamespace}) {
+                            NamespaceString::kShardingDDLCoordinatorsNamespace,
+                            NamespaceString::kConfigShardDatabasesNamespace}) {
         ASSERT_OK(storage->createCollection(opCtx, nss, CollectionOptions{}));
     }
 
@@ -1156,6 +1157,28 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
                                             << "movePrimary")
                                     << "toShardId" << backupShard1)}}));
 
+    // Multiple documents with primary backupShard0 and backupShard1. backupShard2 is not
+    // translated.
+    ASSERT_OK(storage->insertDocuments(opCtx,
+                                       NamespaceString::kConfigShardDatabasesNamespace,
+                                       {
+                                           InsertStatement{BSON("_id"
+                                                                << "0"
+                                                                << "primary" << backupShard0)},
+                                           InsertStatement{BSON("_id"
+                                                                << "1"
+                                                                << "primary" << backupShard1)},
+                                           InsertStatement{BSON("_id"
+                                                                << "2"
+                                                                << "primary" << backupShard1)},
+                                           InsertStatement{BSON("_id"
+                                                                << "3"
+                                                                << "primary" << backupShard2)},
+                                           InsertStatement{BSON("_id"
+                                                                << "4"
+                                                                << "primary" << backupShard0)},
+                                       }));
+
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(NodeTypeEnum::kShard);
     std::vector<magic_restore::ShardRenameMapping> mapping{
@@ -1210,6 +1233,15 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
     ASSERT_EQ(docs[1].getStringField("originalDataShard"), restoreShard1);
     ASSERT_BSONOBJ_EQ(docs[2].getObjectField("shardIds"), BSON_ARRAY(backupShard0 << backupShard2));
     ASSERT_EQ(docs[3].getStringField("toShardId"), restoreShard1);
+
+    docs = getDocuments(opCtx, storage, NamespaceString::kConfigShardDatabasesNamespace);
+    ASSERT_EQ(5, docs.size());
+
+    ASSERT_EQ(docs[0].getStringField("primary"), restoreShard0);
+    ASSERT_EQ(docs[1].getStringField("primary"), restoreShard1);
+    ASSERT_EQ(docs[2].getStringField("primary"), restoreShard1);
+    ASSERT_EQ(docs[3].getStringField("primary"), backupShard2);
+    ASSERT_EQ(docs[4].getStringField("primary"), restoreShard0);
 }
 
 void checkNoOpOplogEntry(std::vector<BSONObj>& docs,

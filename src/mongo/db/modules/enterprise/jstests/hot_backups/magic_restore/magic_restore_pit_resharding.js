@@ -31,6 +31,7 @@
  * ]
  */
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
 import {ShardedMagicRestoreTest} from "jstests/libs/sharded_magic_restore_test.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
@@ -58,10 +59,12 @@ function runTest(insertHigherTermOplogEntry) {
     });
 
     const dbName = "db";
+    const dbName2 = "db2";
     const coll = "coll";
     const fullNs = dbName + "." + coll;
     jsTestLog("Setting up sharded collection " + fullNs);
     assert(st.adminCommand({enableSharding: dbName, primaryShard: st.shard0.shardName}));
+    assert(st.adminCommand({enableSharding: dbName2, primaryShard: st.shard1.shardName}));
     assert(st.adminCommand({shardCollection: fullNs, key: {numForPartition: 1}}));
 
     // Split the collection into 2 chunks: [MinKey, 0), [0, MaxKey).
@@ -206,7 +209,7 @@ function runTest(insertHigherTermOplogEntry) {
         assert.eq(shardKey.key, {numForPartition: 1}, tojson(shardKey));
 
         let entries = node.getDB("config").getCollection("databases").find().toArray();
-        assert.eq(entries.length, 1);
+        assert.eq(entries.length, 2);
         assert(entries.every(entry => regex.test(entry["primary"])), tojson(entries));
 
         entries = node.getDB("config").getCollection("shards").find().toArray();
@@ -327,6 +330,14 @@ function runTest(insertHigherTermOplogEntry) {
                 });
             });
 
+            // TODO (SERVER-98118): make unconditional once 9.0 becomes last LTS.
+            if (FeatureFlagUtil.isPresentAndEnabled(node, "ShardAuthoritativeDbMetadata")) {
+                let entries =
+                    node.getDB("config").getCollection("shard.databases").find().toArray();
+                assert.eq(entries.length, 1);
+                assert(entries.every(entry => regex.test(entry["primary"])), tojson(entries));
+            }
+
             // Disable the failpoint so that the documents in the 'localReshardingOperations'
             // collection can be dropped.
             magicRestoreTest.rst.nodes.forEach((node) => {
@@ -379,7 +390,9 @@ function runTest(insertHigherTermOplogEntry) {
         "collections",
         // 'config.changelog' has extra entry from transitioning resharding from aborting to done.
         "changelog",
-        "placementHistory"
+        "placementHistory",
+        // Renaming shards affects the "primary" field of documents in 'config.shard.databases'.
+        "shard.databases",
     ];
     shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
 

@@ -590,6 +590,17 @@ void updateShardNameMetadata(OperationContext* opCtx,
                 fassert(9031701, status);
             }
 
+            // Update "primary" in documents of the config.shard.databases collection (authoritative
+            // database metadata).
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kConfigShardDatabasesNamespace,
+                BSON("primary" << srcShardName),
+                {BSON("$set" << BSON("primary" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(9979900, status);
+            }
+
             renameLocalReshardingMetadataCollections(
                 opCtx, storageInterface, reshardingMetadataColls, srcShardName, dstShardName);
         }
