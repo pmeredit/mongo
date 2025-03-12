@@ -87,7 +87,6 @@ structs:
                 description: >
                     The type of node to restore.
                 type: NodeType
-            # TODO SERVER-83067: Add automation credentials as a field.
             replicaSetConfig:
                 description: >
                     The new replica set configuration to install during magic restore.
