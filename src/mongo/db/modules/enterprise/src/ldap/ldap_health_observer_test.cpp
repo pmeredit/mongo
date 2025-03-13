@@ -55,7 +55,6 @@ public:
 
     void resetLdapManager() {
         LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                    globalLDAPParams->bindPassword,
                                     globalLDAPParams->bindMethod,
                                     globalLDAPParams->bindSASLMechanisms,
                                     globalLDAPParams->useOSDefaults);
@@ -67,8 +66,8 @@ public:
                 globalLDAPParams->userAcquisitionQueryTemplate));
         auto mapper = uassertStatusOK(
             InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping));
-        auto runner =
-            std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
+        auto runner = std::make_unique<LDAPRunnerImpl>(
+            bindOptions, globalLDAPParams->bindPasswords, connectionOptions, std::move(factory));
         auto manager = std::make_unique<LDAPManagerImpl>(
             std::move(runner), std::move(queryParameters), std::move(mapper));
         LDAPManager::set(getServiceContext(), std::move(manager));
@@ -86,7 +85,7 @@ public:
             LDAPHost(LDAPHost::Type::kDefault, "badhost.10gen.cc", false)};
         globalLDAPParams->bindMethod = LDAPBindType::kSimple;
         globalLDAPParams->bindUser = "cn=ldapz_admin,ou=Users,dc=10gen,dc=cc";
-        globalLDAPParams->bindPassword = "Secret123";
+        globalLDAPParams->bindPasswords = {SecureString("Secret123")};
         globalLDAPParams->transportSecurity = LDAPTransportSecurityType::kNone;
         globalLDAPParams->userAcquisitionQueryTemplate = "{USER}?memberOf";
         globalLDAPParams->connectionTimeout = Milliseconds(10000);

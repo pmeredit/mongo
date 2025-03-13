@@ -60,8 +60,19 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
     }
 
     if (params.count("security.ldap.bind.queryPassword")) {
-        globalLDAPParams->bindPassword =
-            SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str());
+        globalLDAPParams->bindPasswords = {
+            SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str())};
+    }
+
+    if (params.count("security.ldap.bind.queryPasswordMulti")) {
+        auto pwds = params["security.ldap.bind.queryPasswordMulti"].as<std::vector<std::string>>();
+        std::vector<SecureString> securePwds;
+        securePwds.reserve(pwds.size());
+        for (auto pwd : pwds) {
+            securePwds.push_back(SecureString(pwd.c_str()));
+            std::fill(pwd.begin(), pwd.end(), '\0');
+        }
+        globalLDAPParams->bindPasswords = std::move(securePwds);
     }
 
     if (params.count("security.ldap.serverCAFile")) {

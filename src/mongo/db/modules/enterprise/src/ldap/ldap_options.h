@@ -35,9 +35,9 @@ public:
     std::string bindUser;            // User DN to bind(authenticate) against on the LDAP server
     std::string bindSASLMechanisms;  // If binding with SASL, comma separated SASL mechanisms to use
     std::string serverCAFile;        // path to CA certificate for TLS
-    SecureString bindPassword;       // Password to bind with
-    std::string userToDNMapping;     // JSON transformation from authentication name to DN
-    bool smokeTestOnStartup;         // Verify the remote LDAP server is online when we start up
+    std::vector<SecureString> bindPasswords;  // Passwords to bind with
+    std::string userToDNMapping;              // JSON transformation from authentication name to DN
+    bool smokeTestOnStartup;  // Verify the remote LDAP server is online when we start up
 
     bool isLDAPAuthzEnabled() const {
         return !userAcquisitionQueryTemplate.empty();

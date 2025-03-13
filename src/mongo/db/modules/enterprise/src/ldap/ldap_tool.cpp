@@ -308,16 +308,14 @@ int ldapToolMain(int argc, char** argv) {
         Report::FailType::kNonFatalFailure));
 
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                std::move(globalLDAPParams->bindPassword),
                                 globalLDAPParams->bindMethod,
                                 globalLDAPParams->bindSASLMechanisms,
                                 globalLDAPParams->useOSDefaults);
     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
                                             globalLDAPParams->serverHosts);
     auto factory = std::make_unique<LDAPConnectionFactory>(connectionOptions.timeout);
-    std::unique_ptr<LDAPRunner> runner =
-        std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
-
+    std::unique_ptr<LDAPRunner> runner = std::make_unique<LDAPRunnerImpl>(
+        bindOptions, globalLDAPParams->bindPasswords, connectionOptions, std::move(factory));
 
     auto swRootDSEQuery =
         LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");

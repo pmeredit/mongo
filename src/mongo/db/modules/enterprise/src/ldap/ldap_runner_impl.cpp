@@ -41,9 +41,11 @@ bool shouldRetry(Status status) {
 
 // TODO: Use a connection pool instead of constantly creating new connections
 LDAPRunnerImpl::LDAPRunnerImpl(LDAPBindOptions defaultBindOptions,
+                               std::vector<SecureString> bindPasswords,
                                LDAPConnectionOptions options,
                                std::unique_ptr<LDAPConnectionFactory> factory)
     : _factory(std::move(factory)),
+      _bindPasswords(std::move(bindPasswords)),
       _defaultBindOptions(std::move(defaultBindOptions)),
       _options(std::move(options)) {}
 
@@ -69,14 +71,13 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
         // are not runtime settable.
         auto bindOptions =
             std::make_unique<LDAPBindOptions>(user,
-                                              pwd,
                                               _defaultBindOptions.authenticationChoice,
                                               _defaultBindOptions.saslMechanisms,
                                               false);
 
         // Attempt to bind to the LDAP server with the provided credentials.
         auto status = swConnection.getValue()->bindAsUser(
-            std::move(bindOptions), tickSource, userAcquisitionStats);
+            std::move(bindOptions), pwd, tickSource, userAcquisitionStats);
         if (retry >= maxRetryCount || !shouldRetry(status)) {
             return status;
         }
@@ -103,11 +104,9 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
     for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
 
         LDAPBindOptions bindOptions;
-        std::vector<SecureString> bindPasswords;
         {
             stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
             bindOptions = _defaultBindOptions;
-            bindPasswords = _bindPasswords;
         }
         auto swConnection = _factory->create(connectionOptions);
         if (!swConnection.isOK()) {
@@ -118,11 +117,11 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
         const auto boundUser = swConnection.getValue()->currentBoundUser();
         if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
             Status bindStatus = Status::OK();
-            if (!bindPasswords.empty()) {
-                for (const auto& pwd : bindPasswords) {
-                    bindOptions.password = pwd;
+            if (!_bindPasswords.empty()) {
+                for (const auto& pwd : _bindPasswords) {
                     bindStatus = swConnection.getValue()->bindAsUser(
                         std::make_unique<LDAPBindOptions>(bindOptions),
+                        pwd,
                         tickSource,
                         userAcquisitionStats);
                     if (bindStatus.isOK()) {
@@ -132,6 +131,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
             } else {
                 bindStatus = swConnection.getValue()->bindAsUser(
                     std::make_unique<LDAPBindOptions>(bindOptions),
+                    boost::none,
                     tickSource,
                     userAcquisitionStats);
             }

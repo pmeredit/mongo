@@ -33,6 +33,7 @@ configs:
         conflicts:
             - ldapQueryUser
             - ldapQueryPassword
+            - ldapQueryPasswordMulti
         condition:
             preprocessor: 'defined(_WIN32)'
     "security.ldap.bind.method":
@@ -66,6 +67,14 @@ configs:
         short_name: ldapQueryPassword
         arg_vartype: String
         redact: true
+    "security.ldap.bind.queryPasswordMulti":
+        description: 'Option to specify multiple passwwords to bind to LDAP server to perform queries'
+        short_name: ldapQueryPasswordMulti
+        conflicts:
+            - ldapQueryPassword
+        arg_vartype: StringVector
+        redact: true
+        source: [ yaml ]
     "security.ldap.userToDNMapping":
         description: 'Tranformation from MongoDB users to LDAP user DNs'
         short_name: ldapUserToDNMapping

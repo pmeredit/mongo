@@ -95,7 +95,6 @@ Service::ConstructorActionRegisterer setLDAPManagerImpl{
         }
 
         LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                    globalLDAPParams->bindPassword,
                                     globalLDAPParams->bindMethod,
                                     globalLDAPParams->bindSASLMechanisms,
                                     globalLDAPParams->useOSDefaults);
@@ -114,8 +113,8 @@ Service::ConstructorActionRegisterer setLDAPManagerImpl{
 
         ldapConnectionFactoryServerStatus.setFactory(factory.get());
 
-        auto runner =
-            std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
+        auto runner = std::make_unique<LDAPRunnerImpl>(
+            bindOptions, globalLDAPParams->bindPasswords, connectionOptions, std::move(factory));
 
         // Perform smoke test of the connection parameters.
         if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {

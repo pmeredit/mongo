@@ -26,6 +26,7 @@ class StatusWith;
 class LDAPRunnerImpl final : public LDAPRunner {
 public:
     LDAPRunnerImpl(LDAPBindOptions defaultBindOptions,
+                   std::vector<SecureString> bindPasswords,
                    LDAPConnectionOptions options,
                    std::unique_ptr<LDAPConnectionFactory> factory);
     ~LDAPRunnerImpl() final;

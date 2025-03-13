@@ -443,6 +443,7 @@ public:
 
     Status connect() final;
     Status bindAsUser(UniqueBindOptions bindOptions,
+                      boost::optional<const SecureString&> pwd,
                       TickSource* tickSource,
                       SharedUserAcquisitionStats userAcquisitionStats) final;
     Status checkLiveness(TickSource* tickSource,
@@ -492,6 +493,7 @@ Status WrappedConnection::connect() {
 }
 
 Status WrappedConnection::bindAsUser(UniqueBindOptions bindOptions,
+                                     boost::optional<const SecureString&> pwd,
                                      TickSource* tickSource,
                                      SharedUserAcquisitionStats userAcquisitionStats) {
     // Generally speaking, connections from a pool should never be reused after returning a failed
@@ -509,16 +511,18 @@ Status WrappedConnection::bindAsUser(UniqueBindOptions bindOptions,
     }
 
     auto context = bindOptions->toCleanString();
-    auto status = _runFuncWithTimeout<void>(
-                      std::move(context),
-                      [bindOptions = std::move(bindOptions),
-                       tickSource,
-                       userAcquisitionStats = std::move(userAcquisitionStats)](
-                          LDAPConnection* systemLDAPConnection) mutable {
-                          return systemLDAPConnection->bindAsUser(
-                              std::move(bindOptions), tickSource, std::move(userAcquisitionStats));
-                      })
-                      .getNoThrow();
+    auto status =
+        _runFuncWithTimeout<void>(
+            std::move(context),
+            [bindOptions = std::move(bindOptions),
+             pwd = pwd,
+             tickSource,
+             userAcquisitionStats =
+                 std::move(userAcquisitionStats)](LDAPConnection* systemLDAPConnection) mutable {
+                return systemLDAPConnection->bindAsUser(
+                    std::move(bindOptions), pwd, tickSource, std::move(userAcquisitionStats));
+            })
+            .getNoThrow();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
     } else {

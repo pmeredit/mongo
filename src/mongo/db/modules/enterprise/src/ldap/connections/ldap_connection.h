@@ -51,6 +51,7 @@ public:
      *   @return Any errors arising from the bind attempt
      */
     virtual Status bindAsUser(UniqueBindOptions options,
+                              boost::optional<const SecureString&> pwd,
                               TickSource* tickSource,
                               SharedUserAcquisitionStats userAcquisitionStats) = 0;
 
@@ -98,6 +99,7 @@ protected:
 
     // Used to keep bind options in scope regardless of delays.
     UniqueBindOptions _bindOptions;
+    boost::optional<const SecureString&> _pwd;
 };
 
 }  // namespace mongo
