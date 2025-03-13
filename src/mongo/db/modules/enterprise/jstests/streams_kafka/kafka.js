@@ -2388,7 +2388,7 @@ function testKafkaSinkAutoCreateTopicFalseError() {
 
 // Verify that starting a stream processor returns an error when a Kafka with setting
 // auto.create.topic = true is set as source with a non-existent topic
-// TODO(SERVER-80885): Change this test assert that stream processor is succesfully started
+// TODO(SERVER-80865): Change this test assert that stream processor is succesfully started
 function testKafkaSourceAutoCreateTopicTrueError() {
     dropCollections();
 
