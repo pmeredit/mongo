@@ -114,7 +114,7 @@ public:
     }
 };
 
-static constexpr auto EMPTY_PWD = ""_sd;
+static const wchar_t* EMPTY_PWD = L"";
 
 }  // namespace
 
@@ -236,9 +236,10 @@ Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
     if (!_bindOptions->useLDAPConnectionDefaults) {
         user = toNativeString(_bindOptions->bindDN.c_str());
         if (pwd) {
-            password = (*pwd)->c_str();
+            const auto& securePwd = pwd.get();
+            password = toNativeString(securePwd->c_str());
         } else {
-            password = EMPTY_PWD.data();
+            password = EMPTY_PWD;
         }
         cred.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
         cred.User = reinterpret_cast<unsigned short*>(const_cast<wchar_t*>(user.c_str()));
@@ -273,7 +274,7 @@ Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
         result =
             ldap_bind_sW(_pimpl->getSession(),
                          const_cast<wchar_t*>(toNativeString(_bindOptions->bindDN.c_str()).c_str()),
-                         const_cast<wchar_t*>(toNativeString(pass.c_str())),
+                         const_cast<wchar_t*>(pass.c_str()),
                          LDAP_AUTH_SIMPLE);
 
         resultStatus = _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
