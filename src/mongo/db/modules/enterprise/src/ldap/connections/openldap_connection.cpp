@@ -238,13 +238,17 @@ std::tuple<Status, int> openLDAPBindFunction(
             // Unfortunately, libldap wants a non-const password. Copy the password to remove risk
             // of it scribbling over our memory.
             SecureVector<char> passwordCopy;
+            berval passwd;
             if (conn->_pwd) {
                 const auto& pwd = *conn->_pwd;
                 passwordCopy = SecureVector<char>(pwd->begin(), pwd->end());
+                passwd.bv_val = passwordCopy->data();
+                passwd.bv_len = passwordCopy->size();
+            } else {
+                passwordCopy = SecureVector<char>{};
+                passwd.bv_val = passwordCopy->data();
+                passwd.bv_len = passwordCopy->size();
             }
-            berval passwd;
-            passwd.bv_val = passwordCopy->data();
-            passwd.bv_len = passwordCopy->size();
 
             ret = ldap_sasl_bind_s(session,
                                    bindOptions->bindDN.c_str(),
