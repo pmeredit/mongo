@@ -79,8 +79,8 @@ public:
         // Specifies how error responses are handled
         mongo::OnErrorEnum onError{mongo::OnErrorEnum::DLQ};
 
-        // Fields that are json strings we should attempt to parse from json.
-        std::vector<std::string> fieldsToParseFromJson;
+        // Specifies if we should try to parse json strings in the json response.
+        bool parseJsonStrings{false};
     };
     struct UrlComponents {
         std::string scheme;

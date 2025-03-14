@@ -269,7 +269,7 @@ const testCases = [
                 httpStatusCode: 200,
             }},
             response: {inner: {method: "POST", path: "/echo/tc2", headers: {...basicHeaders,
-            "Content-Length" : "619", "Content-Type": "application/json"}, query: {},
+            "Content-Length" : "533", "Content-Type": "application/json"}, query: {},
             body: {fullDocument: {a: 1}}}}
         }],
         allowAllTraffic: true,
@@ -365,7 +365,7 @@ const testCases = [
                 headers: {
                         ...basicHeaders,
                         "Content-Type": "application/json",
-                        "Content-Length" : "640",
+                        "Content-Length" : "554",
                         "FieldPathHeader": "DynamicValue",
                         "StrHeader": "foo"
                 }
@@ -418,7 +418,7 @@ const testCases = [
                 path: "/echo/tc4",
                 headers: {
                     ...basicHeaders,
-                    "Content-Length" : "640",
+                    "Content-Length" : "554",
                     "Content-Type" : "application/json"
                 },
                 query: {
@@ -473,15 +473,15 @@ const testCases = [
         expectedRequests: [],
         inputDocs: [{foo: "DynamicValue"}],
         expectedOutput: [{
-                fullDocument: {foo: "DynamicValue"},
                 _stream_meta: {https: {
-                    url: restServerUrl + "/foo%28bar%29?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
+                    url: restServerUrl + "/foo(bar)?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
                     method: "GET",
                     httpStatusCode: 200,
                 }},
+                fullDocument: {foo: "DynamicValue"},
                 response: {
                     method: "GET",
-                    path: "/foo%28bar%29",
+                    path: "/foo(bar)",
                     query: {
                         "StrParam": ["StaticParameterValue"],
                         "DoubleParam": ["1.100000000002"],
@@ -791,7 +791,7 @@ const testCases = [
                 path: "/jsonObjectWithSerializedFields",
                 method: "GET",
                 as: "response",
-                config: {parseResponseFields: ["content", "nested.data"]}
+                config: {parseJsonStrings: true}
             },
         },
         inputDocs: [{foo: "bar"}],
@@ -818,7 +818,7 @@ const testCases = [
                 path: "/jsonArrayWithSerializedFields",
                 method: "GET",
                 as: "response",
-                config: {parseResponseFields: ["content"]}
+                config: {parseJsonStrings: true}
             },
         },
         inputDocs: [{foo: "bar"}],
@@ -832,7 +832,34 @@ const testCases = [
                 httpStatusCode: 200,
             }},
             fullDocument: {foo: "bar"},
-            response: [{"content": {"foo": "bar"}}, {"content": {"abc": "xyz"}}]
+            response: [{"content": {"foo": "bar"}}, {"content": { "nested": { "data": {"abc": "xyz"}}}}]
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should not deserialize json encoded strings if parseJsonStrings isn't set",
+        spName: "jsonObjectWithSerializedFields",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/jsonObjectWithSerializedFields",
+                method: "GET",
+                as: "response",
+                config: {}
+            },
+        },
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/jsonObjectWithSerializedFields", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            _stream_meta: {https: {
+                url: restServerUrl + "/jsonObjectWithSerializedFields",
+                method: "GET",
+                httpStatusCode: 200,
+            }},
+            fullDocument: {foo: "bar"},
+            response: {"content": '{"foo": "bar"}', "nested": { "data": '{"abc": "xyz"}'}}
         }],
         allowAllTraffic: true,
     },
