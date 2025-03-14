@@ -14,6 +14,7 @@
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/query_exception.hpp>
+#include <mongocxx/exception/server_error_code.hpp>
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
 #include <mutex>
@@ -68,6 +69,9 @@ MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepBeforeConnect);
 // If enabled the executor thread will sleep for some time after processing a batch of fetched
 // events
 MONGO_FAIL_POINT_DEFINE(changestreamSlowEventProcessing);
+
+// If enabled the changestream background thread will throw a interrupted at shutdown error
+MONGO_FAIL_POINT_DEFINE(changestreamSourceServerInterruptedAtShutdownError);
 
 // Name of the error code field name in the raw server error object.
 static constexpr char kErrorCodeFieldName[] = "code";
@@ -421,6 +425,12 @@ void ChangeStreamSourceOperator::fetchLoop() {
                 }
             }
 
+            if (MONGO_unlikely(changestreamSourceServerInterruptedAtShutdownError.shouldFail())) {
+                throw mongocxx::exception{ErrorCodes::InterruptedAtShutdown,
+                                          mongocxx::server_error_category(),
+                                          "interrupted at shutdown: generic server error"};
+            }
+
             // Get some change events from our change stream cursor.
             readSingleChangeEvent();
             _numReadSingleChangeEvent->increment(1);
@@ -515,7 +525,8 @@ void ChangeStreamSourceOperator::fetchLoop() {
             status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
             break;
         default:
-            if (!_options.pipeline.empty() && !_context->restoreCheckpointId) {
+            if (!_options.pipeline.empty() && !_context->restoreCheckpointId &&
+                _changestreamLastEventReceivedAt == Date_t::min()) {
                 // if the user sets a $source.config.pipeline, and this is a fresh start of a
                 // processor, treat most errors as StreamProcessorInvalidOptions
                 status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);

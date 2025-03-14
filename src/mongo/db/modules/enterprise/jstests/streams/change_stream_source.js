@@ -1273,3 +1273,53 @@ runChangeStreamSourceTestFailOnInsert(
     ErrorCodes.StreamProcessorInvalidOptions,
     true,
 );
+
+function testChangeStreamHandlesServerInterruptedAtShutdownError() {
+    clearState();
+
+    const processorName = "changeStreamSourceProcessor";
+    const processor = createChangestreamSourceProcessor(processorName, {
+        config: {
+            pipeline: [{
+                $addFields: {"someField": "someValue"},
+            }]
+        }
+    });
+    processor.start({featureFlags: {}, shouldStartSample: true});
+
+    const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    for (let i = 0; i < 10; i++) {
+        assert.commandWorked(writeColl.insertOne({_id: i, a: 2 + i}));
+    }
+
+    assert.commandWorked(db.adminCommand({
+        'configureFailPoint': 'changestreamSourceServerInterruptedAtShutdownError',
+        'mode': 'alwaysOn'
+    }));
+
+    for (let i = 10; i < 20; i++) {
+        assert.commandWorked(writeColl.insertOne({_id: i, a: 2 + i}));
+    }
+
+    let spListResult;
+    assert.soon(() => {
+        let listResult = listStreamProcessors();
+        assert.eq(listResult["ok"], 1, listResult);
+        spListResult = listResult.streamProcessors.find((item) => item.name == processorName);
+        return spListResult.status == "error";
+    });
+
+    processor.stop();
+
+    assert.eq(spListResult?.error.code, ErrorCodes.StreamProcessorAtlasConnectionError);
+    assert.eq(spListResult?.error.userError, false);
+
+    clearState();
+
+    assert.commandWorked(db.adminCommand({
+        'configureFailPoint': 'changestreamSourceServerInterruptedAtShutdownError',
+        'mode': 'off'
+    }));
+}
+
+testChangeStreamHandlesServerInterruptedAtShutdownError();
