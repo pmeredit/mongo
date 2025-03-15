@@ -17,8 +17,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib import parse
 
-from packaging import version
-
 logging.basicConfig(
     level=logging.NOTSET, format="%(name)s: %(asctime)s | %(levelname)s >>> %(message)s"
 )
@@ -140,9 +138,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(
-            json.dumps(
-                [{"content": '{"foo": "bar"}'}, {"content": {"nested": {"data": '{"abc": "xyz"}'}}}]
-            ).encode("utf-8")
+            json.dumps([{"content": '{"foo": "bar"}'}, {"content": '{"abc": "xyz"}'}]).encode(
+                "utf-8"
+            )
         )
 
     def _echo_handle(self, parsed_path):
@@ -221,21 +219,33 @@ def run(port, directory) -> int:
 
 
 MIN_LIBCURL_VERSION = "7.78.0"
+MIN_LIBCURL_MAJOR_VERSION = 7
+MIN_LIBCURL_MINOR_VERSION = 78
+MIN_LIBCURL_PATCH_VERSION = 0
 
 
 def check_deps():
     # check whether this host has sufficient curl version
     result = subprocess.run(["curl", "--version"], capture_output=True, text=True)
     tokens = result.stdout.split(" ")
-    curl_version = tokens[1]
-    logger.info(f"Curl version: {curl_version}")
+    version = tokens[1]
+    logger.info(f"Curl version: {version}")
 
-    received_version = version.parse(curl_version)
-    min_version = version.parse(MIN_LIBCURL_VERSION)
-
-    if received_version < min_version:
+    semver = version.split(".")
+    received_major_version = int(semver[0])
+    received_minor_version = int(semver[1])
+    received_patch_version = int(semver[2])
+    if received_major_version < MIN_LIBCURL_MAJOR_VERSION:
         raise ValueError(
-            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {curl_version}."
+            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {version}."
+        )
+    if received_minor_version < MIN_LIBCURL_MINOR_VERSION:
+        raise ValueError(
+            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {version}."
+        )
+    if received_patch_version < MIN_LIBCURL_PATCH_VERSION:
+        raise ValueError(
+            f"Insufficient curl version. Expected >= {MIN_LIBCURL_VERSION}. Got {version}."
         )
 
 

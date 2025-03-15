@@ -108,7 +108,6 @@ mongo_cc_unit_test(
     tags = ["mongo_unittest_second_group"],
     deps = [
         "//src/mongo:base",
-        "//src/mongo/db/exec/document_value:document_value_test_util",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
     ],
 )

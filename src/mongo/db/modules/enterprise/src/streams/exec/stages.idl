@@ -793,10 +793,10 @@ structs:
                 validator:
                     gt: 0
                     lt: 900
-            parseJsonStrings:
-                description: "Recursively parse the response for all json strings and deserialize them into bson."
-                type: bool
-                default: false
+            parseResponseFields:
+                description: "Fields that are json strings that need to be deserialized into bson."
+                type: array<string>
+                optional: true
 
     HttpsOptions:
         description: "$https stage options."

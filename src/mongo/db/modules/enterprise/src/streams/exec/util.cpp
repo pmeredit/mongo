@@ -4,8 +4,6 @@
 
 #include "streams/exec/util.h"
 
-#include <bsoncxx/exception/exception.hpp>
-
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
@@ -383,112 +381,45 @@ std::vector<StringData> getLoggablePipeline(const std::vector<BSONObj>& pipeline
     return stageNames;
 }
 
-mongo::Document convertAllFields(
-    mongo::Document doc, const std::function<mongo::Value(const mongo::Value&)> convertFunc) {
-    MutableDocument mut(doc);
-    auto it = doc.fieldIterator();
-    while (it.more()) {
-        const auto& [fieldName, field] = it.next();
-        auto type = doc[fieldName].getType();
-        if (type == BSONType::Object) {
-            mut.setField(fieldName, Value(convertAllFields(field.getDocument(), convertFunc)));
-        } else if (type == BSONType::Array) {
-            mut.setField(fieldName, Value(convertAllFields(field.getArray(), convertFunc)));
-        } else {
-            mut.setField(fieldName, convertFunc(field));
-        }
-    }
-    return mut.freeze();
+std::string convertDateToISO8601(mongo::Date_t date) {
+    auto result = TimeZoneDatabase::utcZone().formatDate(kIsoFormatStringZ, date);
+    uassertStatusOK(result);
+    return result.getValue();
 }
 
-std::vector<mongo::Value> convertAllFields(
-    const std::vector<mongo::Value>& arr,
-    const std::function<mongo::Value(const mongo::Value&)> convertFunc) {
+std::vector<mongo::Value> convertDateToISO8601(const std::vector<mongo::Value>& arr) {
     std::vector<mongo::Value> result;
     result.reserve(arr.size());
     for (const auto& value : arr) {
         auto type = value.getType();
-        if (type == BSONType::Object) {
-            result.push_back(Value(convertAllFields(value.getDocument(), convertFunc)));
+        if (type == BSONType::Date) {
+            result.push_back(Value(convertDateToISO8601(value.getDate())));
+        } else if (type == BSONType::Object) {
+            result.push_back(Value(convertDateToISO8601(value.getDocument())));
         } else if (type == BSONType::Array) {
-            result.push_back(Value(convertAllFields(value.getArray(), convertFunc)));
+            result.push_back(Value(convertDateToISO8601(value.getArray())));
         } else {
-            result.push_back(convertFunc(value));
+            result.push_back(value);
         }
     }
     return result;
 }
 
-mongo::Value dateToISO8601(const mongo::Value& value) {
-    if (value.getType() != BSONType::Date) {
-        return value;
-    }
-    auto result = TimeZoneDatabase::utcZone().formatDate(kIsoFormatStringZ, value.getDate());
-    uassertStatusOK(result);
-    return Value(result.getValue());
-}
-
 mongo::Document convertDateToISO8601(mongo::Document doc) {
-    return convertAllFields(std::move(doc), dateToISO8601);
-}
-
-bool startsWithOpeningBrace(StringData s) {
-    for (char c : s) {
-        if (!std::isspace(c)) {
-            return c == '{';
+    MutableDocument mut(doc);
+    auto it = doc.fieldIterator();
+    while (it.more()) {
+        const auto& [fieldName, field] = it.next();
+        auto type = doc[fieldName].getType();
+        if (type == BSONType::Date) {
+            mut.setField(fieldName, Value(convertDateToISO8601(field.getDate())));
+        } else if (type == BSONType::Object) {
+            mut.setField(fieldName, Value(convertDateToISO8601(field.getDocument())));
+        } else if (type == BSONType::Array) {
+            mut.setField(fieldName, Value(convertDateToISO8601(field.getArray())));
         }
     }
-    return false;
-}
-
-bool startsWithOpeningBracket(StringData s) {
-    for (char c : s) {
-        if (!std::isspace(c)) {
-            return c == '[';
-        }
-    }
-    return false;
-}
-
-mongo::Value jsonStringsToJson(const mongo::Value& value) {
-    if (value.getType() != BSONType::String) {
-        return value;
-    }
-    auto jsonString = value.getStringData();
-
-    if (startsWithOpeningBracket(jsonString)) {
-        try {
-            std::string objectWrapper = fmt::format(R"({{"data":{}}})", jsonString);
-            auto responseView =
-                bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
-            auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-            return Value(responseAsBson.firstElement());
-        } catch (const bsoncxx::exception&) {
-            // If we fail to convert the string to json, just return the original value
-            return value;
-        }
-    }
-
-    if (startsWithOpeningBrace(jsonString)) {
-        try {
-            auto responseView = bsoncxx::stdx::string_view{jsonString.data(), jsonString.size()};
-            auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-            return Value(std::move(responseAsBson));
-        } catch (const bsoncxx::exception&) {
-            // If we fail to convert the string to json, just return the original value
-            return value;
-        }
-    }
-
-    return value;
-}
-
-mongo::Document convertJsonStringsToJson(mongo::Document doc) {
-    return convertAllFields(std::move(doc), jsonStringsToJson);
-}
-
-std::vector<mongo::Value> jsonStringToValue(const std::vector<mongo::Value>& arr) {
-    return convertAllFields(arr, jsonStringsToJson);
+    return mut.freeze();
 }
 
 }  // namespace streams

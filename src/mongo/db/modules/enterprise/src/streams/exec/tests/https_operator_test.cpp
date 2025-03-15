@@ -819,7 +819,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                     .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
                     .url = uri,
                     .as = "response",
-                    .parseJsonStrings = true,
+                    .fieldsToParseFromJson = std::vector<std::string>{"content", "nested.data"},
                 };
             },
             std::vector<StreamDocument>{Document{fromjson("{'foo': 'bar'}")}},
@@ -2051,6 +2051,7 @@ TEST_F(HttpsOperatorTest, ParseResponseHeadersTest) {
         ASSERT_EQ(*result, "application/json");
     }
 }
+
 
 // This block validates libcurl parsing + url building behavior.
 TEST_F(HttpsOperatorTest, LibCurlUrlBuilding) {

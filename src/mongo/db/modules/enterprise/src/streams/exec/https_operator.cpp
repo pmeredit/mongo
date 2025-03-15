@@ -606,28 +606,51 @@ boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringDa
 
 mongo::Value HttpsOperator::parseAndDeserializeJsonResponse(StringData contentType,
                                                             StringData rawResponse) {
+
+    auto parseAndUpdateJsonFields = [&](MutableDocument& doc) {
+        for (const auto& field : _options.fieldsToParseFromJson) {
+            auto fieldValue = doc.peek().getNestedField(field);
+            if (fieldValue.getType() == BSONType::String) {
+                auto value = fieldValue.getStringData();
+                auto serializedValue = fromBsoncxxDocument(
+                    bsoncxx::from_json(bsoncxx::stdx::string_view{value.data(), value.size()}));
+                doc.setNestedField(field, Value(std::move(serializedValue)));
+            }
+        }
+    };
     // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
+
+    // json object response
     if (rawResponse.front() == '[') {
-        std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse);
+        std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse.data());
         auto responseView = bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
         auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-        auto jsonResponse = Value(responseAsBson.firstElement());
-        if (!_options.parseJsonStrings) {
-            return jsonResponse;
+        if (_options.fieldsToParseFromJson.empty()) {
+            return Value(std::move(responseAsBson.firstElement()));
         }
-        auto responseArray = jsonStringToValue(jsonResponse.getArray());
-        return Value(std::move(responseArray));
+        auto responseArray = responseAsBson.firstElement().Array();
+        std::vector<mongo::Value> finalArray;
+        finalArray.reserve(responseArray.size());
+        for (size_t i = 0; i < responseArray.size(); i++) {
+            if (responseArray[i].type() != BSONType::Object) {
+                continue;
+            }
+            MutableDocument finalDocument(mongo::Document(std::move(responseArray[i].Obj())));
+            parseAndUpdateJsonFields(finalDocument);
+            finalArray.emplace_back(finalDocument.freezeToValue());
+        }
+        return Value(finalArray);
     }
 
+    // json object response
     auto responseView = bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
     auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-    auto jsonResponse = Value(std::move(responseAsBson));
-    if (!_options.parseJsonStrings) {
-        return jsonResponse;
+    if (_options.fieldsToParseFromJson.empty()) {
+        return Value(std::move(responseAsBson));
     }
-
-    auto responseDocument = convertJsonStringsToJson(jsonResponse.getDocument());
-    return Value(std::move(responseDocument));
+    MutableDocument finalDocument(mongo::Document(std::move(responseAsBson)));
+    parseAndUpdateJsonFields(finalDocument);
+    return finalDocument.freezeToValue();
 }
 
 mongo::Document HttpsOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,

@@ -1750,7 +1750,12 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     if (auto config = parsedOperatorOptions.getConfig(); config) {
         options.connectionTimeoutSecs = mongo::Seconds{config->getConnectionTimeoutSec()};
         options.requestTimeoutSecs = mongo::Seconds{config->getRequestTimeoutSec()};
-        options.parseJsonStrings = config->getParseJsonStrings();
+        if (auto fieldsToParseOpt = config->getParseResponseFields()) {
+            options.fieldsToParseFromJson.reserve(fieldsToParseOpt->size());
+            for (auto field : *fieldsToParseOpt) {
+                options.fieldsToParseFromJson.push_back(field.toString());
+            }
+        }
     }
 
     if (const auto& headersOpt = connOptions.getHeaders(); headersOpt) {
