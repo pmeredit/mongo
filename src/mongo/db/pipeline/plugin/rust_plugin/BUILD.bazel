@@ -12,6 +12,7 @@ rust_library(
         "@plugin_crates//:tonic",
         "@plugin_crates//:serde",
         "@plugin_crates//:bytes",
+        "@plugin_crates//:reqwest",
         "//src/mongo/db/pipeline/plugin:plugin_api_bindgen",
     ]
 )

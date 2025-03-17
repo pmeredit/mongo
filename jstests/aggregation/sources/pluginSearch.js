@@ -1,7 +1,18 @@
-const coll = db.docs;
-coll.drop();
+/**
+ * Requires search index:
+ *  {
+ *    "name": "default",
+ *    "mappings": {
+ *      "dynamic": true
+ *    },
+ *    "storedSource": {
+ *      "exclude": ["title"]
+ *    }
+ *  }
+ */
 
-coll.insertMany([
+db.docs.drop();
+db.docs.insertMany([
   { _id: ObjectId("67c52a1933a2e15c422984c7"), title: "Star Trek" },
   { _id: ObjectId("67c52a1933a2e15c422984c6"), title: "Star Wars" },
   { _id: ObjectId("67c52a1b33a2e15c422984c8"), title: "Star Chronicles" },
@@ -15,12 +26,12 @@ coll.insertMany([
 ]);
 
 // no limit, score projected
-let fullResults = coll.aggregate([
+let fullResults = db.docs.aggregate([
     {
       $pluginSearch: {
         "text": {
           "path": "title",
-          "query": "Star"
+          "query": "Star Trek"
         },
         "index": "default"
       }
@@ -36,12 +47,12 @@ let fullResults = coll.aggregate([
 
 printjson(fullResults);
 assert.eq(fullResults.length, 10);
-assert(resultsWithScore.every(doc => 
+assert(fullResults.every(doc => 
   ["_id", "title", "score"].every(key => key in doc) && Object.keys(doc).length === 3
 ));
 
 // with limit
-let limitedResults = coll.aggregate([
+let limitedResults = db.docs.aggregate([
   {
     $pluginSearch: {
       "text": {
@@ -58,12 +69,12 @@ let limitedResults = coll.aggregate([
 
 printjson(limitedResults);
 assert.eq(limitedResults.length, 7);
-assert(resultsWithScore.every(doc => 
+assert(limitedResults.every(doc => 
   ["_id", "title"].every(key => key in doc) && Object.keys(doc).length === 2
 ));
 
 // with stored source
-let storedSourceResults = coll.aggregate([
+let storedSourceResults = db.docs.aggregate([
   {
     $pluginSearch: {
       "text": {
@@ -79,6 +90,6 @@ let storedSourceResults = coll.aggregate([
 printjson(storedSourceResults);
 assert.eq(storedSourceResults.length, 10);
 
-assert(resultsWithScore.every(doc => 
+assert(storedSourceResults.every(doc => 
   ["_id"].every(key => key in doc) && Object.keys(doc).length === 1
 ));

@@ -7,6 +7,7 @@ mod desugar;
 mod mongot_client;
 mod search;
 mod vector;
+mod voyage;
 
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
@@ -23,6 +24,7 @@ use plugin_api_bindgen::{
 use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
 use crate::search::{InternalPluginSearch, PluginSearch};
 use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
+use crate::voyage::VoyageRerank;
 
 #[derive(Debug)]
 pub struct Error {
@@ -488,4 +490,5 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal: *mut MongoExtensionP
     PluginDesugarAggregationStage::<PluginSearch>::register(portal);
     PluginAggregationStage::<InternalPluginVectorSearch>::register(portal);
     PluginDesugarAggregationStage::<PluginVectorSearch>::register(portal);
+    PluginAggregationStage::<VoyageRerank>::register(portal);
 }

@@ -1,20 +1,5 @@
-/**
- * Requires vector index:
- * {
- *    "type": "vectorSearch",
- *    "name": "default",
- *    "fields": [
- *      {
- *        "type": "vector",
- *        "path": "vector",
- *        "numDimensions": 2,
- *        "similarity": "euclidean"
- *      }
- *    ]
- *  }
- */
-
 db.vectordocs.drop();
+
 db.vectordocs.insertMany([
   { _id: ObjectId("67c52a1933a2e15c422984c6"), title: "The Godfather", vector: [0.313, 0.841], plot: "The powerful Corleone crime family navigates betrayal, power struggles, and personal conflict, as Michael Corleone is slowly drawn into the family's dark world." },
   { _id: ObjectId("67c52a1933a2e15c422984c7"), title: "The Shawshank Redemption", vector: [0.512, 0.678], plot: "Two imprisoned men form a strong friendship over decades, finding hope and redemption through small acts of defiance in a harsh prison environment." },
@@ -30,11 +15,10 @@ db.vectordocs.insertMany([
 
 let results = db.vectordocs.aggregate([
     {
-      $pluginVectorSearch: {
-        path: "vector",
-        index: "default",
-        queryVector: [0.714, 0.632],
-        numCandidates: 10,
+      $voyageRerank: {
+        query: "historical drama about crime, bad decisions and second chances",
+        fields: ["title", "plot"],
+        model: "rerank-2",
         limit: 5
       }
     }
@@ -43,31 +27,5 @@ let results = db.vectordocs.aggregate([
 printjson(results);
 assert.eq(results.length, 5);
 assert(results.every(doc => 
-  ["_id", "title", "vector", "plot"].every(key => key in doc) && Object.keys(doc).length === 4
-));
-
-// with score projected
-let resultsWithScore = db.vectordocs.aggregate([
-  {
-    $pluginVectorSearch: {
-      path: "vector",
-      index: "default",
-      queryVector: [0.714, 0.632],
-      numCandidates: 10,
-      limit: 5
-    }
-  },
-  {
-    $addFields: {
-      "score": { 
-        "$meta": "vectorSearchScore"
-      }
-    }
-  }
-]).toArray();
-
-printjson(resultsWithScore);
-assert.eq(resultsWithScore.length, 5);
-assert(resultsWithScore.every(doc => 
-  ["_id", "title", "vector", "plot", "score"].every(key => key in doc) && Object.keys(doc).length === 5
+  ["_id", "title", "vector", "plot", "$voyageRerankScore"].every(key => key in doc) && Object.keys(doc).length === 5
 ));

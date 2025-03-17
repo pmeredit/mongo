@@ -374,6 +374,10 @@ crates_repository(
             version = "1.0.217",
             features = ["derive"]
         ),
+        "reqwest": crate.spec(
+            version = "0.11",
+            features = ["json"]
+        )
     },
     render_config = render_config(default_package_name = "")
 )
