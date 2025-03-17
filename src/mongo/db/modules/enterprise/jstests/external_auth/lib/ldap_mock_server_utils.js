@@ -120,8 +120,9 @@ export class MockLDAPServer {
      * Stop the LDAP server.
      */
     stop() {
+        const kSIGKILL = 9;
         print("Shutting down LDAP server: " + this.getHostAndPort());
-        stopMongoProgramByPid(this.pid);
+        stopMongoProgramByPid(this.pid, kSIGKILL);
         this.pid = -1;
     }
 
