@@ -17,10 +17,12 @@ if (determineSSLProvider() !== 'openssl') {
     return;
 }
 
-const tokenFileLocation = '/home/ubuntu/gcp_token.json';
+// These files are created by the external_auth_gcp_setup.sh script execution on evergreen.
 const configFileLocation = '/home/ubuntu/gce_vm_config.json';
 const remoteInfoFileLocation = '/home/ubuntu/gce_vm_info.json';
 const sshKeyFileLocation = '/home/ubuntu/gcp_ssh_key';
+// These files are temporary outputs of this test.
+const tokenFileLocation = '/home/ubuntu/gcp_token.json';
 const bsonTokenLocation = '/home/ubuntu/gcp_token_bson';
 
 // Helper function to retrieve the configured audience from the config file.

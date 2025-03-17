@@ -10,8 +10,48 @@ import json
 import re
 import subprocess
 import sys
+import time
 
 import jwt
+
+
+def test_ssh_connection_with_backoff(user, hostname, key_path, retries=10):
+    attempts = 0
+    delay_base = 2
+    while attempts < retries:
+        try:
+            result = subprocess.run(
+                [
+                    "ssh",
+                    "-v",
+                    "-v",
+                    "-v",
+                    "-T",
+                    "-i",
+                    key_path,
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    f"{user}@{hostname}",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if result.returncode == 0:
+                return True
+            else:
+                print(f"SSH attempt {attempts + 1} failed: {result.stderr.strip()}")
+
+        except Exception as e:
+            print(f"SSH attempt {attempts + 1} failed with exception: {e}")
+            return False
+
+        sleep_duration = delay_base * (2**attempts)
+        attempts += 1
+        time.sleep(sleep_duration)
+
+    print(f"All SSH attempts to {hostname} failed!")
+    return False
 
 
 def main():
@@ -50,6 +90,10 @@ def main():
         if not re.search("^-----BEGIN (RSA|OPENSSH) PRIVATE KEY-----", contents):
             print("ERROR: Did not get a valid key file!!! File contents : [{}]".format(contents))
             sys.exit(1)
+
+    # First, make sure the GCP VM is ready to accept SSH connections
+    if not test_ssh_connection_with_backoff(user, vm_external_ip, ssh_key_file_name):
+        sys.exit(1)
 
     process = subprocess.run(
         [
