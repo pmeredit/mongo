@@ -89,4 +89,19 @@ std::vector<mongo::StringData> getLoggablePipeline(const std::vector<mongo::BSON
 // Change all Date fields to ISO8601 strings.
 mongo::Document convertDateToISO8601(mongo::Document doc);
 
+// Change all json strings to json for the provided document.
+mongo::Document convertJsonStringsToJson(mongo::Document doc);
+
+// Change all json strings to json for the provided array.
+std::vector<mongo::Value> jsonStringToValue(const std::vector<mongo::Value>& arr);
+
+// Generic helper function for recursively converting fields for a Document
+mongo::Document convertAllFields(mongo::Document doc,
+                                 std::function<mongo::Value(const mongo::Value&)> convertFunc);
+
+// Generic helper function for recursively converting fields for an array
+std::vector<mongo::Value> convertAllFields(
+    const std::vector<mongo::Value>& arr,
+    std::function<mongo::Value(const mongo::Value&)> convertFunc);
+
 }  // namespace streams
