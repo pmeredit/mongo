@@ -18,6 +18,9 @@ import {
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+const lastCheckpointFieldName = "lastCheckpoint";
+const sourceStateFieldName = "sourceState";
+const commitTimeFieldName = "commitTime";
 
 function generateInput(size, msPerDocument = 1) {
     let input = [];
@@ -33,6 +36,27 @@ function generateInput(size, msPerDocument = 1) {
     return input;
 }
 
+export function validateLastCheckpointStat(sourceType, verboseStats) {
+    assert(lastCheckpointFieldName in verboseStats);
+    const lastCheckpoint = verboseStats[lastCheckpointFieldName];
+    assert(sourceStateFieldName in lastCheckpoint);
+    const sourceState = lastCheckpoint[sourceStateFieldName];
+    if (sourceType == "kafka") {
+        assert(sourceState.length > 0);
+        for (const partition of sourceState) {
+            assert("partition" in partition && "offset" in partition && "topic" in partition);
+        }
+    } else {
+        assert("resumeToken" in sourceState && "clusterTime" in sourceState);
+    }
+
+    assert(commitTimeFieldName in lastCheckpoint);
+}
+
+export function checkForNoLastCheckpointField(verboseStats) {
+    assert(!(lastCheckpointFieldName in verboseStats));
+}
+
 function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
     function smokeTestCorrectness() {
         const input = generateInput(2000);
@@ -45,6 +69,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
 
         // Run the streamProcessor for the first time.
         test.run();
+        let verboseStats = test.stats(true);
+        checkForNoLastCheckpointField(verboseStats);
         // Wait until the last doc in the input appears in the output collection.
         waitForDoc(test.outputColl, (doc) => doc.idx == input.length - 1, /* maxWaitSeconds */ 60);
         test.stop();
@@ -68,6 +94,9 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             test.outputColl.deleteMany({});
             // Run the streamProcessor.
             test.run();
+
+            verboseStats = test.stats(true);
+            validateLastCheckpointStat("kafka", verboseStats);
             // Get the starting offset from the checkpoint.
             const startingOffset = test.getStartOffsetFromCheckpoint(id);
             const expectedOutputCount = input.length - startingOffset;
@@ -321,6 +350,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                                   useNewCheckpointing,
                                   useRestoredExecutionPlan);
         test.run();
+        let verboseStats = test.stats(true);
+        checkForNoLastCheckpointField(verboseStats);
         // Wait for all the messages to be read.
         assert.soon(() => { return test.stats()["inputMessageCount"] == input.length; });
         assert.eq(0, test.getResults().length, "expected no output");
@@ -331,6 +362,10 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         assert.gt(ids.length, 0, `expected some checkpoints`);
         // Run the streamProcessor, expecting to resume from a checkpoint.
         test.run(false /* firstStart */);
+
+        verboseStats = test.stats(true);
+        validateLastCheckpointStat("changestream", verboseStats);
+
         // Insert an event that will close the window.
         assert.commandWorked(test.inputColl.insert({ts: new Date(endTs.getTime() + 1)}));
         assert.soon(() => { return test.getResults().length == expectedOutputDocs.length; });

@@ -263,6 +263,10 @@ structs:
                 description: The timestamp of the last document processed
                 type: date
                 optional: true
+            lastCheckpoint:
+                description: Data related to the last checkpoint committed
+                type: LastCheckpointState
+                optional: true
 
     StopStreamProcessorReply:
         description: "Response message for streams_stopStreamProcessor command"

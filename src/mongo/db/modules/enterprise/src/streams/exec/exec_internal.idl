@@ -60,6 +60,45 @@ structs:
                 type: object
                 optional: true
 
+    ChangeStreamSourceCheckpointStateForStats:
+        description: "State of the change stream source as of the last checkpoint committed"
+        strict: false
+        fields:
+            resumeToken:
+                description: Checkpoint resume token
+                type: object
+                optional: true
+            clusterTime:
+                description: Cluster time of checkpoint
+                type: timestamp
+
+    KafkaPartitionCheckpointStateForStats:
+        description: "State of a kafka partition as of the last checkpoint committed"
+        strict: false
+        fields:
+            partition:
+                description: Partition number.
+                type: int
+            offset:
+                description: Log offset of the partition.
+                type: safeInt64
+            topic:
+                description: Topic name.
+                type: string
+                optional: true
+
+    LastCheckpointState:
+        description: "State of the last checkpoint committed"
+        strict: false
+        fields:
+            sourceState:
+                description: "State related to the source which committed the checkpoint"
+                type: 
+                    variant: [ChangeStreamSourceCheckpointStateForStats, array<KafkaPartitionCheckpointStateForStats>]
+            commitTime:
+                description: "Wall time of last checkpoint committed"
+                type: date
+
     OperatorStatsDoc:
         description: Operator specific stats.
         strict: false

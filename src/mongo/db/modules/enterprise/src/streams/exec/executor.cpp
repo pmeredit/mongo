@@ -157,7 +157,8 @@ Future<void> Executor::start() {
                     description.setRestoreDurationMs(duration);
                     {
                         stdx::lock_guard<stdx::mutex> lock(_mutex);
-                        _restoredCheckpointDescription = std::move(description);
+                        _restoredCheckpointDescription = description;
+                        _lastCommittedCheckpointDescription = std::move(description);
                     }
                 }
 

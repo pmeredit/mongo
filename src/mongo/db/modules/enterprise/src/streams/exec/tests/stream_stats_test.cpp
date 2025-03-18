@@ -4,10 +4,17 @@
 
 #include "streams/exec/stream_stats.h"
 
+#include <vector>
+
+#include "mongo/base/string_data.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/pipeline/resume_token.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/https_operator.h"
+#include "streams/exec/stats_utils.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {
@@ -150,6 +157,62 @@ TEST(StatsTest, ComputeStreamSummaryStatsTest) {
     ASSERT_EQ(result.watermark, -1);
     ASSERT_EQ(result.numDlqDocs, 0);
     ASSERT_EQ(result.numDlqBytes, 0);
+}
+
+TEST(StatsTest, LastCheckpointToInternalStatsSchemaTest) {
+    mongo::CheckpointDescription checkpointDesc;
+    std::string resumeTokenData = "8267CEF86D000000042B0429296E1404";
+    checkpointDesc.setSourceState(
+        BSON(ChangeStreamSourceCheckpointState::kStartingPointFieldName
+             << BSON(mongo::ResumeToken::kDataFieldName << resumeTokenData)));
+    Date_t now = Date_t::now();
+    checkpointDesc.setCheckpointTimestamp(now);
+
+    // Change stream source with resume token
+    LastCheckpointState lastCheckpointStateResumeToken =
+        lastCheckpointInternalToStatsSchema(checkpointDesc);
+    ASSERT_EQ(lastCheckpointStateResumeToken.getCommitTime(), now);
+    ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointState =
+        std::get<ChangeStreamSourceCheckpointStateForStats>(
+            std::move(lastCheckpointStateResumeToken.getSourceState()));
+    ASSERT(changeStreamSourceCheckpointState.getResumeToken());
+    BSONObj resumeToken = std::move(*changeStreamSourceCheckpointState.getResumeToken());
+    ASSERT_EQ(resumeToken.getStringField(mongo::ResumeToken::kDataFieldName), resumeTokenData);
+
+    // Change stream source with timestamp
+    Timestamp curTimestamp = Timestamp();
+    checkpointDesc.setSourceState(
+        BSON(ChangeStreamSourceCheckpointState::kStartingPointFieldName << curTimestamp));
+    LastCheckpointState lastCheckpointStateTimestamp =
+        lastCheckpointInternalToStatsSchema(checkpointDesc);
+    ASSERT_EQ(lastCheckpointStateTimestamp.getCommitTime(), now);
+    ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointState2 =
+        std::get<ChangeStreamSourceCheckpointStateForStats>(
+            lastCheckpointStateTimestamp.getSourceState());
+    ASSERT(!changeStreamSourceCheckpointState2.getResumeToken());
+    ASSERT_EQ(curTimestamp, changeStreamSourceCheckpointState2.getClusterTime());
+
+    // Kafka source
+    KafkaSourceCheckpointState kafkaSourceCheckpointState;
+    KafkaPartitionCheckpointState kafkaPartitionCheckpointState;
+    kafkaPartitionCheckpointState.setPartition(0);
+    kafkaPartitionCheckpointState.setOffset(5002);
+    kafkaPartitionCheckpointState.setTopic(StringData{"t1"});
+    kafkaSourceCheckpointState.setPartitions(
+        std::vector<KafkaPartitionCheckpointState>{kafkaPartitionCheckpointState});
+    checkpointDesc.setSourceState(kafkaSourceCheckpointState.toBSON());
+    LastCheckpointState lastCheckpointStateKafkaSource =
+        lastCheckpointInternalToStatsSchema(checkpointDesc);
+    ASSERT_EQ(lastCheckpointStateKafkaSource.getCommitTime(), now);
+    std::vector<KafkaPartitionCheckpointStateForStats> kafkaSourceCheckpointStateForStats =
+        std::get<std::vector<KafkaPartitionCheckpointStateForStats>>(
+            lastCheckpointStateKafkaSource.getSourceState());
+    ASSERT_EQ(kafkaSourceCheckpointStateForStats.size(), 1);
+    KafkaPartitionCheckpointStateForStats kafkaPartitionCheckpointStateForStats =
+        kafkaSourceCheckpointStateForStats[0];
+    ASSERT_EQ(kafkaPartitionCheckpointStateForStats.getPartition(), 0);
+    ASSERT_EQ(kafkaPartitionCheckpointStateForStats.getOffset(), 5002);
+    ASSERT_EQ(kafkaPartitionCheckpointStateForStats.getTopic(), StringData{"t1"});
 }
 
 }  // namespace streams

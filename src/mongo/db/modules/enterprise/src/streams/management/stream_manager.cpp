@@ -1666,6 +1666,12 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     if (executorStats.lastMessageIn) {
         reply.setLastMessageIn(executorStats.lastMessageIn);
     }
+
+    boost::optional<mongo::CheckpointDescription> lastCheckpointDescription =
+        processorInfo->executor->getLastCommittedCheckpointDescription();
+    if (lastCheckpointDescription) {
+        reply.setLastCheckpoint(lastCheckpointInternalToStatsSchema(*lastCheckpointDescription));
+    }
     reply.setInputMessageCount(summaryStats.numInputDocs);
     reply.setInputMessageSize(double(summaryStats.numInputBytes) / scale);
     reply.setOutputMessageCount(summaryStats.numOutputDocs);

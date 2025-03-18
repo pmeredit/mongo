@@ -3,6 +3,14 @@
  */
 #include "streams/exec/stats_utils.h"
 
+#include <variant>
+
+#include "mongo/bson/timestamp.h"
+#include "mongo/db/pipeline/resume_token.h"
+#include "mongo/idl/idl_parser.h"
+#include "mongo/util/assert_util.h"
+#include "mongo/util/overloaded_visitor.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/stream_stats.h"
 
@@ -94,6 +102,58 @@ StreamSummaryStats toSummaryStats(const mongo::CheckpointSummaryStats& stats) {
                               .numOutputBytes = stats.getOutputMessageSize(),
                               .numDlqDocs = stats.getDlqMessageCount(),
                               .numDlqBytes = stats.getDlqMessageSize()};
+}
+
+LastCheckpointState lastCheckpointInternalToStatsSchema(
+    const mongo::CheckpointDescription& checkpointDesc) {
+    LastCheckpointState lastCheckpointState;
+    lastCheckpointState.setCommitTime(checkpointDesc.getCheckpointTimestamp());
+
+    tassert(
+        ErrorCodes::InternalError, "sourceState should be set", checkpointDesc.getSourceState());
+    const auto& sourceState = *checkpointDesc.getSourceState();
+
+    // TODO(SERVER-101937): Parse based on operator name instead of these field names
+    if (sourceState.hasField(ChangeStreamSourceCheckpointState::kStartingPointFieldName)) {
+        ChangeStreamSourceCheckpointState changestreamState =
+            ChangeStreamSourceCheckpointState::parse(
+                IDLParserContext("ChangeStreamSourceCheckpointState"), sourceState);
+        ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointStateForStats;
+
+        tassert(ErrorCodes::InternalError,
+                "startingPoint should be set",
+                changestreamState.getStartingPoint());
+        std::visit(OverloadedVisitor{
+                       [&](const BSONObj& obj) {
+                           ResumeToken resumeToken = ResumeToken::parse(obj);
+                           changeStreamSourceCheckpointStateForStats.setResumeToken(obj.copy());
+                           changeStreamSourceCheckpointStateForStats.setClusterTime(
+                               resumeToken.getClusterTime());
+                       },
+                       [&](const Timestamp& ts) {
+                           changeStreamSourceCheckpointStateForStats.setClusterTime(ts);
+                       }},
+                   *changestreamState.getStartingPoint());
+        lastCheckpointState.setSourceState(std::move(changeStreamSourceCheckpointStateForStats));
+    } else if (sourceState.hasField(KafkaSourceCheckpointState::kPartitionsFieldName)) {
+        const KafkaSourceCheckpointState& kafkaSourceCheckpointState =
+            KafkaSourceCheckpointState::parse(IDLParserContext("KafkaPartitionCheckpointState"),
+                                              sourceState);
+        const std::vector<KafkaPartitionCheckpointState>& kafkaPartitions =
+            kafkaSourceCheckpointState.getPartitions();
+        std::vector<mongo::KafkaPartitionCheckpointStateForStats>
+            kafkaPartitionCheckpointStateForStats;
+        kafkaPartitionCheckpointStateForStats.reserve(kafkaPartitions.size());
+        for (const auto& currKafkaPartition : kafkaPartitions) {
+            KafkaPartitionCheckpointStateForStats kafkaPartitionForStats;
+            kafkaPartitionForStats.setPartition(currKafkaPartition.getPartition());
+            kafkaPartitionForStats.setOffset(currKafkaPartition.getOffset());
+            kafkaPartitionForStats.setTopic(currKafkaPartition.getTopic());
+            kafkaPartitionCheckpointStateForStats.emplace_back(std::move(kafkaPartitionForStats));
+        }
+        lastCheckpointState.setSourceState(std::move(kafkaPartitionCheckpointStateForStats));
+    }
+    return lastCheckpointState;
 }
 
 }  // namespace streams

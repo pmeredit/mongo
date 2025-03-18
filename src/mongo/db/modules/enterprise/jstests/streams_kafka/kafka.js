@@ -10,6 +10,9 @@ import {
 import {findMatchingLogLine} from "jstests/libs/log.js";
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
+    validateLastCheckpointStat
+} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint.js";
+import {
     flushUntilStopped,
     LocalDiskCheckpointUtil,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
@@ -1048,6 +1051,7 @@ function resumeFromCheckpointVersion4(numPartitions) {
     let statsResult = getStats(kafkaToMongoName);
     jsTestLog("statsResult *********");
     jsTestLog(statsResult);
+    validateLastCheckpointStat("kafka", statsResult);
     // Verify the expected message counts in the stats response.
     // These are restored from the checkpoint.
     assert.eq(10000, statsResult.inputMessageCount);

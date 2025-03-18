@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/stream_stats.h"
@@ -34,5 +35,8 @@ std::vector<mongo::CheckpointOperatorInfo> toCheckpointOpInfo(
 // Converts a vector of CheckpointOperatorInfo into a vector of OperatorStats.
 std::vector<OperatorStats> toOperatorStats(
     const std::vector<mongo::CheckpointOperatorInfo>& restoreCheckpointOpInfo);
+
+mongo::LastCheckpointState lastCheckpointInternalToStatsSchema(
+    const mongo::CheckpointDescription& checkpointDesc);
 
 }  // namespace streams

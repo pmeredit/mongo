@@ -1386,10 +1386,6 @@ KafkaConsumerOperator::TopicPartitionOffsetMap KafkaConsumerOperator::getCommitt
 }
 
 BSONObj KafkaConsumerOperator::doOnCheckpointFlush(CheckpointId checkpointId) {
-    if (_options.isTest) {
-        return BSONObj{};
-    }
-
     auto stateBson = _unflushedStateContainer.pop(checkpointId);
     auto checkpointState = KafkaSourceCheckpointState::parseOwned(
         IDLParserContext{"KafkaConsumerOperator::doOnCheckpointFlush"}, std::move(stateBson));
