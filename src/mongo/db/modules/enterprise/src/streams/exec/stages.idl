@@ -409,6 +409,7 @@ structs:
             stage:
                 description: Stage name the connection is associated with.
                 type: string
+                optional: true
 
     KafkaSinkConfigOptions:
         description: "Optional configuration options for a Kafka Sink."

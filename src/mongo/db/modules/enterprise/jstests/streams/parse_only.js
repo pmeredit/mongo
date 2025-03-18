@@ -92,7 +92,7 @@ test({
         { name: "conn3", stage: "$lookup" },
         { name: "conn4", stage: "$lookup" },
         { name: "conn2", stage: "$merge" },
-        { name: "conn6", stage: "dlq" }
+        { name: "conn6" }
     ]
 });
 
@@ -152,11 +152,8 @@ test({
         db: dbName,
         coll: dlqCollName,
     },
-    expectedConnectionNames: [
-        {name: "conn1", stage: "$source"},
-        {name: "conn2", stage: "$merge"},
-        {name: "conn6", stage: "dlq"}
-    ]
+    expectedConnectionNames:
+        [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
 });
 
 test({
@@ -185,11 +182,8 @@ test({
         db: dbName,
         coll: dlqCollName,
     },
-    expectedConnectionNames: [
-        {name: "conn1", stage: "$source"},
-        {name: "conn2", stage: "$merge"},
-        {name: "conn6", stage: "dlq"}
-    ]
+    expectedConnectionNames:
+        [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
 });
 
 function missingConnectionName() {
