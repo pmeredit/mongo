@@ -595,7 +595,6 @@ const testCases = [
             {customerId: "baz", a: 3, ts: ISODate("2024-05-02T02:00:00Z")},
             {customerId: "bat", a: 4, ts: ISODate("2024-05-02T02:01:00Z")},
             {customerId: "bat", a: 5, ts: ISODate("2024-05-02T02:03:00Z")},
-            {customerId: "bart", a: 5, ts: ISODate("2024-05-02T02:59:00Z")},
         ],
         inputAfterModifyBeforeRestart: [
             // close everything

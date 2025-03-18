@@ -68,6 +68,10 @@ namespace {
 // connecting.
 MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepBeforeConnect);
 
+// If enabled failpoint the changestream background thread will sleep for 10 seconds after reading
+// a single change event.
+MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepAfterReadSingle);
+
 // If enabled the executor thread will sleep for some time after processing a batch of fetched
 // events
 MONGO_FAIL_POINT_DEFINE(changestreamSlowEventProcessing);
@@ -465,6 +469,10 @@ void ChangeStreamSourceOperator::fetchLoop() {
 
             // Get some change events from our change stream cursor.
             readSingleChangeEvent();
+            if (MONGO_unlikely(changestreamSourceSleepAfterReadSingle.shouldFail())) {
+                sleepFor(Seconds{10});
+            }
+
             _numReadSingleChangeEvent->increment(1);
         }
     };
@@ -763,7 +771,13 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 
     // If our cursor is exhausted, wait until the next call to 'readSingleChangeEvent' to try
     // reading from '_changeStreamCursor' again.
+
+    if (auto resumeToken = _changeStreamCursor->get_resume_token()) {
+        // Get the resume token if there is one.
+        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
+    }
     if (_it != _changeStreamCursor->end()) {
+        // Read the current event.
         changeEvent = fromBsoncxxDocument(*_it);
 
         // Check if the change event has a split event field, in which case read all the fragments.
@@ -800,21 +814,15 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         ++_it;
     }
 
-    // Get the latest resume token from the cursor. The resume token might advance
-    // even if no documents are returned.
-    auto resumeToken = _changeStreamCursor->get_resume_token();
-    if (resumeToken) {
-        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
-    }
-    tassert(8155200,
-            "Expected resume token to be set whenever we read a change event.",
-            resumeToken || !changeEvent);
-
     // If we've hit the end of our cursor, set our iterator to the default iterator so that we
     // can reset it on the next call to 'readSingleChangeEvent'.
     if (_it == _changeStreamCursor->end()) {
         _it = mongocxx::change_stream::iterator();
     }
+
+    tassert(8155200,
+            "Expected resume token to be set whenever we read a change event.",
+            eventResumeToken || !changeEvent);
 
     // Store latest operationTime regardless of whether we get a new resumeToken/event or not
     _changestreamOperationTime.store(mongo::Seconds{_clientSession->operation_time().timestamp});

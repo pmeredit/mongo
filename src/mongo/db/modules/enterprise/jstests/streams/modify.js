@@ -41,7 +41,6 @@ function testRunner({
     modifySourceFunc,
     resumeFromCheckpoint = true,
     expectedTotalInputMessages,
-    expectedTotalInputMessagesAfterModify2,
     oplogSizeMB,
     useTimeField = false,
     validateFailureCode = ErrorCodes.StreamProcessorInvalidOptions,
@@ -49,10 +48,8 @@ function testRunner({
     removeCheckpointsBeforeModify,
     sourceType = "changestream",
     featureFlags = {},
-    fieldsToSkip = ["_id"],
-    expectedInputCountForOriginalPipeline
+    fieldsToSkip = ["_id"]
 }) {
-    featureFlags.changestreamPredicatePushdown = true;
     const waitTimeMs = 30000;
     // Run the stream processor with the originalPipeline.
     let test = new TestHelper(inputForOriginalPipeline,
@@ -80,12 +77,10 @@ function testRunner({
 
     test.run();
     // Wait for all the messages to be read.
-    const expectedInputCount =
-        Number(expectedInputCountForOriginalPipeline ?? inputForOriginalPipeline.length);
-    assert.soon(() => {
-        const actual = Number(test.stats()["inputMessageCount"]);
-        return actual == expectedInputCount;
-    }, "waiting for messages to be read", waitTimeMs);
+    assert.soon(
+        () => { return test.stats()["inputMessageCount"] == inputForOriginalPipeline.length; },
+        tojson(test.stats()),
+        waitTimeMs);
     // Wait for any expected DLQ messages to show up.
     assert.soon(() => { return test.dlqColl.count() == expectedDlqBeforeModify.length; },
                 "waiting for dlqMessageCount",
@@ -94,15 +89,6 @@ function testRunner({
                      test.dlqColl.aggregate([{$replaceRoot: {newRoot: "$doc"}}]).toArray(),
                      true /* verbose */,
                      fieldsToSkip));
-
-    if (expectedInputCount < inputForOriginalPipeline.length) {
-        // When we push down a match, the processor may read less input than the input sent to the
-        // $source. In this case, sleep for 5 seconds and validate we still see the expected input
-        // count.
-        sleep(5000);
-        assert.eq(expectedInputCount, Number(test.stats()["inputMessageCount"]));
-    }
-
     // Stop the stream processor, writing a final checkpoint.
     test.stop();
 
@@ -193,10 +179,8 @@ function testRunner({
     // if sourceType is sample we should just return true here because the input will be
     // inconsistent
     assert.soon(() => {
-        const actual = test.stats()["inputMessageCount"];
-        const expected = totalInputMessages;
         return totalInputMessages == test.stats()["inputMessageCount"] || sourceType === "sample";
-    }, "waiting for totalInputMessages", waitTimeMs);
+    });
 
     if (modifiedPipeline2) {
         test.stop();
@@ -247,9 +231,8 @@ function testRunner({
     const stats = test.stats();
     let expectedInputMessages = inputForOriginalPipeline.length +
         inputAfterStopBeforeModify.length + inputAfterStopBeforeModify2.length;
-    if (expectedTotalInputMessages || expectedTotalInputMessagesAfterModify2) {
-        expectedInputMessages =
-            expectedTotalInputMessagesAfterModify2 ?? expectedTotalInputMessages;
+    if (expectedTotalInputMessages) {
+        expectedInputMessages = expectedTotalInputMessages;
     }
 
     if (removeCheckpointsBeforeModify) {
@@ -312,9 +295,6 @@ const testCases = [
             {$project: {_stream_meta: 0}}
         ],
         inputForOriginalPipeline: [{a: 1, b: 0}, {a: 1, b: 2}, {a: 0, b: 5}],
-        // {a: 0} is filtered out on changestream side
-        expectedInputCountForOriginalPipeline: 2,
-        expectedTotalInputMessages: 3,
         inputAfterStopBeforeModify: [{a: 1, b: 0}, {a: 0, b: 1}, {a: 1, b: 1}],
         expectedOutput: [
             // Before the edit.
@@ -328,7 +308,13 @@ const testCases = [
         expectedOperatorStatsAfterModify: [
             {
                 "name": "ChangeStreamConsumerOperator",
-                "inputMessageCount": NumberLong(1),
+                "inputMessageCount": NumberLong(3),
+                "outputMessageCount": NumberLong(3),
+                "dlqMessageCount": NumberLong(0),
+            },
+            {
+                "name": "MatchOperator",
+                "inputMessageCount": NumberLong(3),
                 "outputMessageCount": NumberLong(1),
                 "dlqMessageCount": NumberLong(0),
             },
@@ -374,13 +360,17 @@ const testCases = [
             // After the edit.
             {a: 1, b: 42},
         ],
-        // filtered out: {a: 0, b: 0}
-        expectedTotalInputMessages: 4,
         resultsQuery: [{$project: {a: "$fullDocument.a", b: "$fullDocument.b"}}],
         expectedOperatorStatsAfterModify: [
             {
                 "name": "ChangeStreamConsumerOperator",
-                "inputMessageCount": NumberLong(1),
+                "inputMessageCount": NumberLong(2),
+                "outputMessageCount": NumberLong(2),
+                "dlqMessageCount": NumberLong(0),
+            },
+            {
+                "name": "MatchOperator",
+                "inputMessageCount": NumberLong(2),
                 "outputMessageCount": NumberLong(1),
                 "dlqMessageCount": NumberLong(0),
             },
@@ -396,12 +386,10 @@ const testCases = [
         originalPipeline: [{$match: {"fullDocument.a": 1}}],
         modifiedPipeline: [],
         inputForOriginalPipeline: [{a: 1, b: 0}, {a: 0, b: 2}, {a: 0, b: 5}],
-        expectedInputCountForOriginalPipeline: 1,
         inputAfterStopBeforeModify: [
             {a: 0, b: 0},
             {a: 1, b: 42},
         ],
-        expectedTotalInputMessages: 3,
         expectedOutput: [
             // Before the edit.
             {a: 1, b: 0},
@@ -480,16 +468,6 @@ const testCases = [
     },
     {
         originalPipeline: [
-            {$match: {a: 1}},
-            {$project: {a: 1}},
-        ],
-        modifiedPipeline: [
-            {$match: {a: 2}},
-        ],
-        expectedValidateError: "cannot resume stream; the resume token was not found.",
-    },
-    {
-        originalPipeline: [
             {$replaceRoot: {newRoot: "$fullDocument"}},
             {$project: {_stream_meta: 0}},
             {$match: {a: 1}},
@@ -503,7 +481,7 @@ const testCases = [
         modifiedPipeline2: [
             {$replaceRoot: {newRoot: "$fullDocument"}},
             {$project: {_stream_meta: 0}},
-            {$match: {a: 2}},
+            {$match: {a: 3}},
             {$addFields: {b: "foo"}},
         ],
         inputForOriginalPipeline: [
@@ -512,30 +490,33 @@ const testCases = [
             {a: 2},
             {a: 3},
         ],
-        expectedInputCountForOriginalPipeline: 1,
         inputAfterStopBeforeModify: [
             {a: 0},
             {a: 1},
             {a: 2},
             {a: 3},
         ],
-        expectedTotalInputMessages: 2,
         inputAfterStopBeforeModify2: [
             {a: 0},
             {a: 1},
             {a: 2},
             {a: 3},
         ],
-        expectedTotalInputMessagesAfterModify2: 3,
         expectedOutput: [
             {a: 1},
             {a: 2},
-            {a: 2, b: "foo"},
+            {a: 3, b: "foo"},
         ],
         expectedOperatorStatsAfterModify: [
             {
                 "name": "ChangeStreamConsumerOperator",
-                "inputMessageCount": NumberLong(1),
+                "inputMessageCount": NumberLong(4),
+                "outputMessageCount": NumberLong(4),
+                "dlqMessageCount": NumberLong(0),
+            },
+            {
+                "name": "MatchOperator",
+                "inputMessageCount": NumberLong(4),
                 "outputMessageCount": NumberLong(1),
                 "dlqMessageCount": NumberLong(0),
             },
@@ -954,12 +935,10 @@ const testCases = [
 
 // Note: for local dev, change testCases to testCases.slice(-1) if you just want to run the last
 // test case.
-for (let idx = 0; idx < testCases.length; idx += 1) {
-    const testCase = testCases[idx];
+for (const testCase of testCases) {
     jsTestLog(`Running: ${tojson({
         originalPipeline: testCase.originalPipeline,
-        modifiedPipeline: testCase.modifiedPipeline,
-        idx: idx,
+        modifiedPipeline: testCase.modifiedPipeline
     })}`);
     testRunner(testCase);
 }

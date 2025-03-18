@@ -1151,6 +1151,52 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         assert.gte(new Set(resumeTokens).size, 2);
     }
 
+    // Test resume token handling in the middle of a batch of data from the change
+    // stream cursor
+    function changestreamMiddleOfBatch() {
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'changestreamSourceSleepAfterReadSingle', 'mode': 'alwaysOn'}));
+
+        try {
+            // Create a test helper.
+            let test = new TestHelper(
+                [{a: 1}, {a: 2}],
+                [],
+                undefined /* interval */,
+                "changestream" /* sourceType */,
+                true, /* useNewCheckpointing */
+                useRestoredExecutionPlan,
+                null /* writeDir */,
+                null /* restoreDir */,
+                db /* dbForTest */,
+                null /* targetSourceMergeDb */,
+                false, /* useTimeField */
+            );
+
+            // This starts the stream processor and inserts the "inputBeforeStop" into the input
+            // collection.
+            test.run();
+            // Wait for 1 message to be read (but not the second message).
+            assert.soon(() => { return test.stats()["inputMessageCount"] == 1; });
+            test.stop();
+
+            // start from the last checkpoint
+            test.run(false /* firstStart */);
+            assert.soon(() => { return test.stats()["inputMessageCount"] == 2; });
+            assert.soon(() => { return test.stats()["outputMessageCount"] == 2; });
+            // validate the stats don't change after 5 seocnds
+            sleep(5000);
+            assert.eq(2, test.stats()["inputMessageCount"]);
+            assert.eq(2, test.stats()["outputMessageCount"]);
+
+            // Stop the stream processor.
+            test.stop();
+        } finally {
+            assert.commandWorked(db.adminCommand(
+                {'configureFailPoint': 'changestreamSourceSleepAfterReadSingle', 'mode': 'off'}));
+        }
+    }
+
     // TODO(SERVER-92447): Remove this.
     // Validate that trying to restore from a checkpoint with operators that don't match the
     // supplied pipeline will fail.
@@ -1279,6 +1325,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         runTest(smokeTestEmptyChangestream);
         runTest(emptyChangestreamResumeTokenAdvances);
         runTest(splitLargeChangeStreamEvent);
+
+        runTest(changestreamMiddleOfBatch);
 
         const buildInfo = db.runCommand("buildInfo");
         assert(buildInfo.hasOwnProperty("allocator"));
