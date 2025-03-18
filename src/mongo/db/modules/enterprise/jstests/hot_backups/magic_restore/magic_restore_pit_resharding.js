@@ -331,7 +331,7 @@ function runTest(insertHigherTermOplogEntry) {
             });
 
             // TODO (SERVER-98118): make unconditional once 9.0 becomes last LTS.
-            if (FeatureFlagUtil.isPresentAndEnabled(node, "ShardAuthoritativeDbMetadata")) {
+            if (FeatureFlagUtil.isPresentAndEnabled(node, "ShardAuthoritativeDbMetadataDDL")) {
                 let entries =
                     node.getDB("config").getCollection("shard.databases").find().toArray();
                 assert.eq(entries.length, 1);
