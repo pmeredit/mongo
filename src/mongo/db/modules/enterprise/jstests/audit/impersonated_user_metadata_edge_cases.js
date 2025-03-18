@@ -52,15 +52,64 @@ function setupTests(conn) {
     assert.commandWorked(admin.runCommand({createUser: 'admin', pwd: 'admin', roles: ['root']}));
 }
 
-function runTests(conn, authenticated, isMongos = false) {
+function runClientOnlyTestCase(conn, cmd, pass, authenticated, client) {
+    const admin = conn.getDB('admin');
+    if (pass) {
+        // All passing test cases will fail if unauthenticated except for the one where
+        // $impersonatedClient is omitted entirely.
+        if (authenticated || !client.test) {
+            assert.commandWorked(admin.runCommand(cmd));
+        } else {
+            assert.commandFailedWithCode(admin.runCommand(cmd), ErrorCodes.Unauthorized);
+        }
+    } else {
+        assert(client.code);
+        const expectedCodes = [ErrorCodes.BadValue];
+
+        // If running without authenticating first, we may get hit with Unauthorized.
+        if (!authenticated) {
+            expectedCodes.push(ErrorCodes.Unauthorized);
+        }
+        expectedCodes.push(client.code);
+        assert.commandFailedWithCode(admin.runCommand(cmd), expectedCodes);
+    }
+}
+
+function runNestedTestCase(conn, cmd, pass, authenticated, user, role, client) {
+    const admin = conn.getDB('admin');
+    if (pass) {
+        // Even passing test cases will fail without auth as __system.
+        if (!authenticated) {
+            assert.commandFailedWithCode(admin.runCommand(cmd), ErrorCodes.Unauthorized);
+        } else {
+            assert.commandWorked(admin.runCommand(cmd));
+        }
+    } else if (user.code || role.code || client.code) {
+        const expectedCodes = [ErrorCodes.BadValue];
+        if (user.code !== undefined) {
+            expectedCodes.push(user.code);
+        }
+        if (role.code !== undefined) {
+            expectedCodes.push(role.code);
+        }
+        if (client.code !== undefined) {
+            expectedCodes.push(client.code);
+        }
+
+        // If running without authenticating first, we may get hit with Unauthorized.
+        if (!authenticated) {
+            expectedCodes.push(ErrorCodes.Unauthorized);
+        }
+        assert.commandFailedWithCode(admin.runCommand(cmd), expectedCodes);
+    } else {
+        assert.commandFailed(admin.runCommand(cmd));
+    }
+}
+
+function runTests(conn, keyFile) {
+    const authenticated = keyFile ? true : false;
     const msg = authenticated ? 'with' : 'without';
     jsTest.log('Running test ' + msg + ' authentication');
-
-    const admin = conn.getDB('admin');
-    const local = conn.getDB('local');
-    if (authenticated) {
-        local.auth('__system', 'foopdedoop');
-    }
 
     // Run test cases with just $impersonatedClient and empty $impersonatedRoles first.
     kClientTestCases.forEach(function(client) {
@@ -72,21 +121,15 @@ function runTests(conn, authenticated, isMongos = false) {
         const cmd = {hello: 1, "$audit": icmd};
         const pass = client.pass !== undefined ? client.pass : true;
 
-        const expect = (pass && (isMongos || authenticated)) ? 'pass' : 'fail';
+        const expect = (pass && authenticated) ? 'pass' : 'fail';
         jsTest.log("Command should " + expect + ": " + tojson(cmd));
-        if (pass) {
-            // Valid formations of $impersonatedClient on replica sets will fail without auth.
-            if (!isMongos && !authenticated && client.test) {
-                assert.commandFailedWithCode(admin.runCommand(cmd), ErrorCodes.Unauthorized);
-            } else {
-                assert.commandWorked(admin.runCommand(cmd));
-            }
-        } else if (client.code) {
-            const expectedCodes = [ErrorCodes.BadValue];
-            expectedCodes.push(client.code);
-            assert.commandFailedWithCode(admin.runCommand(cmd), expectedCodes);
+        if (authenticated) {
+            authutil.asCluster(
+                conn,
+                keyFile,
+                () => { runClientOnlyTestCase(conn, cmd, pass, authenticated, client); });
         } else {
-            assert.commandFailed(admin.runCommand(cmd));
+            runClientOnlyTestCase(conn, cmd, pass, authenticated, client);
         }
     });
 
@@ -107,38 +150,18 @@ function runTests(conn, authenticated, isMongos = false) {
                     pass = pass && (client.pass);
                 }
 
-                const expect = (pass && (isMongos || authenticated)) ? 'pass' : 'fail';
+                const expect = (pass && authenticated) ? 'pass' : 'fail';
                 jsTest.log("Command should " + expect + ": " + tojson(cmd));
-                if (pass) {
-                    // Tests expected to pass on replica sets will fail without auth.
-                    if (!isMongos && !authenticated) {
-                        assert.commandFailedWithCode(admin.runCommand(cmd),
-                                                     ErrorCodes.Unauthorized);
-                    } else {
-                        assert.commandWorked(admin.runCommand(cmd));
-                    }
-                } else if (user.code || role.code || client.code) {
-                    const expectedCodes = [ErrorCodes.BadValue];
-                    if (user.code !== undefined) {
-                        expectedCodes.push(user.code);
-                    }
-                    if (role.code !== undefined) {
-                        expectedCodes.push(role.code);
-                    }
-                    if (client.code !== undefined) {
-                        expectedCodes.push(client.code);
-                    }
-                    assert.commandFailedWithCode(admin.runCommand(cmd), expectedCodes);
+                if (authenticated) {
+                    authutil.asCluster(conn, keyFile, () => {
+                        runNestedTestCase(conn, cmd, pass, authenticated, user, role, client);
+                    });
                 } else {
-                    assert.commandFailed(admin.runCommand(cmd));
+                    runNestedTestCase(conn, cmd, pass, authenticated, user, role, client);
                 }
             });
         });
     });
-
-    if (authenticated) {
-        local.logout();
-    }
 }
 
 function runAuditingTests(conn, auditSpooler) {
@@ -199,8 +222,8 @@ const kKeyFile = 'jstests/libs/key1';
     jsTest.log('Standalone');
     const mongod = MongoRunner.runMongodAuditLogger({auth: '', keyFile: kKeyFile});
     setupTests(mongod);
-    runTests(mongod, false);
-    runTests(mongod, true);
+    runTests(mongod, kKeyFile);
+    runTests(mongod, undefined);  // shell runs without authenticating
 
     const auditSpool = mongod.auditSpooler();
     runAuditingTests(mongod, auditSpool);
@@ -216,8 +239,8 @@ const kKeyFile = 'jstests/libs/key1';
 
     const primary = rst.getPrimary();
     setupTests(primary);
-    runTests(primary, false);
-    runTests(primary, true);
+    runTests(primary, kKeyFile);
+    runTests(primary, undefined);  // shell runs without authenticating
 
     const auditSpool = primary.auditSpooler();
     runAuditingTests(primary, auditSpool);
@@ -228,8 +251,8 @@ const kKeyFile = 'jstests/libs/key1';
     jsTest.log('Sharding');
     const st = MongoRunner.runShardedClusterAuditLogger({keyFile: kKeyFile}, {auth: null});
     setupTests(st.s0);
-    runTests(st.s0, false, true);
-    runTests(st.s0, true, true);
+    runTests(st.s0, kKeyFile);
+    runTests(st.s0, undefined);  // shell runs without authenticating
 
     const auditSpool = st.configRS.nodes[0].auditSpooler();
     runAuditingTests(st.configRS.nodes[0], auditSpool);
