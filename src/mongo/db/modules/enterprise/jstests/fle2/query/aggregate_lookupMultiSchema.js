@@ -4,7 +4,9 @@
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
- *   requires_fcv_81
+ *   requires_fcv_81,
+ *   # TODO (SERVER-102377): Re-enable this test.
+ *   DISABLED_TEMPORARILY_DUE_TO_FCV_UPGRADE,
  * ]
  */
 import {isEnterpriseShell} from "jstests/fle2/libs/encrypted_client_util.js";
