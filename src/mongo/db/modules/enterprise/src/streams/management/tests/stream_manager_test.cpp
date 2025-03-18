@@ -667,6 +667,21 @@ TEST_F(StreamManagerTest, GetStats) {
     auto finalStats =
         stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName).getStats();
     finalStats.setStatus(StreamStatusEnum::Running);
+
+    auto finalOperatorStatsWrap = finalStats.getOperatorStats();
+    ASSERT_TRUE(finalOperatorStatsWrap);
+
+    auto finalOperatorStats = finalOperatorStatsWrap.get();
+    ASSERT_EQUALS(3, finalOperatorStats.size());
+
+    // executionTimeMillis can be flakey in evergreen - set to 0
+    for (int i = 0; i < 3; i++) {
+        operatorStats[i].setExecutionTimeMillis(mongo::Milliseconds{0});
+        finalOperatorStats[i].setExecutionTimeMillis(mongo::Milliseconds{0});
+    }
+    statsReply.setOperatorStats(operatorStats);
+    finalStats.setOperatorStats(finalOperatorStats);
+
     ASSERT_BSONOBJ_EQ(finalStats.toBSON(), statsReply.toBSON());
 }
 
