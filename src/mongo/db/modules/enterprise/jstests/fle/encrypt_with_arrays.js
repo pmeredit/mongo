@@ -154,7 +154,6 @@ assertInsertFails([{_id: 1, foo: {bar: [1, 2, 3]}}], fooEncryptedSchema, 31041);
 
 // Can insert an encrypted object, even if that object contains a nested array, when the
 // encryption algorithm is random.
-// TODO SERVER-61427 remove the optional bsonType.
 let fooEncryptedRandomSchema = {
     foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID(), UUID()], bsonType: "object"}}
 };
