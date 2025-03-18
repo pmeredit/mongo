@@ -38,6 +38,7 @@ bool isBlockingWindowAwareStage(mongo::StringData name);
 bool hasBlockingStage(const BSONPipeline& pipeline);
 bool isPayloadStage(mongo::StringData name);
 bool isExternalFunctionStage(mongo::StringData name);
+bool hasSplitLargeEvent(const std::vector<mongo::BSONObj>& pipeline);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 

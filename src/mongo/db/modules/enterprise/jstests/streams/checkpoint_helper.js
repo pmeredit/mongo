@@ -191,7 +191,8 @@ export class TestHelper {
                 oplogSizeMB = undefined,
                 kafkaIsTest = true,
                 featureFlags = {},
-                extraMergeParams) {
+                extraMergeParams,
+                sourceConfig) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.sinkType = sinkType;
@@ -315,7 +316,7 @@ export class TestHelper {
         ];
         this.useTimeField = useTimeField;
 
-        this._buildPipeline(middlePipeline);
+        this._buildPipeline(middlePipeline, sourceConfig);
 
         this.sp = new Streams(this.tenantId, this.connectionRegistry, this.db);
         this.checkpointUtil =
@@ -330,7 +331,7 @@ export class TestHelper {
         });
     };
 
-    _buildPipeline(middlePipeline) {
+    _buildPipeline(middlePipeline, sourceConfig) {
         // Setup the pipeline.
         this.pipeline = [];
         // First, append either a kafka or changestream source.
@@ -342,6 +343,9 @@ export class TestHelper {
             };
             if (this.useTimeField) {
                 sourceSpec.timeField = {$toDate: "$ts"};
+            }
+            if (sourceConfig) {
+                sourceSpec.config = sourceConfig;
             }
             this.pipeline.push({$source: sourceSpec});
         } else if (this.sourceType === 'memory') {
@@ -361,6 +365,9 @@ export class TestHelper {
             };
             if (this.useTimeField) {
                 sourceSpec.timeField = {$toDate: "$fullDocument.ts"};
+            }
+            if (sourceConfig) {
+                sourceSpec.config = sourceConfig;
             }
             this.sourceSpec = sourceSpec;
             this.pipeline.push({$source: this.sourceSpec});

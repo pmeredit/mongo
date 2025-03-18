@@ -98,7 +98,7 @@ private:
 
         // Appends the given doc to docs.
         // Returns the size of the doc.
-        int pushDoc(mongo::BSONObj doc);
+        int pushDoc(mongo::Document document);
 
         int64_t size() const {
             return docs.size();
@@ -107,7 +107,7 @@ private:
         int64_t getByteSize() const;
 
         // Events from the changestream.
-        std::vector<mongo::BSONObj> docs;
+        std::vector<mongo::Document> docs;
         // The resumeToken of the last event in the batch.
         boost::optional<mongo::BSONObj> lastResumeToken;
         // Tracks the total number of bytes in docs.
@@ -148,7 +148,7 @@ private:
                                             const mongo::Document& fullDocument);
 
     // Utility to convert 'changeStreamObj' into a StreamDocument.
-    boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);
+    boost::optional<StreamDocument> processChangeEvent(mongo::Document changeStreamObj);
 
     // This is the entrypoint for '_changeStreamThread'.
     // It established the connection with the $source and starts reading.
@@ -170,6 +170,12 @@ private:
     mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
                                         mongocxx::client* client,
                                         bool shouldUseWatchToInitClusterChangestream);
+
+    // Stitch the fragments to populate the change stream event in case of split large event.
+    mongo::Document stitchSplitFragments(std::vector<mongo::BSONObj> fragments);
+
+    // Create a change stream cursor for a given pipeline.
+    void createChangeStreamCursor(mongocxx::pipeline pipeline);
 
     Options _options;
 
