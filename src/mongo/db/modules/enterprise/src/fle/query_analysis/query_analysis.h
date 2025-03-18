@@ -135,6 +135,7 @@ enum class EncryptionPlaceholderContext {
     kComparison,
     kWrite,
     kTextPrefixComparison,
+    kTextSuffixComparison,
 };
 
 /*

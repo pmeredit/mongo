@@ -386,6 +386,12 @@ TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyTextSearchFailsWithIncorrectAlg
                                                nullptr),
                        AssertionException,
                        10113904);
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value("string"_sd),
+                                               metadata,
+                                               EncryptionPlaceholderContext::kTextSuffixComparison,
+                                               nullptr),
+                       AssertionException,
+                       10113904);
 }
 
 // Test to ensure we don't support generating a prefix placeholder on metadata which does not
@@ -408,6 +414,89 @@ TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyPrefixTextSearchFailsWithUnsupp
                                                nullptr),
                        AssertionException,
                        10248500);
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyCorrectPlaceholderForTextSearchSuffixComparison) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::SuffixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    const auto placeholderType = EncryptionPlaceholderContext::kTextSuffixComparison;
+    const auto binData =
+        buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    verifyFLE2TextSearchBinData(
+        binData,
+        fromjson(R"({ v: "string", casef: false, diacf: false, suffix: { ub: 10, lb: 1 } })"));
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyOnlyGeneratedSuffixPlaceholder) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    QueryTypeConfig qtc1;
+    qtc1.setQueryType(QueryTypeEnum::SuffixPreview);
+    qtc1.setStrMinQueryLength(1);
+    qtc1.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc, qtc1};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    const auto placeholderType = EncryptionPlaceholderContext::kTextSuffixComparison;
+    const auto binData =
+        buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    verifyFLE2TextSearchBinData(
+        binData,
+        fromjson(R"({ v: "string", casef: false, diacf: false, suffix: { ub: 10, lb: 1 } })"));
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest,
+     VerifySuffixTextSearchFailsWithIncorrectPlaceholderContext) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::SuffixPreview);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(
+            Value("5"_sd), metadata, EncryptionPlaceholderContext::kComparison, nullptr),
+        AssertionException,
+        63165);
+}
+
+// Test to ensure we don't support generating a suffix placeholder on metadata which does not
+// support the suffix query index.
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifySuffixTextSearchFailsWithUnsupportedContext) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value("string"_sd),
+                                               metadata,
+                                               EncryptionPlaceholderContext::kTextSuffixComparison,
+                                               nullptr),
+                       AssertionException,
+                       10209400);
 }
 
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {

@@ -1286,7 +1286,8 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                             break;
                         }
                         case QueryTypeEnum::SuffixPreview: {
-                            if (ctx == EncryptionPlaceholderContext::kWrite) {
+                            if (ctx == EncryptionPlaceholderContext::kWrite ||
+                                ctx == EncryptionPlaceholderContext::kTextSuffixComparison) {
                                 spec.setSuffixSpec(FLE2SuffixInsertSpec(ub, lb));
                             }
                             break;
@@ -1309,11 +1310,31 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 switch (ctx) {
                     case EncryptionPlaceholderContext::kTextPrefixComparison:
                         uassert(10248500,
-                                "$encStrStartsWith is not a supported query type on field: " +
+                                "$encStrStartsWith is not a supported operation on field : " +
                                     elem.fieldNameStringData(),
-                                spec.getPrefixSpec().has_value() &&
-                                    !spec.getSuffixSpec().has_value() &&
-                                    !spec.getSubstringSpec().has_value());
+                                spec.getPrefixSpec().has_value());
+                        tassert(10209403,
+                                "Unexpected suffix spec for prefix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSuffixSpec().has_value());
+                        tassert(10209404,
+                                "Unexpected substring spec for prefix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSubstringSpec().has_value());
+                        break;
+                    case EncryptionPlaceholderContext::kTextSuffixComparison:
+                        uassert(10209400,
+                                "$encStrEndsWith is not a supported operation on field : " +
+                                    elem.fieldNameStringData(),
+                                spec.getSuffixSpec().has_value());
+                        tassert(10209401,
+                                "Unexpected prefix spec for suffix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getPrefixSpec().has_value());
+                        tassert(10209402,
+                                "Unexpected substring spec for suffix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSubstringSpec().has_value());
                         break;
                     default:
                         break;
@@ -1682,7 +1703,8 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
             default:
                 break;
         }
-    } else if (placeholderContext == EncryptionPlaceholderContext::kTextPrefixComparison) {
+    } else if (placeholderContext == EncryptionPlaceholderContext::kTextPrefixComparison ||
+               placeholderContext == EncryptionPlaceholderContext::kTextSuffixComparison) {
         uassert(10113900, "Cannot use text search with CSFLE.", metadata.isFle2Encrypted());
         uassert(10113904,
                 "Can only execute encrypted prefix search queries with a text search index.",
