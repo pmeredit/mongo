@@ -71,7 +71,7 @@ public:
           _connection(_connectionTest.getConnection(), _connectionTest.getClockSource()) {}
 
     void writeData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_connection, nullptr, nullptr);
+        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_connection, nullptr);
         ru.setOperationContext(opCtx);
         WiredTigerSession* session = ru.getSession();
 
@@ -127,7 +127,7 @@ public:
     }
 
     void readData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit recoveryUnit(&_connection, nullptr, nullptr);
+        WiredTigerRecoveryUnit recoveryUnit(&_connection, nullptr);
         recoveryUnit.setOperationContext(opCtx);
         WiredTigerSession* session = recoveryUnit.getSession();
 

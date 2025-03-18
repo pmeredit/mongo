@@ -3,6 +3,7 @@
  */
 
 #include "mongo/db/commands.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/service_context.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/management/stream_manager.h"
