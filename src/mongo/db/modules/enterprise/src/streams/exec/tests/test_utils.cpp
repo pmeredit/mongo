@@ -7,7 +7,9 @@
 #include <memory>
 #include <sstream>
 
+#include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"

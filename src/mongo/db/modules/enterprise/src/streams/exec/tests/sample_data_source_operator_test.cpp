@@ -3,6 +3,7 @@
  */
 #include "streams/exec/sample_data_source_operator.h"
 
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/in_memory_sink_operator.h"

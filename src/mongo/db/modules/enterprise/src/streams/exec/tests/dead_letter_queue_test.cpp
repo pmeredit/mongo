@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/time_support.h"

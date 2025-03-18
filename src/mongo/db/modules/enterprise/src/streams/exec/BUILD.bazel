@@ -376,7 +376,6 @@ mongo_cc_library(
         "//src/mongo/db:server_base",
         "//src/mongo/db/modules/enterprise/src/streams/third_party/mongocxx",
         "//src/mongo/db/modules/enterprise/src/streams/util:streams_util",
-        "//src/mongo/db/pipeline:expression_context_for_test",
         "//src/mongo/db/pipeline/process_interface:common_process_interface",
         "//src/third_party/aws-sdk",
         "//src/third_party/librdkafka:rdkafka",
