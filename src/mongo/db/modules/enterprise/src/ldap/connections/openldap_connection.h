@@ -51,7 +51,7 @@ public:
     ~OpenLDAPConnection() final;
     Status connect() final;
     Status bindAsUser(UniqueBindOptions bindOptions,
-                      boost::optional<const SecureString&> pwd,
+                      boost::optional<SecureString> pwd,
                       TickSource* tickSource,
                       SharedUserAcquisitionStats userAcquisitionStats) final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query,
@@ -75,7 +75,7 @@ public:
         return boost::none;
     }
 
-    boost::optional<const SecureString&> _pwd;
+    boost::optional<SecureString> _pwd;
 
     SockAddr getPeerSockAddr() const;
 

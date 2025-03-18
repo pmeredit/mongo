@@ -790,7 +790,7 @@ Status OpenLDAPConnection::connect() {
 }
 
 Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
-                                      boost::optional<const SecureString&> pwd,
+                                      boost::optional<SecureString> pwd,
                                       TickSource* tickSource,
                                       SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
@@ -802,7 +802,7 @@ Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     _bindOptions = std::move(bindOptions);
-    _pwd = pwd;
+    _pwd = std::move(pwd);
     _rebindCallbackParameters = LDAPRebindCallbackParameters(tickSource, userAcquisitionStats);
 
     // If ldapBindTimeoutHangIndefinitely is set, then hang until the failpoint is unset.

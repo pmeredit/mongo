@@ -51,7 +51,7 @@ public:
      *   @return Any errors arising from the bind attempt
      */
     virtual Status bindAsUser(UniqueBindOptions options,
-                              boost::optional<const SecureString&> pwd,
+                              boost::optional<SecureString> pwd,
                               TickSource* tickSource,
                               SharedUserAcquisitionStats userAcquisitionStats) = 0;
 

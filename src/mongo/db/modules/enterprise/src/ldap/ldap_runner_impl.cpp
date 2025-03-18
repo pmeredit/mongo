@@ -104,9 +104,11 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
     for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
 
         LDAPBindOptions bindOptions;
+        std::vector<SecureString> bindPasswords;
         {
             stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
             bindOptions = _defaultBindOptions;
+            bindPasswords = _bindPasswords;
         }
         auto swConnection = _factory->create(connectionOptions);
         if (!swConnection.isOK()) {
@@ -117,11 +119,11 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
         const auto boundUser = swConnection.getValue()->currentBoundUser();
         if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
             Status bindStatus = Status::OK();
-            if (!_bindPasswords.empty()) {
-                for (const auto& pwd : _bindPasswords) {
+            if (!bindPasswords.empty()) {
+                for (size_t i = 0; i < bindPasswords.size(); i++) {
                     bindStatus = swConnection.getValue()->bindAsUser(
                         std::make_unique<LDAPBindOptions>(bindOptions),
-                        pwd,
+                        std::move(bindPasswords[i]),
                         tickSource,
                         userAcquisitionStats);
                     if (bindStatus.isOK()) {

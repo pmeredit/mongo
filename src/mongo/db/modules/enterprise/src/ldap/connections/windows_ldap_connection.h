@@ -28,7 +28,7 @@ public:
     ~WindowsLDAPConnection();
     Status connect() final;
     Status bindAsUser(UniqueBindOptions bindOptions,
-                      boost::optional<const SecureString&> pwd,
+                      boost::optional<SecureString> pwd,
                       TickSource* tickSource,
                       SharedUserAcquisitionStats userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;

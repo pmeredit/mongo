@@ -209,7 +209,7 @@ Status WindowsLDAPConnection::connect() {
 }
 
 Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
-                                         boost::optional<const SecureString&> pwd,
+                                         boost::optional<SecureString> pwd,
                                          TickSource* tickSource,
                                          SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
