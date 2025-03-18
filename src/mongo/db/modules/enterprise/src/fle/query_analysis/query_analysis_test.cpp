@@ -388,6 +388,28 @@ TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyTextSearchFailsWithIncorrectAlg
                        10113904);
 }
 
+// Test to ensure we don't support generating a prefix placeholder on metadata which does not
+// support the prefix query index.
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyPrefixTextSearchFailsWithUnsupportedContext) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::SuffixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value("string"_sd),
+                                               metadata,
+                                               EncryptionPlaceholderContext::kTextPrefixComparison,
+                                               nullptr),
+                       AssertionException,
+                       10248500);
+}
+
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};

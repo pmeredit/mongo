@@ -1302,6 +1302,23 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                             MONGO_UNREACHABLE;
                     }
                 }
+
+                // When building a find placeholder for text search indexes, we must assert that we
+                // are returning only single requested spec back to libmongcrypt. This check also
+                // ensure we are requesting a placeholder on metadata which supports the operation.
+                switch (ctx) {
+                    case EncryptionPlaceholderContext::kTextPrefixComparison:
+                        uassert(10248500,
+                                "$encStrStartsWith is not a supported query type on field: " +
+                                    elem.fieldNameStringData(),
+                                spec.getPrefixSpec().has_value() &&
+                                    !spec.getSuffixSpec().has_value() &&
+                                    !spec.getSubstringSpec().has_value());
+                        break;
+                    default:
+                        break;
+                }
+
                 // Ensure that the serialized spec lives until the end of the enclosing scope.
                 backingBSON = BSON("" << spec.toBSON());
                 return FLE2EncryptionPlaceholder(placeholderType,
