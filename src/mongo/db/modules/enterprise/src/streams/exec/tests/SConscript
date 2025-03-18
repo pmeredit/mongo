@@ -1,6 +1,7 @@
 # -*- mode: python -*-
 
 Import("env")
+Import("get_option")
 
 env = env.Clone()
 
@@ -229,3 +230,12 @@ env.CppUnitTest(
     target="latency_collector_test",
     source=[],
 )
+
+# TODO(SERVER-102495): Re-enable this test in TSAN once this issue is resolved
+sanitizer_list = get_option("sanitize")
+tsan_enabled = sanitizer_list and "thread" in sanitizer_list.split(",")
+if not tsan_enabled:
+    env.CppUnitTest(
+        target="s3_emit_operator_test",
+        source=[],
+    )

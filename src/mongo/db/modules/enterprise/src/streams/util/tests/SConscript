@@ -9,3 +9,8 @@ env.CppUnitTest(
     source=[],
     LIBDEPS=[],
 )
+
+env.CppUnitTest(
+    target="metrics_test",
+    source=[],
+)
