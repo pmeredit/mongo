@@ -99,7 +99,7 @@ S3EmitWriter::S3EmitWriter(Context* context,
     : SinkWriter(context, sinkOperator),
       _context{context},
       _options(std::move(options)),
-      _taskId(createTaskId(options)) {}
+      _taskId(createTaskId(_options)) {}
 
 
 void S3EmitWriter::connect() {
