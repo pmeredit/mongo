@@ -44,8 +44,8 @@ const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
             let featureFlags = {
                 sourceBufferTotalSize: NumberLong(totalNumPages * 1500),
                 sourceBufferMaxSize: NumberLong(maxPages * 1500),
-                sourceBufferMinPageSize: NumberLong(1000),
-                sourceBufferMaxPageSize: NumberLong(1000)
+                sourceBufferMinPageSize: NumberLong(1500),
+                sourceBufferMaxPageSize: NumberLong(1500)
             };
 
             // Start all the stream processors.
@@ -87,13 +87,12 @@ const sp = new Streams(TEST_TENANT_ID, connectionRegistry);
                 const processorName = "sp" + spIdx;
                 let statsResult = getStats(processorName);
                 jsTestLog(statsResult);
-                let sourceStats = statsResult.operatorStats[0];
+                const sourceStats = statsResult.operatorStats[0];
                 assert.eq('ChangeStreamConsumerOperator', sourceStats.name);
                 assert.eq(sourceStats.stateSize, 0, statsResult);
                 assert.gt(sourceStats.maxMemoryUsage, 1000, statsResult);
-                assert.lt(sourceStats.maxMemoryUsage,
-                          featureFlags.sourceBufferMaxSize + 1500,
-                          statsResult);
+                assert.lt(
+                    sourceStats.maxMemoryUsage, featureFlags.sourceBufferMaxSize, statsResult);
                 sp[processorName].stop();
             }
         }

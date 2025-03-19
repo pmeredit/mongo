@@ -129,9 +129,4 @@ boost::optional<int64_t> getKafkaMessageMaxBytes(
     return val.coerceToLong();
 }
 
-bool splitLargeChangeStreamEvent(const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
-    tassert(9588813, "Feature flags should be set", featureFlags);
-    return *featureFlags->getFeatureFlagValue(FeatureFlags::kSplitLargeChangeStreamEvent).getBool();
-}
-
 }  // namespace streams

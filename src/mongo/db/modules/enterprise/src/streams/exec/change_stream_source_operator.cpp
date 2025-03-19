@@ -9,7 +9,6 @@
 #include <bsoncxx/document/value.hpp>
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/types.hpp>
-#include <bsoncxx/types/bson_value/value.hpp>
 #include <chrono>
 #include <cstdint>
 #include <mongocxx/change_stream.hpp>
@@ -28,7 +27,6 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/pipeline/change_stream_split_event_helpers.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/resume_token.h"
@@ -88,9 +86,6 @@ static constexpr ErrorCodes::Error kUnrecognizedPipelineStageNameErrorCode{40324
 static constexpr ErrorCodes::Error kInvalidFieldPathNameErrorCode{16410};
 }  // namespace
 
-// Change stream split large event stage name.
-static constexpr StringData kSplitLargeEventStageName = "$changeStreamSplitLargeEvent"_sd;
-
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
 mongo::Timestamp ChangeStreamSourceOperator::getLatestOplogTime(
@@ -144,11 +139,10 @@ mongo::Timestamp ChangeStreamSourceOperator::getLatestOplogTime(
     return {timestamp.timestamp, timestamp.increment};
 }
 
-int ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::Document document) {
-    int docSize = document.getApproximateSize();
+int ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
+    int docSize = doc.objsize();
     byteSize += docSize;
-    docs.push_back(document);
-
+    docs.push_back(std::move(doc));
     return docSize;
 }
 
@@ -349,45 +343,19 @@ void ChangeStreamSourceOperator::connectToSource() {
             .increment = timestamp.getInc(), .timestamp = timestamp.getSecs()});
     }
 
-    bool addSplitLargeEventStage = (splitLargeChangeStreamEvent(_context->featureFlags) &&
-                                    !hasSplitLargeEvent(_options.pipeline));
-    try {
-        mongocxx::pipeline pipeline;
-        pipeline.append_stages(_pipeline.view_array());
-
-        if (addSplitLargeEventStage) {
-            // Add the $changeStreamSplitLargeEvent stage to the pipeline to split the large BSON
-            // objects (>16MB).
-            pipeline.append_stage(toBsoncxxView(BSON(kSplitLargeEventStageName << BSONObj())));
-        }
-
-        createChangeStreamCursor(std::move(pipeline));
-        _it = _changeStreamCursor->begin();
-    } catch (const mongocxx::exception&) {
-        if (addSplitLargeEventStage) {
-            // Let's retry if we added the $changeStreamSplitLargeEvent to the pipeline.
-            mongocxx::pipeline pipeline;
-            pipeline.append_stages(_pipeline.view_array());
-            createChangeStreamCursor(std::move(pipeline));
-            _it = _changeStreamCursor->begin();
-        } else {
-            throw;
-        }
-    }
-}
-
-void ChangeStreamSourceOperator::createChangeStreamCursor(mongocxx::pipeline pipeline) {
     _clientSession.reset(new mongocxx::client_session{_client->start_session()});
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _collection->watch(*_clientSession, pipeline, _changeStreamOptions));
+            _collection->watch(*_clientSession, _pipeline, _changeStreamOptions));
     } else if (_database) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _database->watch(*_clientSession, pipeline, _changeStreamOptions));
+            _database->watch(*_clientSession, _pipeline, _changeStreamOptions));
     } else {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _client->watch(*_clientSession, pipeline, _changeStreamOptions));
+            _client->watch(*_clientSession, _pipeline, _changeStreamOptions));
     }
+
+    _it = mongocxx::change_stream::iterator();
 }
 
 void ChangeStreamSourceOperator::fetchLoop() {
@@ -537,12 +505,9 @@ void ChangeStreamSourceOperator::fetchLoop() {
             }
             break;
         case ErrorCodes::BSONObjectTooLarge:
-        case 7182500:  // Error code
             // Currently a pipeline like [$source: {db: test}, $merge: {into: {db: test}}] will
             // create an infinite loop. The loop creates a document that keeps getting larger.
-            // Eventually the document will get larger than 16MB. The server will split the document
-            // into fragments. The size of _id is more the maximum fragment size limit causing the
-            // error code - 7182500.
+            // Eventually the _changestream server_ will complain with a BSONObjectTooLarge error.
             status = translateCode(ErrorCodes::StreamProcessorSourceDocTooLarge);
             break;
         case ErrorCodes::Error{19}:
@@ -704,7 +669,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     int64_t totalNumInputBytes = 0;
     int64_t numDlqDocs = 0;
     for (auto& changeEvent : changeEvents) {
-        size_t inputBytes = changeEvent.getApproximateSize();
+        size_t inputBytes = changeEvent.objsize();
         totalNumInputBytes += inputBytes;
         if (auto streamDoc = processChangeEvent(std::move(changeEvent)); streamDoc) {
             dataMsg.docs.push_back(std::move(*streamDoc));
@@ -760,7 +725,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 
     boost::optional<mongo::BSONObj> changeEvent;
     boost::optional<mongo::BSONObj> eventResumeToken;
-    std::vector<mongo::BSONObj> fragments;
 
     // See if there are any available notifications. Note that '_changeStreamCursor->begin()'
     // will return the next available notification (that is, it will not reset our cursor to the
@@ -780,37 +744,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         // Read the current event.
         changeEvent = fromBsoncxxDocument(*_it);
 
-        // Check if the change event has a split event field, in which case read all the fragments.
-        // To handle large change stream events (>16MB), by default we have added
-        // "{$changeStreamSplitLargeEvent:{}}" to $source.config.pipeline. This will split the large
-        // change stream events into smaller fragments. Where each fragment will have an entry like
-        // { "splitEvent": { "fragment": { "$numberInt":"1" }, "of": { "$numberInt": "3" } }
-        // The idea is to read all the fragments and stitch them while procesing.
-        if (changeEvent &&
-            changeEvent->hasField(mongo::change_stream_split_event::kSplitEventField)) {
-            auto splitEvent =
-                changeEvent->getField(mongo::change_stream_split_event::kSplitEventField);
-            auto splitCount = static_cast<size_t>(
-                splitEvent[mongo::change_stream_split_event::kTotalFragmentsField].Int());
-            LOGV2_DEBUG(7788514,
-                        1,
-                        "Received a split event from change stream.",
-                        "context"_attr = _context,
-                        "splitCount"_attr = splitCount);
-            fragments.reserve(splitCount);
-            fragments.push_back(*changeEvent);
-            do {
-                ++_it;
-                tassert(7788515,
-                        "Missing fragment of a change stream split event.",
-                        _it != _changeStreamCursor->end());
-                changeEvent = fromBsoncxxDocument(*_it);
-                tassert(7788516,
-                        "Expected a change stream event with split event field.",
-                        changeEvent->hasField(mongo::change_stream_split_event::kSplitEventField));
-                fragments.push_back(*changeEvent);
-            } while (fragments.size() < splitCount);
-        }
+        // Advance our cursor before processing the current document.
         ++_it;
     }
 
@@ -878,9 +812,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             return false;
         }
 
-        int docSize =
-            activeBatch.pushDoc(fragments.empty() ? mongo::Document(std::move(*changeEvent))
-                                                  : stitchSplitFragments(std::move(fragments)));
+        int docSize = activeBatch.pushDoc(std::move(*changeEvent));
         _queueSizeGauge->incBy(1);
         _queueByteSizeGauge->incBy(docSize);
         _consumerStats += {.memoryUsageBytes = docSize};
@@ -935,7 +867,8 @@ ChangeStreamSourceOperator::ChangeStreamEventTimestamp ChangeStreamSourceOperato
 }
 
 boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
-    mongo::Document changeEventDoc) {
+    mongo::BSONObj changeStreamObj) {
+    Document changeEventDoc(std::move(changeStreamObj));
     ChangeStreamEventTimestamp ts;
 
     // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and
@@ -1093,28 +1026,6 @@ boost::optional<std::variant<BSONObj, Timestamp>> ChangeStreamSourceOperator::ge
         return boost::make_optional(
             std::variant<BSONObj, Timestamp>(get<Timestamp>(*startingPoint)));
     }
-}
-
-mongo::Document ChangeStreamSourceOperator::stitchSplitFragments(
-    std::vector<mongo::BSONObj> fragments) {
-    tassert(9233401, "Expected fragments of change stream event.", !fragments.empty());
-    // Stitch the fragments into a single change stream event.
-    // Use the _id from the last fragment.
-    mongo::MutableDocument document(mongo::Document(std::move(fragments.back())));
-    document.remove(mongo::change_stream_split_event::kSplitEventField);
-    for (size_t i = 0; i < fragments.size() - 1; i++) {
-        mongo::Document fragmentDoc(std::move(fragments[i]));
-        auto it = fragmentDoc.fieldIterator();
-        while (it.more()) {
-            auto field = it.next();
-            if (field.first != mongo::change_stream_split_event::kSplitEventField &&
-                field.first != mongo::change_stream_split_event::kIdField) {
-                document.addField(field.first.toString(), std::move(field.second));
-            }
-        }
-    }
-
-    return document.freeze();
 }
 
 }  // namespace streams

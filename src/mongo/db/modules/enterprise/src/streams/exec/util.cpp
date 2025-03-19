@@ -11,7 +11,6 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/pipeline/change_stream_split_event_helpers.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
@@ -125,15 +124,6 @@ bool hasBlockingStage(const BSONPipeline& pipeline) {
 
 bool isPayloadStage(mongo::StringData name) {
     return name == mongo::StringData(kHttpsStageName) || isExternalFunctionStage(name);
-}
-
-bool hasSplitLargeEvent(const std::vector<mongo::BSONObj>& pipeline) {
-    for (const auto& stage : pipeline) {
-        if (stage.firstElementFieldNameStringData() == "$changeStreamSplitLargeEvent") {
-            return true;
-        }
-    }
-    return false;
 }
 
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,

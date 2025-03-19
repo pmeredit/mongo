@@ -1238,70 +1238,6 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             result.errmsg);
     }
 
-    function splitLargeChangeStreamEvent() {
-        let test = new TestHelper(
-            [],
-            [{$replaceRoot: {newRoot: {$mergeObjects: ['$fullDocument']}}}],
-            0,
-            'changestream',
-            useNewCheckpointing,
-            useRestoredExecutionPlan,
-            null /* writeDir */,
-            null /* restoreDir */,
-            db /* dbForTest */,
-            null /* targetSourceMergeDb */,
-            false /* useTimeField */,
-            "atlas" /* sinkType */,
-            false /* changestreamStalenessMonitoring */,
-            undefined /* oplogSizeMB */,
-            false /* kafkaIsTest */,
-            {} /* featureFlags */,
-            {} /* extraMergeParams */,
-            {
-                fullDocument: "required",
-                fullDocumentBeforeChange: "required",
-            } /* $source.config */
-        );
-        let largeInput = Array.from(
-            {length: 5}, (_, i) => ({_id: i, largeField: "b".repeat(16 * 1024 * 1024 - 36)}));
-        test.inputColl.insert(largeInput);
-
-        assert.commandWorked(db.runCommand(
-            {collMod: test.inputCollName, changeStreamPreAndPostImages: {enabled: true}}));
-        test.run();
-        let smallInput = Array.from(
-            {length: 5},
-            (_, i) =>
-                ({_id: largeInput.length + i, largeField: "b".repeat((i + 1) * 1024 * 1024)}));
-
-        test.inputColl.insert(smallInput[0]);
-        test.inputColl.update({_id: 0}, {$set: {largeField: "d".repeat(16 * 1024 * 1024 - 36)}});
-
-        assert.soon(() => {
-            let stats = test.stats();
-            return stats.outputMessageCount == 2 && stats.inputMessageCount == 2;
-        });
-        assert.eq(test.inputColl.count(), largeInput.length + 1);
-
-        test.stop();
-
-        for (let i = 1; i < largeInput.length; i++) {
-            test.inputColl.update({_id: i},
-                                  {$set: {largeField: "d".repeat(16 * 1024 * 1024 - 36)}});
-            test.inputColl.insert(smallInput[i]);
-        }
-
-        test.run(false);
-        assert.soon(() => {
-            let stats = test.stats();
-            return stats.outputMessageCount >= smallInput.length + largeInput.length &&
-                stats.inputMessageCount >= smallInput.length + largeInput.length;
-        });
-        assert.eq(test.inputColl.count(), smallInput.length + largeInput.length);
-        assert.eq(test.outputColl.count(), smallInput.length + largeInput.length);
-        test.stop();
-    }
-
     const runTest = (func) => {
         jsTestLog(`Running: ${func.toString()}`);
         func();
@@ -1324,7 +1260,6 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         runTest(smokeTestStatsInCheckpoint);
         runTest(smokeTestEmptyChangestream);
         runTest(emptyChangestreamResumeTokenAdvances);
-        runTest(splitLargeChangeStreamEvent);
 
         runTest(changestreamMiddleOfBatch);
 

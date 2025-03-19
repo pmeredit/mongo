@@ -757,7 +757,7 @@ const testCases = [
                 }
             }
         ],
-        expectedInputSize: 10557,
+        expectedInputSize: 10445,
         expectedOutput: [{
             _stream_meta: {
                  https: {

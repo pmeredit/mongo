@@ -255,12 +255,6 @@ const FeatureFlagDefinition FeatureFlags::kExternalFunctionRateLimitPerSecond{
     "Specifies rate limit to be used by $externalFunction",
     mongo::Value::createIntOrLong(10L * 1000)};
 
-const FeatureFlagDefinition FeatureFlags::kSplitLargeChangeStreamEvent{
-    "splitLargeChangeStreamEvent",
-    "If true, add $changeStreamSplitLargeEvent stage to source.config.pipeline which will split "
-    "large (>16MB) change stream event into smaller fragments",
-    mongo::Value(true)};
-
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
         return mongo::Value{std::vector<mongo::Value>{}};
