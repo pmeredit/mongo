@@ -2459,8 +2459,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
                 str::stream() << "Stage spec must contain a 'connectionName' string field in it: "
                               << stage,
                 connectionField.getType() == String);
-            ParsedConnectionInfo info{connectionField.getString()};
-            info.setStage(stage.toString());
+            ParsedConnectionInfo info{connectionField.getString(), stage.toString()};
             connectionNames.push_back(std::move(info));
         };
         auto getSpecDoc = [](StringData stageName, const BSONObj& stageBson) {

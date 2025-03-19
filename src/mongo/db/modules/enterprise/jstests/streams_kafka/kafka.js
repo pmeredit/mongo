@@ -1446,7 +1446,7 @@ function mongoToKafkaToMongoGetConnectionNames() {
               [
                   {name: kafkaPlaintextName, stage: "$source"},
                   {name: dbConnName, stage: "$merge"},
-                  {name: dbConnName}
+                  {name: dbConnName, stage: "dlq"}
               ],
               kafkaToMongoStartResult);
     const mongoToKafkaStartResult = assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
@@ -1459,7 +1459,7 @@ function mongoToKafkaToMongoGetConnectionNames() {
               [
                   {name: dbConnName, stage: "$source"},
                   {name: kafkaPlaintextName, stage: "$emit"},
-                  {name: dbConnName}
+                  {name: dbConnName, stage: "dlq"}
               ],
               kafkaToMongoStartResult);
 }

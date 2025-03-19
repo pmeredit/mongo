@@ -68,6 +68,7 @@ namespace {
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
 
 static constexpr auto kEnvXgenRegion = "XGEN_REGION";
+static constexpr auto kParseConnectionStageNameForDLQ = "dlq";
 
 // Returns true if running in Helix, i.e. the real service environment.
 bool isRunningInHelix() {
@@ -545,7 +546,8 @@ StartStreamProcessorReply StreamManager::startStreamProcessor(
         auto connections = Planner::parseConnectionInfo(request.getPipeline());
         auto dlqOptions = request.getOptions().getDlq();
         if (dlqOptions) {
-            connections.push_back(ParsedConnectionInfo{dlqOptions->getConnectionName().toString()});
+            connections.push_back(ParsedConnectionInfo{dlqOptions->getConnectionName().toString(),
+                                                       kParseConnectionStageNameForDLQ});
         }
         StartStreamProcessorReply startReply;
         startReply.setConnections(std::move(connections));
