@@ -15,6 +15,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 
@@ -489,6 +490,32 @@ mongo::Document convertJsonStringsToJson(mongo::Document doc) {
 
 std::vector<mongo::Value> jsonStringToValue(const std::vector<mongo::Value>& arr) {
     return convertAllFields(arr, jsonStringsToJson);
+}
+
+mongo::Value parseAndDeserializeJsonResponse(StringData rawResponse, bool parseJsonStrings) {
+
+    // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
+    if (rawResponse.front() == '[') {
+        std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse);
+        auto responseView = bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
+        auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+        auto jsonResponse = Value(responseAsBson.firstElement());
+        if (!parseJsonStrings) {
+            return jsonResponse;
+        }
+        auto responseArray = jsonStringToValue(jsonResponse.getArray());
+        return Value(std::move(responseArray));
+    }
+
+    auto responseView = bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
+    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+    auto jsonResponse = Value(std::move(responseAsBson));
+    if (!parseJsonStrings) {
+        return jsonResponse;
+    }
+
+    auto responseDocument = convertJsonStringsToJson(jsonResponse.getDocument());
+    return Value(std::move(responseDocument));
 }
 
 }  // namespace streams

@@ -104,4 +104,8 @@ std::vector<mongo::Value> convertAllFields(
     const std::vector<mongo::Value>& arr,
     std::function<mongo::Value(const mongo::Value&)> convertFunc);
 
+// parseAndDeserializeResponse will convert a json response to a mongo value. If specified, any json
+// strings embedded within will also be parsed
+mongo::Value parseAndDeserializeJsonResponse(mongo::StringData rawResponse, bool parseJsonStrings);
+
 }  // namespace streams

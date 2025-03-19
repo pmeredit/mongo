@@ -338,19 +338,7 @@ ExternalFunction::ProcessResult ExternalFunction::processStreamDoc(StreamDocumen
             responseAsValue = Value(rawResponse);
         } else {
             try {
-                // TODO(SERVER-98467): parse the json array directly instead of wrapping in a
-                // doc
-                if (rawResponse.front() == '[') {
-                    std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse.data());
-                    bsoncxx::stdx::string_view responseView{objectWrapper.data(),
-                                                            objectWrapper.size()};
-                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                    responseAsValue = Value(std::move(responseAsBson.firstElement()));
-                } else {
-                    bsoncxx::stdx::string_view responseView{rawResponse.data(), rawResponse.size()};
-                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                    responseAsValue = Value(std::move(responseAsBson));
-                }
+                responseAsValue = parseAndDeserializeJsonResponse(rawResponse, false);
             } catch (const bsoncxx::exception& e) {
                 tryLog(9929407, [&](int logID) {
                     LOGV2_INFO(logID,

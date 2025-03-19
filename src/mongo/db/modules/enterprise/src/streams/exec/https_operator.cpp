@@ -425,7 +425,8 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             responseAsValue = Value(rawResponse.toString());
         } else if ((contentType && *contentType == kApplicationJson) || !contentType) {
             try {
-                responseAsValue = parseAndDeserializeJsonResponse(kApplicationJson, rawResponse);
+                responseAsValue =
+                    parseAndDeserializeJsonResponse(rawResponse, _options.parseJsonStrings);
             } catch (const bsoncxx::exception& e) {
                 tryLog(9604801, [&](int logID) {
                     LOGV2_INFO(logID,
@@ -602,32 +603,6 @@ boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringDa
         }
     }
     return boost::none;
-}
-
-mongo::Value HttpsOperator::parseAndDeserializeJsonResponse(StringData contentType,
-                                                            StringData rawResponse) {
-    // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
-    if (rawResponse.front() == '[') {
-        std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse);
-        auto responseView = bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
-        auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-        auto jsonResponse = Value(responseAsBson.firstElement());
-        if (!_options.parseJsonStrings) {
-            return jsonResponse;
-        }
-        auto responseArray = jsonStringToValue(jsonResponse.getArray());
-        return Value(std::move(responseArray));
-    }
-
-    auto responseView = bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
-    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-    auto jsonResponse = Value(std::move(responseAsBson));
-    if (!_options.parseJsonStrings) {
-        return jsonResponse;
-    }
-
-    auto responseDocument = convertJsonStringsToJson(jsonResponse.getDocument());
-    return Value(std::move(responseDocument));
 }
 
 mongo::Document HttpsOperator::makeDocumentWithAPIResponse(const mongo::Document& inputDoc,

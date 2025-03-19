@@ -152,9 +152,6 @@ private:
     // parseContentTypeFromHeaders will extract the content-type value if present
     static boost::optional<std::string> parseContentTypeFromHeaders(StringData rawHeaders);
 
-    // parseAndDeserializeResponse will convert a json response to a mongo value
-    mongo::Value parseAndDeserializeJsonResponse(StringData contentType, StringData rawResponse);
-
     // makeDocumentWithAPIResponse sets the api response as a value in the input document using
     // a user-configured key.
     mongo::Document makeDocumentWithAPIResponse(const mongo::Document& inputDoc,
