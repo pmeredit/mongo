@@ -736,6 +736,9 @@ protected:
     void visit(ExpressionEncStrStartsWith* expr) override {
         MONGO_UNREACHABLE_TASSERT(10111807);
     }
+    void visit(ExpressionEncStrEndsWith*) override {
+        MONGO_UNREACHABLE_TASSERT(10120905);
+    }
     void visit(ExpressionMap* expr) override {
         internalPerformReplacement(expr);
     }

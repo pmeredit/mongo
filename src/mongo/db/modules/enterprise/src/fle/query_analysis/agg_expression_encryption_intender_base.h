@@ -543,6 +543,11 @@ protected:
         MONGO_UNREACHABLE_TASSERT(10111804);
         ensureNotEncryptedEnterEval("a fle $encStrStartsWith", subtreeStack);
     }
+    void visit(ExpressionEncStrEndsWith*) final {
+        // TODO SERVER-101214: Implement preVisit of $encStrEndsWith.
+        MONGO_UNREACHABLE_TASSERT(10120902);
+        ensureNotEncryptedEnterEval("a fle $encStrEndsWith", subtreeStack);
+    }
     void visit(ExpressionInternalRawSortKey*) final {
         ensureNotEncryptedEnterEval("a raw sort key metadata access", subtreeStack);
     }
@@ -941,6 +946,10 @@ protected:
         // TODO SERVER-101122: Implement inVisit of $encStrStartsWith.
         MONGO_UNREACHABLE_TASSERT(10111805);
     }
+    void visit(ExpressionEncStrEndsWith*) override {
+        // TODO SERVER-101214: Implement inVisit of $encStrEndsWith.
+        MONGO_UNREACHABLE_TASSERT(10120903);
+    }
     void visit(ExpressionInternalRawSortKey*) override {}
     void visit(ExpressionMap*) override {}
     void visit(ExpressionMeta*) override {}
@@ -1278,6 +1287,10 @@ protected:
     void visit(ExpressionEncStrStartsWith*) override {
         // TODO SERVER-101122: Implement postVisit of $encStrStartsWith.
         MONGO_UNREACHABLE_TASSERT(10111806);
+    }
+    void visit(ExpressionEncStrEndsWith*) override {
+        // TODO SERVER-101214: Implement postVisit of $encStrEndsWith.
+        MONGO_UNREACHABLE_TASSERT(10120904);
     }
     void visit(ExpressionInternalRawSortKey*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
