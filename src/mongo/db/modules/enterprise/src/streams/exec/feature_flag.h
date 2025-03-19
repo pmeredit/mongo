@@ -78,6 +78,7 @@ public:
     static const FeatureFlagDefinition kKafkaEmitMessageMaxBytes;
     static const FeatureFlagDefinition kMaxMergeParallelism;
     static const FeatureFlagDefinition kEnableInMemoryConstantMessage;
+    static const FeatureFlagDefinition kEnableParseChangeStreamPipelines;
 };
 
 }  // namespace streams

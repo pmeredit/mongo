@@ -129,4 +129,10 @@ boost::optional<int64_t> getKafkaMessageMaxBytes(
     return val.coerceToLong();
 }
 
+bool enableParseChangeStreamPipelines(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kEnableParseChangeStreamPipelines)
+                .getBool();
+}
+
 }  // namespace streams

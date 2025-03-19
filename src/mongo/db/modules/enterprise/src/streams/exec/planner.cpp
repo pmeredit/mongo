@@ -946,6 +946,9 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         }
 
         if (auto pipeline = config->getPipeline(); pipeline) {
+            if (enableParseChangeStreamPipelines(_context->featureFlags)) {
+                Pipeline::parse(*pipeline, _context->expCtx);
+            }
             internalOptions.pipeline = std::move(*pipeline);
         }
     }
