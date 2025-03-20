@@ -5,10 +5,15 @@
 #include "streams/exec/stream_processor_feature_flags.h"
 
 #include "mongo/bson/bsontypes.h"
-#include "mongo/util/str.h"
+#include "mongo/logv2/log.h"
 #include "streams/exec/feature_flag.h"
+#include "streams/exec/log_util.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
+
+using namespace mongo::literals;
 
 StreamProcessorFeatureFlags::StreamProcessorFeatureFlags(
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags,
@@ -23,17 +28,23 @@ void StreamProcessorFeatureFlags::updateFeatureFlags(StreamProcessorFeatureFlags
 }
 
 StreamProcessorFeatureFlags StreamProcessorFeatureFlags::parseFeatureFlags(
-    const mongo::BSONObj& bsonObj) {
+    const mongo::BSONObj& bsonObj, const LoggingContext& context) {
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags;
     mongo::Document doc(bsonObj);
     auto it = doc.fieldIterator();
     while (it.more()) {
         auto fld = it.next();
-        uassert(9273402,
-                mongo::str::stream()
-                    << "feature flag " << fld.first.toString() << " type mismatched",
-                FeatureFlags::validateFeatureFlag(fld.first.toString(), fld.second));
-        featureFlags[fld.first.toString()] = fld.second;
+        const auto& name = fld.first.toString();
+        const auto& value = fld.second;
+        if (FeatureFlags::validateFeatureFlag(name, value)) {
+            featureFlags[name] = value;
+        } else {
+            LOGV2_WARNING(10262905,
+                          "Invalid feature flag",
+                          "context"_attr = context,
+                          "flagName"_attr = name,
+                          "flagValue"_attr = value.toString());
+        }
     }
     StreamProcessorFeatureFlags spff{featureFlags,
                                      std::chrono::time_point<std::chrono::system_clock>::min()};

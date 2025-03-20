@@ -13,6 +13,8 @@
 
 namespace streams {
 
+struct LoggingContext;
+
 // Class holding all feature flags for a stream processor.
 class StreamProcessorFeatureFlags {
 public:
@@ -25,13 +27,14 @@ public:
     mongo::stdx::unordered_map<std::string, mongo::Value> testOnlyGetFeatureFlags() {
         return _featureFlags;
     }
-    static StreamProcessorFeatureFlags parseFeatureFlags(const mongo::BSONObj& bsonObj);
+    static StreamProcessorFeatureFlags parseFeatureFlags(const mongo::BSONObj& bsonObj,
+                                                         const LoggingContext& context);
 
     // gets feature flag value for feature flag.
     FeatureFlagValue getFeatureFlagValue(const FeatureFlagDefinition& featureFlag) const;
 
     // checks if the feature flag has overridden value.
-    bool isOverridden(const streams::FeatureFlagDefinition& ff) const {
+    bool isOverridden(const FeatureFlagDefinition& ff) const {
         return _featureFlags.find(ff.name) != _featureFlags.end();
     }
 

@@ -690,8 +690,11 @@ StreamManager::StartAsyncResult StreamManager::startStreamProcessorAsync(
     const mongo::StartStreamProcessorCommand& request) {
     std::string tenantId = request.getTenantId().toString();
     std::string name = request.getName().toString();
-    auto featureFlags =
-        StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
+    auto featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
+        request.getOptions().getFeatureFlags(),
+        LoggingContext{.streamProcessorName = name,
+                       .streamProcessorId = request.getProcessorId().toString(),
+                       .tenantId = tenantId});
     LOGV2_INFO(75883,
                "About to start stream processor",
                "correlationId"_attr = request.getCorrelationId(),
@@ -907,8 +910,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         context->instanceName = request.getInstanceName()->toString();
     }
 
-    context->featureFlags =
-        StreamProcessorFeatureFlags::parseFeatureFlags(request.getOptions().getFeatureFlags());
+    context->featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
+        request.getOptions().getFeatureFlags(), context->toLoggingContext());
     // The streams Agent sets the tenantID and stream processor ID, so this is an InternalError.
     uassert(mongo::ErrorCodes::InternalError,
             "streamProcessorId and tenantId cannot contain '/' characters",
@@ -1941,7 +1944,8 @@ mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
         for (auto& iter : tenantInfo->second->processors) {
             iter.second->executor->onFeatureFlagsUpdated(tenantFeatureFlags);
         }
-        auto featureFlags = tenantFeatureFlags->getStreamProcessorFeatureFlags("");
+        auto featureFlags = tenantFeatureFlags->getStreamProcessorFeatureFlags(
+            "", LoggingContext{.tenantId = request.getTenantId().toString()});
         if (featureFlags.isOverridden(FeatureFlags::kMaxConcurrentCheckpoints)) {
             auto val =
                 featureFlags.getFeatureFlagValue(FeatureFlags::kMaxConcurrentCheckpoints).getInt();

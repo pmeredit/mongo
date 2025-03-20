@@ -690,11 +690,12 @@ void Executor::updateContextFeatureFlags() {
     }
 
     if (!_context->featureFlags) {
-        _context->featureFlags =
-            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(_context->streamName);
+        _context->featureFlags = _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(
+            _context->streamName, _context->toLoggingContext());
     } else {
         _context->featureFlags->updateFeatureFlags(
-            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(_context->streamName));
+            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(
+                _context->streamName, _context->toLoggingContext()));
     }
     // normally we would want to just call getFeatureFlagValue to get the value, but we have
     // different defaults, depending on the presence of window.

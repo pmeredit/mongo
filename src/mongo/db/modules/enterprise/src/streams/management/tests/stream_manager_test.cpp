@@ -1156,14 +1156,18 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         updateContextFeatureFlags(details, tFeatureFlags);
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(details));
 
+        startCapturingLogMessages();
         featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: \"60000\"}}}");
         tFeatureFlags = std::make_shared<TenantFeatureFlags>(featureFlags);
-        try {
-            updateContextFeatureFlags(details, tFeatureFlags);
-        } catch (const DBException& ex) {
-            ASSERT_EQ(ex.code(), 9273401);
-        }
+        updateContextFeatureFlags(details, tFeatureFlags);
+
+        auto messages = getCapturedTextFormatLogMessages();
+        ASSERT(std::any_of(messages.begin(), messages.end(), [](const auto& message) {
+            return message.find("Invalid feature flag") != std::string::npos;
+        }));
+        stopCapturingLogMessages();
+
         ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(details));
 
         std::string writeRootDir = getWriteRootDir(details);

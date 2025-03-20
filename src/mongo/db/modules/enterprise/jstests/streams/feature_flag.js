@@ -4,6 +4,7 @@
  * ]
  */
 
+import {findMatchingLogLine} from "jstests/libs/log.js";
 import {
     listStreamProcessors,
     startStreamProcessor,
@@ -127,20 +128,24 @@ assert.soon(() => {
 result = listStreamProcessors();
 assert.eq(result["ok"], 1, result);
 assert.eq(result["streamProcessors"].length, 1, result);
-// verify setting invalid feature flag value will terminate a stream processor.
+// verify setting invalid feature flag value will not terminate a stream processor.
 ff = {
     checkpointDuration: {value: false}
 };
-result =
-    db.runCommand({streams_updateFeatureFlags: '', tenantId: TEST_TENANT_ID, featureFlags: ff});
-assert.eq(result.ok, false);
-
+assert.commandWorked(
+    db.runCommand({streams_updateFeatureFlags: '', tenantId: TEST_TENANT_ID, featureFlags: ff}));
+// Validate the warning shows up.
 assert.soon(() => {
-    result = listStreamProcessors();
-    assert.eq(result["ok"], 1, result);
-    jsTestLog(result);
-    return result["streamProcessors"][0]["status"] == "error";
+    const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+    const line = findMatchingLogLine(log, {id: 10262900});
+    return line != null;
 });
+
+// Let the executor process the feature flag update.
+sleep(5000);
+result = listStreamProcessors();
+assert.eq(result["ok"], 1, result);
+assert.eq(result["streamProcessors"][0]["status"], "running");
 
 stopStreamProcessor(spName);
 assert.eq(listStreamProcessors()["streamProcessors"].length, 0);

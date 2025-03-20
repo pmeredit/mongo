@@ -4,6 +4,10 @@
 #include "streams/exec/tenant_feature_flags.h"
 
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/logv2/log.h"
+#include "streams/exec/log_util.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
@@ -15,7 +19,7 @@ TenantFeatureFlags::TenantFeatureFlags(const mongo::BSONObj& featureFlags) {
 }
 
 StreamProcessorFeatureFlags TenantFeatureFlags::getStreamProcessorFeatureFlags(
-    const std::string& spName) const {
+    const std::string& spName, const LoggingContext& context) const {
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags;
     const std::string kStringStreamProcessors = "streamProcessors";
     const std::string kStringValue = "value";
@@ -33,10 +37,16 @@ StreamProcessorFeatureFlags TenantFeatureFlags::getStreamProcessorFeatureFlags(
         }
 
         if (!val.missing()) {
-            uassert(9273401,
-                    str::stream() << "feature flag " << fld.first.toString() << " type mismatched",
-                    FeatureFlags::validateFeatureFlag(fld.first.toString(), val));
-            featureFlags[fld.first.toString()] = val;
+            const auto& name = fld.first.toString();
+            if (FeatureFlags::validateFeatureFlag(name, val)) {
+                featureFlags[name] = val;
+            } else {
+                LOGV2_WARNING(10262900,
+                              "Invalid feature flag",
+                              "context"_attr = context,
+                              "flagName"_attr = name,
+                              "flagValue"_attr = val);
+            }
         }
     }
     return StreamProcessorFeatureFlags(std::move(featureFlags), _updateTimestamp);
