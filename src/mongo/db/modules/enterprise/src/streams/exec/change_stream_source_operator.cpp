@@ -99,6 +99,10 @@ mongo::Timestamp ChangeStreamSourceOperator::getLatestOplogTime(
         // clusters.
         mongocxx::client_session session{client->start_session()};
         mongocxx::options::change_stream options;
+        // Setting batch_size to 0 helps avoid long-running aggregation commands. batch_size 0
+        // results in the "aggregate" immediately returning with a cursor ID and no results.
+        // The server default for batch_sizes on subsequent getMore requests is not affected.
+        options.batch_size(0);
         auto cursor = std::make_unique<mongocxx::change_stream>(client->watch(session, options));
         auto response = session.cluster_time();
         auto clusterTime = response.find("clusterTime");
@@ -344,6 +348,10 @@ void ChangeStreamSourceOperator::connectToSource() {
     }
 
     _clientSession.reset(new mongocxx::client_session{_client->start_session()});
+    // Setting batch_size to 0 helps avoid long-running aggregation commands. batch_size 0
+    // results in the "aggregate" immediately returning with a cursor ID and no results.
+    // The server default for batch_sizes on subsequent getMore requests is not affected.
+    _changeStreamOptions.batch_size(0);
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
             _collection->watch(*_clientSession, _pipeline, _changeStreamOptions));
