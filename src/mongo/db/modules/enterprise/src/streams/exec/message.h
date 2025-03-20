@@ -33,7 +33,6 @@ enum class WatermarkStatus { kActive, kIdle };
 struct Context;
 
 // Encapsulates a document read from Kafka and all the metadata for it.
-// TODO(SERVER-92412): Reduce this struct's size.
 struct KafkaSourceDocument {
     // Exactly one of following 2 fields is ever populated.
     // Contains the BSON document when the input event is successfully parsed.
