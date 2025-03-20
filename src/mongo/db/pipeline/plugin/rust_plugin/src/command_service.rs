@@ -30,9 +30,9 @@ fn main() -> () {
         .out_dir("src")
         .compile(&[service]);
 }
- */
 
-/// Generated client implementations.
+Generated client implementations.
+ */
 pub mod command_service_client {
     #![allow(
         unused_variables,

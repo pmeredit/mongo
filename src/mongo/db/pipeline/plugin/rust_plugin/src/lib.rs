@@ -253,14 +253,14 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         close: Some(Self::close),
     };
 
-    pub fn register(portal: *mut MongoExtensionPortal) {
+    pub fn register(portal: &mut MongoExtensionPortal) {
         let stage_name = S::name();
         let stage_view = MongoExtensionByteView {
             data: stage_name.as_bytes().as_ptr(),
             len: stage_name.as_bytes().len(),
         };
         unsafe {
-            (*portal).add_aggregation_stage.expect("add stage")(
+            portal.add_aggregation_stage.expect("add stage")(
                 stage_view,
                 Some(Self::parse_external),
             );
@@ -403,7 +403,7 @@ impl AggregationStage for EchoOxide {
             _ => {
                 return Err(Error::new(
                     1,
-                    format!("$echoOxide stage definition must contain a document."),
+                    "$echoOxide stage definition must contain a document.",
                 ))
             }
         };
@@ -482,7 +482,10 @@ impl AggregationStage for AddSomeCrabs {
 
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
-unsafe extern "C-unwind" fn initialize_rust_plugins(portal: *mut MongoExtensionPortal) {
+unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
+    let portal = portal_ptr
+        .as_mut()
+        .expect("extension portal pointer may not be null!");
     PluginAggregationStage::<EchoOxide>::register(portal);
     PluginAggregationStage::<AddSomeCrabs>::register(portal);
     PluginDesugarAggregationStage::<EchoWithSomeCrabs>::register(portal);

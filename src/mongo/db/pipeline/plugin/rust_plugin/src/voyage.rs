@@ -1,8 +1,6 @@
-use crate::desugar::DesugarAggregationStage;
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
 use bson::{Document, RawBsonRef, RawDocumentBuf};
-use bytes::Buf;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -10,7 +8,6 @@ use std::env;
 use std::num::NonZero;
 use std::sync::OnceLock;
 use tokio::runtime::{Builder, Runtime};
-use tonic::codec::{Codec, Decoder, Encoder};
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
@@ -33,13 +30,13 @@ impl AggregationStage for VoyageRerank {
         "$voyageRerank"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>, context: &RawDocument) -> Result<Self, Error> {
+    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
         let document = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
                 return Err(Error::new(
                     1,
-                    format!("$voyageRerank stage definition must contain a document."),
+                    "$voyageRerank stage definition must contain a document.",
                 ))
             }
         };
@@ -155,8 +152,9 @@ impl VoyageRerank {
             .map(|doc| {
                 self.fields
                     .iter()
-                    .map(|field| format!("{}:{},", field, doc.get_str(field).unwrap_or("")))
-                    .collect::<String>()
+                    .fold(String::new(), |s, field|
+                        format!("{} {}:{},", s, field, doc.get_str(field).unwrap_or(""))
+                    )
             })
             .collect();
 

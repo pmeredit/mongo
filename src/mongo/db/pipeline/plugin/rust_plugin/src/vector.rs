@@ -181,8 +181,8 @@ impl InternalPluginVectorSearch {
                 .context
                 .collection_uuid
                 .expect("init verified collectionUUID exists"),
-            index: String::from(self.index.clone()),
-            path: String::from(self.path.clone()),
+            index: self.index.clone(),
+            path: self.path.clone(),
             query_vector: self.query_vector.clone(),
             num_candidates: self.num_candidates,
             limit: self.limit,

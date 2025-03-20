@@ -1,10 +1,10 @@
 use std::ffi::c_int;
 use std::marker::PhantomData;
 
-use bson::{to_vec, Bson, Document, RawBsonRef, RawDocument};
-use serde::{Deserialize, Deserializer, Serialize};
-use plugin_api_bindgen::{MongoExtensionByteBuf, MongoExtensionByteView, MongoExtensionPortal};
 use super::{Error, VecByteBuf};
+use bson::{to_vec, Bson, Document, RawBsonRef, RawDocument};
+use plugin_api_bindgen::{MongoExtensionByteBuf, MongoExtensionByteView, MongoExtensionPortal};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Trait for implementing de-sugaring of a stage.
 pub trait DesugarAggregationStage {
@@ -72,16 +72,11 @@ impl<D: DesugarAggregationStage> PluginDesugarAggregationStage<D> {
             )])),
             _ => Ok(Document::from_iter([(
                 name.into(),
-                Bson::Array(
-                    desugared_stages
-                        .into_iter()
-                        .map(|s| Bson::from(s))
-                        .collect(),
-                ),
+                Bson::Array(desugared_stages.into_iter().map(Bson::from).collect()),
             )])),
         }?;
         to_vec(&desugared_doc)
-            .map(|b| VecByteBuf::from_vec(b))
+            .map(VecByteBuf::from_vec)
             .map_err(|e| {
                 Error::with_source(
                     1,

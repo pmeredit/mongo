@@ -1,6 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
-load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_clippy")
 
 rust_library(
     name = "rust_plugin",
@@ -15,4 +15,12 @@ rust_library(
         "@plugin_crates//:reqwest",
         "//src/mongo/db/pipeline/plugin:plugin_api_bindgen",
     ]
+)
+
+# NB: this could also be done with an aspect which is a bazelrc override I just don't want to do
+# that here as it may affect build caching.
+rust_clippy(
+    name = "rust_plugin_clippy_test",
+    testonly = True,
+    deps = [":rust_plugin"],
 )

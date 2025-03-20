@@ -4,7 +4,6 @@ use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotCursorBatch, SearchCommand,
     MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
 };
-use crate::search::Payload::{Entry, EOF};
 use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf};
 use bson::{Document, RawBsonRef, RawDocument, RawDocumentBuf};
@@ -34,10 +33,7 @@ pub struct InternalPluginSearch {
     shutdown_rx: watch::Receiver<bool>,
 }
 
-enum Payload {
-    Entry(Document),
-    EOF,
-}
+type Payload = Option<Document>;
 
 impl Drop for InternalPluginSearch {
     fn drop(&mut self) {
@@ -124,11 +120,11 @@ impl AggregationStage for InternalPluginSearch {
         let result = self.result_rx.blocking_recv().unwrap();
 
         match result {
-            Entry(doc) => {
+            Some(doc) => {
                 self.last_document = to_raw_document_buf(&doc).unwrap();
                 Ok(GetNextResult::Advanced(self.last_document.as_ref()))
             }
-            EOF => Ok(GetNextResult::EOF),
+            None => Ok(GetNextResult::EOF),
         }
     }
 }
@@ -233,7 +229,7 @@ impl InternalPluginSearch {
                 } else {
                     doc! { "_id": result.id.clone(), "$searchScore": result.score }
                 };
-                result_tx.send(Entry(doc)).await.unwrap_or_else(|err| {
+                result_tx.send(Some(doc)).await.unwrap_or_else(|err| {
                     eprintln!("Failed to flush result: {:?}", err);
                 });
             }
@@ -244,7 +240,7 @@ impl InternalPluginSearch {
     }
 
     async fn flush_eof_into_channel(result_tx: Sender<Payload>) {
-        let _ = result_tx.send(EOF).await;
+        let _ = result_tx.send(None).await;
     }
 }
 
