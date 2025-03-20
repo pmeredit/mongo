@@ -313,10 +313,6 @@ public:
         AuditEventOCSF& operator=(const AuditEventOCSF&) = delete;
 
         void _init(const TryLogEventParamsOCSF& tryLogParams);
-
-        /* TODO SERVER-78816:
-            static void serializeClient(Client* client, BSONObjBuilder* builder);
-        */
     };
 };
 
