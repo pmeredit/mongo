@@ -35,8 +35,8 @@ SPStatus exceptionToSPStatus() noexcept {
                           << boost::diagnostic_information(ex));
 
     } catch (...) {
-        LOGV2_FATAL_CONTINUE(75385, "Caught unknown exception in exceptionToStatus()");
-        std::terminate();
+        LOGV2_INFO(75385, "Caught unknown exception in exceptionToStatus()");
+        return Status(ErrorCodes::UnknownError, "Caught unknown exception");
     }
 }
 
