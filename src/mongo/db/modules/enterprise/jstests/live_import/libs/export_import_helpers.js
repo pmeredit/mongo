@@ -3,10 +3,15 @@ import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 /**
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
- * is provided that allows operations to be performed on the mongod prior to exporting it.
+ * is provided that allows operations to be performed on the mongod prior to
+ * exporting it. An optional 'nodeOptions' parameter is provided to specify
+ * which options to use when starting up the mongod.
  */
-export const exportCollectionExtended = function(dbName, collName, username, password, ops) {
-    const rst = new ReplSetTest({nodes: 1, name: "export_collection_target"});
+export const exportCollectionExtended = function(
+    dbName, collName, username, password, ops, nodeOptions) {
+    const rstNodeOptions = {...nodeOptions};
+    const rstParams = {nodes: [rstNodeOptions], name: "export_collection_target"};
+    const rst = new ReplSetTest(rstParams);
     const nodes = rst.startSet();
     rst.initiate();
     let primary = rst.getPrimary();
@@ -28,6 +33,7 @@ export const exportCollectionExtended = function(dbName, collName, username, pas
         noCleanData: true,
         queryableBackupMode: "",
         setParameter: {wiredTigerSkipTableLoggingChecksOnStartup: true},
+        ...nodeOptions,
     };
     let standalone = MongoRunner.runMongod(params);
 
@@ -45,15 +51,17 @@ export const exportCollectionExtended = function(dbName, collName, username, pas
 
 /**
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
- * is provided that allows operations to be performed on the collection prior to exporting it.
+ * is provided that allows operations to be performed on the collection prior to
+ * exporting it. An optional 'nodeOptions' parameter is provided to specify
+ * which options to use when starting up the mongod.
  */
-export const exportCollection = function(dbName, collName, ops) {
+export const exportCollection = function(dbName, collName, ops, nodeOptions) {
     return exportCollectionExtended(dbName, collName, null, null, mongod => {
         if (ops) {
             const coll = mongod.getDB(dbName).getCollection(collName);
             ops(coll);
         }
-    });
+    }, nodeOptions);
 };
 
 /**
