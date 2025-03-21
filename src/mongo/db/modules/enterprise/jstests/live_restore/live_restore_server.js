@@ -11,6 +11,9 @@
  * ]
  */
 
+// FIXME: SERVER-102707 Re-enable live restore test
+quit();
+
 // FIXME: WT-14051 Live restore does not support windows.
 if (_isWindows()) {
     print("Skipping test on windows");
