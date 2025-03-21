@@ -298,11 +298,6 @@ const FeatureFlagDefinition FeatureFlags::kKafkaEmitMessageMaxBytes{
     "The maximum Kafka protocol request message size.",
     mongo::Value(16 * 1024 * 1024)};  // 16MB to mirror BSON max document size
 
-const FeatureFlagDefinition FeatureFlags::kEnableParseChangeStreamPipelines{
-    "enableParseChangeStreamPipelines",
-    "If true, parse changestream's $source.config.pipeline for validity on startup.",
-    mongo::Value(true)};
-
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -330,8 +325,6 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
      FeatureFlags::kEnableExternalFunctionOperator},
     {FeatureFlags::kExternalFunctionRateLimitPerSecond.name,
      FeatureFlags::kExternalFunctionRateLimitPerSecond},
-    {FeatureFlags::kEnableParseChangeStreamPipelines.name,
-     FeatureFlags::kEnableParseChangeStreamPipelines},
     {FeatureFlags::kKafkaEmitMessageMaxBytes.name, FeatureFlags::kKafkaEmitMessageMaxBytes}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
