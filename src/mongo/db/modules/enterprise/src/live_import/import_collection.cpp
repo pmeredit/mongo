@@ -214,7 +214,7 @@ Status doImportCollection(OperationContext* opCtx,
 
     // Create Collection object
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    auto durableCatalog = storageEngine->getCatalog();
+    auto durableCatalog = storageEngine->getDurableCatalog();
 
     if (!isDryRun && hangBeforeProductionImport.shouldFail()) {
         hangBeforeProductionImport.pauseWhileSet();
@@ -287,7 +287,7 @@ Status doImportCollection(OperationContext* opCtx,
 
     // Fetch the catalog entry for the imported collection and log an oplog entry.
     auto importedCatalogEntry =
-        storageEngine->getCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
+        storageEngine->getDurableCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
     opCtx->getServiceContext()->getOpObserver()->onImportCollection(opCtx,
                                                                     importUUID,
                                                                     nss,

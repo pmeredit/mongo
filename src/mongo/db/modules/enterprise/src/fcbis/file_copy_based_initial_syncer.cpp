@@ -7,6 +7,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/catalog_control.h"
+#include "mongo/db/catalog/catalog_helper.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/exception_util.h"
@@ -1680,6 +1681,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
             // Clear the cached oplog pointer in the service context.
             repl::clearLocalOplogPtr(opCtx->getServiceContext());
         });
+    catalog::initializeCollectionCatalog(opCtx, opCtx->getServiceContext()->getStorageEngine());
     opCtx->getServiceContext()->getStorageEngine()->notifyStorageStartupRecoveryComplete();
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 
@@ -2034,7 +2036,8 @@ void FileCopyBasedInitialSyncer::_runPostReplicationStartupStorageInitialization
         TransactionParticipant::getOldestActiveTimestamp);
 
     // This handles dropping of drop-pending collections.
-    storageEngine->startTimestampMonitor();
+    storageEngine->startTimestampMonitor(
+        {&catalog_helper::kCollectionCatalogCleanupTimestampListener});
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
