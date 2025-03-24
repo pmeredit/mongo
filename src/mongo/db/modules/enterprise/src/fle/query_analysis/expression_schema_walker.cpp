@@ -582,7 +582,6 @@ public:
 
             FieldRef path{expr->getFieldPathWithoutCurrentPrefix().fullPath()};
 
-            // TODO SERVER-41337 Support field paths which are prefixes of encrypted fields.
             uassert(31129,
                     "Referencing a prefix of an encrypted field is not supported",
                     _schema.getEncryptionMetadataForPath(path) ||

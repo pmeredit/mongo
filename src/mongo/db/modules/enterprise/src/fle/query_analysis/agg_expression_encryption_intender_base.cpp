@@ -147,8 +147,6 @@ auto getEncryptionTypeForPathEnsureNotPrefix(const EncryptionSchemaTreeNode& sch
                                              const ExpressionFieldPath& fieldPath) {
     const auto path = fieldPath.getFieldPathWithoutCurrentPrefix();
     auto encryptedType = schema.getEncryptionMetadataForPath(FieldRef(path.fullPath()));
-    // TODO SERVER-41337: Handle the case where a field reference points to the prefix of an
-    // encrypted field in a more accepting manner.
     uassert(31131,
             "Found forbidden reference to prefix of encrypted field "s + path.fullPath(),
             encryptedType || !schema.mayContainEncryptedNodeBelowPrefix(FieldRef(path.fullPath())));

@@ -538,7 +538,6 @@ TEST_F(FLEPipelineTest, ReplaceRootReferringToNewFields) {
     ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
-// TODO SERVER-41337: Support expressions which reference prefixes of encrypted fields.
 TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedSubFieldFails) {
     BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
                                                       << "$user"));
@@ -595,7 +594,6 @@ TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptAdditionalF
         getSchemaForStage({replaceRoot}, kAllEncryptedSchema), AssertionException, 31110);
 }
 
-// TODO SERVER-41337: Support expressions which reference prefixes of encrypted fields.
 TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldFails) {
     BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
                                                                         << "$user")));

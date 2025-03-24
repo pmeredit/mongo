@@ -1281,7 +1281,6 @@ TEST_F(RangePlaceholderTest, WithoutSparsityParseFails) {
     edgesInfo.setIndexMax(arr[3]);
     FLE2RangeFindSpec spec;
 
-    // TODO: SERVER-70302 update query analysis to generate payloads in gt/lt pairs.
     spec.setFirstOperator(Fle2RangeOperator::kGt);
     spec.setPayloadId(1234);
 
