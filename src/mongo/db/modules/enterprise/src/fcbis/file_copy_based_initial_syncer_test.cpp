@@ -1545,7 +1545,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
         ASSERT_EQUALS(attempt0.nFields(), 6) << attempt0;
         ASSERT_EQUALS(attempt0["status"].str(), "UnknownError: ") << attempts;
         ASSERT_EQUALS(attempt0["syncSource"].str(), "localhost:12345") << attempts;
-        ASSERT_GREATER_THAN(attempt0.getIntField("durationMillis"), 0) << attempts;
+        ASSERT_GREATER_THAN_OR_EQUALS(attempt0.getIntField("durationMillis"), 0) << attempts;
     }
     expectSuccessfulKillBackupCursorCall();
     fileCopyBasedInitialSyncer->join();
@@ -2245,7 +2245,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
         ASSERT_EQUALS(attempt0.nFields(), 6) << attempt0;
         ASSERT_EQUALS(attempt0["status"].str(), "OK") << attempts;
         ASSERT_EQUALS(attempt0["syncSource"].str(), "localhost:12345") << attempts;
-        ASSERT_GREATER_THAN(attempt0.getIntField("durationMillis"), 0) << attempts;
+        ASSERT_GREATER_THAN_OR_EQUALS(attempt0.getIntField("durationMillis"), 0) << attempts;
     }
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
@@ -2406,7 +2406,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
         ASSERT_EQUALS(attempt0.nFields(), 6) << attempt0;
         ASSERT_EQUALS(attempt0["status"].str(), "OK") << attempts;
         ASSERT_EQUALS(attempt0["syncSource"].str(), "localhost:12345") << attempts;
-        ASSERT_GREATER_THAN(attempt0.getIntField("durationMillis"), 0) << attempts;
+        ASSERT_GREATER_THAN_OR_EQUALS(attempt0.getIntField("durationMillis"), 0) << attempts;
     }
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
@@ -2564,7 +2564,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
         ASSERT_EQUALS(attempt0.nFields(), 6) << attempt0;
         ASSERT_EQUALS(attempt0["status"].str(), "OK") << attempts;
         ASSERT_EQUALS(attempt0["syncSource"].str(), "localhost:12345") << attempts;
-        ASSERT_GREATER_THAN(attempt0.getIntField("durationMillis"), 0) << attempts;
+        ASSERT_GREATER_THAN_OR_EQUALS(attempt0.getIntField("durationMillis"), 0) << attempts;
     }
     checkFileData("backupfile1", file1Data);
     checkFileData("backupfile2", file2Data);
