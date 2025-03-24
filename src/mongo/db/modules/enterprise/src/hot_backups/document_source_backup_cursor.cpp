@@ -159,6 +159,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     StorageEngine::BackupOptions options;
 
     options.disableIncrementalBackup = params.getDisableIncrementalBackup();
+    options.takeCheckpoint = params.getTakeCheckpoint();
     options.incrementalBackup = params.getIncrementalBackup();
     options.blockSizeMB = params.getBlockSizeMB();
     if (params.getThisBackupName()) {

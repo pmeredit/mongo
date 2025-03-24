@@ -13,9 +13,10 @@
 import {getUriForColl, getUriForIndex} from "jstests/disk/libs/wt_file_helper.js";
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {restartServerReplication, stopServerReplication} from "jstests/libs/write_concern_util.js";
 
 const rst = new ReplSetTest({
-    nodes: 1,
+    nodes: 2,
     nodeOptions: {
         setParameter: {
             // Set the history window to zero to explicitly control the oldest timestamp.
@@ -28,6 +29,7 @@ rst.startSet();
 rst.initiate();
 
 const primary = rst.getPrimary();
+const sec = rst.getSecondary();
 
 const dbName = "test";
 const db = primary.getDB(dbName);
@@ -89,6 +91,12 @@ assert.commandWorked(db.getCollection("gg").renameCollection("ggg"));
 
 // Take the checkpoint to be used by the backup cursor.
 assert.commandWorked(db.adminCommand({fsync: 1}));
+
+// Opening a backup cursor takes a checkpoint so stop secondary replication to ensure our test still
+// sees the right data consistent with the checkpoint we just took.
+assert.commandWorked(primary.adminCommand(
+    {setDefaultRWConcern: 1, defaultWriteConcern: {w: 1}, writeConcern: {w: "majority"}}));
+stopServerReplication(sec);
 
 // Perform actions on collections after the checkpoint.
 assert(db.getCollection("c").drop());
@@ -199,6 +207,9 @@ orphanedNamespaces = [];
 droppedNamespaces = ["test.b"];
 validate(backupCursor, expectedNamespaces, orphanedNamespaces, droppedNamespaces);
 backupCursor.close();
+
+restartServerReplication(sec);
+rst.awaitReplication();
 
 // Take the checkpoint to be used by the backup cursor.
 assert.commandWorked(db.adminCommand({fsync: 1}));

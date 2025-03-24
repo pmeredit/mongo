@@ -44,6 +44,14 @@ structs:
                 default: false
                 description: "Whether this is an incremental backup request."
                 query_shape: parameter
+            takeCheckpoint:
+                cpp_name: takeCheckpoint
+                type: bool
+                default: true
+                description: "Whether to opt out of taking a checkpoint that occurs before opening a
+                              backup cursor. This is used for tests which control checkpointing, don't
+                              use this in production as this will result in an invariant failure."
+                query_shape: parameter
             thisBackupName:
                 cpp_name: thisBackupName
                 type: string

@@ -86,7 +86,18 @@ assert.commandWorked(
 // Demonstrate query cursor timeouts will kill backup cursors, closing the underlying resources.
 openBackupCursor(db, {}, {cursor: {}});
 assert.commandWorked(db.adminCommand({setParameter: 1, cursorTimeoutMillis: 1}));
-openBackupCursor(db, {}, {cursor: {}});
+
+// Keep trying until the previous cursor is closed to open another backup cursor.
+while (true) {
+    try {
+        if (openBackupCursor(db, {}, {cursor: {}})) {
+            break;
+        }
+    } catch (exc) {
+        jsTestLog({"Failed to open a backup cursor, retrying.": exc});
+    }
+}
+
 TestData.disableImplicitSessions = false;
 
 MongoRunner.stopMongod(conn);

@@ -38,7 +38,7 @@ assert.commandWorked(primaryDB.createCollection("b"));
 assert.commandWorked(primaryDB.adminCommand({renameCollection: "test.a", to: "test.c"}));
 
 let namespacesFound = {};
-let backupCursor = openBackupCursor(primary.getDB("admin"));
+let backupCursor = openBackupCursor(primary.getDB("admin"), {takeCheckpoint: false});
 while (backupCursor.hasNext()) {
     let doc = backupCursor.next();
     jsTestLog(doc);

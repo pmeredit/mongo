@@ -40,7 +40,9 @@ for (let i = 0; i < kNumDocs; i++) {
     assert.commandWorked(coll.insert({_id: i}));
 }
 
-const backupCursor = openBackupCursor(conn.getDB("admin"));
+// Opt out of taking the default checkpoint when opening the backup cursor because this test relies
+// on recovering the data through replaying the journal files.
+const backupCursor = openBackupCursor(conn.getDB("admin"), {takeCheckpoint: false});
 
 // Print the metadata document.
 assert(backupCursor.hasNext());
