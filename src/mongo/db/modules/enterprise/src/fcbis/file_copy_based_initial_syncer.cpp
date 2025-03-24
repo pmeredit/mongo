@@ -1402,10 +1402,7 @@ void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
     auto opCtx = cc().makeOperationContext();
     // Replay the oplog.  Setting inReplicationRecovery tells storage not to update the
     // size storer (for fastcount), which should be correct already in the files we received.
-    inReplicationRecovery(opCtx->getServiceContext()).store(true);
-    ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
-        inReplicationRecovery(serviceContext).store(false);
-    });
+    InReplicationRecovery inReplicationRecovery(opCtx->getServiceContext());
 
     // The oplogTruncateAfterPoint is a logged table, so it will be correct whether we have done
     // only an initial backup, or extensions.  We will apply all oplog entries up to the
@@ -2012,10 +2009,7 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
 
     // Setting inReplicationRecovery prevents double-counting of reconstructed prepared
     // transactions.
-    inReplicationRecovery(opCtx->getServiceContext()).store(true);
-    ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
-        inReplicationRecovery(serviceContext).store(false);
-    });
+    InReplicationRecovery inReplicationRecovery(opCtx->getServiceContext());
     reconstructPreparedTransactions(opCtx, repl::OplogApplication::Mode::kInitialSync);
 
     _runPostReplicationStartupStorageInitialization(opCtx);
