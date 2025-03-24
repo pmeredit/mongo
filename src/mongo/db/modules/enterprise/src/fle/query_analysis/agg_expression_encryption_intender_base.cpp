@@ -41,15 +41,16 @@ std::string toString(const decltype(Subtree::output)& outputType) {
 
 void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
-                            ExpressionConstant* literal) {
+                            ExpressionConstant* literal,
+                            EncryptionPlaceholderContext placeholderContext) {
     using namespace query_analysis;
     auto constVal = literal->getValue();
     if (isEncryptedPayload(constVal)) {
         // This field path was encrypted by a different walker.
         return;
     }
-    literal->setValue(buildEncryptPlaceholder(
-        constVal, encryptedType, EncryptionPlaceholderContext::kComparison, expCtx.getCollator()));
+    literal->setValue(
+        buildEncryptPlaceholder(constVal, encryptedType, placeholderContext, expCtx.getCollator()));
 }
 
 void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& subtreeStack) {

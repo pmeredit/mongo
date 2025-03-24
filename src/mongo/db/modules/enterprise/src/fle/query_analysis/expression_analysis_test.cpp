@@ -548,6 +548,7 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$dayOfMonth: '$ssn'}"),
         fromjson("{$dayOfWeek: '$ssn'}"),
         fromjson("{$divide: ['$ssn', 42.0]}"),
+        fromjson("{$encStrStartsWith: {input: \"$ssn\", prefix:\"21\"}}"),
         fromjson("{$eq: ['$ssn', '8675309']}"),
         fromjson("{$exp: '$ssn'}"),
         fromjson("{$floor: '$ssn'}"),

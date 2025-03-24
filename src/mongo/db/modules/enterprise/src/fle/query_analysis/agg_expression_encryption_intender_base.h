@@ -95,6 +95,12 @@ struct Subtree {
         // specific ExpressionFieldPath we know is allowed to add an extra layer of defense.
         ExpressionFieldPath* temporarilyPermittedEncryptedFieldPath{nullptr};
 
+        // Stores encryptionPlaceholderContext to generate correct placeholders when rewriting
+        // literals. Default is kComparison while text search may use specific placeholder contexts
+        // such as kTextPrefixComparison.
+        EncryptionPlaceholderContext encryptionPlaceholderContext =
+            EncryptionPlaceholderContext::kComparison;
+
         // The following structs are state types. Each Compared Subtree starts in the Unkown state
         // and transitions into the NotEncrypted or Encrypted state.
 
@@ -147,7 +153,8 @@ std::string toString() {
 
 void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
-                            ExpressionConstant* literal);
+                            ExpressionConstant* literal,
+                            EncryptionPlaceholderContext placeholderContext);
 
 void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& subtreeStack);
 
@@ -178,12 +185,15 @@ void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtre
 template <typename Out>
 Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     bool literalRewritten = false;
-    if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output))
+    if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output)) {
         if (auto encrypted = get_if<Subtree::Compared::Encrypted>(&compared->state)) {
-            for (auto&& literal : compared->literals)
-                rewriteLiteralToIntent(expCtx, encrypted->type, literal);
+            for (auto&& literal : compared->literals) {
+                rewriteLiteralToIntent(
+                    expCtx, encrypted->type, literal, compared->encryptionPlaceholderContext);
+            }
             literalRewritten = compared->literals.size() > 0;
         }
+    }
     exitSubtreeNoReplacement<Out>(expCtx, subtreeStack);
     return literalRewritten ? Intention::Marked : Intention::NotMarked;
 }
@@ -538,10 +548,21 @@ protected:
     void visit(ExpressionInternalFLEBetween*) final {
         ensureNotEncryptedEnterEval("a fle between match", subtreeStack);
     }
-    void visit(ExpressionEncStrStartsWith*) final {
-        // TODO SERVER-101122: Implement preVisit of $encStrStartsWith.
-        MONGO_UNREACHABLE_TASSERT(10111804);
-        ensureNotEncryptedEnterEval("a fle $encStrStartsWith", subtreeStack);
+    void visit(ExpressionEncStrStartsWith* encStrStartsWith) override {
+        uassert(10112201,
+                "$encStrStartsWith can only be used with FLE2",
+                schema.parsedFrom == FleVersion::kFle2);
+        tassert(10112205,
+                "$encStrStartsWith encountered in not-allowed context.",
+                fieldRefSupported == FLE2FieldRefExpr::allowed);
+        ensureNotEncrypted("a fle $encStrStartsWith", subtreeStack);
+        auto* fp = dynamic_cast<ExpressionFieldPath*>(encStrStartsWith->getChildren()[0].get());
+        Subtree::Compared comparedSubtree;
+        // We must correctly mark permitted encrypted field paths as we must pass a check for
+        // ExpressionFieldPaths during the postVisit, but the text search predicate will not be
+        // replaced with a placeholder in the base implementation.
+        comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+        enterSubtree(comparedSubtree, subtreeStack);
     }
     void visit(ExpressionEncStrEndsWith*) final {
         // TODO SERVER-101214: Implement preVisit of $encStrEndsWith.
@@ -942,10 +963,7 @@ protected:
     void visit(ExpressionLog10*) override {}
     void visit(ExpressionInternalFLEEqual*) override {}
     void visit(ExpressionInternalFLEBetween*) override {}
-    void visit(ExpressionEncStrStartsWith*) override {
-        // TODO SERVER-101122: Implement inVisit of $encStrStartsWith.
-        MONGO_UNREACHABLE_TASSERT(10111805);
-    }
+    void visit(ExpressionEncStrStartsWith*) override {}
     void visit(ExpressionEncStrEndsWith*) override {
         // TODO SERVER-101214: Implement inVisit of $encStrEndsWith.
         MONGO_UNREACHABLE_TASSERT(10120903);
@@ -1285,8 +1303,7 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionEncStrStartsWith*) override {
-        // TODO SERVER-101122: Implement postVisit of $encStrStartsWith.
-        MONGO_UNREACHABLE_TASSERT(10111806);
+        exitSubtreeNoReplacement<Subtree::Compared>(expCtx, subtreeStack);
     }
     void visit(ExpressionEncStrEndsWith*) override {
         // TODO SERVER-101214: Implement postVisit of $encStrEndsWith.

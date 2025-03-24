@@ -122,6 +122,24 @@ if (!fle2Enabled()) {
     assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
 }
 
+// Verify that $encStrStartsWith cannot be used with FLE1. MongoCryptD doesn't support getting
+// the value of feature flags, so fails with InvalidPipelineOperator if
+// featureFlagQETextSearchPreview is not enabled.
+// TODO SERVER-59280 Remove ErrorCodes.InvalidPipelineOperator.
+schema = {
+    type: "object",
+    patternProperties: {loc: encryptedStringSpec}
+};
+command = {
+    aggregate: coll.getName(),
+    pipeline: [{$match: {$expr: {$encStrStartsWith: {input: "$location", prefix: "PREFIX"}}}}],
+    cursor: {},
+    jsonSchema: schema,
+    isRemoteSchema: false,
+};
+assert.commandFailedWithCode(testDB.runCommand(command),
+                             [ErrorCodes.InvalidPipelineOperator, 10112201]);
+
 // Test that a $sort stage which does not reference an encrypted field is correctly reflected
 // back from mongocryptd.
 command = buildAggregate([{$sort: {bar: 1}}], {foo: encryptedStringSpec});

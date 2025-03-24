@@ -3,6 +3,7 @@
  */
 
 #include "aggregate_expression_intender_entry.h"
+#include "aggregate_expression_intender_text.h"
 
 namespace mongo {
 
@@ -14,11 +15,16 @@ Intention mark(ExpressionContext* expCtx,
                bool expressionOutputIsCompared,
                FLE2FieldRefExpr fieldRefSupported) {
     Intention finalIntention = Intention::NotMarked;
-
     if (schema.parsedFrom == FleVersion::kFle2) {
         finalIntention =
             markRange(expCtx, schema, expression, expressionOutputIsCompared, fieldRefSupported);
+
+        finalIntention =
+            markTextSearch(
+                expCtx, schema, expression, expressionOutputIsCompared, fieldRefSupported) ||
+            finalIntention;
     }
+
     finalIntention =
         markEquality(
             expCtx, schema, expression.get(), expressionOutputIsCompared, fieldRefSupported) ||

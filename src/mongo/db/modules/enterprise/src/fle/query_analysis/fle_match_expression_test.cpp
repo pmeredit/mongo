@@ -894,5 +894,51 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateOverMaxBoundFails) {
     }
 }
 
+using FLE2MatchExpressionTextTest = FLE2TestFixture;
+
+DEATH_TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithFailsWithoutFle2, "10112205") {
+    auto match = fromjson("{$expr: {$encStrStartsWith: {input: \"$prefixField\", prefix:\"21\"}}}");
+    ASSERT_THROWS_CODE(markMatchExpression(kTextFields, match, FLE2FieldRefExpr::disallowed),
+                       AssertionException,
+                       10112205);
+}
+
+TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithMarksElementAsEncrypted) {
+    auto match = fromjson("{$expr: {$encStrStartsWith: {input: \"$prefixField\", prefix:\"21\"}}}");
+    auto encryptedObj = buildTextSearchEncryptElem(
+        "prefixField"_sd, "21", EncryptionPlaceholderContext::kTextPrefixComparison);
+
+    auto actual = markMatchExpression(kTextFields, match, FLE2FieldRefExpr::allowed);
+    auto expected =
+        BSON("$expr" << BSON("$encStrStartsWith" << BSON(
+                                 "input"
+                                 << "$prefixField"
+                                 << "prefix" << BSON("$const" << encryptedObj.firstElement()))));
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithMarksNestedElementAsEncrypted) {
+    auto match =
+        fromjson("{$expr: {$encStrStartsWith: {input: \"$nested.prefixField\", prefix:\"31\"}}}");
+    auto encryptedObj = buildTextSearchEncryptElem(
+        "nested.prefixField"_sd, "31", EncryptionPlaceholderContext::kTextPrefixComparison);
+
+    auto actual = markMatchExpression(kTextFields, match, FLE2FieldRefExpr::allowed);
+    auto expected =
+        BSON("$expr" << BSON("$encStrStartsWith" << BSON(
+                                 "input"
+                                 << "$nested.prefixField"
+                                 << "prefix" << BSON("$const" << encryptedObj.firstElement()))));
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithUnencryptedFieldFails) {
+    auto match =
+        fromjson("{$expr: {$encStrStartsWith: {input: \"$notAPrefixField\", prefix:\"21\"}}}");
+    ASSERT_THROWS_CODE(markMatchExpression(kTextFields, match, FLE2FieldRefExpr::allowed),
+                       AssertionException,
+                       10112204);
+}
+
 }  // namespace
 }  // namespace mongo
