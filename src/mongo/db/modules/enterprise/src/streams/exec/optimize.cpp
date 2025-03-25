@@ -5,6 +5,7 @@
 #include "streams/exec/optimize.h"
 
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/field_path.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/change_stream_source_operator.h"
