@@ -11,9 +11,6 @@
  * ]
  */
 
-// FIXME: SERVER-102707 Re-enable live restore test
-quit();
-
 // FIXME: WT-14051 Live restore does not support windows.
 if (_isWindows()) {
     print("Skipping test on windows");
@@ -78,10 +75,10 @@ adminDB = liveRestoreConn.getDB("admin");
 db = liveRestoreConn.getDB("test");
 coll = db.getCollection(jsTestName());
 let serverStatus = adminDB.runCommand({serverStatus: 1});
-let liveRestoreCurrentState = serverStatus["wiredTiger"]["live-restore"]["live restore state"];
+let liveRestoreCurrentState = serverStatus["wiredTiger"]["live-restore"]["state"];
 while (liveRestoreCurrentState != liveRestoreState.COMPLETE) {
     serverStatus = adminDB.runCommand({serverStatus: 1});
-    liveRestoreCurrentState = serverStatus["wiredTiger"]["live-restore"]["live restore state"];
+    liveRestoreCurrentState = serverStatus["wiredTiger"]["live-restore"]["state"];
 }
 
 // Check we can read all the data.
