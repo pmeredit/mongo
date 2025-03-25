@@ -69,7 +69,6 @@ template <typename Visitor>
 void MetricManager::visitAllMetrics(Visitor* visitor) {
     // Note: we release the _mutex before visiting each metric.
     for (auto& metric : computeMetricsToVisit()) {
-        // TODO(SERVER-101472): Call metric->visit() instead of evaluating the type
         if (auto counter = dynamic_cast<Counter*>(metric.get())) {
             visitor->visit(counter);
         } else if (auto counterVec = dynamic_cast<CounterVec*>(metric.get())) {
