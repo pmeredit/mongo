@@ -596,9 +596,6 @@ protected:
     void visit(ExpressionCeil* expr) override {
         internalPerformReplacement(expr);
     }
-    void visit(ExpressionCoerceToBool* expr) override {
-        internalPerformReplacement(expr);
-    }
     void visit(ExpressionCompare* expr) override {
         switch (expr->getOp()) {
             case ExpressionCompare::EQ:
@@ -1087,10 +1084,6 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     void visit(ExpressionCeil* expr) override {
-        internalPerformReplacement(expr);
-        IntentionPostVisitorBase::visit(expr);
-    }
-    void visit(ExpressionCoerceToBool* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }

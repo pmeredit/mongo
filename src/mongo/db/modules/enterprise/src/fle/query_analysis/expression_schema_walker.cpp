@@ -160,9 +160,6 @@ public:
     void visit(const ExpressionCeil*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionCoerceToBool*) override {
-        _tracker.enterEvaluateOrCompare();
-    }
     void visit(const ExpressionCompare*) override {
         _tracker.enterEvaluateOrCompare();
     }
@@ -655,7 +652,6 @@ public:
     void visit(const ExpressionArrayToObject*) override {}
     void visit(const ExpressionBsonSize*) override {}
     void visit(const ExpressionCeil*) override {}
-    void visit(const ExpressionCoerceToBool*) override {}
     void visit(const ExpressionCompare*) override {}
     void visit(const ExpressionConcat*) override {}
     void visit(const ExpressionConcatArrays*) override {}
@@ -887,9 +883,6 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionCeil*) override {
-        _tracker.exitEvaluateOrCompare();
-    }
-    void visit(const ExpressionCoerceToBool*) override {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionCompare*) override {

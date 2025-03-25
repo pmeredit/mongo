@@ -371,9 +371,6 @@ protected:
     void visit(ExpressionCeil*) final {
         ensureNotEncryptedEnterEval("a ceiling calculation", subtreeStack);
     }
-    void visit(ExpressionCoerceToBool*) final {
-        ensureNotEncryptedEnterEval("a coercion to boolean", subtreeStack);
-    }
     void visit(ExpressionCompare* compare) override {
         switch (compare->getOp()) {
             case ExpressionCompare::EQ:
@@ -903,7 +900,6 @@ protected:
     void visit(ExpressionArrayToObject*) override {}
     void visit(ExpressionBsonSize*) override {}
     void visit(ExpressionCeil*) override {}
-    void visit(ExpressionCoerceToBool*) override {}
     void visit(ExpressionCompare*) override {}
     void visit(ExpressionConcat*) override {}
     void visit(ExpressionConcatArrays*) override {}
@@ -1167,9 +1163,6 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCeil*) override {
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
-    void visit(ExpressionCoerceToBool*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCompare* compare) override {
