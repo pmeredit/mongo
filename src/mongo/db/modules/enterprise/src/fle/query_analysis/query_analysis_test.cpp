@@ -392,6 +392,13 @@ TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyTextSearchFailsWithIncorrectAlg
                                                nullptr),
                        AssertionException,
                        10113904);
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(Value("string"_sd),
+                                metadata,
+                                EncryptionPlaceholderContext::kTextSubstringComparison,
+                                nullptr),
+        AssertionException,
+        10113904);
 }
 
 // Test to ensure we don't support generating a prefix placeholder on metadata which does not
@@ -497,6 +504,95 @@ TEST(FLE2BuildEncryptPlaceholderValueTest, VerifySuffixTextSearchFailsWithUnsupp
                                                nullptr),
                        AssertionException,
                        10209400);
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest,
+     VerifyCorrectPlaceholderForTextSearchSubstringComparison) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::SubstringPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+    qtc.setStrMaxLength(100);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    const auto placeholderType = EncryptionPlaceholderContext::kTextSubstringComparison;
+    const auto binData =
+        buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    verifyFLE2TextSearchBinData(
+        binData,
+        fromjson(
+            R"({ v: "string", casef: false, diacf: false, substr: { mlen: 100, ub: 10, lb: 1 } })"));
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifyOnlyGeneratedSubstringPlaceholder) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::SubstringPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+    qtc.setStrMaxLength(100);
+
+    QueryTypeConfig qtc1;
+    qtc1.setQueryType(QueryTypeEnum::SuffixPreview);
+    qtc1.setStrMinQueryLength(1);
+    qtc1.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc, qtc1};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    const auto placeholderType = EncryptionPlaceholderContext::kTextSubstringComparison;
+    const auto binData =
+        buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    verifyFLE2TextSearchBinData(
+        binData,
+        fromjson(
+            R"({ v: "string", casef: false, diacf: false, substr: {mlen: 100, ub: 10, lb: 1 } })"));
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest,
+     VerifySubstringTextSearchFailsWithIncorrectPlaceholderContext) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::SubstringPreview);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(
+            Value("5"_sd), metadata, EncryptionPlaceholderContext::kComparison, nullptr),
+        AssertionException,
+        63165);
+}
+
+// Test to ensure we don't support generating a substring placeholder on metadata which does not
+// support the substring query index.
+TEST(FLE2BuildEncryptPlaceholderValueTest, VerifySubstringTextSearchFailsWithUnsupportedContext) {
+    QueryTypeConfig qtc;
+    qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+    qtc.setCaseSensitive(true);
+    qtc.setDiacriticSensitive(true);
+    qtc.setStrMinQueryLength(1);
+    qtc.setStrMaxQueryLength(10);
+
+    const auto fle2Type = std::vector{qtc};
+    const auto metadata =
+        ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(Value("string"_sd),
+                                metadata,
+                                EncryptionPlaceholderContext::kTextSubstringComparison,
+                                nullptr),
+        AssertionException,
+        10209500);
 }
 
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {

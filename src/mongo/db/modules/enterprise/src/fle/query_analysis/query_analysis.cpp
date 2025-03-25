@@ -1275,7 +1275,8 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
 
                     switch (qtc.getQueryType()) {
                         case QueryTypeEnum::SubstringPreview: {
-                            if (ctx == EncryptionPlaceholderContext::kWrite) {
+                            if (ctx == EncryptionPlaceholderContext::kWrite ||
+                                ctx == EncryptionPlaceholderContext::kTextSubstringComparison) {
                                 tassert(10113903,
                                         "Encrypted text substring search query must specify string "
                                         "max length.",
@@ -1335,6 +1336,20 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                                 "Unexpected substring spec for suffix comparison on field : " +
                                     elem.fieldNameStringData(),
                                 !spec.getSubstringSpec().has_value());
+                        break;
+                    case EncryptionPlaceholderContext::kTextSubstringComparison:
+                        uassert(10209500,
+                                "$encStrContains is not a supported operation on field : " +
+                                    elem.fieldNameStringData(),
+                                spec.getSubstringSpec().has_value());
+                        tassert(10209501,
+                                "Unexpected prefix spec for substring comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getPrefixSpec().has_value());
+                        tassert(10209502,
+                                "Unexpected suffix spec for substring comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSuffixSpec().has_value());
                         break;
                     default:
                         break;
@@ -1704,7 +1719,8 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                 break;
         }
     } else if (placeholderContext == EncryptionPlaceholderContext::kTextPrefixComparison ||
-               placeholderContext == EncryptionPlaceholderContext::kTextSuffixComparison) {
+               placeholderContext == EncryptionPlaceholderContext::kTextSuffixComparison ||
+               placeholderContext == EncryptionPlaceholderContext::kTextSubstringComparison) {
         uassert(10113900, "Cannot use text search with CSFLE.", metadata.isFle2Encrypted());
         uassert(10113904,
                 "Can only execute encrypted prefix search queries with a text search index.",
