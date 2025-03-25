@@ -122,6 +122,7 @@ public:
     // thread-safe so it cannot be called from outside the executor thread, e.g. this cannot be
     // called in parallel with `runOnce()`.
     std::vector<KafkaConsumerPartitionState> getPartitionStates() const;
+    static constexpr auto kKafkaConsumerOperatorName = "KafkaConsumerOperator";
 
 protected:
     // Merges stats from all the partition consumers.
@@ -259,7 +260,7 @@ private:
     void processCheckpointMsg(const StreamControlMsg& controlMsg);
 
     std::string doGetName() const override {
-        return "KafkaConsumerOperator";
+        return kKafkaConsumerOperatorName;
     }
 
     ConnectionStatus doGetConnectionStatus() override;

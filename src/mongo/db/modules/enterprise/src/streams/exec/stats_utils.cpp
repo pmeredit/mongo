@@ -10,8 +10,9 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/overloaded_visitor.h"
-#include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/stream_stats.h"
 
 using namespace mongo;
@@ -105,7 +106,7 @@ StreamSummaryStats toSummaryStats(const mongo::CheckpointSummaryStats& stats) {
 }
 
 LastCheckpointState lastCheckpointInternalToStatsSchema(
-    const mongo::CheckpointDescription& checkpointDesc) {
+    const std::string& sourceOperatorName, const mongo::CheckpointDescription& checkpointDesc) {
     LastCheckpointState lastCheckpointState;
     lastCheckpointState.setCommitTime(checkpointDesc.getCheckpointTimestamp());
 
@@ -113,8 +114,7 @@ LastCheckpointState lastCheckpointInternalToStatsSchema(
         ErrorCodes::InternalError, "sourceState should be set", checkpointDesc.getSourceState());
     const auto& sourceState = *checkpointDesc.getSourceState();
 
-    // TODO(SERVER-101937): Parse based on operator name instead of these field names
-    if (sourceState.hasField(ChangeStreamSourceCheckpointState::kStartingPointFieldName)) {
+    if (sourceOperatorName == ChangeStreamSourceOperator::kChangeStreamConsumerOperatorName) {
         ChangeStreamSourceCheckpointState changestreamState =
             ChangeStreamSourceCheckpointState::parse(
                 IDLParserContext("ChangeStreamSourceCheckpointState"), sourceState);
@@ -135,7 +135,7 @@ LastCheckpointState lastCheckpointInternalToStatsSchema(
                        }},
                    *changestreamState.getStartingPoint());
         lastCheckpointState.setSourceState(std::move(changeStreamSourceCheckpointStateForStats));
-    } else if (sourceState.hasField(KafkaSourceCheckpointState::kPartitionsFieldName)) {
+    } else if (sourceOperatorName == KafkaConsumerOperator::kKafkaConsumerOperatorName) {
         const KafkaSourceCheckpointState& kafkaSourceCheckpointState =
             KafkaSourceCheckpointState::parse(IDLParserContext("KafkaPartitionCheckpointState"),
                                               sourceState);

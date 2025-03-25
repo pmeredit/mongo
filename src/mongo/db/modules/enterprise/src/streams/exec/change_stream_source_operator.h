@@ -89,6 +89,7 @@ public:
     // obtained resume token from the change stream. This function is called once per loop by the
     // executor thread
     mongo::Seconds getChangeStreamLag() const;
+    static constexpr auto kChangeStreamConsumerOperatorName = "ChangeStreamConsumerOperator";
 
 private:
     struct DocBatch {
@@ -127,7 +128,7 @@ private:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
     std::string doGetName() const override {
-        return "ChangeStreamConsumerOperator";
+        return kChangeStreamConsumerOperatorName;
     }
 
     int64_t doRunOnce() final;

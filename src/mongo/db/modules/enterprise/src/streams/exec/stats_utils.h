@@ -37,6 +37,6 @@ std::vector<OperatorStats> toOperatorStats(
     const std::vector<mongo::CheckpointOperatorInfo>& restoreCheckpointOpInfo);
 
 mongo::LastCheckpointState lastCheckpointInternalToStatsSchema(
-    const mongo::CheckpointDescription& checkpointDesc);
+    const std::string& sourceOperatorName, const mongo::CheckpointDescription& checkpointDesc);
 
 }  // namespace streams

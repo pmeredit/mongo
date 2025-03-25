@@ -13,7 +13,9 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
+#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/https_operator.h"
+#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/tests/test_utils.h"
 
@@ -169,8 +171,8 @@ TEST(StatsTest, LastCheckpointToInternalStatsSchemaTest) {
     checkpointDesc.setCheckpointTimestamp(now);
 
     // Change stream source with resume token
-    LastCheckpointState lastCheckpointStateResumeToken =
-        lastCheckpointInternalToStatsSchema(checkpointDesc);
+    LastCheckpointState lastCheckpointStateResumeToken = lastCheckpointInternalToStatsSchema(
+        ChangeStreamSourceOperator::kChangeStreamConsumerOperatorName, checkpointDesc);
     ASSERT_EQ(lastCheckpointStateResumeToken.getCommitTime(), now);
     ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointState =
         std::get<ChangeStreamSourceCheckpointStateForStats>(
@@ -183,8 +185,8 @@ TEST(StatsTest, LastCheckpointToInternalStatsSchemaTest) {
     Timestamp curTimestamp = Timestamp();
     checkpointDesc.setSourceState(
         BSON(ChangeStreamSourceCheckpointState::kStartingPointFieldName << curTimestamp));
-    LastCheckpointState lastCheckpointStateTimestamp =
-        lastCheckpointInternalToStatsSchema(checkpointDesc);
+    LastCheckpointState lastCheckpointStateTimestamp = lastCheckpointInternalToStatsSchema(
+        ChangeStreamSourceOperator::kChangeStreamConsumerOperatorName, checkpointDesc);
     ASSERT_EQ(lastCheckpointStateTimestamp.getCommitTime(), now);
     ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointState2 =
         std::get<ChangeStreamSourceCheckpointStateForStats>(
@@ -201,8 +203,8 @@ TEST(StatsTest, LastCheckpointToInternalStatsSchemaTest) {
     kafkaSourceCheckpointState.setPartitions(
         std::vector<KafkaPartitionCheckpointState>{kafkaPartitionCheckpointState});
     checkpointDesc.setSourceState(kafkaSourceCheckpointState.toBSON());
-    LastCheckpointState lastCheckpointStateKafkaSource =
-        lastCheckpointInternalToStatsSchema(checkpointDesc);
+    LastCheckpointState lastCheckpointStateKafkaSource = lastCheckpointInternalToStatsSchema(
+        KafkaConsumerOperator::kKafkaConsumerOperatorName, checkpointDesc);
     ASSERT_EQ(lastCheckpointStateKafkaSource.getCommitTime(), now);
     std::vector<KafkaPartitionCheckpointStateForStats> kafkaSourceCheckpointStateForStats =
         std::get<std::vector<KafkaPartitionCheckpointStateForStats>>(
