@@ -1968,6 +1968,7 @@ mongo::UpdateConnectionReply StreamManager::updateConnection(
     switch (auto type = connection.getType()) {
         // Supported types will be added progressively
         case ConnectionTypeEnum::AWSIAMLambda:
+        case ConnectionTypeEnum::S3:
             break;
         default:
             uasserted(ErrorCodes::InternalErrorNotSupported,

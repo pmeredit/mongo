@@ -41,6 +41,8 @@
 #include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 using namespace std::chrono_literals;
 namespace streams {
 
@@ -1866,7 +1868,7 @@ TEST_F(StreamManagerTest, UpdateConnections_ShouldFailOnUnsupportedTypes) {
     }
 }
 
-TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForAWSIAMLambda) {
+TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForSupportedTypes) {
     auto streamManager = createStreamManager(StreamManager::Options{});
 
     std::string spName("sp");
@@ -1880,7 +1882,8 @@ TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForAWSIAMLambda) {
 
     std::vector<Connection> connections{
         {kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}},
-        {kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}}};
+        {kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}},
+        {kTestS3ConnectionName.toString(), ConnectionTypeEnum::S3, BSONObj{}}};
     startRequest.setConnections(connections);
     startRequest.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(startRequest);
@@ -1890,26 +1893,58 @@ TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForAWSIAMLambda) {
             streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
     }};
 
-    UpdateConnectionCommand updateRequest;
-    updateRequest.setTenantId(kTestTenantId1);
-    updateRequest.setProcessorName(spName);
+    struct TestCase {
+        const std::string description;
+        const Connection connection;
+        const std::function<void(Connection)> connectionAssertFn;
+    };
 
-    Connection updatedConnection{
-        kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}};
-    auto expectedOptions =
-        mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", Date_t::now()};
-    updatedConnection.setOptions(expectedOptions.toBSON());
-    updateRequest.setConnection(updatedConnection);
-    streamManager->updateConnection(updateRequest);
-    auto spInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
-    auto actualConnection =
-        spInfo->context->connections->at(kTestAWSIAMLambdaConnectionName.toString());
-    auto actualOptions = mongo::AWSIAMConnectionOptions::parse(IDLParserContext("connectionParser"),
-                                                               actualConnection.getOptions());
-    ASSERT_EQUALS(actualOptions.getAccessKey(), expectedOptions.getAccessKey());
-    ASSERT_EQUALS(actualOptions.getAccessSecret(), expectedOptions.getAccessSecret());
-    ASSERT_EQUALS(actualOptions.getSessionToken(), expectedOptions.getSessionToken());
-    ASSERT_EQUALS(actualOptions.getExpirationDate(), expectedOptions.getExpirationDate());
+    auto now = Date_t::now();
+    TestCase testCases[]{
+        {.description = "should support updating IAM Lambda Connection",
+         .connection =
+             Connection{kTestAWSIAMLambdaConnectionName.toString(),
+                        ConnectionTypeEnum::AWSIAMLambda,
+                        mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", now}
+                            .toBSON()},
+         .connectionAssertFn =
+             [&](Connection connection) {
+                 auto actualOptions = mongo::AWSIAMConnectionOptions::parse(
+                     IDLParserContext("connectionParser"), connection.getOptions());
+                 ASSERT_EQUALS(actualOptions.getAccessKey(), "new_key");
+                 ASSERT_EQUALS(actualOptions.getAccessSecret(), "new_secret");
+                 ASSERT_EQUALS(actualOptions.getSessionToken(), "new_session");
+                 ASSERT_EQUALS(actualOptions.getExpirationDate(), now);
+             }},
+        {.description = "should support updating S3 Connection",
+         .connection =
+             Connection{kTestS3ConnectionName.toString(),
+                        ConnectionTypeEnum::S3,
+                        mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", now}
+                            .toBSON()},
+         .connectionAssertFn = [&](Connection connection) {
+             auto actualOptions = mongo::AWSIAMConnectionOptions::parse(
+                 IDLParserContext("connectionParser"), connection.getOptions());
+             ASSERT_EQUALS(actualOptions.getAccessKey(), "new_key");
+             ASSERT_EQUALS(actualOptions.getAccessSecret(), "new_secret");
+             ASSERT_EQUALS(actualOptions.getSessionToken(), "new_session");
+             ASSERT_EQUALS(actualOptions.getExpirationDate(), now);
+         }}};
+
+    for (const auto& tc : testCases) {
+        LOGV2_DEBUG(10274701, 1, "Running test case", "description"_attr = tc.description);
+
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId(kTestTenantId1);
+        updateRequest.setProcessorName(spName);
+        updateRequest.setConnection(tc.connection);
+        streamManager->updateConnection(updateRequest);
+
+        auto spInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
+        auto actualConnection =
+            spInfo->context->connections->at(tc.connection.getName().toString());
+        tc.connectionAssertFn(actualConnection);
+    }
 }
 
 TEST_F(StreamManagerTest, UpdateConnections_ShouldValidateProperly) {
