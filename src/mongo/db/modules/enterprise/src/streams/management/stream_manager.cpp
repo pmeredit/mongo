@@ -1753,6 +1753,22 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                                        (double)s.memoryUsageBytes / scale,
                                        (double)s.maxMemoryUsageBytes / scale,
                                        mongo::duration_cast<Milliseconds>(s.executionTime)};
+            // TODO(SERVER-102218): Add logic for checking if it's a kakfa source or change stream
+            // source
+            if (getPerTargetStatsEnabled(processorInfo->context->featureFlags) &&
+                !s.perTargetStats.empty()) {
+                std::vector<mongo::TargetStats> targetStats;
+                targetStats.reserve(s.perTargetStats.size());
+                for (const auto& [target, stats] : s.perTargetStats) {
+                    TargetStats collectionStats;
+                    collectionStats.setDb(target.db);
+                    collectionStats.setColl(target.coll);
+                    collectionStats.setInputMessageCount(stats.inputMessageCount);
+                    collectionStats.setInputMessageSize(stats.inputMessageSize);
+                    targetStats.push_back(std::move(collectionStats));
+                }
+                stats.setTargetStats(std::move(targetStats));
+            }
             stats.setAvgTimeSpentMs(mongo::duration_cast<Milliseconds>(s.timeSpent));
             stats.setMinOpenWindowStartTime(s.minOpenWindowStartTime);
             stats.setMaxOpenWindowStartTime(s.maxOpenWindowStartTime);

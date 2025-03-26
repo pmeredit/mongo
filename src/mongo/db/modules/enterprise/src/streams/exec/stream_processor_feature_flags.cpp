@@ -109,6 +109,10 @@ bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>&
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kOldStreamMeta).getBool();
 }
 
+bool getPerTargetStatsEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kPerTargetStats).getBool();
+}
+
 bool enableMetadataRefreshInterval(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kEnableMetadataRefreshInterval)

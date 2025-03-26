@@ -298,6 +298,11 @@ const FeatureFlagDefinition FeatureFlags::kKafkaEmitMessageMaxBytes{
     "The maximum Kafka protocol request message size.",
     mongo::Value(16 * 1024 * 1024)};  // 16MB to mirror BSON max document size
 
+const FeatureFlagDefinition FeatureFlags::kPerTargetStats{
+    "perTargetStats",
+    "If true, per collection and per topic stats will be collected.",
+    mongo::Value(false)};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -325,7 +330,8 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
      FeatureFlags::kEnableExternalFunctionOperator},
     {FeatureFlags::kExternalFunctionRateLimitPerSecond.name,
      FeatureFlags::kExternalFunctionRateLimitPerSecond},
-    {FeatureFlags::kKafkaEmitMessageMaxBytes.name, FeatureFlags::kKafkaEmitMessageMaxBytes}};
+    {FeatureFlags::kKafkaEmitMessageMaxBytes.name, FeatureFlags::kKafkaEmitMessageMaxBytes},
+    {FeatureFlags::kPerTargetStats.name, FeatureFlags::kPerTargetStats}};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);

@@ -53,6 +53,7 @@ boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
 boost::optional<int64_t> getKafkaTotalQueuedBytes(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
+bool getPerTargetStatsEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 bool enableMetadataRefreshInterval(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 int64_t getHttpsRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);

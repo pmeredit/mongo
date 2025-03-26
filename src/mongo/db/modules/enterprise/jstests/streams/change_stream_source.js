@@ -37,6 +37,13 @@ const writeCollThree = "writeToNewCollection";
 const writeDBOne = "writeToThisDB";
 const writeDBTwo = "writeToThisOtherDB";
 
+const operatorStatsFieldName = "operatorStats";
+const changeStreamConsumerOperatorFieldName = "ChangeStreamConsumerOperator";
+const inputMessageCountFieldName = "inputMessageCount";
+const targetStatsFieldName = "targetStats";
+const collFieldName = "coll";
+const dbFieldName = "db";
+
 // Utility to perform writes against a combination of the namespaces above. This should generate
 // some change events.
 function performWrites() {
@@ -82,13 +89,96 @@ function performWrites() {
         {_id: 22, a: 33, otherTimeField: Date.now()},
         {_id: 23, a: 35, otherTimeField: Date.now()},
     ]));
+
+    // Write 1 more document to writeCollOne.
+    writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    assert.commandWorked(writeColl.insert({_id: 24, a: 88, otherTimeField: Date.now()}));
 }
 
 function clearState() {
     db.getSiblingDB(writeDBOne).dropDatabase();
     db.getSiblingDB(writeDBTwo).dropDatabase();
+    db.getSiblingDB("test").dropDatabase();
     outputColl.drop();
 }
+
+function changeStreamSourceCollectionStatsTest() {
+    clearState();
+
+    let sourceSpec = {connectionName: connectionName};
+
+    const processorName = "collectionStatsProcessor";
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {
+            $match: {
+                $or: [
+                    {operationType: "insert"},
+                    {operationType: "update"},
+                    {operationType: "delete"}
+                ]
+            }
+        },
+        {$emit: {connectionName: '__testMemory'}}
+    ]);
+
+    const processor = sp[processorName];
+    let startResult =
+        processor.start({featureFlags: {perTargetStats: true}, shouldStartSample: true});
+    assert.commandWorked(startResult);
+    const cursorId = startResult["sampleCursorId"];
+
+    performWrites();
+
+    sampleUntil(cursorId, 18, processorName);
+    let verboseStats = getStats(processorName);
+    assert(operatorStatsFieldName in verboseStats);
+    const operatorStats = verboseStats[operatorStatsFieldName];
+    assert(operatorStats.length > 0 &&
+           operatorStats[0]["name"] == changeStreamConsumerOperatorFieldName);
+    const changeStreamConsumerOperatorStats = operatorStats[0];
+
+    assert(targetStatsFieldName in changeStreamConsumerOperatorStats);
+    let collectionStats = changeStreamConsumerOperatorStats[targetStatsFieldName];
+    assert.eq(collectionStats.length, 5);
+
+    for (const collectionStat of collectionStats) {
+        const collName = collectionStat[collFieldName];
+        const dbName = collectionStat[dbFieldName];
+        const inputMessageCount = collectionStat[inputMessageCountFieldName];
+        if (dbName == writeDBOne) {
+            assert.eq(inputMessageCount, 2);
+        }
+        if (dbName == writeDBTwo && collName == writeCollOne) {
+            assert.eq(inputMessageCount, 5);
+        }
+        if (dbName == writeDBTwo && collName == writeCollTwo) {
+            assert.eq(inputMessageCount, 6);
+        }
+        if (dbName == writeDBTwo && collName == writeCollThree) {
+            assert.eq(inputMessageCount, 3);
+        }
+    }
+    const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    assert.commandWorked(writeColl.updateOne({a: 88}, {$set: {a: 4}}));
+    assert.commandWorked(writeColl.deleteMany({}));
+    sampleUntil(cursorId, 1, processorName);
+    verboseStats = getStats(processorName);
+    collectionStats = verboseStats[operatorStatsFieldName][0][targetStatsFieldName];
+
+    for (const collectionStat of collectionStats) {
+        const collName = collectionStat[collFieldName];
+        const dbName = collectionStat[dbFieldName];
+        const inputMessageCount = collectionStat[inputMessageCountFieldName];
+        if (dbName == writeDBOne && collName == writeCollOne) {
+            assert.eq(inputMessageCount, 4);
+        }
+    }
+
+    assert.commandWorked(processor.stop());
+}
+
+changeStreamSourceCollectionStatsTest();
 
 function runChangeStreamSourceTest({
     expectedNumberOfDataMessages,
@@ -149,6 +239,7 @@ function runChangeStreamSourceTest({
 
     assert(Math.abs(startTime.getTime() - verboseStats['lastMessageIn'].getTime()) <= 5000);
     assert.eq(verboseStats["ok"], 1);
+    assert(!(targetStatsFieldName in verboseStats));
     const startingPoint = verboseStats['changeStreamState'];
     assert(startingPoint);
     assert.commandWorked(processor.stop());

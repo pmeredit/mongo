@@ -89,6 +89,10 @@ public:
     // obtained resume token from the change stream. This function is called once per loop by the
     // executor thread
     mongo::Seconds getChangeStreamLag() const;
+    static void incPerCollectionStats(
+        mongo::stdx::unordered_map<Target, PerTargetStats>& changeStreamCollectionStats,
+        const Target& target,
+        int64_t inputBytes);
     static constexpr auto kChangeStreamConsumerOperatorName = "ChangeStreamConsumerOperator";
 
 private:

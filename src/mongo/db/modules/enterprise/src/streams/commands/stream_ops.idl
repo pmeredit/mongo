@@ -69,6 +69,26 @@ structs:
             userError:
                 description: True if this error is a user error.
                 type: bool
+    TargetStats:
+        description: Per target stats.
+        strict: false
+        fields: 
+            db:
+                description: Database name
+                type: string
+                optional: true
+            coll:
+                description: Collection name
+                type: string
+                optional: true
+            inputMessageCount: 
+                description: Total number of input messages read for this collection, including messages that were rejected.
+                type: safeInt64
+                optional: true
+            inputMessageSize:
+                description: Total number of input bytes read for this collection, including docs that were rejected.
+                type: safeInt64
+                optional: true
 
     # This struct is meant for user-facing commands only, and the field names in this struct are
     # based on the product spec.
@@ -85,6 +105,10 @@ structs:
             inputMessageSize:
                 description: Total number of input bytes read, including docs that were rejected.
                 type: safeDouble
+            targetStats:
+                description: Per target stats.
+                type: array<TargetStats>
+                optional: true
             outputMessageCount:
                 description: Total number of output messages emitted.
                 type: safeInt64

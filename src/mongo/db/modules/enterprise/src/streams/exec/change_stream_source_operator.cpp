@@ -19,6 +19,7 @@
 #include <mongocxx/pipeline.hpp>
 #include <mutex>
 #include <ostream>
+#include <utility>
 #include <variant>
 
 #include "mongo/base/error_codes.h"
@@ -32,6 +33,7 @@
 #include "mongo/db/pipeline/resume_token.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/timer.h"
@@ -84,6 +86,8 @@ static constexpr char kErrorCodeFieldName[] = "code";
 static constexpr ErrorCodes::Error kEmptyPipelineErrorCode{40323};
 static constexpr ErrorCodes::Error kUnrecognizedPipelineStageNameErrorCode{40324};
 static constexpr ErrorCodes::Error kInvalidFieldPathNameErrorCode{16410};
+static constexpr auto kCollFieldName = "coll";
+static constexpr auto kDbFieldName = "db";
 }  // namespace
 
 // Helper function to get the timestamp of the latest event in the oplog. This involves
@@ -626,6 +630,17 @@ void ChangeStreamSourceOperator::doStop() {
     _changeStreamCursor = nullptr;
 }
 
+void ChangeStreamSourceOperator::incPerCollectionStats(
+    mongo::stdx::unordered_map<Target, PerTargetStats>& collectionStats,
+    const Target& target,
+    int64_t inputBytes) {
+    auto it = collectionStats.find(target);
+    if (it == collectionStats.end()) {
+        it = collectionStats.insert(std::make_pair(target, PerTargetStats{})).first;
+    }
+    it->second += PerTargetStats{.inputMessageCount = 1, .inputMessageSize = inputBytes};
+}
+
 int64_t ChangeStreamSourceOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     auto batch = getDocuments();
@@ -676,9 +691,19 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     int64_t totalNumInputDocs = changeEvents.size();
     int64_t totalNumInputBytes = 0;
     int64_t numDlqDocs = 0;
+    mongo::stdx::unordered_map<Target, PerTargetStats> perCollectionStats;
     for (auto& changeEvent : changeEvents) {
         size_t inputBytes = changeEvent.objsize();
         totalNumInputBytes += inputBytes;
+        if (getPerTargetStatsEnabled(_context->featureFlags) &&
+            changeEvent.hasField(DocumentSourceChangeStream::kNamespaceField)) {
+            auto ns = changeEvent.getObjectField(DocumentSourceChangeStream::kNamespaceField);
+            if (ns.hasField(kCollFieldName) && ns.hasField(kDbFieldName)) {
+                Target target{.db = ns.getStringField(kDbFieldName).toString(),
+                              .coll = ns.getStringField(kCollFieldName).toString()};
+                incPerCollectionStats(perCollectionStats, target, inputBytes);
+            }
+        }
         if (auto streamDoc = processChangeEvent(std::move(changeEvent)); streamDoc) {
             dataMsg.docs.push_back(std::move(*streamDoc));
         } else {
@@ -689,7 +714,8 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
                                    .numInputBytes = totalNumInputBytes,
                                    .numDlqDocs = numDlqDocs,
-                                   .timeSpent = dataMsg.creationTimer.elapsed()});
+                                   .timeSpent = dataMsg.creationTimer.elapsed(),
+                                   .perTargetStats = std::move(perCollectionStats)});
 
     // Early return if we did not manage to add any change events to 'dataMsg.docs'.
     if (dataMsg.docs.empty()) {
