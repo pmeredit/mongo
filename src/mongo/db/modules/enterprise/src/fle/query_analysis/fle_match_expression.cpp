@@ -323,7 +323,7 @@ bool elementIsInfinite(BSONElement elt) {
 IndexEntry makeEntryForRange(StringData fieldpath) {
     return IndexEntry(BSON(fieldpath << 1),
                       IndexType::INDEX_ENCRYPTED_RANGE,
-                      IndexDescriptor::kLatestIndexVersion,
+                      IndexConfig::kLatestIndexVersion,
                       // FLE does not support arrays, so encrypted indexes are never multikey.
                       false,
                       // Empty multikey paths, since the shard key index cannot be multikey.
