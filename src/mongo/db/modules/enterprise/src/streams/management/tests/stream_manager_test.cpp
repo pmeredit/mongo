@@ -1828,6 +1828,30 @@ TEST_F(StreamManagerTest, ParseOnlyMode_Https) {
     ASSERT_EQUALS("__noopSink", parseConnections->at(2).getName());
 }
 
+TEST_F(StreamManagerTest, ParseOnlyMode_S3) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+    std::string pipelineRaw = R"([
+        { $source: { connectionName: "__testMemory" } },
+        { $emit: { connectionName: "__s3Connection", bucket: "some_bucket", path: "some/path/" } }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    StartStreamProcessorCommand request;
+    request.setPipeline(parsePipelineFromBSON(pipeline));
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    auto startOptions = mongo::StartOptions{};
+    startOptions.setParseOnly(true);
+    request.setOptions(startOptions);
+    auto reply = streamManager->startStreamProcessor(request);
+    auto parseConnections = reply.getConnections();
+    ASSERT_EQUALS(2, parseConnections->size());
+    ASSERT_EQUALS("__testMemory", parseConnections->at(0).getName());
+    ASSERT_EQUALS("__s3Connection", parseConnections->at(1).getName());
+}
+
 TEST_F(StreamManagerTest, UpdateConnections_ShouldFailOnUnsupportedTypes) {
     auto streamManager = createStreamManager(StreamManager::Options{});
 
