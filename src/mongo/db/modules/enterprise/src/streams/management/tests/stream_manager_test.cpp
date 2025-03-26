@@ -453,9 +453,8 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
     // Start a stream processor asynchronously and make it sleep for 10s while establishing
     // connections.
     setGlobalFailPoint("streamProcessorStartSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 10)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 10)));
 
     stdx::thread startThread = stdx::thread([&]() {
         StartStreamProcessorCommand request;
@@ -514,9 +513,8 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     // Start a stream processor asynchronously and make it sleep for 15s while establishing
     // connections.
     setGlobalFailPoint("streamProcessorStartSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 15)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 15)));
 
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
@@ -544,9 +542,7 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     ASSERT_TRUE(listReply.getStreamProcessors().empty());
 
     // Deactivate the fail point.
-    setGlobalFailPoint("streamProcessorStartSleepSeconds",
-                       BSON("mode"
-                            << "off"));
+    setGlobalFailPoint("streamProcessorStartSleepSeconds", BSON("mode" << "off"));
 }
 
 TEST_F(StreamManagerTest, StopTimesOut) {
@@ -567,9 +563,8 @@ TEST_F(StreamManagerTest, StopTimesOut) {
 
     // Set a failpoint to make Executor sleep for 15s while stopping the stream processor.
     setGlobalFailPoint("streamProcessorStopSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 15)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 15)));
 
     StopStreamProcessorCommand stopRequest;
     stopRequest.setTenantId(kTestTenantId1);
@@ -581,9 +576,7 @@ TEST_F(StreamManagerTest, StopTimesOut) {
         streamManager->stopStreamProcessor(stopRequest), DBException, "Timeout while stopping"_sd);
 
     // Deactivate the fail point.
-    setGlobalFailPoint("streamProcessorStopSleepSeconds",
-                       BSON("mode"
-                            << "off"));
+    setGlobalFailPoint("streamProcessorStopSleepSeconds", BSON("mode" << "off"));
 
     // Try stopping the stream processor again with a longer timeout and verify that it successfully
     // stops.
@@ -698,17 +691,16 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
     request.setProcessorId(StringData(streamName));
-    request.setPipeline({BSON("$source" << BSON("connectionName"
-                                                << "kafka"
-                                                << "topic"
-                                                << "input"
-                                                << "testOnlyPartitionCount" << partitionCount)),
-                         getTestLogSinkSpec()});
+    request.setPipeline(
+        {BSON("$source" << BSON("connectionName" << "kafka"
+                                                 << "topic"
+                                                 << "input"
+                                                 << "testOnlyPartitionCount" << partitionCount)),
+         getTestLogSinkSpec()});
     request.setConnections({mongo::Connection("kafka",
                                               mongo::ConnectionTypeEnum::Kafka,
-                                              BSON("bootstrapServers"
-                                                   << "localhost:9092"
-                                                   << "isTestKafka" << true))});
+                                              BSON("bootstrapServers" << "localhost:9092"
+                                                                      << "isTestKafka" << true))});
     request.setOptions(mongo::StartOptions{});
 
     // Create rather than start since we'll be calling `runOnce()` manually within this function.
@@ -806,16 +798,12 @@ TEST_F(StreamManagerTest, GetMetrics) {
 
 TEST_F(StreamManagerTest, GetMetrics_durationSinceLastRunOnce) {
     setGlobalFailPoint("streamProcessorRunOnceSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 1)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 1)));
 
     // Deactivate the fail point.
-    mongo::ScopeGuard guard([&] {
-        setGlobalFailPoint("streamProcessorRunOnceSleepSeconds",
-                           BSON("mode"
-                                << "off"));
-    });
+    mongo::ScopeGuard guard(
+        [&] { setGlobalFailPoint("streamProcessorRunOnceSleepSeconds", BSON("mode" << "off")); });
 
     auto streamManager = createStreamManager(StreamManager::Options{});
 
@@ -1045,8 +1033,7 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     request2.setTenantId(StringData(kTestTenantId1));
     request2.setName(StringData("name2"));
     request2.setProcessorId(StringData("name2"));
-    request2.setPipeline({BSON(kSourceStageName << BSON("connectionName"
-                                                        << "sample_data_solar")),
+    request2.setPipeline({BSON(kSourceStageName << BSON("connectionName" << "sample_data_solar")),
                           getTestLogSinkSpec()});
     request2.setConnections({mongo::Connection(
         "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});
@@ -1131,10 +1118,10 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         checkpointOptions.setLocalDisk(localDiskOptions);
         startOptions.setCheckpointOptions(checkpointOptions);
         request.setOptions(startOptions);
-        request.setConnections({mongo::Connection("testKafka",
-                                                  mongo::ConnectionTypeEnum::Kafka,
-                                                  BSON("bootstrapServers"
-                                                       << "localhost:9092"
+        request.setConnections(
+            {mongo::Connection("testKafka",
+                               mongo::ConnectionTypeEnum::Kafka,
+                               BSON("bootstrapServers" << "localhost:9092"
                                                        << "isTestKafka" << true))});
         const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
         request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
@@ -1299,9 +1286,8 @@ TEST_F(StreamManagerTest, Start_ShouldCorrectlyInitCheckpointCoordinatorAfterChe
 
     createSPRequest.setConnections({{"testKafka",
                                      mongo::ConnectionTypeEnum::Kafka,
-                                     BSON("bootstrapServers"
-                                          << "localhost:9092"
-                                          << "isTestKafka" << true)}});
+                                     BSON("bootstrapServers" << "localhost:9092"
+                                                             << "isTestKafka" << true)}});
 
     streamManager->startStreamProcessor(createSPRequest);
 
@@ -1428,9 +1414,8 @@ TEST_F(StreamManagerTest,
 
     auto sourceConnection = mongo::Connection("testKafka",
                                               mongo::ConnectionTypeEnum::Kafka,
-                                              BSON("bootstrapServers"
-                                                   << "localhost:9092"
-                                                   << "isTestKafka" << true));
+                                              BSON("bootstrapServers" << "localhost:9092"
+                                                                      << "isTestKafka" << true));
     createSPRequest.setConnections({sourceConnection});
 
     auto beforeSPStartTs = system_clock::now();

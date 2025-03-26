@@ -10,8 +10,8 @@ import {
 } from "src/mongo/db/modules/enterprise/jstests/streams/common_test.js";
 import {
     getDefaultSp,
+    test as constants,
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {test as constants} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 
 for (let parallelism of [0, 2, 4, 8]) {
     const test = ({

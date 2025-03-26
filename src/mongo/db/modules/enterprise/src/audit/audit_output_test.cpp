@@ -77,22 +77,16 @@ const BSONObj kCustomData{};
 const PrivilegeVector kPrivilegeVector({Privilege(
     ResourcePattern::forAnyNormalResource(boost::none), ActionType::refineCollectionShardKey)});
 
-const auto kOldReplsetConfig = BSON("_id"
-                                    << "ABCD"
-                                    << "members"
-                                    << BSONArray(BSON("0"
-                                                      << "a")));
-const auto kNewReplsetConfig = BSON("_id"
-                                    << "ABCD"
-                                    << "members"
-                                    << BSONArray(BSON("0"
-                                                      << "a"
-                                                      << "1"
-                                                      << "b")));
+const auto kOldReplsetConfig = BSON("_id" << "ABCD"
+                                          << "members" << BSONArray(BSON("0" << "a")));
+const auto kNewReplsetConfig = BSON("_id" << "ABCD"
+                                          << "members"
+                                          << BSONArray(BSON("0" << "a"
+                                                                << "1"
+                                                                << "b")));
 
-const auto kUsersBefore = BSONArray(BSON("0" << BSON("user"
-                                                     << "john"
-                                                     << "database" << DB_NAME)));
+const auto kUsersBefore = BSONArray(BSON("0" << BSON("user" << "john"
+                                                            << "database" << DB_NAME)));
 const auto kUsersAfter = BSONArray();
 
 const auto kFooDoc = BSON("foo" << 1);
@@ -109,7 +103,7 @@ public:
         return {};
     }
 
-    void snipForLogging(mutablebson::Document* cmdObj) const override{};
+    void snipForLogging(mutablebson::Document* cmdObj) const override {};
 
     StringData getName() const override {
         return COMMAND_NAME;
@@ -1294,11 +1288,7 @@ TEST_F(AuditOCSFTest, basicLogRemoveShardOCSF) {
 }
 
 TEST_F(AuditMongoTest, basicLogShardCollectionMongo) {
-    logShardCollection(getClient(),
-                       kNamespaceString,
-                       BSON("key"
-                            << "DOB"),
-                       true);
+    logShardCollection(getClient(), kNamespaceString, BSON("key" << "DOB"), true);
     auto expectedOutputMongo =
         "{ atype: 'shardCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
         "users: [], roles: [], param: { ns: 'test.coll', key: { key: 'DOB' }, options: { unique: "
@@ -1308,11 +1298,7 @@ TEST_F(AuditMongoTest, basicLogShardCollectionMongo) {
 }
 
 TEST_F(AuditOCSFTest, basicLogShardCollectionOCSF) {
-    logShardCollection(getClient(),
-                       kNamespaceString,
-                       BSON("key"
-                            << "DOB"),
-                       true);
+    logShardCollection(getClient(), kNamespaceString, BSON("key" << "DOB"), true);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 1, type_uid: 500201, "
         "actor: { user: { type_id: 1 } }, unmapped: { atype: 'shardCollection', ns: 'test.coll', "
@@ -1323,10 +1309,7 @@ TEST_F(AuditOCSFTest, basicLogShardCollectionOCSF) {
 }
 
 TEST_F(AuditMongoTest, basicLogRefineCollectionShardKeyMongo) {
-    logRefineCollectionShardKey(getClient(),
-                                kNamespaceString,
-                                BSON("key"
-                                     << "age"));
+    logRefineCollectionShardKey(getClient(), kNamespaceString, BSON("key" << "age"));
     auto expectedOutputMongo =
         "{ atype: 'refineCollectionShardKey',local: { unix: 'anonymous' }, remote: { unix: "
         "'anonymous' }, users: [], roles: [], param: { ns: 'test.coll', key: { key: 'age' } }, "
@@ -1336,10 +1319,7 @@ TEST_F(AuditMongoTest, basicLogRefineCollectionShardKeyMongo) {
 }
 
 TEST_F(AuditOCSFTest, basicLogRefineCollectionShardKeyOCSF) {
-    logRefineCollectionShardKey(getClient(),
-                                kNamespaceString,
-                                BSON("key"
-                                     << "age"));
+    logRefineCollectionShardKey(getClient(), kNamespaceString, BSON("key" << "age"));
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 3, type_uid: 500201, "
         "actor: { user: { type_id: 1 } }, unmapped: { atype: 'refineCollectionShardKey', ns: "
@@ -1472,10 +1452,8 @@ TEST_F(AuditOCSFTest, basicLogSetClusterParameterOCSF) {
 
 TEST_F(AuditMongoTest, basicLogUpdateCachedClusterParameterMongo) {
     logUpdateCachedClusterParameter(getClient(),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost"),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost2"),
+                                    BSON("security.sasl.hostName" << "localhost"),
+                                    BSON("security.sasl.hostName" << "localhost2"),
                                     boost::none);
     auto expectedOutputMongo =
         "{ atype: 'updateCachedClusterServerParameter', local: { unix: 'anonymous' }, remote: { "
@@ -1488,10 +1466,8 @@ TEST_F(AuditMongoTest, basicLogUpdateCachedClusterParameterMongo) {
 
 TEST_F(AuditOCSFTest, basicLogUpdateCachedClusterParameterOCSF) {
     logUpdateCachedClusterParameter(getClient(),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost"),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost2"),
+                                    BSON("security.sasl.hostName" << "localhost"),
+                                    BSON("security.sasl.hostName" << "localhost2"),
                                     boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 1, type_uid: 500201, "

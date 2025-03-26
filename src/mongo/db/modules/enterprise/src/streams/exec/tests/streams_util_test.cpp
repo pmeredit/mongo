@@ -190,67 +190,44 @@ TEST(UtilTest, ParseAndDeserializeJsonResponse) {
         {"Should transform an object",
          R"({"field1": "value1", "field2": {"field3": "value3"}})",
          {},
-         Value(BSON("field1"
-                    << "value1"
-                    << "field2"
-                    << BSON("field3"
-                            << "value3")))},
+         Value(BSON("field1" << "value1"
+                             << "field2" << BSON("field3" << "value3")))},
         {"Should transform array",
          R"([{"field1": "value1"}, {"field1": "value2"}])",
          false,
-         Value(BSON_ARRAY(BSON("field1"
-                               << "value1")
-                          << BSON("field1"
-                                  << "value2")))},
+         Value(BSON_ARRAY(BSON("field1" << "value1") << BSON("field1" << "value2")))},
         {
             "Should parse fields in object when flagged to do so",
             R"({"content": "{\"foo\": \"bar\"}", "nested": { "data": "{\"abc\": \"xyz\"}"}})",
             true,
-            Value(BSON("content" << BSON("foo"
-                                         << "bar")
-                                 << "nested"
-                                 << BSON("data" << BSON("abc"
-                                                        << "xyz")))),
+            Value(BSON("content" << BSON("foo" << "bar") << "nested"
+                                 << BSON("data" << BSON("abc" << "xyz")))),
         },
         {
             "Should leave fields unparsed in object when not flagged to do so",
             R"({"content": "{\"foo\": \"bar\"}", "nested": { "data": "{\"abc\": \"xyz\"}"}})",
             false,
-            Value(BSON("content"
-                       << "{\"foo\": \"bar\"}"
-                       << "nested"
-                       << BSON("data"
-                               << "{\"abc\": \"xyz\"}"))),
+            Value(BSON("content" << "{\"foo\": \"bar\"}"
+                                 << "nested" << BSON("data" << "{\"abc\": \"xyz\"}"))),
         },
         {
             "Should parse fields in array when flagged to do so",
             R"([{"content": "{\"foo\": \"bar\"}", "nested": { "data": "{\"abc\": \"xyz\"}"}}, {"content": "{\"foo\": \"bar2\"}", "nested": { "data": "{\"abc\": \"xyz2\"}"}}])",
             true,
-            Value(BSON_ARRAY(BSON("content" << BSON("foo"
-                                                    << "bar")
-                                            << "nested"
-                                            << BSON("data" << BSON("abc"
-                                                                   << "xyz")))
-                             << BSON("content" << BSON("foo"
-                                                       << "bar2")
-                                               << "nested"
-                                               << BSON("data" << BSON("abc"
-                                                                      << "xyz2"))))),
+            Value(BSON_ARRAY(BSON("content" << BSON("foo" << "bar") << "nested"
+                                            << BSON("data" << BSON("abc" << "xyz")))
+                             << BSON("content" << BSON("foo" << "bar2") << "nested"
+                                               << BSON("data" << BSON("abc" << "xyz2"))))),
         },
         {
             "Should leave fields in array unparsed when not flagged to do so",
             R"([{"content": "{\"foo\": \"bar\"}", "nested": { "data": "{\"abc\": \"xyz\"}"}}, {"content": "{\"foo\": \"bar2\"}", "nested": { "data": "{\"abc\": \"xyz2\"}"}}])",
             false,
-            Value(BSON_ARRAY(BSON("content"
-                                  << "{\"foo\": \"bar\"}"
-                                  << "nested"
-                                  << BSON("data"
-                                          << "{\"abc\": \"xyz\"}"))
-                             << BSON("content"
-                                     << "{\"foo\": \"bar2\"}"
-                                     << "nested"
-                                     << BSON("data"
-                                             << "{\"abc\": \"xyz2\"}")))),
+            Value(BSON_ARRAY(BSON("content" << "{\"foo\": \"bar\"}"
+                                            << "nested" << BSON("data" << "{\"abc\": \"xyz\"}"))
+                             << BSON("content" << "{\"foo\": \"bar2\"}"
+                                               << "nested"
+                                               << BSON("data" << "{\"abc\": \"xyz2\"}")))),
         }};
 
     for (const TestCase& tc : testCases) {

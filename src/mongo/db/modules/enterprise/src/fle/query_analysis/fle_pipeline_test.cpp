@@ -16,29 +16,27 @@ namespace {
 
 static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
 const BSONObj encryptObj =
-    BSON("encrypt" << BSON("algorithm"
-                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                           << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
-                           << "bsonType"
-                           << "string"));
+    BSON("encrypt" << BSON("algorithm" << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                                       << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                                       << "bsonType"
+                                       << "string"));
 
-const BSONObj kPatternPropertiesSchema = BSON("type"
-                                              << "object"
-                                              << "patternProperties" << BSON("foo" << encryptObj));
+const BSONObj kPatternPropertiesSchema =
+    BSON("type" << "object"
+                << "patternProperties" << BSON("foo" << encryptObj));
 
 const BSONObj kMultiEncryptSchema = BSON(
-    "type"
-    << "object"
-    << "properties"
-    << BSON("person" << encryptObj << "user"
-                     << BSON("type"
-                             << "object"
-                             << "properties"
-                             << BSON("ssn"
-                                     << encryptObj << "address" << encryptObj << "accounts"
-                                     << BSON("type"
-                                             << "object"
-                                             << "properties" << BSON("bank" << encryptObj))))));
+    "type" << "object"
+           << "properties"
+           << BSON("person" << encryptObj << "user"
+                            << BSON("type"
+                                    << "object"
+                                    << "properties"
+                                    << BSON("ssn" << encryptObj << "address" << encryptObj
+                                                  << "accounts"
+                                                  << BSON("type" << "object"
+                                                                 << "properties"
+                                                                 << BSON("bank" << encryptObj))))));
 
 class FLEPipelineTest : public FLETestFixture {
 public:
@@ -339,8 +337,7 @@ TEST_F(FLEPipelineTest, ExclusionWithAdditionalPropertiesKeepsNonNamedProperties
 }
 
 TEST_F(FLEPipelineTest, InclusionRenameMovesEncryptionMetadata) {
-    BSONObj projection = BSON("$project" << BSON("user"
-                                                 << "$ssn"));
+    BSONObj projection = BSON("$project" << BSON("user" << "$ssn"));
     const auto& outputSchema = getSchemaForStage({projection}, kDefaultSsnSchema);
 
     ASSERT(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}) == kDefaultMetadata);
@@ -348,18 +345,15 @@ TEST_F(FLEPipelineTest, InclusionRenameMovesEncryptionMetadata) {
 }
 
 TEST_F(FLEPipelineTest, InclusionRenameOverwritesEncryptionMetadata) {
-    BSONObj projection = BSON("$project" << BSON("user"
-                                                 << "$ssn"));
-    const BSONObj secondEncryptObj =
-        BSON("encrypt" << BSON("algorithm"
-                               << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                               << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
-                               << "bsonType"
-                               << "string"));
-    const auto inputSchema = BSON("type"
-                                  << "object"
-                                  << "properties"
-                                  << BSON("user" << encryptObj << "ssn" << secondEncryptObj));
+    BSONObj projection = BSON("$project" << BSON("user" << "$ssn"));
+    const BSONObj secondEncryptObj = BSON(
+        "encrypt" << BSON("algorithm" << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                                      << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                                      << "bsonType"
+                                      << "string"));
+    const auto inputSchema =
+        BSON("type" << "object"
+                    << "properties" << BSON("user" << encryptObj << "ssn" << secondEncryptObj));
     const auto& outputSchema = getSchemaForStage({projection}, inputSchema);
     auto inputTree = EncryptionSchemaTreeNode::parse(inputSchema, EncryptionSchemaType::kLocal);
     ASSERT(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}) ==
@@ -367,8 +361,7 @@ TEST_F(FLEPipelineTest, InclusionRenameOverwritesEncryptionMetadata) {
 }
 
 TEST_F(FLEPipelineTest, RenameFromPrefixOfEncryptedFieldWorks) {
-    BSONObj projection = BSON("$project" << BSON("newName"
-                                                 << "$user"));
+    BSONObj projection = BSON("$project" << BSON("newName" << "$user"));
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kMultiEncryptSchema, EncryptionSchemaType::kLocal);
     const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
@@ -376,8 +369,7 @@ TEST_F(FLEPipelineTest, RenameFromPrefixOfEncryptedFieldWorks) {
 }
 
 TEST_F(FLEPipelineTest, RenameFromPatternPropertiesKeepsEncryptionMetadata) {
-    BSONObj projection = BSON("$project" << BSON("newName"
-                                                 << "$foo"));
+    BSONObj projection = BSON("$project" << BSON("newName" << "$foo"));
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
     const auto& outputSchema = getSchemaForStage({projection}, kPatternPropertiesSchema);
@@ -386,8 +378,7 @@ TEST_F(FLEPipelineTest, RenameFromPatternPropertiesKeepsEncryptionMetadata) {
 }
 
 TEST_F(FLEPipelineTest, RenameFromAdditionalPropertiesKeepsEncryptionMetadata) {
-    BSONObj projection = BSON("$project" << BSON("newName"
-                                                 << "$foo"));
+    BSONObj projection = BSON("$project" << BSON("newName" << "$foo"));
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     const auto& outputSchema = getSchemaForStage({projection}, kAllEncryptedSchema);
@@ -397,8 +388,7 @@ TEST_F(FLEPipelineTest, RenameFromAdditionalPropertiesKeepsEncryptionMetadata) {
 
 TEST_F(FLEPipelineTest, InclusionEvaluatedExpressionReturnsNotEncrypted) {
     BSONObj projection =
-        BSON("$project" << BSON("newField" << BSON("$add" << BSON_ARRAY("$oldOne"
-                                                                        << "$oldTwo"))));
+        BSON("$project" << BSON("newField" << BSON("$add" << BSON_ARRAY("$oldOne" << "$oldTwo"))));
     const auto& outputSchema = getSchemaForStage({projection}, kDefaultSsnSchema);
     ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
@@ -419,15 +409,13 @@ TEST_F(FLEPipelineTest, InclusionWithExpressionProperlyBuildsSchema) {
 
 TEST_F(FLEPipelineTest,
        InclusionWithEncryptedExpressionAtNestedPathReturnsEncryptionSchemaStateMixedNode) {
-    BSONObj projection = BSON("$project" << BSON("newField.secondary"
-                                                 << "$user.ssn"));
+    BSONObj projection = BSON("$project" << BSON("newField.secondary" << "$user.ssn"));
     ASSERT_THROWS_CODE(getSchemaForStage({projection}, kMultiEncryptSchema)
                            .getEncryptionMetadataForPath(FieldRef("newField")),
                        AssertionException,
                        31133);
 
-    projection = BSON("$project" << BSON("a.very.deep.path"
-                                         << "$user.ssn"));
+    projection = BSON("$project" << BSON("a.very.deep.path" << "$user.ssn"));
     ASSERT_THROWS_CODE(getSchemaForStage({projection}, kMultiEncryptSchema)
                            .getEncryptionMetadataForPath(FieldRef("a")),
                        AssertionException,
@@ -443,15 +431,13 @@ TEST_F(FLEPipelineTest, InclusionWithUnEncryptedExpressionAtNestedPathReturnsNot
 }
 
 TEST_F(FLEPipelineTest, AddFieldsRenameMovesEncryptionMetadataWorks) {
-    BSONObj projection = BSON("$addFields" << BSON("person"
-                                                   << "$ssn"));
+    BSONObj projection = BSON("$addFields" << BSON("person" << "$ssn"));
     auto& schema = getSchemaForStage({projection}, kDefaultSsnSchema);
     ASSERT(schema.getEncryptionMetadataForPath(FieldRef("person")) == kDefaultMetadata);
 }
 
 TEST_F(FLEPipelineTest, AddFieldsRenameEncryptedToDottedPathCreatesEncryptionSchemaStateMixedNode) {
-    BSONObj projection = BSON("$addFields" << BSON("person.subObj"
-                                                   << "$ssn"));
+    BSONObj projection = BSON("$addFields" << BSON("person.subObj" << "$ssn"));
     auto& schema = getSchemaForStage({projection}, kDefaultSsnSchema);
     ASSERT_THROWS_CODE(
         schema.getEncryptionMetadataForPath(FieldRef("person")), AssertionException, 31133);
@@ -459,16 +445,14 @@ TEST_F(FLEPipelineTest, AddFieldsRenameEncryptedToDottedPathCreatesEncryptionSch
 
 TEST_F(FLEPipelineTest,
        AddFieldsComputedEncryptedToDottedPathCreatesEncryptionSchemaStateMixedNode) {
-    BSONObj projection = BSON("$addFields" << BSON("person.subObj"
-                                                   << "$user.ssn"));
+    BSONObj projection = BSON("$addFields" << BSON("person.subObj" << "$user.ssn"));
     auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
     ASSERT_THROWS_CODE(
         schema.getEncryptionMetadataForPath(FieldRef("person")), AssertionException, 31133);
 }
 
 TEST_F(FLEPipelineTest, AddFieldsFromPrefixOfEncryptedField) {
-    BSONObj projection = BSON("$addFields" << BSON("newName"
-                                                   << "$user"));
+    BSONObj projection = BSON("$addFields" << BSON("newName" << "$user"));
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kMultiEncryptSchema, EncryptionSchemaType::kLocal);
     const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
@@ -476,8 +460,7 @@ TEST_F(FLEPipelineTest, AddFieldsFromPrefixOfEncryptedField) {
 }
 
 TEST_F(FLEPipelineTest, AddFieldsFromPatternPropertiesKeepsEncryptionMetadata) {
-    BSONObj projection = BSON("$addFields" << BSON("newName"
-                                                   << "$foo"));
+    BSONObj projection = BSON("$addFields" << BSON("newName" << "$foo"));
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
     const auto& outputSchema = getSchemaForStage({projection}, kPatternPropertiesSchema);
@@ -486,8 +469,7 @@ TEST_F(FLEPipelineTest, AddFieldsFromPatternPropertiesKeepsEncryptionMetadata) {
 }
 
 TEST_F(FLEPipelineTest, AddFieldsFromAdditionalPropertiesKeepsEncryptionMetadata) {
-    BSONObj projection = BSON("$addFields" << BSON("newName"
-                                                   << "$foo"));
+    BSONObj projection = BSON("$addFields" << BSON("newName" << "$foo"));
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     const auto& outputSchema = getSchemaForStage({projection}, kAllEncryptedSchema);
@@ -496,17 +478,15 @@ TEST_F(FLEPipelineTest, AddFieldsFromAdditionalPropertiesKeepsEncryptionMetadata
 }
 
 TEST_F(FLEPipelineTest, AddFieldsOverwritesPrefixOfEncryptedField) {
-    BSONObj projection = BSON("$addFields" << BSON("user"
-                                                   << "randomString"
-                                                   << "person"
-                                                   << "secondString"));
+    BSONObj projection = BSON("$addFields" << BSON("user" << "randomString"
+                                                          << "person"
+                                                          << "secondString"));
     const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
     ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, AddFieldsCannotExtendAnEncryptedField) {
-    BSONObj projection = BSON("$addFields" << BSON("ssn.notAllowed"
-                                                   << "randomString"));
+    BSONObj projection = BSON("$addFields" << BSON("ssn.notAllowed" << "randomString"));
     ASSERT_THROWS_CODE(
         getSchemaForStage({projection}, kDefaultSsnSchema), AssertionException, 51096);
 }
@@ -532,71 +512,63 @@ TEST_F(FLEPipelineTest, NoEncryptedFieldSetsFlagToFalse) {
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToNewFields) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
-                                                      << "$randomField"));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << "$randomField"));
     const auto& outputSchema = getSchemaForStage({replaceRoot}, kDefaultNestedSchema);
     ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedSubFieldFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
-                                                      << "$user"));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << "$user"));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31129);
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
-                                                      << "$user.ssn"));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << "$user.ssn"));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31159);
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldMatchingPatternPropertiesFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
-                                                      << "$matchingFieldfoo"));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << "$matchingFieldfoo"));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kPatternPropertiesSchema), AssertionException, 31159);
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToNonEncryptedFieldWithPatternProperties) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
-                                                      << "$nonMatchingField"));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << "$nonMatchingField"));
     const auto& outputSchema = getSchemaForStage({replaceRoot}, kPatternPropertiesSchema);
     ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldAdditionalPropertiesFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
-                                                      << "$additionalField"));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << "$additionalField"));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kAllEncryptedSchema), AssertionException, 31159);
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToLiteral) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("ssn"
-                                                                        << "value")));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("ssn" << "value")));
     const auto& outputSchema = getSchemaForStage({replaceRoot}, kDefaultNestedSchema);
     ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptFieldFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
-                                                                        << "$user.ssn")));
+    BSONObj replaceRoot =
+        BSON("$replaceRoot" << BSON("newRoot" << BSON("newField" << "$user.ssn")));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31110);
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptAdditionalFieldFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
-                                                                        << "$additionalField")));
+    BSONObj replaceRoot =
+        BSON("$replaceRoot" << BSON("newRoot" << BSON("newField" << "$additionalField")));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kAllEncryptedSchema), AssertionException, 31110);
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldFails) {
-    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
-                                                                        << "$user")));
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField" << "$user")));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31129);
 }
@@ -604,8 +576,7 @@ TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldF
 TEST_F(FLEPipelineTest, ScoreFailsUnsupportedCommand) {
     RAIIServerParameterControllerForTest controller("featureFlagSearchHybridScoringFull", true);
 
-    BSONObj scoreSpec = BSON("$score" << BSON("score"
-                                              << "$myScore"));
+    BSONObj scoreSpec = BSON("$score" << BSON("score" << "$myScore"));
     ASSERT_THROWS_CODE(getSchemaForStage({scoreSpec}, kDefaultSsnSchema),
                        AssertionException,
                        ErrorCodes::CommandNotSupported);

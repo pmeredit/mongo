@@ -15,8 +15,6 @@ import {
 import {
     flushUntilStopped,
     LocalDiskCheckpointUtil,
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
-import {
     TestHelper,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";

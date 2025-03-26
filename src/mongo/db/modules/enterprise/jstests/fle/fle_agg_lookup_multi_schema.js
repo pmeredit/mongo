@@ -8,10 +8,8 @@
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 import {
     fle2Enabled,
-    generateSchemasFromSchemaMap
-} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
-import {
-    kDeterministicAlgo,
+    generateSchemasFromSchemaMap,
+    kDeterministicAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();

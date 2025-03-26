@@ -65,12 +65,11 @@ public:
     std::unique_ptr<MergeOperator> createMergeStage(BSONObj spec,
                                                     bool allowMergeOnNullishValues = true) {
         MutableDocument mut{Document{spec.getField("$merge").Obj()}};
-        mut["into"] = Value(BSON("connectionName"
-                                 << "test"
-                                 << "db"
-                                 << "test"
-                                 << "coll"
-                                 << "test"));
+        mut["into"] = Value(BSON("connectionName" << "test"
+                                                  << "db"
+                                                  << "test"
+                                                  << "coll"
+                                                  << "test"));
         MergeOperator::Options opts;
         opts.isTest = true;
         opts.allowMergeOnNullishValues = allowMergeOnNullishValues;
@@ -130,12 +129,11 @@ protected:
 // Test that {whenMatched: replace, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "replace"
-                                      << "whenNotMatched"
-                                      << "insert"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "replace"
+                                             << "whenNotMatched"
+                                             << "insert"));
     auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
@@ -170,12 +168,11 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
 // Test that {whenMatched: replace, whenNotMatched: discard} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "replace"
-                                      << "whenNotMatched"
-                                      << "discard"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "replace"
+                                             << "whenNotMatched"
+                                             << "discard"));
     auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     ASSERT(mergeOperator);
@@ -211,12 +208,11 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
 // Test that {whenMatched: keepExisting, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "keepExisting"
-                                      << "whenNotMatched"
-                                      << "insert"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "keepExisting"
+                                             << "whenNotMatched"
+                                             << "insert"));
     auto mergeOperator = createMergeStage(std::move(spec));
     ASSERT(mergeOperator);
     mergeOperator->registerMetrics(_executor->getMetricManager());
@@ -251,12 +247,11 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
 // Test that {whenMatched: fail, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedFail) {
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "fail"
-                                      << "whenNotMatched"
-                                      << "insert"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "fail"
+                                             << "whenNotMatched"
+                                             << "insert"));
     ASSERT_THROWS_CODE_AND_WHAT(
         createMergeStage(std::move(spec)),
         DBException,
@@ -270,11 +265,10 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
         _context.get(), std::set<FieldPath>{"customerId"}));
 
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "merge"
-                                      << "on" << BSON_ARRAY("customerId")));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "merge"
+                                             << "on" << BSON_ARRAY("customerId")));
     auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
@@ -314,11 +308,10 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
         _context.get(), std::set<FieldPath>{"customerId"}));
 
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "merge"
-                                      << "on" << BSON_ARRAY("customerId")));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "merge"
+                                             << "on" << BSON_ARRAY("customerId")));
     auto mergeOperator = createMergeStage(std::move(spec), false /*allowMergeOnNullishValues*/);
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
@@ -387,12 +380,11 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
 
 TEST_F(MergeOperatorTest, DocumentTooLarge) {
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "replace"
-                                      << "whenNotMatched"
-                                      << "insert"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "replace"
+                                             << "whenNotMatched"
+                                             << "insert"));
     auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
@@ -419,12 +411,11 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
 
 TEST_F(MergeOperatorTest, DocumentBatchBoundary) {
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "replace"
-                                      << "whenNotMatched"
-                                      << "insert"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "replace"
+                                             << "whenNotMatched"
+                                             << "insert"));
     auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
@@ -509,12 +500,11 @@ TEST_F(MergeOperatorTest, BatchLargerThanQueueMaxSize) {
     dataMsg.creationTimer = mongo::Timer{};
 
     // The 'into' field is not used and just a placeholder.
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "replace"
-                                      << "whenNotMatched"
-                                      << "insert"));
+    auto spec = BSON("$merge" << BSON("into" << "target_collection"
+                                             << "whenMatched"
+                                             << "replace"
+                                             << "whenNotMatched"
+                                             << "insert"));
     auto mergeOperator = createMergeStage(std::move(spec));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     start(mergeOperator.get());
@@ -919,9 +909,8 @@ TEST_F(MergeOperatorTest, Partitioning) {
         connections.push_back(std::move(atlasConn));
         _context->connections = std::make_unique<ConnectionCollection>(connections);
 
-        std::vector<BSONObj> rawPipeline{BSON("$source" << BSON("connectionName"
-                                                                << "__testMemory")),
-                                         fromjson(spec)};
+        std::vector<BSONObj> rawPipeline{
+            BSON("$source" << BSON("connectionName" << "__testMemory")), fromjson(spec)};
 
         Planner planner(_context.get(), /*options*/ {});
         auto dag = planner.plan(rawPipeline);
@@ -1024,27 +1013,21 @@ TEST_F(MergeOperatorTest, Partitioning) {
             "coll": "$coll"
         }
     }})");
-    auto justColl1 = BSON("coll"
-                          << "one");
-    auto justColl2 = BSON("coll"
-                          << "two");
+    auto justColl1 = BSON("coll" << "one");
+    auto justColl2 = BSON("coll" << "two");
 
     // id gets generated but coll is the same
     ne(justColl1, justColl1);
     // different id, same coll
-    ne(BSON("coll"
-            << "one"
-            << "_id" << 2),
-       BSON("coll"
-            << "one"
-            << "_id" << 3));
+    ne(BSON("coll" << "one"
+                   << "_id" << 2),
+       BSON("coll" << "one"
+                   << "_id" << 3));
     // same id, same coll
-    eq(BSON("coll"
-            << "one"
-            << "_id" << 2),
-       BSON("coll"
-            << "one"
-            << "_id" << 2));
+    eq(BSON("coll" << "one"
+                   << "_id" << 2),
+       BSON("coll" << "one"
+                   << "_id" << 2));
 
     // evaluates to null
     err(BSON("coll" << BSONNULL << "_id" << 2),

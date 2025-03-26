@@ -354,40 +354,36 @@ TEST_F(AuditClientAttrsTestFixture, SerializationAndDeserialization) {
 }
 
 TEST_F(AuditClientAttrsTestFixture, SerializationValidation) {
-    BSONObj missingLocal = BSON("remote"
-                                << "192.168.1.1:12345"
-                                << "proxies" << BSONArray() << "isImpersonating" << false);
+    BSONObj missingLocal = BSON("remote" << "192.168.1.1:12345"
+                                         << "proxies" << BSONArray() << "isImpersonating" << false);
     ASSERT_THROWS_CODE_AND_WHAT(
         rpc::AuditClientAttrs(missingLocal),
         AssertionException,
         ErrorCodes::IDLFailedToParse,
         "BSON field 'AuditClientAttrsBase.local' is missing but a required field");
 
-    BSONObj missingRemote = BSON("local"
-                                 << "127.0.0.1:27017"
-                                 << "proxies" << BSONArray() << "isImpersonating" << false);
+    BSONObj missingRemote = BSON("local" << "127.0.0.1:27017"
+                                         << "proxies" << BSONArray() << "isImpersonating" << false);
     ASSERT_THROWS_CODE_AND_WHAT(
         rpc::AuditClientAttrs(missingRemote),
         AssertionException,
         ErrorCodes::IDLFailedToParse,
         "BSON field 'AuditClientAttrsBase.remote' is missing but a required field");
 
-    BSONObj missingProxies = BSON("local"
-                                  << "127.0.0.1:27017"
-                                  << "remote"
-                                  << "192.168.1.1:12345"
-                                  << "isImpersonating" << false);
+    BSONObj missingProxies = BSON("local" << "127.0.0.1:27017"
+                                          << "remote"
+                                          << "192.168.1.1:12345"
+                                          << "isImpersonating" << false);
     ASSERT_THROWS_CODE_AND_WHAT(
         rpc::AuditClientAttrs(missingProxies),
         AssertionException,
         ErrorCodes::IDLFailedToParse,
         "BSON field 'AuditClientAttrsBase.proxies' is missing but a required field");
 
-    BSONObj missingIsImpersonating = BSON("local"
-                                          << "127.0.0.1:27017"
-                                          << "remote"
-                                          << "192.168.1.1:12345"
-                                          << "proxies" << BSONArray());
+    BSONObj missingIsImpersonating = BSON("local" << "127.0.0.1:27017"
+                                                  << "remote"
+                                                  << "192.168.1.1:12345"
+                                                  << "proxies" << BSONArray());
     ASSERT_THROWS_CODE_AND_WHAT(
         rpc::AuditClientAttrs(missingIsImpersonating),
         AssertionException,
@@ -401,23 +397,22 @@ TEST_F(AuditClientAttrsTestFixture, SerializationValidation) {
     ASSERT_THROWS_CODE(
         rpc::AuditClientAttrs(invalidLocalType), AssertionException, ErrorCodes::TypeMismatch);
 
-    BSONObj invalidHostPort = BSON("local"
-                                   << "invalid:host:port"
-                                   << "remote"
-                                   << "192.168.1.1:12345"
-                                   << "proxies" << BSONArray() << "isImpersonating" << false);
+    BSONObj invalidHostPort =
+        BSON("local" << "invalid:host:port"
+                     << "remote"
+                     << "192.168.1.1:12345"
+                     << "proxies" << BSONArray() << "isImpersonating" << false);
     ASSERT_THROWS_CODE(
         rpc::AuditClientAttrs(invalidHostPort), AssertionException, ErrorCodes::FailedToParse);
 
     BSONArrayBuilder proxiesArr;
     proxiesArr.append("10.0.0.1:8080");
     proxiesArr.append(12345);  // Invalid type
-    BSONObj invalidProxyElement = BSON("local"
-                                       << "127.0.0.1:27017"
-                                       << "remote"
-                                       << "192.168.1.1:12345"
-                                       << "proxies" << proxiesArr.arr() << "isImpersonating"
-                                       << false);
+    BSONObj invalidProxyElement =
+        BSON("local" << "127.0.0.1:27017"
+                     << "remote"
+                     << "192.168.1.1:12345"
+                     << "proxies" << proxiesArr.arr() << "isImpersonating" << false);
     ASSERT_THROWS_CODE(
         rpc::AuditClientAttrs(invalidProxyElement), AssertionException, ErrorCodes::TypeMismatch);
 

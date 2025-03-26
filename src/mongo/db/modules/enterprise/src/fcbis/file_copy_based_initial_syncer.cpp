@@ -1209,7 +1209,7 @@ std::string FileCopyBasedInitialSyncer::_getPathRelativeTo(StringData path, Stri
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
     std::shared_ptr<BackupFileMetadataCollection> filesToClone) {
     return AsyncTry([this, self = shared_from_this(), filesToClone, fileIndex = size_t(0)]() mutable
-                    -> ExecutorFuture<bool> {
+                        -> ExecutorFuture<bool> {
                stdx::lock_guard lock(_mutex);
                // Returns "true" only when all files are finished cloning.
                if (fileIndex == filesToClone->size())
@@ -1773,8 +1773,7 @@ void FileCopyBasedInitialSyncer::Stats::append(BSONObjBuilder* builder) const {
     for (unsigned int i = 0; i < initialSyncAttemptInfos.size(); ++i) {
         BSONObj obj = initialSyncAttemptInfos[i].toBSON();
         if (builder->len() + obj.objsize() > BSONObjMaxUserSize) {
-            arrBuilder.append(BSON("Warning"
-                                   << "output truncated due to BSON object limit"));
+            arrBuilder.append(BSON("Warning" << "output truncated due to BSON object limit"));
             break;
         }
         arrBuilder.append(obj);
@@ -1880,8 +1879,7 @@ BSONObj FileCopyBasedInitialSyncer::_getInitialSyncProgress(WithLock) const {
         BSONObjBuilder flStat;
         el->append(&flStat);
         if (bob.len() + flStat.len() > BSONObjMaxUserSize) {
-            fls.append(BSON("Warning"
-                            << "output truncated due to BSON object limit"));
+            fls.append(BSON("Warning" << "output truncated due to BSON object limit"));
             break;
         }
         fls.append(flStat.obj());

@@ -16,8 +16,8 @@ import {
     waitForCount,
     waitForDoc,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
-
 import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
 const lastCheckpointFieldName = "lastCheckpoint";
 const sourceStateFieldName = "sourceState";
 const commitTimeFieldName = "commitTime";

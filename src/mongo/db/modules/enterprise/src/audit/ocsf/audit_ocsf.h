@@ -62,7 +62,7 @@ struct TryLogEventParamsOCSF : public TryLogEventParams {
           ocsfEventCategory(eventCategory),
           ocsfEventClass(eventClass),
           activityId(activityId),
-          severity(severity){};
+          severity(severity) {};
 
     TryLogEventParamsOCSF(Client* client,
                           ocsf::OCSFEventCategory eventCategory,
@@ -76,7 +76,7 @@ struct TryLogEventParamsOCSF : public TryLogEventParams {
           ocsfEventCategory(eventCategory),
           ocsfEventClass(eventClass),
           activityId(activityId),
-          severity(severity){};
+          severity(severity) {};
 
     ocsf::OCSFEventCategory ocsfEventCategory;
     ocsf::OCSFEventClass ocsfEventClass;

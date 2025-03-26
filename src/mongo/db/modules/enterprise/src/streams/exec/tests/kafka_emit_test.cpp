@@ -326,9 +326,7 @@ TEST_F(KafkaEmitTest, TestDateFormat) {
                                              << "f" << BSON("g" << isoString << "h" << 1)))))));
 
     // nested doc no-op
-    doc = Document(BSON("a" << 1 << "b"
-                            << BSON("c" << BSON("e"
-                                                << "foo"))));
+    doc = Document(BSON("a" << 1 << "b" << BSON("c" << BSON("e" << "foo"))));
     ASSERT_VALUE_EQ(Value(convertDateToISO8601(doc)), Value(doc));
 
     // nested array

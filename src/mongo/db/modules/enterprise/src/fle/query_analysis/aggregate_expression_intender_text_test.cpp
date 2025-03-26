@@ -22,10 +22,9 @@ TEST_F(TextSearchAggregateExpressionIntender, EncStrStartsWithMarksElementAsEncr
     auto encryptedObj = buildTextSearchEncryptElem(
         "prefixField"_sd, "test", EncryptionPlaceholderContext::kTextPrefixComparison);
     auto serializedExpr = markAggExpressionForTextAndSerialize(exprBson, false, Intention::Marked);
-    auto expected = BSON("$encStrStartsWith"
-                         << BSON("input"
-                                 << "$prefixField"
-                                 << "prefix" << BSON("$const" << encryptedObj.firstElement())));
+    auto expected = BSON("$encStrStartsWith" << BSON(
+                             "input" << "$prefixField"
+                                     << "prefix" << BSON("$const" << encryptedObj.firstElement())));
 
     ASSERT_EQ(Value::compare(Value(expected), serializedExpr, nullptr), 0);
 }
@@ -36,10 +35,9 @@ TEST_F(TextSearchAggregateExpressionIntender, EncStrStartsWithMarksNestedElement
     auto encryptedObj = buildTextSearchEncryptElem(
         "nested.prefixField"_sd, "test", EncryptionPlaceholderContext::kTextPrefixComparison);
     auto serializedExpr = markAggExpressionForTextAndSerialize(exprBson, false, Intention::Marked);
-    auto expected = BSON("$encStrStartsWith"
-                         << BSON("input"
-                                 << "$nested.prefixField"
-                                 << "prefix" << BSON("$const" << encryptedObj.firstElement())));
+    auto expected = BSON("$encStrStartsWith" << BSON(
+                             "input" << "$nested.prefixField"
+                                     << "prefix" << BSON("$const" << encryptedObj.firstElement())));
 
     ASSERT_EQ(Value::compare(Value(expected), serializedExpr, nullptr), 0);
 }

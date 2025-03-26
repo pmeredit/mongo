@@ -149,9 +149,8 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecMissin
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidBackupId) {
     auto expCtx = createMockBackupExpressionContext(_opCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("backupId"
-                                              << "12345"
-                                              << "file" << fileToBackup));
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << "12345"
+                                                         << "file" << fileToBackup));
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }

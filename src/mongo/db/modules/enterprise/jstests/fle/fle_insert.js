@@ -6,9 +6,7 @@ import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongo
 import {
     fle2Enabled,
     generateSchema,
-    generateSchemaV1
-} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
-import {
+    generateSchemaV1,
     kDeterministicAlgo,
     kRandomAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";

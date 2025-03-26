@@ -11,9 +11,7 @@ import {Thread} from "jstests/libs/parallelTester.js";
 import {
     getDefaultSp,
     Streams,
-} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {
-    test as testConstants
+    test as testConstants,
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     TEST_TENANT_ID,

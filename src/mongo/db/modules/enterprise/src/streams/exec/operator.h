@@ -96,7 +96,7 @@ public:
      * Operators with callback gauges should implement this method so that it registers them with
      * stream processor's executor.
      */
-    virtual void registerMetrics(MetricManager* metricManager){};
+    virtual void registerMetrics(MetricManager* metricManager) {};
 
     const std::vector<OutputInfo>& getOutputInfo() const {
         return _outputs;

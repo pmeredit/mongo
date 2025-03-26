@@ -148,7 +148,9 @@ TEST_F(SourceBufferManagerTest, RegisterDeregister) {
     // Deregister all source buffers and verify that the remaining source buffers get expected
     // number of pages preallocated to them.
     for (int i = 0; i < 200; ++i) {
-        { handles.pop_back(); }
+        {
+            handles.pop_back();
+        }
 
         auto numHandles = std::max<size_t>(handles.size(), 1);
         auto pageSize = _bufMgr->getPageSize();

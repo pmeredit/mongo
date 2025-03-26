@@ -264,9 +264,8 @@ public:
                                   << BSON("size" << options.size << "unit"
                                                  << StreamTimeUnit_serializer(options.sizeUnit))
                                   << "pipeline" << options.pipeline << "allowedLateness"
-                                  << BSON("unit"
-                                          << "second"
-                                          << "size" << 0)));
+                                  << BSON("unit" << "second"
+                                                 << "size" << 0)));
         } else {
             window = BSON("$hoppingWindow"
                           << BSON("interval"
@@ -276,9 +275,8 @@ public:
                                   << BSON("size" << options.slide << "unit"
                                                  << StreamTimeUnit_serializer(options.slideUnit))
                                   << "pipeline" << options.pipeline << "allowedLateness"
-                                  << BSON("unit"
-                                          << "second"
-                                          << "size" << 0)));
+                                  << BSON("unit" << "second"
+                                                 << "size" << 0)));
         }
         auto sink = fromjson(R"({ $emit: {connectionName: "__testMemory"}})");
         auto dag = makeDagFromBson(
@@ -2564,9 +2562,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
             "Failed to process input document in ProjectOperator with error: "
             "can't $divide by zero",
             dlqDoc["errInfo"]["reason"].String());
-        ASSERT_BSONOBJ_EQ(BSON("source" << BSON("type"
-                                                << "generated")
-                                        << "window"
+        ASSERT_BSONOBJ_EQ(BSON("source" << BSON("type" << "generated") << "window"
                                         << BSON("start" << Date_t::fromMillisSinceEpoch(0) << "end"
                                                         << Date_t::fromMillisSinceEpoch(1000))),
                           dlqDoc["_stream_meta"].Obj());

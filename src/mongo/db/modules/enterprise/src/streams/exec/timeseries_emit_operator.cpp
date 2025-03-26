@@ -328,9 +328,8 @@ boost::optional<TimeseriesOptions> TimeseriesWriter::getTimeseriesOptionsFromDb(
     tassert(9777902,
             "don't run this method if db or coll are expressions",
             !_options.dbExpr && !_options.collExpr);
-    auto filter = BSON("type"
-                       << "timeseries"
-                       << "name" << *_options.clientOptions.collection);
+    auto filter = BSON("type" << "timeseries"
+                              << "name" << *_options.clientOptions.collection);
     mongocxx::cursor tsCollectionCursor =
         _database->list_collections(toBsoncxxView(std::move(filter)));
 

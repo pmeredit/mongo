@@ -229,48 +229,42 @@ TEST(MagicRestore, BSONStreamReaderReadSampleCloudOplogs) {
 
 // A BSONObj with all the required fields parses correctly.
 TEST(MagicRestore, RestoreConfigurationValidParsing) {
-    auto restoreConfig = BSON("nodeType"
-                              << "replicaSet"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
+    auto restoreConfig =
+        BSON("nodeType" << "replicaSet"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
                                       << "version" << 1 << "term" << 1 << "members"
                                       << BSON_ARRAY(BSON("_id" << 0 << "host"
                                                                << "localhost:12345")))
-                              << "maxCheckpointTs" << Timestamp());
+                        << "maxCheckpointTs" << Timestamp());
     ASSERT_DOES_NOT_THROW(magic_restore::RestoreConfiguration::parse(
         IDLParserContext("RestoreConfiguration"), restoreConfig));
 }
 
 // Includes all possible fields in a RestoreConfiguration.
 TEST(MagicRestore, RestoreConfigurationValidParsingAllFields) {
-    auto restoreConfig = BSON("nodeType"
-                              << "shard"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
+    auto restoreConfig =
+        BSON("nodeType" << "shard"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
                                       << "version" << 1 << "term" << 1 << "members"
                                       << BSON_ARRAY(BSON("_id" << 0 << "host"
                                                                << "localhost:12345")))
-                              << "pointInTimeTimestamp" << Timestamp(1, 0)
-                              << "restoreToHigherTermThan" << int64_t(10) << "maxCheckpointTs"
-                              << Timestamp() << "collectionsToRestore"
-                              << BSON_ARRAY(BSON("ns"
-                                                 << "testDB"
-                                                 << "uuid" << UUID::gen()))
-                              << "seedForUuids" << OID() << "shardIdentityDocument"
-                              << BSON("shardName"
-                                      << "shard1"
-                                      << "clusterId" << OID() << "configsvrConnectionString"
-                                      << "conn")
-                              << "shardingRename"
-                              << BSON_ARRAY(BSON("sourceShardName"
-                                                 << "source"
-                                                 << "destinationShardName"
-                                                 << "destination"
-                                                 << "destinationShardConnectionString"
-                                                 << "connstring"))
-                              << "balancerSettings" << BSON("stopped" << false));
+                        << "pointInTimeTimestamp" << Timestamp(1, 0) << "restoreToHigherTermThan"
+                        << int64_t(10) << "maxCheckpointTs" << Timestamp() << "collectionsToRestore"
+                        << BSON_ARRAY(BSON("ns" << "testDB"
+                                                << "uuid" << UUID::gen()))
+                        << "seedForUuids" << OID() << "shardIdentityDocument"
+                        << BSON("shardName" << "shard1"
+                                            << "clusterId" << OID() << "configsvrConnectionString"
+                                            << "conn")
+                        << "shardingRename"
+                        << BSON_ARRAY(BSON("sourceShardName" << "source"
+                                                             << "destinationShardName"
+                                                             << "destination"
+                                                             << "destinationShardConnectionString"
+                                                             << "connstring"))
+                        << "balancerSettings" << BSON("stopped" << false));
 
 
     ASSERT_DOES_NOT_THROW(magic_restore::RestoreConfiguration::parse(
@@ -279,11 +273,10 @@ TEST(MagicRestore, RestoreConfigurationValidParsingAllFields) {
 
 // A BSONObj missing required fields will throw an error.
 TEST(MagicRestore, RestoreConfigurationMissingRequiredField) {
-    auto restoreConfig = BSON("nodeType"
-                              << "replicaSet"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
+    auto restoreConfig =
+        BSON("nodeType" << "replicaSet"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
                                       << "version" << 1 << "term" << 1 << "members"
                                       << BSON_ARRAY(BSON("_id" << 0 << "host"
                                                                << "localhost:12345"))));
@@ -296,16 +289,15 @@ TEST(MagicRestore, RestoreConfigurationMissingRequiredField) {
 }
 
 TEST(MagicRestore, RestoreConfigurationPitGreaterThanMaxTs) {
-    auto restoreConfig = BSON("nodeType"
-                              << "replicaSet"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
+    auto restoreConfig =
+        BSON("nodeType" << "replicaSet"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
                                       << "version" << 1 << "term" << 1 << "members"
                                       << BSON_ARRAY(BSON("_id" << 0 << "host"
                                                                << "localhost:12345")))
-                              << "maxCheckpointTs" << Timestamp(1, 1) << "pointInTimeTimestamp"
-                              << Timestamp(1, 0));
+                        << "maxCheckpointTs" << Timestamp(1, 1) << "pointInTimeTimestamp"
+                        << Timestamp(1, 0));
     ASSERT_THROWS_CODE_AND_WHAT(
         magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
                                                    restoreConfig),
@@ -315,16 +307,14 @@ TEST(MagicRestore, RestoreConfigurationPitGreaterThanMaxTs) {
 }
 
 TEST(MagicRestore, RestoreConfigurationZeroRestoreToTerm) {
-    auto restoreConfig = BSON("nodeType"
-                              << "replicaSet"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
-                                      << "version" << 1 << "term" << 1 << "members"
-                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                               << "localhost:12345")))
-                              << "maxCheckpointTs" << Timestamp() << "restoreToHigherTermThan"
-                              << int64_t(0));
+    auto restoreConfig = BSON(
+        "nodeType" << "replicaSet"
+                   << "replicaSetConfig"
+                   << BSON("_id" << "rs0"
+                                 << "version" << 1 << "term" << 1 << "members"
+                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                          << "localhost:12345")))
+                   << "maxCheckpointTs" << Timestamp() << "restoreToHigherTermThan" << int64_t(0));
 
     ASSERT_THROWS_CODE_AND_WHAT(
         magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
@@ -342,19 +332,17 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
         "or 'configShard'.";
 
     // Node type is `replicaSet` and `shardIdentityDocument` exists.
-    auto restoreConfig = BSON("nodeType"
-                              << "replicaSet"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
+    auto restoreConfig =
+        BSON("nodeType" << "replicaSet"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
                                       << "version" << 1 << "term" << 1 << "members"
                                       << BSON_ARRAY(BSON("_id" << 0 << "host"
                                                                << "localhost:12345")))
-                              << "maxCheckpointTs" << Timestamp() << "shardIdentityDocument"
-                              << BSON("shardName"
-                                      << "shard1"
-                                      << "clusterId" << OID() << "configsvrConnectionString"
-                                      << "conn"));
+                        << "maxCheckpointTs" << Timestamp() << "shardIdentityDocument"
+                        << BSON("shardName" << "shard1"
+                                            << "clusterId" << OID() << "configsvrConnectionString"
+                                            << "conn"));
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
@@ -363,21 +351,19 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
                                 errmsg);
 
     // Node type is `replicaSet` and `shardingRename` exists.
-    restoreConfig = BSON("nodeType"
-                         << "replicaSet"
-                         << "replicaSetConfig"
-                         << BSON("_id"
-                                 << "rs0"
-                                 << "version" << 1 << "term" << 1 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                          << "localhost:12345")))
-                         << "maxCheckpointTs" << Timestamp() << "shardingRename"
-                         << BSON_ARRAY(BSON("sourceShardName"
-                                            << "source"
-                                            << "destinationShardName"
-                                            << "destination"
-                                            << "destinationShardConnectionString"
-                                            << "connstring")));
+    restoreConfig =
+        BSON("nodeType" << "replicaSet"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                        << "maxCheckpointTs" << Timestamp() << "shardingRename"
+                        << BSON_ARRAY(BSON("sourceShardName" << "source"
+                                                             << "destinationShardName"
+                                                             << "destination"
+                                                             << "destinationShardConnectionString"
+                                                             << "connstring")));
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
@@ -386,16 +372,14 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
                                 errmsg);
 
     // Node type is `replicaSet` and `balancerSettings` exists.
-    restoreConfig = BSON("nodeType"
-                         << "replicaSet"
-                         << "replicaSetConfig"
-                         << BSON("_id"
-                                 << "rs0"
-                                 << "version" << 1 << "term" << 1 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                          << "localhost:12345")))
-                         << "maxCheckpointTs" << Timestamp() << "balancerSettings"
-                         << BSON("stopped" << false));
+    restoreConfig = BSON("nodeType" << "replicaSet"
+                                    << "replicaSetConfig"
+                                    << BSON("_id" << "rs0"
+                                                  << "version" << 1 << "term" << 1 << "members"
+                                                  << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                                           << "localhost:12345")))
+                                    << "maxCheckpointTs" << Timestamp() << "balancerSettings"
+                                    << BSON("stopped" << false));
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
@@ -404,49 +388,44 @@ TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
                                 errmsg);
 
     // Includes all three sharding fields and the node type is 'shard', so will parse correctly.
-    restoreConfig = BSON("nodeType"
-                         << "shard"
-                         << "replicaSetConfig"
-                         << BSON("_id"
-                                 << "rs0"
-                                 << "version" << 1 << "term" << 1 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                          << "localhost:12345")))
-                         << "maxCheckpointTs" << Timestamp() << "shardIdentityDocument"
-                         << BSON("shardName"
-                                 << "shard1"
-                                 << "clusterId" << OID() << "configsvrConnectionString"
-                                 << "conn")
-                         << "shardingRename"
-                         << BSON_ARRAY(BSON("sourceShardName"
-                                            << "source"
-                                            << "destinationShardName"
-                                            << "destination"
-                                            << "destinationShardConnectionString"
-                                            << "connstring"))
-                         << "balancerSettings" << BSON("stopped" << false));
+    restoreConfig =
+        BSON("nodeType" << "shard"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                        << "maxCheckpointTs" << Timestamp() << "shardIdentityDocument"
+                        << BSON("shardName" << "shard1"
+                                            << "clusterId" << OID() << "configsvrConnectionString"
+                                            << "conn")
+                        << "shardingRename"
+                        << BSON_ARRAY(BSON("sourceShardName" << "source"
+                                                             << "destinationShardName"
+                                                             << "destination"
+                                                             << "destinationShardConnectionString"
+                                                             << "connstring"))
+                        << "balancerSettings" << BSON("stopped" << false));
 
     ASSERT_DOES_NOT_THROW(magic_restore::RestoreConfiguration::parse(
         IDLParserContext("RestoreConfiguration"), restoreConfig));
 }
 
 TEST(MagicRestore, RestoreConfigurationShardingRenameNoShardIdentity) {
-    auto restoreConfig = BSON("nodeType"
-                              << "shard"
-                              << "replicaSetConfig"
-                              << BSON("_id"
-                                      << "rs0"
+    auto restoreConfig =
+        BSON("nodeType" << "shard"
+                        << "replicaSetConfig"
+                        << BSON("_id" << "rs0"
                                       << "version" << 1 << "term" << 1 << "members"
                                       << BSON_ARRAY(BSON("_id" << 0 << "host"
                                                                << "localhost:12345")))
-                              << "maxCheckpointTs" << Timestamp() << "shardingRename"
-                              << BSON_ARRAY(BSON("sourceShardName"
-                                                 << "source"
-                                                 << "destinationShardName"
-                                                 << "destination"
-                                                 << "destinationShardConnectionString"
-                                                 << "connstring"))
-                              << "balancerSettings" << BSON("stopped" << false));
+                        << "maxCheckpointTs" << Timestamp() << "shardingRename"
+                        << BSON_ARRAY(BSON("sourceShardName" << "source"
+                                                             << "destinationShardName"
+                                                             << "destination"
+                                                             << "destinationShardConnectionString"
+                                                             << "connstring"))
+                        << "balancerSettings" << BSON("stopped" << false));
 
     ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
                                     IDLParserContext("RestoreConfiguration"), restoreConfig),
@@ -615,21 +594,18 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
         opCtx, NamespaceString::kConfigReshardingOperationsNamespace, CollectionOptions{}));
 
     BSONObj expectedShardIdentity =
-        BSON("_id"
-             << "shardIdentity"
-             << "shardName"
-             << "config"
-             << "clusterId" << OID("65dd1017a44e231a15af5fc0") << "configsvrConnectionString"
-             << "m103-csrs/localhost:26001,localhost:26002,localhost:26003");
-    BSONObj previousShardIdentity = expectedShardIdentity.addField(BSON("additionalField"
-                                                                        << "someValue")
-                                                                       .firstElement());
+        BSON("_id" << "shardIdentity"
+                   << "shardName"
+                   << "config"
+                   << "clusterId" << OID("65dd1017a44e231a15af5fc0") << "configsvrConnectionString"
+                   << "m103-csrs/localhost:26001,localhost:26002,localhost:26003");
+    BSONObj previousShardIdentity =
+        expectedShardIdentity.addField(BSON("additionalField" << "someValue").firstElement());
 
     ASSERT_OK(storage->insertDocuments(opCtx,
                                        NamespaceString::kServerConfigurationNamespace,
-                                       {InsertStatement{BSON("_id"
-                                                             << "authSchema"
-                                                             << "currentVersion" << 5)},
+                                       {InsertStatement{BSON("_id" << "authSchema"
+                                                                   << "currentVersion" << 5)},
                                         InsertStatement{previousShardIdentity}}));
 
     ASSERT_OK(storage->insertDocuments(opCtx,
@@ -641,30 +617,21 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataConfigShard) {
     ASSERT_OK(storage->insertDocuments(
         opCtx,
         NamespaceString::kConfigReshardingOperationsNamespace,
-        {InsertStatement{BSON("_id" << 0 << "ns"
-                                    << "testDB.testColl0"
-                                    << "state"
-                                    << "cloning"
-                                    << "donorShards"
-                                    << BSON_ARRAY(BSON("id"
-                                                       << "backupShard0")
-                                                  << BSON("id"
-                                                          << "backupShard2"))
-                                    << "recipientShards"
-                                    << BSON_ARRAY(BSON("id"
-                                                       << "backupShard2")))},
-         InsertStatement{BSON("_id" << 1 << "ns"
-                                    << "testDB.testColl1"
-                                    << "state"
-                                    << "committing"
-                                    << "donorShards"
-                                    << BSON_ARRAY(BSON("id"
-                                                       << "backupShard2"))
-                                    << "recipientShards"
-                                    << BSON_ARRAY(BSON("id"
-                                                       << "backupShard2")
-                                                  << BSON("id"
-                                                          << "backupShard1")))}}));
+        {InsertStatement{
+             BSON("_id" << 0 << "ns"
+                        << "testDB.testColl0"
+                        << "state"
+                        << "cloning"
+                        << "donorShards"
+                        << BSON_ARRAY(BSON("id" << "backupShard0") << BSON("id" << "backupShard2"))
+                        << "recipientShards" << BSON_ARRAY(BSON("id" << "backupShard2")))},
+         InsertStatement{BSON(
+             "_id" << 1 << "ns"
+                   << "testDB.testColl1"
+                   << "state"
+                   << "committing"
+                   << "donorShards" << BSON_ARRAY(BSON("id" << "backupShard2")) << "recipientShards"
+                   << BSON_ARRAY(BSON("id" << "backupShard2") << BSON("id" << "backupShard1")))}}));
 
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(NodeTypeEnum::kConfigShard);
@@ -743,22 +710,19 @@ TEST_F(MagicRestoreFixture, UpdateShardingMetadataShard) {
     }
 
     BSONObj previousShardIdentity =
-        BSON("_id"
-             << "shardIdentity"
-             << "shardName" << backupShard << "clusterId" << OID("65dd1017a44e231a15af5fc0")
-             << "configsvrConnectionString"
-             << "m103-csrs/localhost:26001,localhost:26002,localhost:26003");
-    BSONObj expectedShardIdentity = BSON("_id"
-                                         << "shardIdentity"
-                                         << "shardName" << shardIdentityName << "clusterId"
-                                         << clusterId << "configsvrConnectionString"
-                                         << configsvrConnectionString.toString());
+        BSON("_id" << "shardIdentity"
+                   << "shardName" << backupShard << "clusterId" << OID("65dd1017a44e231a15af5fc0")
+                   << "configsvrConnectionString"
+                   << "m103-csrs/localhost:26001,localhost:26002,localhost:26003");
+    BSONObj expectedShardIdentity =
+        BSON("_id" << "shardIdentity"
+                   << "shardName" << shardIdentityName << "clusterId" << clusterId
+                   << "configsvrConnectionString" << configsvrConnectionString.toString());
 
     ASSERT_OK(storage->insertDocuments(opCtx,
                                        NamespaceString::kServerConfigurationNamespace,
-                                       {InsertStatement{BSON("_id"
-                                                             << "authSchema"
-                                                             << "currentVersion" << 5)},
+                                       {InsertStatement{BSON("_id" << "authSchema"
+                                                                   << "currentVersion" << 5)},
                                         InsertStatement{previousShardIdentity}}));
 
     updateShardingMetadata(opCtx, restoreConfig, storage);
@@ -827,32 +791,25 @@ TEST_F(MagicRestoreFixture, DropNonRestoredClusterParameters) {
     ASSERT_OK(storage->insertDocuments(
         opCtx,
         NamespaceString::kClusterParametersNamespace,
-        {InsertStatement{BSON("_id"
-                              << "shardedClusterCardinalityForDirectConns"
-                              << "foobar" << 5)},
-         InsertStatement{BSON("_id"
-                              << "querySettings"
-                              << "testParam"
-                              << "17")},
-         InsertStatement{BSON("_id"
-                              << "randomName"
-                              << "testParam" << 3)},
-         InsertStatement{BSON("_id"
-                              << "pauseMigrationsDuringMultiUpdates"
-                              << "testParam"
-                              << "17")},
-         InsertStatement{BSON("_id"
-                              << "defaultMaxTimeMS"
-                              << "testParam"
-                              << "17")},
-         InsertStatement{BSON("_id"
-                              << "addOrRemoveShardInProgress"
-                              << "testParam"
-                              << "17")},
-         InsertStatement{BSON("_id"
-                              << "configServerReadPreferenceForCatalogQueries"
-                              << "testParam"
-                              << "17")}}));
+        {InsertStatement{BSON("_id" << "shardedClusterCardinalityForDirectConns"
+                                    << "foobar" << 5)},
+         InsertStatement{BSON("_id" << "querySettings"
+                                    << "testParam"
+                                    << "17")},
+         InsertStatement{BSON("_id" << "randomName"
+                                    << "testParam" << 3)},
+         InsertStatement{BSON("_id" << "pauseMigrationsDuringMultiUpdates"
+                                    << "testParam"
+                                    << "17")},
+         InsertStatement{BSON("_id" << "defaultMaxTimeMS"
+                                    << "testParam"
+                                    << "17")},
+         InsertStatement{BSON("_id" << "addOrRemoveShardInProgress"
+                                    << "testParam"
+                                    << "17")},
+         InsertStatement{BSON("_id" << "configServerReadPreferenceForCatalogQueries"
+                                    << "testParam"
+                                    << "17")}}));
 
     auto docs = getDocuments(opCtx, storage, NamespaceString::kClusterParametersNamespace);
     ASSERT_EQ(7, docs.size());
@@ -895,25 +852,21 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
         opCtx, NamespaceString::kShardingDDLCoordinatorsNamespace, CollectionOptions{}));
 
     // Multiple documents with primary backupShard0 and backupShard1, see mapping below.
-    ASSERT_OK(storage->insertDocuments(opCtx,
-                                       NamespaceString::kConfigDatabasesNamespace,
-                                       {
-                                           InsertStatement{BSON("_id"
-                                                                << "0"
+    ASSERT_OK(
+        storage->insertDocuments(opCtx,
+                                 NamespaceString::kConfigDatabasesNamespace,
+                                 {
+                                     InsertStatement{BSON("_id" << "0"
                                                                 << "primary" << backupShard0)},
-                                           InsertStatement{BSON("_id"
-                                                                << "1"
+                                     InsertStatement{BSON("_id" << "1"
                                                                 << "primary" << backupShard1)},
-                                           InsertStatement{BSON("_id"
-                                                                << "2"
+                                     InsertStatement{BSON("_id" << "2"
                                                                 << "primary" << backupShard1)},
-                                           InsertStatement{BSON("_id"
-                                                                << "3"
+                                     InsertStatement{BSON("_id" << "3"
                                                                 << "primary" << backupShard2)},
-                                           InsertStatement{BSON("_id"
-                                                                << "4"
+                                     InsertStatement{BSON("_id" << "4"
                                                                 << "primary" << backupShard0)},
-                                       }));
+                                 }));
 
     ASSERT_OK(storage->insertDocuments(
         opCtx,
@@ -938,22 +891,18 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
         opCtx,
         NamespaceString::kConfigsvrChunksNamespace,
         {
-            InsertStatement{BSON("_id"
-                                 << "0"
-                                 << "shard" << backupShard0 << "history" << history0
-                                 << "onCurrentShardSince" << Timestamp(3))},
-            InsertStatement{BSON("_id"
-                                 << "1"
-                                 << "shard" << backupShard1 << "history" << history1
-                                 << "onCurrentShardSince" << Timestamp(3))},
-            InsertStatement{BSON("_id"
-                                 << "2"
-                                 << "shard" << backupShard2 << "history" << history2
-                                 << "onCurrentShardSince" << Timestamp(3))},
-            InsertStatement{BSON("_id"
-                                 << "3"
-                                 << "shard" << backupShard0 << "history" << history3
-                                 << "onCurrentShardSince" << Timestamp(3))},
+            InsertStatement{BSON("_id" << "0"
+                                       << "shard" << backupShard0 << "history" << history0
+                                       << "onCurrentShardSince" << Timestamp(3))},
+            InsertStatement{BSON("_id" << "1"
+                                       << "shard" << backupShard1 << "history" << history1
+                                       << "onCurrentShardSince" << Timestamp(3))},
+            InsertStatement{BSON("_id" << "2"
+                                       << "shard" << backupShard2 << "history" << history2
+                                       << "onCurrentShardSince" << Timestamp(3))},
+            InsertStatement{BSON("_id" << "3"
+                                       << "shard" << backupShard0 << "history" << history3
+                                       << "onCurrentShardSince" << Timestamp(3))},
         }));
 
     ASSERT_OK(storage->insertDocuments(
@@ -979,14 +928,13 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataDedicatedConfigServer) {
                    << "donorShards" << BSON_ARRAY(BSON("id" << backupShard2)) << "recipientShards"
                    << BSON_ARRAY(BSON("id" << backupShard2) << BSON("id" << backupShard1)))}}));
 
-    ASSERT_OK(
-        storage->insertDocuments(opCtx,
-                                 NamespaceString::kShardingDDLCoordinatorsNamespace,
-                                 {
-                                     InsertStatement{BSON("_id" << BSON("operationType"
-                                                                        << "createDatabase")
-                                                                << "primaryShard" << backupShard0)},
-                                 }));
+    ASSERT_OK(storage->insertDocuments(
+        opCtx,
+        NamespaceString::kShardingDDLCoordinatorsNamespace,
+        {
+            InsertStatement{BSON("_id" << BSON("operationType" << "createDatabase")
+                                       << "primaryShard" << backupShard0)},
+        }));
 
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(magic_restore::NodeTypeEnum::kDedicatedConfigServer);
@@ -1147,37 +1095,30 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
                            << "operationType"
                            << "createCollection_V4")
                    << "shardIds" << BSON_ARRAY(backupShard0 << backupShard1 << backupShard2))},
-         InsertStatement{BSON("_id" << BSON("operationType"
-                                            << "createCollection_V4")
+         InsertStatement{BSON("_id" << BSON("operationType" << "createCollection_V4")
                                     << "originalDataShard" << backupShard1)},
-         InsertStatement{BSON("_id" << BSON("operationType"
-                                            << "otherCommand")
-                                    << "shardIds" << BSON_ARRAY(backupShard0 << backupShard2))},
-         InsertStatement{BSON("_id" << BSON("operationType"
-                                            << "movePrimary")
-                                    << "toShardId" << backupShard1)}}));
+         InsertStatement{BSON("_id" << BSON("operationType" << "otherCommand") << "shardIds"
+                                    << BSON_ARRAY(backupShard0 << backupShard2))},
+         InsertStatement{BSON("_id" << BSON("operationType" << "movePrimary") << "toShardId"
+                                    << backupShard1)}}));
 
     // Multiple documents with primary backupShard0 and backupShard1. backupShard2 is not
     // translated.
-    ASSERT_OK(storage->insertDocuments(opCtx,
-                                       NamespaceString::kConfigShardCatalogDatabasesNamespace,
-                                       {
-                                           InsertStatement{BSON("_id"
-                                                                << "0"
+    ASSERT_OK(
+        storage->insertDocuments(opCtx,
+                                 NamespaceString::kConfigShardCatalogDatabasesNamespace,
+                                 {
+                                     InsertStatement{BSON("_id" << "0"
                                                                 << "primary" << backupShard0)},
-                                           InsertStatement{BSON("_id"
-                                                                << "1"
+                                     InsertStatement{BSON("_id" << "1"
                                                                 << "primary" << backupShard1)},
-                                           InsertStatement{BSON("_id"
-                                                                << "2"
+                                     InsertStatement{BSON("_id" << "2"
                                                                 << "primary" << backupShard1)},
-                                           InsertStatement{BSON("_id"
-                                                                << "3"
+                                     InsertStatement{BSON("_id" << "3"
                                                                 << "primary" << backupShard2)},
-                                           InsertStatement{BSON("_id"
-                                                                << "4"
+                                     InsertStatement{BSON("_id" << "4"
                                                                 << "primary" << backupShard0)},
-                                       }));
+                                 }));
 
     magic_restore::RestoreConfiguration restoreConfig;
     restoreConfig.setNodeType(NodeTypeEnum::kShard);
@@ -1324,19 +1265,17 @@ TEST_F(MagicRestoreFixture, CreateNewAutomationCredentials) {
             NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace, UUID::gen()},
             NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace, UUID::gen()}});
 
-    auto testRole = BSON("createRole"
-                         << "testRole"
-                         << "$db"
-                         << "admin"
-                         << "privileges" << BSONArray() << "roles" << BSONArray());
+    auto testRole = BSON("createRole" << "testRole"
+                                      << "$db"
+                                      << "admin"
+                                      << "privileges" << BSONArray() << "roles" << BSONArray());
 
-    auto testUser = BSON("createUser"
-                         << "testUser"
-                         << "$db"
-                         << "admin"
-                         << "pwd"
-                         << "password"
-                         << "roles" << BSONArray());
+    auto testUser = BSON("createUser" << "testUser"
+                                      << "$db"
+                                      << "admin"
+                                      << "pwd"
+                                      << "password"
+                                      << "roles" << BSONArray());
 
     auto autoCreds = magic_restore::AutomationCredentials::parse(
         IDLParserContext("AutomationCredentials"),
@@ -1347,13 +1286,12 @@ TEST_F(MagicRestoreFixture, CreateNewAutomationCredentials) {
 
     auto docs = getDocuments(opCtx, storage, NamespaceString::kAdminRolesNamespace);
     ASSERT_EQ(1, docs.size());
-    ASSERT_BSONOBJ_EQ(BSON("_id"
-                           << "admin.testRole"
-                           << "role"
-                           << "testRole"
-                           << "db"
-                           << "admin"
-                           << "privileges" << BSONArray() << "roles" << BSONArray()),
+    ASSERT_BSONOBJ_EQ(BSON("_id" << "admin.testRole"
+                                 << "role"
+                                 << "testRole"
+                                 << "db"
+                                 << "admin"
+                                 << "privileges" << BSONArray() << "roles" << BSONArray()),
                       docs[0]);
 
     docs = getDocuments(opCtx, storage, NamespaceString::kAdminUsersNamespace);
@@ -1390,19 +1328,17 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
                 NamespaceUUIDPair{NamespaceString::kAdminRolesNamespace, UUID::gen()},
                 NamespaceUUIDPair{NamespaceString::kAdminUsersNamespace, UUID::gen()}});
 
-        auto testRole = BSON("createRole"
-                             << "testRole"
-                             << "$db"
-                             << "admin"
-                             << "privileges" << BSONArray() << "roles" << BSONArray());
+        auto testRole = BSON("createRole" << "testRole"
+                                          << "$db"
+                                          << "admin"
+                                          << "privileges" << BSONArray() << "roles" << BSONArray());
 
-        auto testUser = BSON("createUser"
-                             << "testUser"
-                             << "$db"
-                             << "admin"
-                             << "pwd"
-                             << "password"
-                             << "roles" << BSONArray());
+        auto testUser = BSON("createUser" << "testUser"
+                                          << "$db"
+                                          << "admin"
+                                          << "pwd"
+                                          << "password"
+                                          << "roles" << BSONArray());
 
         auto autoCreds = magic_restore::AutomationCredentials::parse(
             IDLParserContext("AutomationCredentials"),
@@ -1413,19 +1349,17 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
 
         // Insert the role and user docs into the mock authorization manager state. This will
         // ensure the update code path can succeed.
-        auto roleDoc = BSON("_id"
-                            << "admin.testRole"
-                            << "role"
-                            << "testRole"
-                            << "db"
-                            << "admin"
-                            << "privileges" << BSONArray() << "roles" << BSONArray());
-        auto userDoc = BSON("_id"
-                            << "admin.testUser"
-                            << "user"
-                            << "testUser"
-                            << "db"
-                            << "admin");
+        auto roleDoc = BSON("_id" << "admin.testRole"
+                                  << "role"
+                                  << "testRole"
+                                  << "db"
+                                  << "admin"
+                                  << "privileges" << BSONArray() << "roles" << BSONArray());
+        auto userDoc = BSON("_id" << "admin.testUser"
+                                  << "user"
+                                  << "testUser"
+                                  << "db"
+                                  << "admin");
         ASSERT_OK(mockBackend->insert(opCtx, NamespaceString::kAdminRolesNamespace, roleDoc, {}));
         ASSERT_OK(mockBackend->insert(opCtx, NamespaceString::kAdminUsersNamespace, userDoc, {}));
 
@@ -1436,20 +1370,18 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
 
         // Now that the role and user already exist, the 'createRole' and 'createUser' should be
         // converted into an 'updateRole' and 'updateUser' commands with the same arguments.
-        auto updatedRole = BSON("createRole"
-                                << "testRole"
-                                << "$db"
-                                << "admin"
-                                << "privileges" << BSONArray() << "roles"
-                                << BSON_ARRAY("readWriteAnyDatabase"));
+        auto updatedRole = BSON("createRole" << "testRole"
+                                             << "$db"
+                                             << "admin"
+                                             << "privileges" << BSONArray() << "roles"
+                                             << BSON_ARRAY("readWriteAnyDatabase"));
 
-        auto updatedUser = BSON("createUser"
-                                << "testUser"
-                                << "$db"
-                                << "admin"
-                                << "pwd"
-                                << "password"
-                                << "roles" << BSON_ARRAY("readWriteAnyDatabase"));
+        auto updatedUser = BSON("createUser" << "testUser"
+                                             << "$db"
+                                             << "admin"
+                                             << "pwd"
+                                             << "password"
+                                             << "roles" << BSON_ARRAY("readWriteAnyDatabase"));
 
         autoCreds = magic_restore::AutomationCredentials::parse(
             IDLParserContext("AutomationCredentials"),
@@ -1464,10 +1396,9 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
         ASSERT_EQ(docs[0].getField("db").String(), "admin");
         ASSERT_EQ(docs[0].getField("roles").Array().size(), 1);
         ASSERT_BSONOBJ_EQ(docs[0].getField("roles").Array().begin()->Obj(),
-                          BSON("role"
-                               << "readWriteAnyDatabase"
-                               << "db"
-                               << "admin"));
+                          BSON("role" << "readWriteAnyDatabase"
+                                      << "db"
+                                      << "admin"));
 
         docs = getDocuments(opCtx, storage, NamespaceString::kAdminUsersNamespace);
         ASSERT_EQ(1, docs.size());
@@ -1476,10 +1407,9 @@ TEST_F(MagicRestoreFixture, UpdateAutomationCredentials) {
         ASSERT_EQ(docs[0].getField("db").String(), "admin");
         ASSERT_EQ(docs[0].getField("roles").Array().size(), 1);
         ASSERT_BSONOBJ_EQ(docs[0].getField("roles").Array().begin()->Obj(),
-                          BSON("role"
-                               << "readWriteAnyDatabase"
-                               << "db"
-                               << "admin"));
+                          BSON("role" << "readWriteAnyDatabase"
+                                      << "db"
+                                      << "admin"));
     }
     // Restore the original client.
     Client::releaseCurrent();
@@ -1523,19 +1453,17 @@ DEATH_TEST_REGEX_F(MagicRestoreFixture,
                    "8816900.*Internal replicated collection does not exist on node") {
     auto storage = storageInterface();
     auto opCtx = operationContext();
-    auto testRole = BSON("createRole"
-                         << "testRole"
-                         << "$db"
-                         << "admin"
-                         << "privileges" << BSONArray() << "roles" << BSONArray());
+    auto testRole = BSON("createRole" << "testRole"
+                                      << "$db"
+                                      << "admin"
+                                      << "privileges" << BSONArray() << "roles" << BSONArray());
 
-    auto testUser = BSON("createUser"
-                         << "testUser"
-                         << "$db"
-                         << "admin"
-                         << "pwd"
-                         << "password"
-                         << "roles" << BSONArray());
+    auto testUser = BSON("createUser" << "testUser"
+                                      << "$db"
+                                      << "admin"
+                                      << "pwd"
+                                      << "password"
+                                      << "roles" << BSONArray());
 
     auto autoCreds = magic_restore::AutomationCredentials::parse(
         IDLParserContext("AutomationCredentials"),
@@ -1612,10 +1540,10 @@ TEST_F(MagicRestoreFixture, SetBalancerSettings) {
     for (const auto stopped : std::vector{true, false}) {
         ASSERT_OK(storage->createCollection(
             opCtx, NamespaceString::kConfigSettingsNamespace, CollectionOptions{}));
-        ASSERT_OK(storage->insertDocuments(opCtx,
-                                           NamespaceString::kConfigSettingsNamespace,
-                                           {InsertStatement{BSON("_id"
-                                                                 << "balancer"
+        ASSERT_OK(
+            storage->insertDocuments(opCtx,
+                                     NamespaceString::kConfigSettingsNamespace,
+                                     {InsertStatement{BSON("_id" << "balancer"
                                                                  << "stopped" << !stopped)}}));
 
         magic_restore::setBalancerSettingsStopped(opCtx, storage, stopped);

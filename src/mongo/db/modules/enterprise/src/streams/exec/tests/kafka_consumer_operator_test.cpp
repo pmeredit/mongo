@@ -193,11 +193,11 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
             outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(sourceDoc.logAppendTimeMs);
             outputDocBuilder << "_stream_meta"
                              << BSON("source"
-                                     << BSON("type"
-                                             << "kafka"
-                                             << "topic" << sourceDoc.topic << "partition"
-                                             << sourceDoc.partition << "offset" << sourceDoc.offset
-                                             << "key" << BSONNULL << "headers" << BSONArray()));
+                                     << BSON("type" << "kafka"
+                                                    << "topic" << sourceDoc.topic << "partition"
+                                                    << sourceDoc.partition << "offset"
+                                                    << sourceDoc.offset << "key" << BSONNULL
+                                                    << "headers" << BSONArray()));
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());
             sourceDocs.push_back(std::move(sourceDoc));
         }

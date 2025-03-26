@@ -4,8 +4,7 @@
  *         requires_persistence]
  */
 
-import {getBackupCursorDB} from "jstests/libs/backup_utils.js";
-import {openBackupCursor} from "jstests/libs/backup_utils.js";
+import {getBackupCursorDB, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 
 const backupIdNotExist = UUID();

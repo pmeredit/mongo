@@ -4,10 +4,10 @@
  * complete the sync and become a secondary (instead of timing out and failing initial sync).
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-import {configureFailPoint} from "jstests/libs/fail_point_util.js";
-import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {configureFailPoint, kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {forceSyncSource} from "jstests/replsets/libs/sync_source.js";
+
 // Create replset with 3 nodes.
 const dbName = "testdb";
 const colName = "testcoll";

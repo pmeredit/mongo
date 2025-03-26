@@ -6,8 +6,8 @@
  *  - Issue reads that imply encrypted fields can be nested beneath an array.
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
-import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 import {
+    generateSchema,
     kDeterministicAlgo,
     kRandomAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";

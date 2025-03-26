@@ -29,7 +29,7 @@ boost::optional<std::tuple<int64_t, int64_t>> readCgroupV2MaxFile(const std::str
 class ContainerGroupStatsProvider {
 public:
     ContainerGroupStatsProvider();
-    virtual ~ContainerGroupStatsProvider(){};
+    virtual ~ContainerGroupStatsProvider() {};
     // get quota, period from cgroup files.
     // returns boost::none if we cannot read these values.
     virtual boost::optional<std::tuple<int64_t, int64_t>> getQuotaPeriod();

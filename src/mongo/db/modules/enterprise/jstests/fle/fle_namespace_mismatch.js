@@ -5,9 +5,9 @@
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 import {
     fle2Enabled,
-    generateSchema
+    generateSchema,
+    kRandomAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
-import {kRandomAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 if (fle2Enabled()) {
     const mongocryptd = new MongoCryptD();

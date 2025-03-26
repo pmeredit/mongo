@@ -34,9 +34,8 @@ protected:
 TEST_F(ExecutorTest, StopTimesOut) {
     // Set a failpoint to make Executor sleep for 15s while stopping.
     setGlobalFailPoint("streamProcessorStopSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 15)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 15)));
 
     std::vector<BSONObj> rawPipeline{getTestSourceSpec(), getTestMemorySinkSpec()};
     _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
@@ -62,9 +61,7 @@ TEST_F(ExecutorTest, StopTimesOut) {
     ASSERT_THROWS_WHAT(executorFuture.get(), DBException, "Timeout while stopping"_sd);
 
     // Deactivate the fail point.
-    setGlobalFailPoint("streamProcessorStopSleepSeconds",
-                       BSON("mode"
-                            << "off"));
+    setGlobalFailPoint("streamProcessorStopSleepSeconds", BSON("mode" << "off"));
 }
 
 TEST_F(ExecutorTest, IdleDelay) {

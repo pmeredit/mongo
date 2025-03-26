@@ -274,14 +274,12 @@ protected:
         dataReplicatorExternalState->setCurrentTerm(1LL);
         dataReplicatorExternalState->setLastCommittedOpTime(_myLastOpTime);
         {
-            ReplSetConfig config(
-                ReplSetConfig::parse(BSON("_id"
-                                          << "myset"
-                                          << "version" << 1 << "protocolVersion" << 1 << "members"
-                                          << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                                   << "localhost:12345"))
-                                          << "settings"
-                                          << BSON("electionTimeoutMillis" << 10000))));
+            ReplSetConfig config(ReplSetConfig::parse(
+                BSON("_id" << "myset"
+                           << "version" << 1 << "protocolVersion" << 1 << "members"
+                           << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                    << "localhost:12345"))
+                           << "settings" << BSON("electionTimeoutMillis" << 10000))));
             dataReplicatorExternalState->setReplSetConfigResult(config);
         }
         _externalState = dataReplicatorExternalState.get();
@@ -1322,11 +1320,10 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISSucceedsIfBothNodesAreNotUsingEncryp
     expectSuccessfulGetParameterCommand();
     // The sync source does not have the encryptionAtRest field, which should not cause an error.
     // The local node is also not using the encrypted storage engine, so FCBIS should succeed.
-    _mock->expect(BSON("serverStatus" << 1),
-                  RemoteCommandResponse::make_forTest(BSON("storageEngine" << BSON("name"
-                                                                                   << "wiredTiger")
-                                                                           << "ok" << 1),
-                                                      Milliseconds()));
+    _mock->expect(
+        BSON("serverStatus" << 1),
+        RemoteCommandResponse::make_forTest(
+            BSON("storageEngine" << BSON("name" << "wiredTiger") << "ok" << 1), Milliseconds()));
     _mock->runUntilExpectationsSatisfied();
 
     fileCopyBasedInitialSyncer->join();
@@ -1707,9 +1704,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSource) {
     _mock->defaultExpect(
         BSON("replSetGetStatus" << 1),
         BSON("optimes" << BSON("appliedOpTime" << OpTime(checkpointTs, 1)) << "ok" << 1));
-    _mock->defaultExpect(BSON("killCursors"
-                              << "$cmd.aggregate"),
-                         BSON("ok" << 1));
+    _mock->defaultExpect(BSON("killCursors" << "$cmd.aggregate"), BSON("ok" << 1));
     // The sync source satisfies requirements for FCBIS.
     expectSuccessfulSyncSourceValidation();
 
@@ -1722,12 +1717,10 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSource) {
                        {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
                                                            << checkpointTs << "dbpath"
                                                            << "/path/to/dbpath")),
-                        BSON("filename"
-                             << "/path/to/dbpath/backupfile1"
-                             << "fileSize" << int64_t(file1Data.size())),
-                        BSON("filename"
-                             << "/path/to/dbpath/backupfile2"
-                             << "fileSize" << int64_t(file2Data.size()))})
+                        BSON("filename" << "/path/to/dbpath/backupfile1"
+                                        << "fileSize" << int64_t(file1Data.size())),
+                        BSON("filename" << "/path/to/dbpath/backupfile2"
+                                        << "fileSize" << int64_t(file2Data.size()))})
             .toBSONAsInitialResponse());
 
     mockBackupFileData({file1Data, file2Data});
@@ -1763,9 +1756,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
     _mock->defaultExpect(
         BSON("replSetGetStatus" << 1),
         BSON("optimes" << BSON("appliedOpTime" << OpTime(lastAppliedTs, 1)) << "ok" << 1));
-    _mock->defaultExpect(BSON("killCursors"
-                              << "$cmd.aggregate"),
-                         BSON("ok" << 1));
+    _mock->defaultExpect(BSON("killCursors" << "$cmd.aggregate"), BSON("ok" << 1));
     // The sync source satisfies requirements for FCBIS.
     expectSuccessfulSyncSourceValidation();
 
@@ -1784,10 +1775,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
         BSON("aggregate" << 1 << "pipeline.$backupCursorExtend" << BSON("$exists" << true)),
         CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
                        1 /* cursorId */,
-                       {BSON("filename"
-                             << "/path/to/dbpath/journal/log.0001"),
-                        BSON("filename"
-                             << "/path/to/dbpath/journal/log.0002")})
+                       {BSON("filename" << "/path/to/dbpath/journal/log.0001"),
+                        BSON("filename" << "/path/to/dbpath/journal/log.0002")})
             .toBSONAsInitialResponse());
 
     std::string file1Data = "ABCDEF_DATA_FOR_FILE_1";
@@ -2443,9 +2432,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
     _mock->defaultExpect(
         BSON("replSetGetStatus" << 1),
         BSON("optimes" << BSON("appliedOpTime" << OpTime(checkpointTs, 1)) << "ok" << 1));
-    _mock->defaultExpect(BSON("killCursors"
-                              << "$cmd.aggregate"),
-                         BSON("ok" << 1));
+    _mock->defaultExpect(BSON("killCursors" << "$cmd.aggregate"), BSON("ok" << 1));
 
     // The sync source satisfies requirements for FCBIS.
     expectSuccessfulSyncSourceValidation();
@@ -2459,12 +2446,10 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
                        {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
                                                            << checkpointTs << "dbpath"
                                                            << "/path/to/dbpath")),
-                        BSON("filename"
-                             << "/path/to/dbpath/backupfile1"
-                             << "fileSize" << int64_t(file1Data.size())),
-                        BSON("filename"
-                             << "/path/to/dbpath/backupfile2"
-                             << "fileSize" << int64_t(file2Data.size()))})
+                        BSON("filename" << "/path/to/dbpath/backupfile1"
+                                        << "fileSize" << int64_t(file1Data.size())),
+                        BSON("filename" << "/path/to/dbpath/backupfile2"
+                                        << "fileSize" << int64_t(file2Data.size()))})
             .toBSONAsInitialResponse());
 
     mockBackupFileData({file1Data, file2Data});

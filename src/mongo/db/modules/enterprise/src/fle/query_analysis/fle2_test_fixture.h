@@ -67,9 +67,8 @@ protected:
     BSONObj markMatchExpression(const BSONObj& fields,
                                 const BSONObj& matchExpression,
                                 FLE2FieldRefExpr fieldRefSupported = FLE2FieldRefExpr::disallowed) {
-        auto cmd = BSON("find"
-                        << "coll"
-                        << "filter" << matchExpression);
+        auto cmd = BSON("find" << "coll"
+                               << "filter" << matchExpression);
 
         auto params = createQueryAnalysisParamsFromFields(fields, cmd);
         auto schemaTree =
@@ -280,9 +279,8 @@ protected:
 
     template <class T>
     BSONObj buildEqualityPlaceholder(const BSONObj& fields, StringData field, T value) {
-        auto cmd = BSON("find"
-                        << "coll"
-                        << "filter" << BSONObj());
+        auto cmd = BSON("find" << "coll"
+                               << "filter" << BSONObj());
         auto params = createQueryAnalysisParamsFromFields(fields, cmd);
         auto schemaTree =
             EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
@@ -312,9 +310,8 @@ protected:
     }
 
     std::unique_ptr<EncryptionSchemaTreeNode> buildSchema(const BSONObj& fields) {
-        auto cmd = BSON("find"
-                        << "coll"
-                        << "filter" << BSONObj());
+        auto cmd = BSON("find" << "coll"
+                               << "filter" << BSONObj());
         auto params = createQueryAnalysisParamsFromFields(fields, cmd);
         return EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
     }

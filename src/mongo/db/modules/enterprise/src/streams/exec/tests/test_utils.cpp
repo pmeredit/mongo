@@ -121,8 +121,8 @@ std::vector<mongo::Connection> testInMemoryConnections() {
 }
 
 mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
-    auto sourceOptions = BSON("connectionName"
-                              << "kafka1"
+    auto sourceOptions =
+        BSON("connectionName" << "kafka1"
                               << "topic"
                               << "topic1"
                               << "timeField"

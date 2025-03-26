@@ -12,7 +12,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 
-//#include "mongo/db/storage/data_protector.h"
+// #include "mongo/db/storage/data_protector.h"
 
 namespace mongo {
 

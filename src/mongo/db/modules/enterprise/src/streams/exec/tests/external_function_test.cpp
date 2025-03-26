@@ -222,7 +222,7 @@ public:
         }
     };
 
-    MockLambdaClient(){};
+    MockLambdaClient() {};
 
     Aws::Lambda::Model::InvokeOutcome Invoke(
         const Aws::Lambda::Model::InvokeRequest& request) const override {

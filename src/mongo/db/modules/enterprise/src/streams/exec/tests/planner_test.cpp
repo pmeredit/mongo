@@ -84,8 +84,7 @@ public:
         Connection httpsConn{};
         httpsConn.setName("https1");
         HttpsConnectionOptions httpsConnOptions{"https://mongodb.com"};
-        httpsConnOptions.setHeaders(BSON("httpsHeader"
-                                         << "foobar"));
+        httpsConnOptions.setHeaders(BSON("httpsHeader" << "foobar"));
         httpsConn.setOptions(httpsConnOptions.toBSON());
         httpsConn.setType(ConnectionTypeEnum::HTTPS);
 
@@ -163,9 +162,7 @@ public:
     }
 
     BSONObj groupStage() {
-        return BSON("$group" << BSON("_id" << BSONNULL << "sum"
-                                           << BSON("$sum"
-                                                   << "$field")));
+        return BSON("$group" << BSON("_id" << BSONNULL << "sum" << BSON("$sum" << "$field")));
     }
 
     BSONObj sortStage() {
@@ -432,11 +429,9 @@ TEST_F(PlannerTest, SupportedStagesWork2) {
                                                    << "$$DESCEND"
                                                    << "else"
                                                    << "$$PRUNE"))),
-        BSON("$replaceRoot" << BSON("newRoot"
-                                    << "$name")),
+        BSON("$replaceRoot" << BSON("newRoot" << "$name")),
         BSON("$set" << BSON("b" << 1)),
-        BSON("$unwind"
-             << "$sizes"),
+        BSON("$unwind" << "$sizes"),
         BSON("$validate" << BSON("validator"
                                  << BSON("$jsonSchema" << BSON("required" << BSON_ARRAY("a"))))),
 
@@ -964,11 +959,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                .topicNames = {topicName},
                .auth = options3.getAuth()->toBSON(),
                .enableAutoCommit = true});
-    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
-                                                      << "testOnlyPartitionCount" << 1 << "config"
-                                                      << BSON("group_id"
-                                                              << "consumer-group-1"
-                                                              << "enable_auto_commit" << false))),
+    innerTest(BSON("$source" << BSON("connectionName"
+                                     << kafka1.getName() << "topic" << topicName
+                                     << "testOnlyPartitionCount" << 1 << "config"
+                                     << BSON("group_id" << "consumer-group-1"
+                                                        << "enable_auto_commit" << false))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-1"),
@@ -987,8 +982,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     // by default if the user defined the group_id.
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
                                                       << "testOnlyPartitionCount" << 1 << "config"
-                                                      << BSON("group_id"
-                                                              << "consumer-group-2"))),
+                                                      << BSON("group_id" << "consumer-group-2"))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-2"),
@@ -1004,11 +998,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                .enableAutoCommit = true});
 
     // Setting group_id and enable_auto_should be respected.
-    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
-                                                      << "testOnlyPartitionCount" << 1 << "config"
-                                                      << BSON("group_id"
-                                                              << "consumer-group-2"
-                                                              << "enable_auto_commit" << false))),
+    innerTest(BSON("$source" << BSON("connectionName"
+                                     << kafka1.getName() << "topic" << topicName
+                                     << "testOnlyPartitionCount" << 1 << "config"
+                                     << BSON("group_id" << "consumer-group-2"
+                                                        << "enable_auto_commit" << false))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-2"),
@@ -1788,8 +1782,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         featureFlagsMap.emplace(std::make_pair(FeatureFlags::kEnableS3Emit.name, true));
         featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
         featureFlagsMap[FeatureFlags::kChangestreamPredicatePushdown.name] = mongo::Value(true);
-        executionPlanCommonTest(
-            userPipeline, expectedOperators, [](auto& dag) {}, featureFlagsMap);
+        executionPlanCommonTest(userPipeline, expectedOperators, [](auto& dag) {}, featureFlagsMap);
     };
 
     // match should get absorbed
@@ -3165,8 +3158,7 @@ TEST_F(PlannerTest, Https) {
                           .operatorHeaders = expectedHeaders,
                           .as = "response",
                       },
-                      Document{BSON("bar"
-                                    << "baz")});
+                      Document{BSON("bar" << "baz")});
     }
 }
 

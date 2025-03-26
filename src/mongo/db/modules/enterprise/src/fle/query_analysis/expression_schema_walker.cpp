@@ -19,7 +19,7 @@ namespace {
 class SchemaTracker {
 public:
     explicit SchemaTracker(bool outputIsCompared, FleVersion schemaVersion)
-        : schemaVersion(schemaVersion), _outputIsCompared(outputIsCompared){};
+        : schemaVersion(schemaVersion), _outputIsCompared(outputIsCompared) {};
 
     /**
      * Exits the current evaluation state. If exitting the outermost evaluated expression, then this

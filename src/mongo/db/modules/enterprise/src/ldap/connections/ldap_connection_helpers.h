@@ -166,7 +166,7 @@ public:
         friend LDAPSessionHolder<S>;
 
     private:
-        explicit LDAPOptionErrorCode(const Type code) : code(code){};
+        explicit LDAPOptionErrorCode(const Type code) : code(code) {};
 
         Type code;
     };

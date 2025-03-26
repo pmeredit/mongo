@@ -53,7 +53,7 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetHost) {
     std::string node{"foobarnode"};
     std::string service{"foobarservice"};
 
-    struct addrinfo hints {};
+    struct addrinfo hints{};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
@@ -80,7 +80,7 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetIP) {
     std::string node{"foobarnode"};
     std::string service{"foobarservice"};
 
-    struct addrinfo hints {};
+    struct addrinfo hints{};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;

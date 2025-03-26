@@ -95,13 +95,11 @@ protected:
         _planner = std::make_unique<Planner>(_context.get(), Planner::Options{});
         _dag = _planner->plan(std::vector<BSONObj>{
             BSON("$source" << BSON("connectionName" << kTestMemoryConnectionName)),
-            BSON("$hoppingWindow" << BSON("interval" << BSON("unit"
-                                                             << "ms"
-                                                             << "size" << size)
+            BSON("$hoppingWindow" << BSON("interval" << BSON("unit" << "ms"
+                                                                    << "size" << size)
                                                      << "hopSize"
-                                                     << BSON("unit"
-                                                             << "ms"
-                                                             << "size" << slide)
+                                                     << BSON("unit" << "ms"
+                                                                    << "size" << slide)
                                                      << "pipeline" << _pipeline))});
         return dynamic_cast<WindowAwareOperator*>(_dag->operators()[1].get());
     }
