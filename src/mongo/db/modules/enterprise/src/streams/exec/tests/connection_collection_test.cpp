@@ -18,6 +18,24 @@ namespace {
 
 using namespace mongo;
 
+
+TEST(ConnectionCollectionTest, ShouldSuccessfullyInstantiate_WithCopyOfConnection) {
+    std::unique_ptr<ConnectionCollection> connections;
+
+    {
+        auto bsonOptions = BSON("a" << 1);
+        auto connection = Connection{"foo", ConnectionTypeEnum::Kafka, bsonOptions};
+        ASSERT_FALSE(connection.isOwned());
+        connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
+    }
+
+    ASSERT_TRUE(connections->contains("foo"));
+    auto fooConnection = connections->at("foo");
+    ASSERT_TRUE(fooConnection.isOwned());
+    ASSERT_EQ(fooConnection.getType(), ConnectionTypeEnum::Kafka);
+    ASSERT_BSONOBJ_EQ(fooConnection.getOptions().getOwned(), BSON("a" << 1));
+}
+
 const std::vector<Connection> connectionsVector{
     {Connection{"conn1", ConnectionTypeEnum::Atlas, BSONObj{}},
      Connection{"conn2", ConnectionTypeEnum::Kafka, BSONObj{}},
@@ -30,6 +48,24 @@ TEST(ConnectionCollectionTest, ShouldSuccessfullyUpdateConnection_HappyPath) {
     connections.update(updatedConnection);
 
     ASSERT_EQ(connections.at("conn2"), updatedConnection);
+}
+
+
+TEST(ConnectionCollectionTest, ShouldSuccessfullyUpdateConnection_WithCopyOfConnection) {
+    ConnectionCollection connections{connectionsVector};
+
+    {
+        auto bsonOptions = BSON("a" << 1);
+        auto connection = Connection{"conn2", ConnectionTypeEnum::Kafka, bsonOptions};
+        ASSERT_FALSE(connection.isOwned());
+        connections.update(connection);
+    }
+
+    ASSERT_TRUE(connections.contains("conn2"));
+    auto updatedConnection = connections.at("conn2");
+    ASSERT_TRUE(updatedConnection.isOwned());
+    ASSERT_EQ(updatedConnection.getType(), ConnectionTypeEnum::Kafka);
+    ASSERT_BSONOBJ_EQ(updatedConnection.getOptions().getOwned(), BSON("a" << 1));
 }
 
 TEST(ConnectionCollectionTest, ShouldFailToUpdateConnection_UnknownConnection) {

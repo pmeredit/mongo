@@ -22,8 +22,9 @@ ConnectionCollection::ConnectionCollection(std::vector<Connection> connections) 
         uassert(ErrorCodes::InternalError,
                 "Connection names must be unique",
                 !_nameToConnection.contains(connection.getName().toString()));
-        _nameToConnection.emplace(
-            std::make_pair(connection.getName().toString(), std::move(connection)));
+        _nameToConnection.emplace(std::make_pair(
+            connection.getName().toString(),
+            mongo::Connection::parseOwned(IDLParserContext("connection"), connection.toBSON())));
     }
 }
 
@@ -38,7 +39,7 @@ void ConnectionCollection::update(const Connection& connection) {
             "Cannot update a connection with a different type",
             it->second.getType() == connection.getType());
 
-    it->second = std::move(connection);
+    it->second = mongo::Connection::parseOwned(IDLParserContext("connection"), connection.toBSON());
 }
 
 bool ConnectionCollection::contains(const std::string& name) {
