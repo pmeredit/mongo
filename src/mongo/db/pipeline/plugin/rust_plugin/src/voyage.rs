@@ -129,6 +129,11 @@ impl AggregationStage for VoyageRerank {
             None => Ok(GetNextResult::EOF),
         }
     }
+
+    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
+        // TODO This stage should be forced to run on the merging half of the pipeline.
+        Ok(vec![])
+    }
 }
 
 impl VoyageRerank {

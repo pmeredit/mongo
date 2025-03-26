@@ -9,11 +9,13 @@ public:
     DocumentSourcePlugin(StringData name,
                          boost::intrusive_ptr<ExpressionContext> exprCtx,
                          Id id,
-                         MongoExtensionAggregationStage* stage)
+                         MongoExtensionAggregationStage* stage,
+                         BSONObj rawStage)
         : DocumentSource(name, exprCtx),
           _stage_name(name.toString()),
           _id(id),
-          _plugin_stage(stage) {}
+          _plugin_stage(stage),
+          _raw_stage(rawStage.getOwned()) {}
 
     const char* getSourceName() const override {
         return _stage_name.c_str();
@@ -27,11 +29,7 @@ public:
 
     GetNextResult doGetNext() override;
 
-    boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
-        // NB: we will need to be able to manipulate this to implement $search or $vectorSearch
-        // since it specifies remote stages and merge stages.
-        return boost::none;
-    }
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() override;
 
     void addVariableRefs(std::set<Variables::Id>* refs) const override {}
 
@@ -48,8 +46,9 @@ public:
     }
 
     Value serialize(const SerializationOptions& opts) const override {
-        // XXX this needs to call into the plugin.
-        return Value();
+        // TODO We need to call into the plugin here when we want to serialize for query shape, or
+        // if optimizations change the shape of the stage definition.
+        return Value(_raw_stage);
     }
 
 private:
@@ -76,6 +75,9 @@ private:
     std::string _stage_name;
     Id _id;
     std::unique_ptr<MongoExtensionAggregationStage, PluginStageDeleter> _plugin_stage;
+    // TODO: If optimizing this stage, _raw_stage will need to be updated with the new stage
+    // definition, so that the optimized request is sent to shards.
+    BSONObj _raw_stage;
     BSONObj _source_doc;
 };
 

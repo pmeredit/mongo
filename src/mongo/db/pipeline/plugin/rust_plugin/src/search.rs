@@ -127,6 +127,12 @@ impl AggregationStage for InternalPluginSearch {
             None => Ok(GetNextResult::EOF),
         }
     }
+
+    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
+        Ok(vec![
+            doc! {"$sort": {"$meta": "searchScore"}}
+        ])
+    }
 }
 
 impl InternalPluginSearch {

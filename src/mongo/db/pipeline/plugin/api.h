@@ -93,6 +93,19 @@ struct MongoExtensionAggregationStageVTable {
                        void* source_ptr,
                        mongodb_source_get_next source_get_next);
 
+    // Get a merging pipeline that describes logic by which to merge streams during distributed
+    // query execution. This is only called if query planning would like to attempt to push the
+    // plugin stage to the shards.
+    //
+    // Returns a BSON document with the structure { mergingStages: [<stages>] }, where the stages
+    // must form a valid aggregation pipeline. The contents of the merging pipeline may vary based
+    // on the stage definition.
+    //
+    // If the stage doesn't require special merging logic, this function can return an empty
+    // pipeline { mergingStages: [] }.
+    void (*get_merging_stages)(MongoExtensionAggregationStage* stage,
+                               MongoExtensionByteBuf** result);
+
     // Close this stage and free any memory associated with it. It is an error to use stage after
     // closing.
     // TODO: rename to drop and make it first in the vtable ABI.

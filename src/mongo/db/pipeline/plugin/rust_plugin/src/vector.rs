@@ -128,6 +128,12 @@ impl AggregationStage for InternalPluginVectorSearch {
             None => Ok(GetNextResult::EOF),
         }
     }
+
+    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
+        Ok(vec![
+            doc! {"$sort": {"$meta": "vectorSearchScore"}}
+        ])
+    }
 }
 
 impl InternalPluginVectorSearch {

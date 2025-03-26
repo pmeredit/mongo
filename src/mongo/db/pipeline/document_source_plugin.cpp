@@ -102,8 +102,8 @@ void addAggregationStage(MongoExtensionByteView name, MongoExtensionParseAggrega
             int code = parser(objAsByteView(stage_def), objAsByteView(context), &stage, &error_ptr);
             std::unique_ptr<MongoExtensionByteBuf, PluginObjectDeleter> error(error_ptr);
             uassert(code, str::stream() << byteBufAsStringData(*error), code == 0);
-            return boost::intrusive_ptr(
-                new DocumentSourcePlugin(specElem.fieldNameStringData(), expCtx, id, stage));
+            return boost::intrusive_ptr(new DocumentSourcePlugin(
+                specElem.fieldNameStringData(), expCtx, id, stage, stage_def));
         },
         boost::none);
 }
@@ -179,6 +179,36 @@ DocumentSource::GetNextResult DocumentSourcePlugin::doGetNext() {
             uassert(code, str::stream() << byteViewAsStringData(result), false);
             return GetNextResult::makeEOF();
     }
+}
+
+boost::optional<DocumentSource::DistributedPlanLogic> DocumentSourcePlugin::distributedPlanLogic() {
+    // TODO Can the plugin modify "shardsStages"?
+    // TODO Handle stages that must execute on the merging node ($voyageRerank)
+    // TODO If first stage is a $sort, we should extract the sort pattern for the
+    // "mergeSortPattern" field.
+    // TODO More potential optimization through "needsSplit"/"canMovePast" fields for $search.
+
+    MongoExtensionByteBuf* result_ptr = nullptr;
+    _plugin_stage->vtable->get_merging_stages(_plugin_stage.get(), &result_ptr);
+    std::unique_ptr<MongoExtensionByteBuf, PluginObjectDeleter> result(result_ptr);
+    BSONObj mergeStagesBson(byteBufAsStringData(*result).data());
+
+    auto elem = mergeStagesBson.firstElement();
+    std::list<boost::intrusive_ptr<DocumentSource>> merge_sources;
+    uassert(9999999,
+            "Merging stages provided by extension stage must be array.",
+            elem.type() == BSONType::Array);
+    for (auto stageElem : elem.embeddedObject()) {
+        for (auto stage : DocumentSource::parse(pExpCtx, stageElem.embeddedObject())) {
+            merge_sources.push_back(stage);
+        }
+    }
+
+    DistributedPlanLogic logic;
+    logic.shardsStage = this;
+    logic.mergingStages = std::move(merge_sources);
+
+    return logic;
 }
 
 }  // namespace mongo

@@ -8,11 +8,12 @@ mod mongot_client;
 mod search;
 mod vector;
 mod voyage;
+mod custom_sort;
 
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
-
-use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid};
+use bson::{doc, to_raw_document_buf, to_vec};
+use bson::{Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid};
 use serde::{Deserialize, Serialize};
 
 use plugin_api_bindgen::{
@@ -25,6 +26,7 @@ use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
 use crate::search::{InternalPluginSearch, PluginSearch};
 use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
 use crate::voyage::VoyageRerank;
+use crate::custom_sort::{PluginSort};
 
 #[derive(Debug)]
 pub struct Error {
@@ -221,6 +223,14 @@ pub trait AggregationStage: Sized {
     /// Get the next result from this stage.
     /// This may contain a document or another stream marker, including EOF.
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error>;
+
+    // Get a merging pipeline, represented as a vector of bson documents, that describes logic
+    // by which to merge streams during distributed query execution. This is only called if query
+    // planning would like to attempt to push the plugin stage to the shards.
+    // The default implementation is an empty vector, meaing no merging logic is necessary.
+    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error>  {
+        Ok(vec![])
+    }
 }
 
 /// Wrapper around an [AggregationStage] that binds to the C plugin API.
@@ -250,6 +260,7 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     const VTABLE: MongoExtensionAggregationStageVTable = MongoExtensionAggregationStageVTable {
         get_next: Some(Self::get_next),
         set_source: Some(Self::set_source),
+        get_merging_stages: Some(Self::get_merging_stages),
         close: Some(Self::close),
     };
 
@@ -382,6 +393,40 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         rust_stage.set_source(AggregationSource::new(source_ptr, source_get_next))
     }
 
+    unsafe extern "C-unwind" fn get_merging_stages(
+        stage: *mut MongoExtensionAggregationStage,
+        result: *mut *mut MongoExtensionByteBuf,
+    ) {
+        let rust_stage = (stage as *mut PluginAggregationStage<S>)
+            .as_mut()
+            .expect("non-null stage pointer");
+        let merging_stages = rust_stage.get_merging_stages().unwrap();
+        let merging_stages_doc = doc! {
+            "mergingStages": 
+            Bson::Array(
+                merging_stages
+                    .into_iter()
+                    .map(|s| Bson::from(s))
+                    .collect(),
+            ),
+        };
+        match to_vec(&merging_stages_doc).map(|b| VecByteBuf::from_vec(b)).map_err(|e| {
+            Error::with_source(
+                1,
+                format!("Error parsing merging stages for stage {}", S::name()),
+                e,
+            )
+        }) {
+            Ok(buf) => {
+                *result = buf.into_byte_buf()
+            }
+            Err(e) => {
+                *result = VecByteBuf::from_string(e.to_string()).into_byte_buf()
+            }
+        }
+
+    }
+
     unsafe extern "C-unwind" fn close(stage: *mut MongoExtensionAggregationStage) {
         let _ = Box::from_raw(stage as *mut PluginAggregationStage<S>);
     }
@@ -425,6 +470,14 @@ impl AggregationStage for EchoOxide {
             GetNextResult::Advanced(&self.document)
         })
     }
+
+    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
+        // TODO This stage should be able to flag that it should be run on the node that received
+        // the command (HostTypeRequirement::kLocalOnly). This {$limit: 1} merging pipeline works 
+        // as a hack in the meantime.
+        Ok(vec![doc! {"$limit": 1}])
+    }
+
 }
 
 struct AddSomeCrabs {
@@ -494,4 +547,5 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtens
     PluginAggregationStage::<InternalPluginVectorSearch>::register(portal);
     PluginDesugarAggregationStage::<PluginVectorSearch>::register(portal);
     PluginAggregationStage::<VoyageRerank>::register(portal);
+    PluginAggregationStage::<PluginSort>::register(portal);
 }
