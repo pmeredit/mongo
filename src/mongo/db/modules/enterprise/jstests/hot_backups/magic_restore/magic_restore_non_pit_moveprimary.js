@@ -230,8 +230,8 @@ const excludedCollections = [
     // config.placementHistory is re-inserted when movePrimary completes on the restored cluster.
     "placementHistory",
     "system.sharding_ddl_coordinators",
-    // Renaming shards affects the "primary" field of documents in 'config.shard.databases'.
-    "shard.databases"
+    // Renaming shards affects the "primary" field of documents in 'config.shard.catalog.databases'.
+    "shard.catalog.databases"
 ];
 
 // Ensure the config.collection_critical_sections collection is empty on both shards,

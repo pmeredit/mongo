@@ -255,7 +255,7 @@ function runTest(insertHigherTermOplogEntry) {
             // TODO (SERVER-98118): make unconditional once 9.0 becomes last LTS.
             if (FeatureFlagUtil.isPresentAndEnabled(node, "ShardAuthoritativeDbMetadataDDL")) {
                 let entries =
-                    node.getDB("config").getCollection("shard.databases").find().toArray();
+                    node.getDB("config").getCollection("shard.catalog.databases").find().toArray();
                 assert.eq(entries.length, 1);
                 for (const entry of entries) {
                     assert.includes(entry["primary"], jsTestName() + "-dst");
@@ -281,8 +281,9 @@ function runTest(insertHigherTermOplogEntry) {
         "cache.chunks.config.system.sessions",
         `cache.chunks.${dbName}.${coll}`,
         "placementHistory",
-        // Renaming shards affects the "primary" field of documents in 'config.shard.databases'.
-        "shard.databases",
+        // Renaming shards affects the "primary" field of documents in
+        // 'config.shard.catalog.databases'.
+        "shard.catalog.databases",
     ];
     shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
 

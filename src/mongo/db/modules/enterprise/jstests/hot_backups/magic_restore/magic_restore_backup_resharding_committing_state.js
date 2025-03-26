@@ -269,7 +269,7 @@ function runTest(insertHigherTermOplogEntry) {
             // TODO (SERVER-98118): make unconditional once 9.0 becomes last LTS.
             if (FeatureFlagUtil.isPresentAndEnabled(node, "ShardAuthoritativeDbMetadataDDL")) {
                 let entries =
-                    node.getDB("config").getCollection("shard.databases").find().toArray();
+                    node.getDB("config").getCollection("shard.catalog.databases").find().toArray();
                 assert.eq(entries.length, 1);
                 assert(entries.every(entry => regex.test(entry["primary"])), tojson(entries));
             }
@@ -316,8 +316,9 @@ function runTest(insertHigherTermOplogEntry) {
         // 'config.changelog' has extra entry from transitioning resharding from aborting to done.
         "changelog",
         "placementHistory",
-        // Renaming shards affects the "primary" field of documents in 'config.shard.databases'.
-        "shard.databases",
+        // Renaming shards affects the "primary" field of documents in
+        // 'config.shard.catalog.databases'.
+        "shard.catalog.databases",
     ];
 
     primary = configUtils.rst.getPrimary();

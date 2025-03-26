@@ -1090,7 +1090,7 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
                             NamespaceString::kDonorReshardingOperationsNamespace,
                             NamespaceString::kRecipientReshardingOperationsNamespace,
                             NamespaceString::kShardingDDLCoordinatorsNamespace,
-                            NamespaceString::kConfigShardDatabasesNamespace}) {
+                            NamespaceString::kConfigShardCatalogDatabasesNamespace}) {
         ASSERT_OK(storage->createCollection(opCtx, nss, CollectionOptions{}));
     }
 
@@ -1160,7 +1160,7 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
     // Multiple documents with primary backupShard0 and backupShard1. backupShard2 is not
     // translated.
     ASSERT_OK(storage->insertDocuments(opCtx,
-                                       NamespaceString::kConfigShardDatabasesNamespace,
+                                       NamespaceString::kConfigShardCatalogDatabasesNamespace,
                                        {
                                            InsertStatement{BSON("_id"
                                                                 << "0"
@@ -1234,7 +1234,7 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataShard) {
     ASSERT_BSONOBJ_EQ(docs[2].getObjectField("shardIds"), BSON_ARRAY(backupShard0 << backupShard2));
     ASSERT_EQ(docs[3].getStringField("toShardId"), restoreShard1);
 
-    docs = getDocuments(opCtx, storage, NamespaceString::kConfigShardDatabasesNamespace);
+    docs = getDocuments(opCtx, storage, NamespaceString::kConfigShardCatalogDatabasesNamespace);
     ASSERT_EQ(5, docs.size());
 
     ASSERT_EQ(docs[0].getStringField("primary"), restoreShard0);
