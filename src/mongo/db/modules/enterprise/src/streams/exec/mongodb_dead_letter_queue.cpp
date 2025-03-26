@@ -50,7 +50,6 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     mongocxx::write_concern writeConcern;
     writeConcern.journal(true);
     writeConcern.acknowledge_level(mongocxx::write_concern::level::k_majority);
-    // TODO(SERVER-76564): Handle timeouts, adjust this value.
     writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
 
