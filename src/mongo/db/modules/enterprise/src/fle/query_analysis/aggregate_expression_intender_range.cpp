@@ -734,10 +734,10 @@ protected:
         internalPerformReplacement(expr);
     }
     void visit(ExpressionEncStrEndsWith*) override {
-        MONGO_UNREACHABLE_TASSERT(10120905);
+        uasserted(10120905, "$encStrEndsWith is not yet implemented.");
     }
     void visit(ExpressionEncStrContains*) override {
-        MONGO_UNREACHABLE_TASSERT(10208805);
+        uasserted(10208805, "$encStrContains is not yet implemented.");
     }
     void visit(ExpressionMap* expr) override {
         internalPerformReplacement(expr);

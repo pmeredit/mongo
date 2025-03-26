@@ -563,12 +563,12 @@ protected:
     }
     void visit(ExpressionEncStrEndsWith*) final {
         // TODO SERVER-101214: Implement preVisit of $encStrEndsWith.
-        MONGO_UNREACHABLE_TASSERT(10120902);
+        uasserted(10120902, "$encStrEndsWith is not yet implemented.");
         ensureNotEncryptedEnterEval("a fle $encStrEndsWith", subtreeStack);
     }
     void visit(ExpressionEncStrContains*) final {
         // TODO SERVER-102089: Implement preVisit of $encStrContains.
-        MONGO_UNREACHABLE_TASSERT(10208802);
+        uasserted(10208802, "$encStrContains is not yet implemented.");
         ensureNotEncryptedEnterEval("a fle $encStrContains", subtreeStack);
     }
     void visit(ExpressionInternalRawSortKey*) final {
@@ -967,11 +967,11 @@ protected:
     void visit(ExpressionEncStrStartsWith*) override {}
     void visit(ExpressionEncStrEndsWith*) override {
         // TODO SERVER-101214: Implement inVisit of $encStrEndsWith.
-        MONGO_UNREACHABLE_TASSERT(10120903);
+        uasserted(10120903, "$encStrEndsWith is not yet implemented.");
     }
     void visit(ExpressionEncStrContains*) override {
         // TODO SERVER-102089: Implement inVisit of $encStrContains.
-        MONGO_UNREACHABLE_TASSERT(10208803);
+        uasserted(10208803, "$encStrContains is not yet implemented.");
     }
     void visit(ExpressionInternalRawSortKey*) override {}
     void visit(ExpressionMap*) override {}
@@ -1309,11 +1309,11 @@ protected:
     }
     void visit(ExpressionEncStrEndsWith*) override {
         // TODO SERVER-101214: Implement postVisit of $encStrEndsWith.
-        MONGO_UNREACHABLE_TASSERT(10120904);
+        uasserted(10120904, "$encStrEndsWith is not yet implemented.");
     }
     void visit(ExpressionEncStrContains*) override {
         // TODO SERVER-102089: Implement postVisit of $encStrContains.
-        MONGO_UNREACHABLE_TASSERT(10208804);
+        uasserted(10208804, "$encStrContains is not yet implemented.");
     }
     void visit(ExpressionInternalRawSortKey*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
