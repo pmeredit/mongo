@@ -113,7 +113,7 @@ public:
         AWSIAMConnectionOptions awsS3ConnOptions{
             "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
         awsS3Conn.setOptions(awsS3ConnOptions.toBSON());
-        awsS3Conn.setType(ConnectionTypeEnum::S3);
+        awsS3Conn.setType(ConnectionTypeEnum::AWSS3);
 
         std::vector<Connection> connectionsVector{
             atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment, awsIAMConn, awsS3Conn};
@@ -198,7 +198,7 @@ public:
             Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
             Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
             Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()},
-            Connection{"s3Bucket1", ConnectionTypeEnum::S3, options4.toBSON()},
+            Connection{"s3Bucket1", ConnectionTypeEnum::AWSS3, options4.toBSON()},
             Connection{"awsIAMLambda1", ConnectionTypeEnum::AWSIAMLambda, options4.toBSON()}});
 
         Planner planner(context.get(), Planner::Options{});

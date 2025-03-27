@@ -17,6 +17,7 @@ mongo_cc_library(
         "exception.cpp",
         "metric_manager.cpp",
         "metrics.cpp",
+        "string_validator.cpp",
     ],
     hdrs = [
         "chunked_memory_aggregator.h",
@@ -24,6 +25,7 @@ mongo_cc_library(
         "exception.h",
         "metric_manager.h",
         "metrics.h",
+        "string_validator.h",
         "units.h",
         "//src/mongo/db/memory_tracking:memory_usage_tracker.h",
         "//src/mongo/util:histogram.h",

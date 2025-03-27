@@ -11,6 +11,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/testing_proctor.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -33,10 +34,17 @@ void AWSCredentialsProvider::Reload() {
     auto connection = _context->connections->at(_connectionName);
     auto connOptions = AWSIAMConnectionOptions::parse(IDLParserContext("AWSConnectionParser"),
                                                       connection.getOptions());
-    _credentials = Aws::Auth::AWSCredentials(connOptions.getAccessKey().toString(),
-                                             connOptions.getAccessSecret().toString(),
-                                             connOptions.getSessionToken().toString(),
-                                             Aws::Utils::DateTime{connOptions.getExpirationDate()});
+    if (mongo::TestingProctor::instance().isEnabled() && connOptions.getSessionToken().empty()) {
+        // jstest container (MinIO) does not support passing in a session token
+        _credentials = Aws::Auth::AWSCredentials(connOptions.getAccessKey().toString(),
+                                                 connOptions.getAccessSecret().toString());
+    } else {
+        _credentials =
+            Aws::Auth::AWSCredentials(connOptions.getAccessKey().toString(),
+                                      connOptions.getAccessSecret().toString(),
+                                      connOptions.getSessionToken().toString(),
+                                      Aws::Utils::DateTime{connOptions.getExpirationDate()});
+    }
 }
 
 void AWSCredentialsProvider::RefreshIfExpired() {
@@ -67,6 +75,14 @@ Aws::Lambda::Model::InvokeOutcome AWSLambdaClient::Invoke(
 AWSS3Client::AWSS3Client(std::shared_ptr<Aws::Auth::AWSCredentialsProvider> credentialsProvider,
                          Aws::Client::ClientConfiguration clientConfiguration)
     : _client{std::move(credentialsProvider), nullptr, std::move(clientConfiguration)} {}
+
+AWSS3Client::AWSS3Client(std::shared_ptr<Aws::Auth::AWSCredentialsProvider> credentialsProvider,
+                         Aws::Client::ClientConfiguration clientConfiguration,
+                         bool useVirtualAddressing)
+    : _client{std::move(credentialsProvider),
+              std::move(clientConfiguration),
+              Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+              useVirtualAddressing} {}
 
 Aws::S3::Model::ListBucketsOutcome AWSS3Client::ListBuckets(
     const Aws::S3::Model::ListBucketsRequest& request) {

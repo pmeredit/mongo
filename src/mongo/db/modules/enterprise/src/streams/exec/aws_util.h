@@ -75,6 +75,10 @@ public:
     AWSS3Client(std::shared_ptr<Aws::Auth::AWSCredentialsProvider> credentialsProvider,
                 Aws::Client::ClientConfiguration clientConfiguration);
 
+    AWSS3Client(std::shared_ptr<Aws::Auth::AWSCredentialsProvider> credentialsProvider,
+                Aws::Client::ClientConfiguration clientConfiguration,
+                bool useVirtualAddressing);
+
     Aws::S3::Model::ListBucketsOutcome ListBuckets(
         const Aws::S3::Model::ListBucketsRequest& request) override;
 

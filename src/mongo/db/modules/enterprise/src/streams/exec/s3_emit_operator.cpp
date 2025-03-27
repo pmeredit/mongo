@@ -18,6 +18,7 @@
 #include "mongo/util/testing_proctor.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -104,7 +105,8 @@ S3EmitWriter::S3EmitWriter(Context* context,
 
 void S3EmitWriter::connect() {
     if (_options.literalBucket.empty()) {
-        // We cannot verify if the bucket exists now because the configured bucket is an expression.
+        // We cannot verify if the bucket exists now because the configured bucket is an
+        // expression.
         return;
     }
 
@@ -112,45 +114,43 @@ void S3EmitWriter::connect() {
     const std::string& bucketName = _options.literalBucket;
     request.SetPrefix(bucketName);
 
-    Aws::S3::Model::ListBucketsOutcome response;
-    try {
-        response = _options.client->ListBuckets(request);
-        uassert(ErrorCodes::StreamProcessorS3ConnectionError,
-                response.GetError().GetMessage(),
-                response.IsSuccess());
+    Aws::S3::Model::ListBucketsOutcome response = _options.client->ListBuckets(request);
+    uassert(ErrorCodes::StreamProcessorS3ConnectionError,
+            fmt::format("Failed to fetch authorized buckets while connecting to S3: {}",
+                        response.GetError().GetMessage()),
+            response.IsSuccess());
 
-        // Find target bucket in list of buckets the provided credentials has access to.
-        bool foundTargetBucket = false;
-        auto buckets = response.GetResult().GetBuckets();
-        for (const auto& bucket : buckets) {
-            if (bucket.GetName() == bucketName) {
-                foundTargetBucket = true;
-                break;
-            }
+    // Find target bucket in list of buckets the provided credentials has access to.
+    bool foundTargetBucket = false;
+    auto buckets = response.GetResult().GetBuckets();
+    for (const auto& bucket : buckets) {
+        if (bucket.GetName() == bucketName) {
+            foundTargetBucket = true;
+            break;
         }
+    }
 
-        uassert(ErrorCodes::StreamProcessorS3ConnectionError,
-                fmt::format(
-                    "AWS Role does not have access to bucket {}. Check AWS role access permissions "
+    uassert(
+        ErrorCodes::StreamProcessorInvalidOptions,
+        fmt::format("AWS Role does not have access to bucket {}. Check AWS role access permissions "
                     "and try again.",
                     bucketName),
-                foundTargetBucket);
-    } catch (const ExceptionFor<ErrorCodes::StreamProcessorS3ConnectionError>& e) {
-        tryLog(9997300, [&](int logID) {
-            LOGV2_INFO(logID,
-                       "S3EmitOperator encountered an error while making a ListBuckets request",
-                       "error"_attr = e.what(),
-                       "context"_attr = _context,
-                       "bucket"_attr = bucketName);
-        });
-
-        handleS3Error(response.GetError(), kOperationListBuckets);
-    }
+        foundTargetBucket);
 }
 
 // Places documents in the data message in the appropriate file within _buckets. It then uploads
 // all files whose trigger conditions have been fulfilled.
 OperatorStats S3EmitWriter::processDataMsg(StreamDataMsg dataMsg) {
+    // check if a previous PutObjectAsync call encountered an error.
+    {
+        stdx::lock_guard<stdx::mutex> lock(_statusMu);
+        if (!_status.isOK()) {
+            spasserted(_status);
+        }
+    }
+
+
+    OperatorStats stats;
     // Batch input documents within files in _buckets
     for (const auto& doc : dataMsg.docs) {
         // TODO(SERVER-99974): support expressions for path and bucket. add a try/catch
@@ -196,15 +196,16 @@ OperatorStats S3EmitWriter::processDataMsg(StreamDataMsg dataMsg) {
         // TODO(SERVER-99976): add support for canonical and basic json formats
         fileIt->second.documents.push_back(bsoncxx::to_json(toBsoncxxView(doc.doc.toBson()),
                                                             bsoncxx::ExtendedJsonMode::k_relaxed));
+        stats.numOutputDocs++;
     }
 
-    uploadFiles();
+    stats += uploadFiles();
 
-    // TODO(SERVER-101516) track stats.
-    return OperatorStats{};
+    return stats;
 }
 
-void S3EmitWriter::uploadFiles() {
+OperatorStats S3EmitWriter::uploadFiles() {
+    OperatorStats stats;
     // TODO(SERVER-99975): support trigger.count
     // TODO(SERVER-99977): support trigger.bytes
     // TODO(SERVER-99978): support trigger.interval
@@ -221,9 +222,11 @@ void S3EmitWriter::uploadFiles() {
 
             auto requestBody = std::make_shared<std::stringstream>();
             auto inputLength = file.documents.size();
+            int64_t outputLength = 0;
             for (size_t i = 0; i < inputLength; i++) {
                 *requestBody << file.documents[i];
                 *requestBody << _options.delimiter;
+                outputLength += (file.documents[i].size() + _options.delimiter.size());
             }
             request.SetBody(std::move(requestBody));
 
@@ -234,15 +237,13 @@ void S3EmitWriter::uploadFiles() {
                            "bucketName"_attr = bucketName,
                            "key"_attr = key);
             }
+            stats.numOutputBytes += outputLength;
             _options.client->PutObjectAsync(
                 std::move(request),
                 [this](const Aws::S3::S3Client* s3Client,
                        const Aws::S3::Model::PutObjectRequest& request,
                        const Aws::S3::Model::PutObjectOutcome& outcome,
                        const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
-                    // TODO(SERVER-101557) make this callback talk to the writer thread. This
-                    // implementation currently assumes that PutObjectAsync does not spawn a
-                    // separate thread so it wouldn't work in the non-test codepath.
                     if (outcome.IsSuccess()) {
                         return;
                     }
@@ -258,20 +259,27 @@ void S3EmitWriter::uploadFiles() {
             bucket.files.erase(it++);
         }
     }
+    return stats;
 }
 
+// Sets a status. Status is checked on next data message.
 void S3EmitWriter::handleS3Error(const Aws::S3::S3Error& error, const std::string& operation) {
     // Manually handle non-retryable errors.
+    auto errorCode = ErrorCodes::StreamProcessorS3ConnectionError;
     if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN ||
-        error.GetErrorType() == Aws::S3::S3Errors::NO_SUCH_BUCKET) {
-        uasserted(ErrorCodes::StreamProcessorS3Error,
-                  fmt::format("S3EmitOperator encountered an error while calling {}: {}",
-                              operation,
-                              error.GetMessage()));
+        error.GetErrorType() == Aws::S3::S3Errors::NO_SUCH_BUCKET ||
+        error.GetResponseCode() == Aws::Http::HttpResponseCode::BAD_REQUEST) {
+        errorCode = ErrorCodes::StreamProcessorS3Error;
     }
 
-    uasserted(ErrorCodes::StreamProcessorS3ConnectionError,
-              fmt::format("S3EmitOperator encountered an error: {}", error.GetMessage()));
+    {
+        stdx::lock_guard<stdx::mutex> lock(_statusMu);
+        _status =
+            mongo::Status{errorCode,
+                          fmt::format("S3EmitOperator encountered an error while calling {}: {}",
+                                      operation,
+                                      error.GetMessage())};
+    }
 }
 
 

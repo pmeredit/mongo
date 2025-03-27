@@ -329,6 +329,7 @@ export const test = {
     atlasConnection: "StreamsAtlasConnection",
     kafkaConnection: "StreamsKafkaConnection",
     awsIAMLambdaConnection: "StreamsAWSIAMLambdaConnection",
+    awsIAMS3Connection: "StreamsAWSIAMS3Connection",
     dbName: "test",
     inputCollName: "testin",
     outputCollName: "testout",
@@ -358,6 +359,17 @@ export function getDefaultSp(atlasTargetUri) {
                 accessKey: "myAccessKey",
                 accessSecret: "myAccessSecret",
                 sessionToken: "mySessionToken",
+                expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+            }
+        },
+        {
+            name: test.awsIAMS3Connection,
+            type: 'aws_iam_s3',
+            options: {
+                accessKey: "myAccessKey",
+                accessSecret: "myAccessSecret",
+                sessionToken:
+                    "",  // Local Minio doesn't take temporary access keys with session tokens
                 expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
             }
         },

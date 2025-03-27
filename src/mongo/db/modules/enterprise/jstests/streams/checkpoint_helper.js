@@ -310,6 +310,17 @@ export class TestHelper {
                     expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
                 }
             },
+            {
+                name: testConstants.awsIAMS3Connection,
+                type: 'aws_iam_s3',
+                options: {
+                    accessKey: "myAccessKey",
+                    accessSecret: "myAccessSecret",
+                    sessionToken:
+                        "",  // Local Minio doesn't take temporary access keys with session tokens
+                    expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+                }
+            },
         ];
         this.useTimeField = useTimeField;
 

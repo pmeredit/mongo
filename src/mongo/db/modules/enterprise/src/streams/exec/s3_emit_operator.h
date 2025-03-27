@@ -12,8 +12,12 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/queued_sink_operator.h"
+#include "streams/util/string_validator.h"
 
 namespace streams {
+
+constexpr auto kUnsafeS3ObjectPathChars = std::initializer_list<char>{
+    '\\', '^', '%', '`', '~', '[', ']', '\'', '"', '<', '>', '#', '|', '{', '}', '&'};
 
 /**
  * S3EmitOperator is a QueuedSinkOperator that uses S3EmitWriter to upload files asyncronously to
@@ -50,7 +54,7 @@ public:
     }
 
     mongo::ConnectionTypeEnum getConnectionType() const override {
-        return mongo::ConnectionTypeEnum::S3;
+        return mongo::ConnectionTypeEnum::AWSS3;
     }
 
     const S3EmitOperator::Options& options_forTest() const {
@@ -93,7 +97,7 @@ private:
 
     // Iterates over all files within _buckets and performs an async PutObject request
     // for files that meet trigger requirements.
-    void uploadFiles();
+    OperatorStats uploadFiles();
 
     // Generates a key used when uploading the object to S3.
     std::string createObjectKey(const std::string& path, const Bucket::File& file);
@@ -122,6 +126,10 @@ private:
     stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
     // Used for rate limiting logs.
     Timer _timer{};
+
+    // Protects the _status member
+    mutable mongo::stdx::mutex _statusMu;
+    mongo::Status _status{mongo::Status::OK()};
 };
 
 }  // namespace streams

@@ -1892,7 +1892,7 @@ TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForSupportedTypes) {
     std::vector<Connection> connections{
         {kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}},
         {kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}},
-        {kTestS3ConnectionName.toString(), ConnectionTypeEnum::S3, BSONObj{}}};
+        {kTestS3ConnectionName.toString(), ConnectionTypeEnum::AWSS3, BSONObj{}}};
     startRequest.setConnections(connections);
     startRequest.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(startRequest);
@@ -1928,7 +1928,7 @@ TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForSupportedTypes) {
         {.description = "should support updating S3 Connection",
          .connection =
              Connection{kTestS3ConnectionName.toString(),
-                        ConnectionTypeEnum::S3,
+                        ConnectionTypeEnum::AWSS3,
                         mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", now}
                             .toBSON()},
          .connectionAssertFn = [&](Connection connection) {

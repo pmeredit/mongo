@@ -43,7 +43,9 @@
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/serialization_context.h"
+#include "mongo/util/testing_proctor.h"
 #include "streams/exec/add_fields_operator.h"
+#include "streams/exec/aws_util.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -95,6 +97,7 @@
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/util.h"
 #include "streams/exec/validate_operator.h"
+#include "streams/util/string_validator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -1156,7 +1159,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
             sinkOperator =
                 std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
             sinkOperator->setOperatorId(_nextOperatorId++);
-        } else if (connection.getType() == ConnectionTypeEnum::S3) {
+        } else if (connection.getType() == ConnectionTypeEnum::AWSS3) {
             bool featureFlag =
                 *_context->featureFlags->getFeatureFlagValue(FeatureFlags::kEnableS3Emit).getBool();
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
@@ -1164,10 +1167,32 @@ void Planner::planEmitSink(const BSONObj& spec) {
                     featureFlag);
 
             auto parsedOptions = S3Options::parse(IDLParserContext("emit"), sinkSpec);
+            S3EmitOperator::Options options{
+                .bucket = parseStringOrExpression(parsedOptions.getBucket()),
+                .path = parseStringOrExpression(parsedOptions.getPath()),
+                .delimiter = (parsedOptions.getDelimiter())
+                    ? std::string{*parsedOptions.getDelimiter()}
+                    : S3EmitOperator::kDefaultDelimiter,
+            };
+
+            // TODO(SERVER-100437) use StringValidator to validate dynamic paths and buckets during
+            // runtime.
+            StringValidator pathValidator{kUnsafeS3ObjectPathChars};
+            if (options.path.isLiteral()) {
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                        fmt::format("Invalid s3 path"),
+                        pathValidator.isValid(options.path.getLiteral()));
+            }
 
             Aws::Client::ClientConfiguration clientConfig;
             if (!parsedOptions.getRegion() || parsedOptions.getRegion()->empty()) {
-                clientConfig.region = _context->region;
+                if (isAWSRegion(_context->region)) {
+                    clientConfig.region = _context->region;
+                } else {
+                    // TODO(SERVER-102689): Remove this and associate non-AWS regions with the
+                    // closest AWS region.
+                    clientConfig.region = Aws::Region::US_EAST_1;
+                }
             } else {
                 clientConfig.region = std::string{*parsedOptions.getRegion()};
             }
@@ -1177,16 +1202,21 @@ void Planner::planEmitSink(const BSONObj& spec) {
                                 clientConfig.region),
                     isAWSRegion(clientConfig.region));
 
-            S3EmitOperator::Options options{
-                .client = std::make_shared<AWSS3Client>(
+            if (TestingProctor::instance().isEnabled()) {
+                clientConfig.endpointOverride = "http://localhost:9000";
+                // Make a client with virtual addresses turned off. AWS S3 uses virtual addresses by
+                // default. MinIO (used for jstests) does not support virtual addresses.
+                options.client = std::make_shared<AWSS3Client>(
                     std::make_shared<AWSCredentialsProvider>(_context, connectionName),
-                    clientConfig),
-                .bucket = parseStringOrExpression(parsedOptions.getBucket()),
-                .path = parseStringOrExpression(parsedOptions.getPath()),
-                .delimiter = (parsedOptions.getDelimiter())
-                    ? std::string{*parsedOptions.getDelimiter()}
-                    : S3EmitOperator::kDefaultDelimiter,
-            };
+                    clientConfig,
+                    false /* useVirtualAddressing */
+                );
+            } else {
+                options.client = std::make_shared<AWSS3Client>(
+                    std::make_shared<AWSCredentialsProvider>(_context, connectionName),
+                    clientConfig);
+            }
+
             sinkOperator = std::make_unique<S3EmitOperator>(_context, std::move(options));
             sinkOperator->setOperatorId(_nextOperatorId++);
         } else {

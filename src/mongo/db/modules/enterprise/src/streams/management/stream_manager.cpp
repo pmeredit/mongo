@@ -25,6 +25,7 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/stacktrace.h"
 #include "mongo/util/str.h"
+#include "mongo/util/testing_proctor.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
@@ -920,11 +921,12 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     context->connections = std::make_unique<ConnectionCollection>(request.getConnections());
     for (const auto& connection : request.getConnections()) {
-        if (connection.getType() == mongo::ConnectionTypeEnum::AWSIAMLambda) {
+        if (connection.getType() == mongo::ConnectionTypeEnum::AWSIAMLambda ||
+            connection.getType() == mongo::ConnectionTypeEnum::AWSS3) {
             if (_options.region == "") {
                 // This is an environment variable set by Helix
                 auto cRegion = getenv(kEnvXgenRegion);
-                if (!getTestCommandsEnabled()) {
+                if (!TestingProctor::instance().isEnabled()) {
                     tassert(9929499, "Environment Variable XGEN_REGION is undefined", cRegion);
                     _options.region = std::string(cRegion);
                 } else {
@@ -1984,7 +1986,7 @@ mongo::UpdateConnectionReply StreamManager::updateConnection(
     switch (auto type = connection.getType()) {
         // Supported types will be added progressively
         case ConnectionTypeEnum::AWSIAMLambda:
-        case ConnectionTypeEnum::S3:
+        case ConnectionTypeEnum::AWSS3:
             break;
         default:
             uasserted(ErrorCodes::InternalErrorNotSupported,

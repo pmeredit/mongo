@@ -255,6 +255,7 @@ export function commonFailureTest({
     useTimeField = true,
     featureFlags = {},
     failsOnStartup = false,
+    sinkType = "atlas",
 }) {
     // Test with a changestream source and a checkpoint in the middle.
     const newPipeline = [
@@ -272,10 +273,11 @@ export function commonFailureTest({
                                 undefined,  // restoreDir
                                 undefined,  // dbForTest
                                 undefined,  // targetSourceMergeDb
-                                useTimeField);
+                                useTimeField,
+                                sinkType);
     test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
 
-    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
+    jsTestLog(`Running with input length ${input.length}, first doc ${tojson(input[0])}`);
 
     if (failsOnStartup) {
         assert.commandFailedWithCode(test.startFromLatestCheckpoint(false), expectedErrorCode);
@@ -327,7 +329,7 @@ export function commonSinkTest({
     );
     test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
 
-    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
+    jsTestLog(`Running with input length ${input.length}, first doc ${tojson(input[0])}`);
 
     test.run();
     assert.commandWorked(test.inputColl.insertMany(input));

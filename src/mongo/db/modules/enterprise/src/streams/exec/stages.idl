@@ -33,7 +33,7 @@ enums:
             SampleSolar: "sample_solar"
             InMemory: "in_memory"
             HTTPS: "https"
-            S3: "s3"
+            AWSS3: "aws_iam_s3"
             AWSIAMLambda: "aws_iam_lambda"
 
     StreamsValidationAction:
