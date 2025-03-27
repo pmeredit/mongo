@@ -407,7 +407,7 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
         } break;
         case Object: {
             auto obj = headerValue.getDocument().toBson();
-            auto asJson = tojson(obj, _options.jsonStringFormat, false /* pretty */);
+            auto asJson = serializeJson(obj, _options.jsonStringFormat, false /* pretty */);
             pushStringHeader(headers, headerKey, asJson);
         } break;
         case NumberInt: {
@@ -517,7 +517,8 @@ Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
                             unexpectedKeyTypeError(Object),
                             keyField.getType() == Object);
                     auto keyObject = keyField.getDocument().toBson();
-                    auto keyJson = tojson(keyObject, _options.jsonStringFormat, false /* pretty */);
+                    auto keyJson =
+                        serializeJson(keyObject, _options.jsonStringFormat, false /* pretty */);
                     return Value(std::move(keyJson));
                 }
                 case mongo::KafkaKeyFormatEnum::Int: {
@@ -575,7 +576,7 @@ void KafkaEmitOperator::tryLog(int id, std::function<void(int logID)> logFn) {
 }
 
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
-    auto docAsStr = tojson(streamDoc.doc.toBson(), _options.jsonStringFormat);
+    auto docAsStr = serializeJson(streamDoc.doc.toBson(), _options.jsonStringFormat);
     auto docSize = docAsStr.size();
 
     constexpr int flags = RdKafka::Producer::RK_MSG_COPY /* Copy payload */;

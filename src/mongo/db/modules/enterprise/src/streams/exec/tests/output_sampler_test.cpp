@@ -6,7 +6,6 @@
 
 #include <fmt/format.h>
 
-#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -15,6 +14,7 @@
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/util.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {

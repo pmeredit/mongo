@@ -13,7 +13,6 @@
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/exec/sbe/expressions/runtime_environment.h"
 #include "mongo/db/exec/sbe/values/bson.h"
@@ -38,6 +37,7 @@
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/util.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {
@@ -314,11 +314,11 @@ void OperatorDagBMFixture::SetUp(benchmark::State& state) {
                 MONGO_UNREACHABLE;
         }
 
-        inputDocsSmall.emplace_back(tojson(smallObj));
-        inputDocsMedium.emplace_back(tojson(mediumObj));
-        inputDocsLarge.emplace_back(tojson(largeObj));
-        inputDocsXLarge.emplace_back(tojson(xLargeObj));
-        inputDocsXXLarge.emplace_back(tojson(xxLargeObj));
+        inputDocsSmall.emplace_back(serializeJson(smallObj));
+        inputDocsMedium.emplace_back(serializeJson(mediumObj));
+        inputDocsLarge.emplace_back(serializeJson(largeObj));
+        inputDocsXLarge.emplace_back(serializeJson(xLargeObj));
+        inputDocsXXLarge.emplace_back(serializeJson(xxLargeObj));
 
         boost::optional<StreamDocument> streamDoc;
         switch (kDataMsgDocSize) {

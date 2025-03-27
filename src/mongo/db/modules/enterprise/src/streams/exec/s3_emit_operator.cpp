@@ -7,17 +7,18 @@
 #include <aws/core/utils/memory/stl/AWSAllocator.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/PutObjectRequest.h>
-#include <bsoncxx/json.hpp>
 #include <fmt/format.h>
 #include <memory>
 #include <mongocxx/logger.hpp>
 
+#include "mongo/bson/oid.h"
 #include "mongo/db/query/random_utils.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/testing_proctor.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/exec/util.h"
 #include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -138,6 +139,19 @@ void S3EmitWriter::connect() {
         foundTargetBucket);
 }
 
+JsonStringFormat S3EmitWriter::getJsonStringFormat() {
+    switch (_options.outputFormat) {
+        case mongo::S3EmitOutputFormatEnum::CanonicalJson:
+            return JsonStringFormat::Canonical;
+        case mongo::S3EmitOutputFormatEnum::RelaxedJson:
+            return JsonStringFormat::Relaxed;
+        case mongo::S3EmitOutputFormatEnum::BasicJson:
+            return JsonStringFormat::Basic;
+        default:
+            tasserted(9997602, "Output format has no JSON string equivalent format");
+    }
+}
+
 // Places documents in the data message in the appropriate file within _buckets. It then uploads
 // all files whose trigger conditions have been fulfilled.
 OperatorStats S3EmitWriter::processDataMsg(StreamDataMsg dataMsg) {
@@ -193,9 +207,7 @@ OperatorStats S3EmitWriter::processDataMsg(StreamDataMsg dataMsg) {
             fileIt = it;
         }
 
-        // TODO(SERVER-99976): add support for canonical and basic json formats
-        fileIt->second.documents.push_back(bsoncxx::to_json(toBsoncxxView(doc.doc.toBson()),
-                                                            bsoncxx::ExtendedJsonMode::k_relaxed));
+        fileIt->second.documents.push_back(serializeJson(doc.doc.toBson(), getJsonStringFormat()));
         stats.numOutputDocs++;
     }
 

@@ -5,14 +5,23 @@
 #include "streams/exec/util.h"
 
 #include <bsoncxx/exception/exception.hpp>
+#include <iostream>
+#include <limits>
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/bson/bsontypes_util.h"
+#include "mongo/bson/json.h"
+#include "mongo/bson/oid.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
+#include "mongo/util/hex.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/message.h"
@@ -24,6 +33,11 @@ using namespace mongo;
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
+
+namespace {
+constexpr StringData kPositiveInfinityValue = "Infinity"_sd;
+constexpr StringData kNegativeInfinityValue = "-Infinity"_sd;
+}  // namespace
 
 bool isSourceStage(mongo::StringData name) {
     return name == mongo::StringData(kSourceStageName);
@@ -490,6 +504,67 @@ mongo::Document convertJsonStringsToJson(mongo::Document doc) {
 
 std::vector<mongo::Value> jsonStringToValue(const std::vector<mongo::Value>& arr) {
     return convertAllFields(arr, jsonStringsToJson);
+}
+
+mongo::Value modifyValueForBasicJson(const mongo::Value& value) {
+    switch (value.getType()) {
+        case BSONType::jstOID:
+            return mongo::Value{value.getOid().toString()};
+        case BSONType::Date:
+            return mongo::Value{value.getDate().toMillisSinceEpoch()};
+        case BSONType::bsonTimestamp: {
+            auto timestamp = duration_cast<Milliseconds>(Seconds{value.getTimestamp().getSecs()});
+            return mongo::Value{static_cast<long long>(timestamp.count())};
+        }
+        case BSONType::NumberDecimal: {
+            return mongo::Value{value.getDecimal().toString()};
+        }
+        case BSONType::BinData: {
+            const auto& binValue = value.getBinData();
+            switch (value.getBinData().type) {
+                case BinDataType::newUUID:
+                    return mongo::Value{value.getUuid().toString()};
+                default:
+                    return mongo::Value{base64::encode(
+                        StringData(static_cast<const char*>(binValue.data), binValue.length))};
+            }
+            break;
+        }
+        case BSONType::NumberDouble: {
+            auto doubleValue = value.getDouble();
+            if (doubleValue == std::numeric_limits<double>::infinity()) {
+                return mongo::Value{kPositiveInfinityValue};
+            } else if (doubleValue == -std::numeric_limits<double>::infinity()) {
+                return mongo::Value{kNegativeInfinityValue};
+            }
+            break;
+        }
+        case BSONType::RegEx:
+            return mongo::Value{
+                BSON("pattern" << value.getRegex() << "options" << value.getRegexFlags())};
+        default:
+            break;
+    }
+    return value;
+}
+
+mongo::Document modifyDocumentForBasicJson(const mongo::Document& doc) {
+    return convertAllFields(doc, modifyValueForBasicJson);
+}
+
+std::string serializeJson(const BSONObj& bsonObj, JsonStringFormat format, bool pretty) {
+    switch (format) {
+        case JsonStringFormat::Canonical:
+            return tojson(bsonObj, mongo::ExtendedCanonicalV2_0_0, pretty);
+        case JsonStringFormat::Relaxed:
+            return tojson(bsonObj, mongo::ExtendedRelaxedV2_0_0, pretty);
+        case JsonStringFormat::Basic: {
+            auto modifiedDoc = modifyDocumentForBasicJson(mongo::Document{bsonObj});
+            return tojson(modifiedDoc.toBson(), mongo::ExtendedRelaxedV2_0_0, pretty);
+        }
+        default:
+            tasserted(9997603, "Received unsupported json string format");
+    }
 }
 
 mongo::Value parseAndDeserializeJsonResponse(StringData rawResponse, bool parseJsonStrings) {

@@ -233,7 +233,7 @@ TEST_F(KafkaEmitTest, TestSerializeHeaders) {
     header = headers->get("testKeyObj")[0];
     result =
         BSONBinData{header.value(), static_cast<int>(header.value_size()), mongo::BinDataGeneral};
-    auto str = tojson(objVal, mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, false);
+    auto str = serializeJson(objVal, JsonStringFormat::Relaxed, false);
     expectedBinData = BSONBinData{str.c_str(), static_cast<int>(str.size()), mongo::BinDataGeneral};
     assertBinDataEquals(result, expectedBinData);
 

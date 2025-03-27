@@ -12,6 +12,7 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/queued_sink_operator.h"
+#include "streams/exec/util.h"
 #include "streams/util/string_validator.h"
 
 namespace streams {
@@ -37,6 +38,8 @@ public:
         NameExpression path;
         // Delimiter used between string-formatted documents in a file to be uploaded to S3.
         std::string delimiter{"\n"};
+        // JSON format used to serialize BSON to JSON
+        mongo::S3EmitOutputFormatEnum outputFormat{mongo::S3EmitOutputFormatEnum::RelaxedJson};
 
         // Used to ensure that task ids are consistent in tests to guarantee consistent filenames.
         int testOnlyTaskIdSeed{0};
@@ -115,6 +118,9 @@ private:
 
     // Limits the number of logs being emited for a given log id.
     void tryLog(int id, std::function<void(int logID)> logFn);
+
+    // Return the streams JSON string format equivalent of an S3 output format if possible
+    JsonStringFormat getJsonStringFormat();
 
     Context* _context{nullptr};
     S3EmitWriter::Options _options;

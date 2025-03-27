@@ -17,7 +17,6 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -2298,7 +2297,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         })")};
         builder.append("interval",
                        BSON("size" << size << "unit" << StreamTimeUnit_serializer(unit)));
-        auto pipeline = fmt::format("[{{$tumblingWindow: {} }}]", tojson(builder.obj()));
+        auto pipeline = fmt::format("[{{$tumblingWindow: {} }}]", serializeJson(builder.obj()));
         auto dag = commonKafkaInnerTestSetup(pipeline, /* useTimeField */ false);
         auto kafkaConsumerOperator =
             dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());

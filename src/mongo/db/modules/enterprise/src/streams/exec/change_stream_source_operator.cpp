@@ -26,7 +26,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
@@ -303,7 +302,7 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
                 2,
                 "Change stream $source: processing a batch of events",
                 "context"_attr = _context,
-                "resumeToken"_attr = tojson(*batch.lastResumeToken));
+                "resumeToken"_attr = serializeJson(*batch.lastResumeToken));
     _changeEvents.pop();
     _queueSizeGauge->incBy(-batch.size());
     _queueByteSizeGauge->incBy(-batch.getByteSize());
@@ -337,7 +336,7 @@ void ChangeStreamSourceOperator::connectToSource() {
         const auto& resumeToken = get<BSONObj>(*_state.getStartingPoint());
         LOGV2_INFO(7788511,
                    "Changestream $source starting with startAfter",
-                   "resumeToken"_attr = tojson(resumeToken),
+                   "resumeToken"_attr = serializeJson(resumeToken),
                    "context"_attr = _context);
         _changeStreamOptions.start_after(toBsoncxxView(resumeToken));
     } else {
@@ -749,7 +748,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
                 2,
                 "Change stream $source: updated resume token",
                 "context"_attr = _context,
-                "resumeToken"_attr = tojson(get<BSONObj>(*_state.getStartingPoint())));
+                "resumeToken"_attr = serializeJson(get<BSONObj>(*_state.getStartingPoint())));
 
     return totalNumInputDocs;
 }
@@ -988,7 +987,7 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
     }
     LOGV2_INFO(7788505,
                "Change stream $source restored",
-               "state"_attr = tojson(_state.toBSON()),
+               "state"_attr = serializeJson(_state.toBSON()),
                "context"_attr = _context);
 }
 

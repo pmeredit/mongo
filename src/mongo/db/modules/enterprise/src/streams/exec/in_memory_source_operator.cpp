@@ -4,11 +4,11 @@
 
 #include "streams/exec/in_memory_source_operator.h"
 
-#include "mongo/bson/json.h"
 #include "mongo/bson/oid.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/context.h"
 #include "streams/exec/message.h"
+#include "streams/exec/util.h"
 
 using namespace mongo;
 
@@ -37,7 +37,7 @@ StreamDataMsg generateFixedDataMsg(int docSize, int messageSize) {
     int idx = 0;
     while (curSize < messageSize) {
         docs.push_back(StreamDocument(Document(randomDoc(idx++))));
-        curSize += tojson(docs.back().doc.toBson(), mongo::ExtendedRelaxedV2_0_0).size();
+        curSize += serializeJson(docs.back().doc.toBson(), JsonStringFormat::Relaxed).size();
     }
     StreamDataMsg msg;
     msg.docs = std::move(docs);

@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -37,6 +36,7 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -898,7 +898,7 @@ TEST_F(HttpsOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
                 HttpClient::HttpMethod::kGET,
                 uri.toString() + path,
             },
-            MockHttpClient::Response{.code = 200, .body = tojson(BSON("ack" << "ok"))});
+            MockHttpClient::Response{.code = 200, .body = serializeJson(BSON("ack" << "ok"))});
         docs.emplace_back(
             StreamDocument{Document{fromjson("{" + fmt::format("'path': '{}'", path) + "}")}});
     }
@@ -978,7 +978,7 @@ TEST_F(HttpsOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
                 HttpClient::HttpMethod::kGET,
                 uri.toString(),
             },
-            MockHttpClient::Response{.code = 200, .body = tojson(BSON("ack" << "ok"))});
+            MockHttpClient::Response{.code = 200, .body = serializeJson(BSON("ack" << "ok"))});
     };
 
     auto testAssert = [this, uri](std::deque<StreamMsgUnion> messages) {
@@ -1048,7 +1048,7 @@ TEST_F(HttpsOperatorTest, RateLimitingParametersUpdate) {
                 HttpClient::HttpMethod::kGET,
                 uri.toString(),
             },
-            MockHttpClient::Response{.code = 200, .body = tojson(BSON("ack" << "ok"))});
+            MockHttpClient::Response{.code = 200, .body = serializeJson(BSON("ack" << "ok"))});
     };
 
     auto testAssert = [this, uri](std::deque<StreamMsgUnion> messages) {
@@ -1395,7 +1395,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponseByDefault) {
     StringData uri{"http://localhost:10000"};
     // Set up mock http client.
     std::uint16_t statusCode{400};
-    std::string responseBody{tojson(BSON("ack" << "ok"))};
+    std::string responseBody{serializeJson(BSON("ack" << "ok"))};
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
         MockHttpClient::Request{
@@ -1454,7 +1454,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponse) {
     StringData uri{"http://localhost:10000"};
     // Set up mock http client.
     std::uint16_t statusCode{400};
-    std::string responseBody{tojson(BSON("ack" << "ok"))};
+    std::string responseBody{serializeJson(BSON("ack" << "ok"))};
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
         MockHttpClient::Request{
@@ -1576,13 +1576,13 @@ TEST_F(HttpsOperatorTest, ShouldIgnoreOnErrorResponse) {
             HttpClient::HttpMethod::kDELETE,
             uri.toString() + "/1",
         },
-        MockHttpClient::Response{.code = 400, .body = tojson(BSON("ack" << "ok"))});
+        MockHttpClient::Response{.code = 400, .body = serializeJson(BSON("ack" << "ok"))});
     mockHttpClient->expect(
         MockHttpClient::Request{
             HttpClient::HttpMethod::kDELETE,
             uri.toString() + "/2",
         },
-        MockHttpClient::Response{.code = 400, .body = tojson(BSON("ack" << "ok"))});
+        MockHttpClient::Response{.code = 400, .body = serializeJson(BSON("ack" << "ok"))});
 
     HttpsOperator::Options options{
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
@@ -1643,7 +1643,7 @@ TEST_F(HttpsOperatorTest, ShouldFailOnFailureStatusCodes) {
         std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
 
         std::uint16_t statusCode{code};
-        auto responseBody = tojson(BSON("ack" << "ok"));
+        auto responseBody = serializeJson(BSON("ack" << "ok"));
         mockHttpClient->expect(
             MockHttpClient::Request{
                 HttpClient::HttpMethod::kGET,
@@ -1683,7 +1683,7 @@ TEST_F(HttpsOperatorTest, ShouldUseOnErrorBehaviorForStatusCodes) {
 
     setupDag(std::move(options));
 
-    auto responseBody = tojson(BSON("ack" << "ok"));
+    auto responseBody = serializeJson(BSON("ack" << "ok"));
     for (uint16_t httpStatusCode : {400, 404, 410, 413, 414, 431}) {
         rawMockHttpClient->expect(
             MockHttpClient::Request{

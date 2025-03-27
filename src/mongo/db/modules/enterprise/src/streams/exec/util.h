@@ -8,6 +8,7 @@
 #include <bsoncxx/document/value.hpp>
 #include <mongocxx/exception/exception.hpp>
 
+#include "mongo/bson/bsonobj.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
@@ -104,8 +105,19 @@ std::vector<mongo::Value> convertAllFields(
     const std::vector<mongo::Value>& arr,
     std::function<mongo::Value(const mongo::Value&)> convertFunc);
 
-// parseAndDeserializeResponse will convert a json response to a mongo value. If specified, any json
-// strings embedded within will also be parsed
+// Modifies document so that it may be represented in BasicJson format when serialized
+mongo::Document modifyDocumentForBasicJson(const mongo::Document& doc);
+
+// JSON formatting modes supported in Streams
+enum class JsonStringFormat { Basic, Relaxed, Canonical };
+
+// Serializes a BSONObj to JSON
+std::string serializeJson(const mongo::BSONObj& bsonObj,
+                          JsonStringFormat format = JsonStringFormat::Canonical,
+                          bool pretty = false);
+
+// parseAndDeserializeResponse will convert a json response to a mongo value. If specified, any
+// json strings embedded within will also be parsed
 mongo::Value parseAndDeserializeJsonResponse(mongo::StringData rawResponse, bool parseJsonStrings);
 
 }  // namespace streams

@@ -17,7 +17,6 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
@@ -37,6 +36,7 @@
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/exec/util.h"
 
 using namespace std::chrono_literals;
 using fspath = std::filesystem::path;
@@ -240,7 +240,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
                   fmt::format("Error writing to file={}, errno={}, context={}",
                               shadowPath.native(),
                               errno,
-                              tojson(_context->toBSON())));
+                              serializeJson(_context->toBSON())));
     }
     try {
         // Rename to eventual name
@@ -253,7 +253,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
                               shadowPath.native(),
                               stateFilePath.native(),
                               msg.what(),
-                              tojson(_context->toBSON())));
+                              serializeJson(_context->toBSON())));
     }
 
     // Store compressed file checksum in manifest
@@ -453,7 +453,7 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
             tasserted(ErrorCodes::InternalError,
                       fmt::format("Could not get file idx from state file: {}, context: {}",
                                   fName,
-                                  tojson(_context->toBSON())));
+                                  serializeJson(_context->toBSON())));
         }
         tassert(ErrorCodes::InternalError,
                 fmt::format("Duplicate file idx - {}", *fidx),
@@ -476,7 +476,7 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
                 tasserted(ErrorCodes::InternalError,
                           fmt::format("Could not get file idx from state file: {}, context: {}",
                                       fName,
-                                      tojson(_context->toBSON())));
+                                      serializeJson(_context->toBSON())));
             }
             off_t beg = loc.getBegin();
             off_t end = loc.getEnd();

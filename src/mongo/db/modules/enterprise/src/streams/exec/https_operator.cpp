@@ -312,8 +312,7 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
             try {
-                rawDoc = mongo::tojson(payloadDoc.toBson(),
-                                       mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
+                rawDoc = serializeJson(payloadDoc.toBson(), JsonStringFormat::Relaxed);
             } catch (ExceptionFor<ErrorCodes::BSONObjectTooLarge>& e) {
                 writeToDLQ(streamDoc,
                            payloadDoc,

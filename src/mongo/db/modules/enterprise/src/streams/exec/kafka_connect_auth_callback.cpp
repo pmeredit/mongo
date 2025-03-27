@@ -15,12 +15,12 @@
 
 #include "mongo/base/data_range.h"
 #include "mongo/base/error_codes.h"
-#include "mongo/bson/json.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/log_util.h"
+#include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -128,7 +128,7 @@ std::vector<uint8_t> KafkaConnectAuthCallback::buildJSONPayload(const std::strin
         std::to_string(randomSeed) /* Random seed */
     };
 
-    auto jsonString = tojson(kcas.toBSON());
+    auto jsonString = serializeJson(kcas.toBSON());
     return std::vector<uint8_t>(jsonString.begin(), jsonString.end());
 }
 

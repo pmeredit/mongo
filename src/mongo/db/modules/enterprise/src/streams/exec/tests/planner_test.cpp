@@ -19,7 +19,6 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/bson/oid.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -212,7 +211,7 @@ public:
         for (const auto& op : dag->operators()) {
             opArr.append(op->getName());
         }
-        fmt::print("Operators\n{}\n", tojson(opArr.obj()));
+        fmt::print("Operators\n{}\n", serializeJson(opArr.obj()));
 
         ASSERT_EQ(expectedOperators.size(), dag->operators().size());
         for (size_t i = 0; i < expectedOperators.size(); ++i) {
@@ -1294,7 +1293,7 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
     auto options = kafkaEmitOperator->getOptions();
     ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
     ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
-    ASSERT_EQ(mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, options.jsonStringFormat);
+    ASSERT_EQ(JsonStringFormat::Relaxed, options.jsonStringFormat);
 
     // Validate the expected auth related fields.
     ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),
@@ -1364,7 +1363,7 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonCanonical) {
     auto kafkaEmitOperator = dynamic_cast<KafkaEmitOperator*>(dag->operators().back().get());
     ASSERT(kafkaEmitOperator);
     auto options = kafkaEmitOperator->getOptions();
-    ASSERT_EQ(mongo::JsonStringFormat::ExtendedCanonicalV2_0_0, options.jsonStringFormat);
+    ASSERT_EQ(JsonStringFormat::Canonical, options.jsonStringFormat);
 }
 
 /**
@@ -1418,7 +1417,7 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonRelaxed) {
     auto options = kafkaEmitOperator->getOptions();
     ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
     ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
-    ASSERT_EQ(mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, options.jsonStringFormat);
+    ASSERT_EQ(JsonStringFormat::Relaxed, options.jsonStringFormat);
 }
 
 TEST_F(PlannerTest, OperatorId) {

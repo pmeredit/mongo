@@ -2,15 +2,24 @@
  *    Copyright (C) 2025-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsontypes.h"
+#include "mongo/bson/bsontypes_util.h"
 #include "mongo/bson/json.h"
+#include "mongo/bson/oid.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/logv2/log.h"
 #include "mongo/logv2/log_attr.h"
+#include "mongo/platform/decimal128.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -176,6 +185,127 @@ TEST(UtilTest, ParseJsonStrings) {
         })"));
     result = convertJsonStringsToJson(doc);
     ASSERT_VALUE_EQ(mongo::Value(result), mongo::Value(expected));
+}
+
+TEST(UtilTest, ModifyForBasicJson) {
+    const uint8_t binDataGeneralBytes[] = {0x81,
+                                           0xfd,
+                                           0x54,
+                                           0x73,
+                                           0x17,
+                                           0x47,
+                                           0x4c,
+                                           0x9d,
+                                           0x87,
+                                           0x43,
+                                           0xf1,
+                                           0x06,
+                                           0x42,
+                                           0xb3,
+                                           0xbb,
+                                           0x99};
+
+    const uint8_t uuidBytes[]{0x29,
+                              0xab,
+                              0x7e,
+                              0x7c,
+                              0x79,
+                              0x3a,
+                              0x46,
+                              0x4b,
+                              0x80,
+                              0x9a,
+                              0x8b,
+                              0x54,
+                              0x9a,
+                              0xc5,
+                              0x3b,
+                              0x80};
+
+    struct TestCase {
+        const std::string description;
+        const BSONObj inputBson;
+        std::string expectedJson;
+    };
+
+    TestCase testCases[]{
+        {
+            .description = "General case",
+            .inputBson = BSON(
+                "_id" << mongo::OID("6717fcbba18c8a8f74b6d977") << "binary"
+                      << mongo::BSONBinData(
+                             binDataGeneralBytes, 16, mongo::BinDataType::BinDataGeneral)
+                      << "date" << mongo::Date_t::fromMillisSinceEpoch(1729625275856) << "timestamp"
+                      << mongo::Timestamp(1729625275, 1) << "decimal" << mongo::Decimal128{9.09}
+                      << "uuid" << mongo::BSONBinData(uuidBytes, 16, mongo::BinDataType::newUUID)
+                      << "posInf" << std::numeric_limits<double>::infinity() << "negInf"
+                      << -std::numeric_limits<double>::infinity() << "regex"
+                      << mongo::BSONRegEx("ab+c", "i") << "int" << 32 << "double" << 9.9 << "int64"
+                      << int64_t{50} << "string"
+                      << "foobar"),
+            .expectedJson = R"({"_id":"6717fcbba18c8a8f74b6d977",
+                    "binary":"gf1UcxdHTJ2HQ/EGQrO7mQ==",
+                    "date":1729625275856,
+                    "timestamp":1729625275000,)" +
+                fmt::format(R"("decimal":"{}",)", mongo::Decimal128{9.09}.toString()) +
+                R"("uuid":"29ab7e7c-793a-464b-809a-8b549ac53b80",
+                "posInf":"Infinity",
+                "negInf":"-Infinity",
+                "regex":{"pattern":"ab+c","options":"i"},
+                "int":32,"double":9.9,
+                "int64":50,"string":"foobar"})",
+        },
+        {
+            .description = "Decimal128 is NAN",
+            .inputBson = BSON("decimal" << mongo::Decimal128{"absolutelynotanumber"}),
+            .expectedJson = R"({"decimal":"NaN"})",
+        },
+        {
+            .description = "Decimal128 is infinite",
+            .inputBson = BSON("posInf" << mongo::Decimal128::kPositiveInfinity << "negInf"
+                                       << mongo::Decimal128::kNegativeInfinity),
+            .expectedJson = R"({"posInf":"Infinity", "negInf":"-Infinity"})",
+        }};
+
+    for (auto tc : testCases) {
+        LOGV2_DEBUG(9997604, 1, "Running test case", "description"_attr = tc.description);
+        auto convertedDoc = modifyDocumentForBasicJson(mongo::Document{tc.inputBson});
+        auto actualJson = tojson(convertedDoc.toBson(), mongo::ExtendedRelaxedV2_0_0);
+
+        tc.expectedJson.erase(
+            std::remove_if(tc.expectedJson.begin(), tc.expectedJson.end(), ::isspace),
+            tc.expectedJson.end());
+        ASSERT_EQUALS(actualJson, tc.expectedJson);
+    }
+}
+
+TEST(UtilTest, SerializeJson) {
+    struct TestCase {
+        const std::string description;
+        const BSONObj inputBSON;
+        const JsonStringFormat format;
+        const std::string expectedJson;
+    };
+
+    TestCase testCases[]{
+        {.description = "serializes to relaxed JSON format",
+         .inputBSON = BSON("someDate" << mongo::Date_t::fromMillisSinceEpoch(1729625275856)),
+         .format = JsonStringFormat::Relaxed,
+         .expectedJson = "{\"someDate\":{\"$date\":\"2024-10-22T19:27:55.856Z\"}}"},
+        {.description = "serializes to canonical JSON format",
+         .inputBSON = BSON("someDate" << mongo::Date_t::fromMillisSinceEpoch(1729625275856)),
+         .format = JsonStringFormat::Canonical,
+         .expectedJson = "{\"someDate\":{\"$date\":{\"$numberLong\":\"1729625275856\"}}}"},
+        {.description = "serializes to basic JSON format",
+         .inputBSON = BSON("someDate" << mongo::Date_t::fromMillisSinceEpoch(1729625275856)),
+         .format = JsonStringFormat::Basic,
+         .expectedJson = "{\"someDate\":1729625275856}"},
+    };
+
+    for (const auto& tc : testCases) {
+        LOGV2_DEBUG(9997605, 1, "Running test case", "description"_attr = tc.description);
+        ASSERT_EQ(serializeJson(tc.inputBSON, tc.format), tc.expectedJson);
+    }
 }
 
 TEST(UtilTest, ParseAndDeserializeJsonResponse) {

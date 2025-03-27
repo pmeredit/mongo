@@ -20,6 +20,7 @@
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/util.h"
 
 namespace streams {
 /**
@@ -62,7 +63,7 @@ public:
         // GWProxy symmetric key.
         boost::optional<std::string> gwproxyKey;
         // Json String Format either relaxedJson or canonicalJson.
-        mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
+        JsonStringFormat jsonStringFormat{JsonStringFormat::Relaxed};
         // compression.type setting
         mongo::KafkaCompressionTypeEnum compressionType{mongo::KafkaCompressionTypeEnum::none};
         bool setCompressionType{false};

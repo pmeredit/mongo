@@ -437,9 +437,123 @@ TEST_F(S3EmitOperatorTest, SuccessCases) {
                         client, "happyPathBucket", "happy/path/1681149600000-cd1a-0000.json");
                 },
             .expectedFile =
-                R"({ "_ts" : "2023-04-10T18:00:00.000000", "foo" : "bar", "_stream_meta" : { "source" : { "type" : "generated" } } }
+                R"({"_ts":"2023-04-10T18:00:00.000000","foo":"bar","_stream_meta":{"source":{"type":"generated"}}}
 )",
         },
+        {
+            .description = "Should write documents serialized in basicJson format",
+            .optionsFn =
+                [](std::shared_ptr<S3Client> client) {
+                    return S3EmitOperator::Options{
+                        .client = client,
+                        .bucket = {"happyPathBucket"},
+                        .path = {"boring/path/"},
+                        .delimiter = "\n",
+                        .outputFormat = mongo::S3EmitOutputFormatEnum::BasicJson,
+                    };
+                },
+            .setupClientFn = [&]() { return setupMockS3ClientWithBucket("happyPathBucket"); },
+            .inputDocs =
+                std::vector<StreamDocument>{
+                    Document{BSON("_ts" << "2023-04-10T18:00:00.000000"
+                                        << "foo"
+                                        << "bar"
+                                        << "someDate"
+                                        << mongo::Date_t::fromMillisSinceEpoch(1729625275856))},
+                },
+            .getFileFn =
+                [](std::shared_ptr<S3Client> client) {
+                    return getObject(
+                        client, "happyPathBucket", "boring/path/1681149600000-cd1a-0000.json");
+                },
+            .expectedFile =
+                R"({"_ts":"2023-04-10T18:00:00.000000","foo":"bar","someDate":1729625275856,"_stream_meta":{"source":{"type":"generated"}}}
+)",
+        },
+        {.description = "Should write documents serialized in canonical extended json format",
+         .optionsFn =
+             [](std::shared_ptr<S3Client> client) {
+                 return S3EmitOperator::Options{
+                     .client = client,
+                     .bucket = {"happyPathBucket"},
+                     .path = {"boring/path//"},
+                     .delimiter = "\n",
+                     .outputFormat = mongo::S3EmitOutputFormatEnum::CanonicalJson,
+                 };
+             },
+         .setupClientFn = [&]() { return setupMockS3ClientWithBucket("happyPathBucket"); },
+         .inputDocs =
+             std::vector<StreamDocument>{
+                 Document{BSON("_ts" << "2023-04-10T18:00:00.000000"
+                                     << "foo"
+                                     << "bar"
+                                     << "someDate"
+                                     << mongo::Date_t::fromMillisSinceEpoch(1729625275856))},
+             },
+         .getFileFn =
+             [](std::shared_ptr<S3Client> client) {
+                 return getObject(
+                     client, "happyPathBucket", "boring/path/1681149600000-cd1a-0000.json");
+             },
+         .expectedFile =
+             R"({"_ts":"2023-04-10T18:00:00.000000","foo":"bar","someDate":{"$date":{"$numberLong":"1729625275856"}},"_stream_meta":{"source":{"type":"generated"}}}
+)"},
+        {.description = "Should write documents serialized in relaxed extended json format",
+         .optionsFn =
+             [](std::shared_ptr<S3Client> client) {
+                 return S3EmitOperator::Options{
+                     .client = client,
+                     .bucket = {"happyPathBucket"},
+                     .path = {"boring/path//"},
+                     .delimiter = "\n",
+                     .outputFormat = mongo::S3EmitOutputFormatEnum::RelaxedJson,
+                 };
+             },
+         .setupClientFn = [&]() { return setupMockS3ClientWithBucket("happyPathBucket"); },
+         .inputDocs =
+             std::vector<StreamDocument>{
+                 Document{BSON("_ts" << "2023-04-10T18:00:00.000000"
+                                     << "foo"
+                                     << "bar"
+                                     << "someDate"
+                                     << mongo::Date_t::fromMillisSinceEpoch(1729625275856))},
+             },
+         .getFileFn =
+             [](std::shared_ptr<S3Client> client) {
+                 return getObject(
+                     client, "happyPathBucket", "boring/path/1681149600000-cd1a-0000.json");
+             },
+         .expectedFile =
+             R"({"_ts":"2023-04-10T18:00:00.000000","foo":"bar","someDate":{"$date":"2024-10-22T19:27:55.856Z"},"_stream_meta":{"source":{"type":"generated"}}}
+)"},
+        {.description =
+             "Should write documents serialized in relaxed extended json format by default",
+         .optionsFn =
+             [](std::shared_ptr<S3Client> client) {
+                 return S3EmitOperator::Options{
+                     .client = client,
+                     .bucket = {"happyPathBucket"},
+                     .path = {"boring/path//"},
+                     .delimiter = "\n",
+                 };
+             },
+         .setupClientFn = [&]() { return setupMockS3ClientWithBucket("happyPathBucket"); },
+         .inputDocs =
+             std::vector<StreamDocument>{
+                 Document{BSON("_ts" << "2023-04-10T18:00:00.000000"
+                                     << "foo"
+                                     << "bar"
+                                     << "someDate"
+                                     << mongo::Date_t::fromMillisSinceEpoch(1729625275856))},
+             },
+         .getFileFn =
+             [](std::shared_ptr<S3Client> client) {
+                 return getObject(
+                     client, "happyPathBucket", "boring/path/1681149600000-cd1a-0000.json");
+             },
+         .expectedFile =
+             R"({"_ts":"2023-04-10T18:00:00.000000","foo":"bar","someDate":{"$date":"2024-10-22T19:27:55.856Z"},"_stream_meta":{"source":{"type":"generated"}}}
+)"},
     };
 
     for (const auto& tc : testCases) {

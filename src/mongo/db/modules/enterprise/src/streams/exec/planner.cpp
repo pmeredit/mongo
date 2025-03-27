@@ -453,16 +453,15 @@ std::vector<std::pair<std::string, StringOrExpression>> parseDynamicObject(
     return out;
 }
 
-mongo::JsonStringFormat parseJsonStringFormat(
-    boost::optional<KafkaEmitJsonStringFormatEnum> exprToParse) {
-    mongo::JsonStringFormat returnValue;
+JsonStringFormat parseJsonStringFormat(boost::optional<KafkaEmitJsonStringFormatEnum> exprToParse) {
+    JsonStringFormat returnValue;
     if (!exprToParse) {
-        return mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+        return JsonStringFormat::Relaxed;
     }
     if (*exprToParse == KafkaEmitJsonStringFormatEnum::CanonicalJson) {
-        returnValue = mongo::JsonStringFormat::ExtendedCanonicalV2_0_0;
+        returnValue = JsonStringFormat::Canonical;
     } else {
-        returnValue = mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+        returnValue = JsonStringFormat::Relaxed;
     }
     return returnValue;
 }
@@ -1148,7 +1147,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
             }
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
-                : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+                : JsonStringFormat::Relaxed;
             if (options.getTestOnlyPartition()) {
                 kafkaEmitOptions.testOnlyPartition = *options.getTestOnlyPartition();
             }
@@ -1173,6 +1172,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
                 .delimiter = (parsedOptions.getDelimiter())
                     ? std::string{*parsedOptions.getDelimiter()}
                     : S3EmitOperator::kDefaultDelimiter,
+                .outputFormat = parsedOptions.getOutputFormat(),
             };
 
             // TODO(SERVER-100437) use StringValidator to validate dynamic paths and buckets during
@@ -1323,7 +1323,8 @@ void Planner::planWindowCommon() {
 
 bool Planner::shouldPrependDummyLimit(Pipeline* innerPipeline) {
     if (_windowPlanningInfo->numWindowAwareStages == 0 || innerPipeline->getSources().empty()) {
-        // If the inner pipeline is empty or there are no window aware stages, add a dummy limit.
+        // If the inner pipeline is empty or there are no window aware stages, add a dummy
+        // limit.
         return true;
     }
 
@@ -1583,27 +1584,27 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
                     "in the pipeline.",
                     false);
         } else if (_windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking) {
-            // Else, if there is a read dependency on stream meta before the first blocking, prepend
-            // dummy sort. A blocking operator must precede any operator with a _stream_meta
-            // dependency so that the _stream_meta.window.start/end values are finalized by the time
-            // they are read.
+            // Else, if there is a read dependency on stream meta before the first blocking,
+            // prepend dummy sort. A blocking operator must precede any operator with a
+            // _stream_meta dependency so that the _stream_meta.window.start/end values are
+            // finalized by the time they are read.
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, the pipeline cannot use "
                     "stream meta until after the first $group or $sort.",
                     false);
         } else if (_windowPlanningInfo->limitBeforeFirstBlocking) {
-            // Else, if there's a limit operator before the first blocking window aware operator,
-            // prepend dummy sort. A blocking operator must precede a limit operator with limit <
-            // INF for window merge to work.
+            // Else, if there's a limit operator before the first blocking window aware
+            // operator, prepend dummy sort. A blocking operator must precede a limit operator
+            // with limit < INF for window merge to work.
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, there cannot be a $limit before "
                     "the first $group or $sort.",
                     false);
         } else if (!isWindowAwareStage(pipeline->getSources().front()->getSourceName())) {
             // Else, if the first operator is NOT window aware, prepend dummy limit
-            // If the first operator has a filtering effect (ex. match), a limit operator with limit
-            // = INF needs to precede it so documents are not filtered out before they effect
-            // session window boundaries.
+            // If the first operator has a filtering effect (ex. match), a limit operator with
+            // limit = INF needs to precede it so documents are not filtered out before they
+            // effect session window boundaries.
             prependDummyLimitOperator(pipeline.get());
         }
     }
@@ -1937,9 +1938,9 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
     auto pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(stages));
     stages = pipelineRewriter->rewrite();
 
-    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We set
-    // 'allowGenericForeignDbLookup' to true so this syntax can be parsed in DocumentSourceLookup
-    // without throwing errors.
+    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We
+    // set 'allowGenericForeignDbLookup' to true so this syntax can be parsed in
+    // DocumentSourceLookup without throwing errors.
     LiteParserOptions options{.allowGenericForeignDbLookup = true};
     LiteParsedPipeline liteParsedPipeline(_context->expCtx->getNamespaceString(), stages, options);
 
