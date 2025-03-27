@@ -10,12 +10,10 @@ import {
 import {findMatchingLogLine} from "jstests/libs/log.js";
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
-    validateLastCheckpointStat
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint.js";
-import {
     flushUntilStopped,
     LocalDiskCheckpointUtil,
     TestHelper,
+    validateLastCheckpointStat,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {

@@ -18,6 +18,9 @@ import {
     waitForCount,
     waitWhenThereIsMoreData
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+const lastCheckpointFieldName = "lastCheckpoint";
+const sourceStateFieldName = "sourceState";
+const commitTimeFieldName = "commitTime";
 
 export function uuidStr() {
     return UUID().toString().split('"')[1];
@@ -772,4 +775,21 @@ export function checkpointInTheMiddleTest(
     for (let i = 0; i < originalResults.length; i++) {
         compareFunc(results[i], originalResults[i]);
     }
+}
+
+export function validateLastCheckpointStat(sourceType, verboseStats) {
+    assert(lastCheckpointFieldName in verboseStats);
+    const lastCheckpoint = verboseStats[lastCheckpointFieldName];
+    assert(sourceStateFieldName in lastCheckpoint);
+    const sourceState = lastCheckpoint[sourceStateFieldName];
+    if (sourceType == "kafka") {
+        assert(sourceState.length > 0);
+        for (const partition of sourceState) {
+            assert("partition" in partition && "offset" in partition && "topic" in partition);
+        }
+    } else {
+        assert("resumeToken" in sourceState && "clusterTime" in sourceState);
+    }
+
+    assert(commitTimeFieldName in lastCheckpoint);
 }

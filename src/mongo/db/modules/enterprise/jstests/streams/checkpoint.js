@@ -7,6 +7,7 @@
 import {
     removeProjections,
     TestHelper,
+    validateLastCheckpointStat,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     listStreamProcessors,
@@ -34,23 +35,6 @@ function generateInput(size, msPerDocument = 1) {
         });
     }
     return input;
-}
-
-export function validateLastCheckpointStat(sourceType, verboseStats) {
-    assert(lastCheckpointFieldName in verboseStats);
-    const lastCheckpoint = verboseStats[lastCheckpointFieldName];
-    assert(sourceStateFieldName in lastCheckpoint);
-    const sourceState = lastCheckpoint[sourceStateFieldName];
-    if (sourceType == "kafka") {
-        assert(sourceState.length > 0);
-        for (const partition of sourceState) {
-            assert("partition" in partition && "offset" in partition && "topic" in partition);
-        }
-    } else {
-        assert("resumeToken" in sourceState && "clusterTime" in sourceState);
-    }
-
-    assert(commitTimeFieldName in lastCheckpoint);
 }
 
 export function checkForNoLastCheckpointField(verboseStats) {
