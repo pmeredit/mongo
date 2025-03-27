@@ -1,13 +1,12 @@
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf};
-use bson::{Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use bson::{Document, RawBsonRef, RawDocument};
 use std::collections::VecDeque;
 
 pub struct PluginSort {
     field: String,
     source: Option<AggregationSource>,
     docs: Option<VecDeque<Document>>,
-    last_document: RawDocumentBuf,
 }
 
 /**
@@ -32,7 +31,6 @@ impl AggregationStage for PluginSort {
             field,
             source: None,
             docs: None,
-            last_document: RawDocumentBuf::new(),
         })
     }
 
@@ -52,8 +50,9 @@ impl AggregationStage for PluginSort {
                 }
 
                 let next = documents.pop_front().unwrap();
-                self.last_document = to_raw_document_buf(&next).unwrap();
-                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
+                Ok(GetNextResult::Advanced(
+                    to_raw_document_buf(&next).unwrap().into(),
+                ))
             }
             None => Ok(GetNextResult::EOF),
         }
@@ -74,7 +73,7 @@ impl PluginSort {
         // Retrieve all results from the source stage.
         let mut documents = VecDeque::new();
         while let GetNextResult::Advanced(input_doc) = source.get_next()? {
-            let doc = Document::try_from(input_doc).unwrap();
+            let doc = Document::try_from(input_doc.as_ref()).unwrap();
             documents.push_back(doc);
         }
 

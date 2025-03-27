@@ -1,6 +1,6 @@
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
-use bson::{Document, RawBsonRef, RawDocumentBuf};
+use bson::{Document, RawBsonRef};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -17,7 +17,6 @@ static RUNTIME_THREADS: usize = 4;
 pub struct VoyageRerank {
     source: Option<AggregationSource>,
     documents: Option<VecDeque<Document>>,
-    last_document: RawDocumentBuf,
     query: String,
     fields: Vec<String>,
     model: String,
@@ -97,7 +96,6 @@ impl AggregationStage for VoyageRerank {
         Ok(Self {
             source: None,
             documents: None,
-            last_document: RawDocumentBuf::new(),
             query,
             fields,
             model,
@@ -123,8 +121,7 @@ impl AggregationStage for VoyageRerank {
                     return Ok(GetNextResult::EOF);
                 }
                 let next = documents.pop_front().unwrap();
-                self.last_document = to_raw_document_buf(&next).unwrap();
-                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
+                Ok(GetNextResult::Advanced(to_raw_document_buf(&next).unwrap().into()))
             }
             None => Ok(GetNextResult::EOF),
         }
@@ -142,7 +139,7 @@ impl VoyageRerank {
         let mut accumulated: Vec<Document> = Vec::new();
 
         while let GetNextResult::Advanced(input_doc) = source.get_next()? {
-            let doc = Document::try_from(input_doc).unwrap();
+            let doc = Document::try_from(input_doc.as_ref()).unwrap();
             accumulated.push(doc);
         }
 

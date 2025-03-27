@@ -4,7 +4,7 @@ use crate::sdk::{
 };
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 
-use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument};
 
 /// Descriptor for the `$addSomeCrabs` transform stage.
 ///
@@ -55,7 +55,6 @@ impl TransformBoundAggregationStageDescriptor for AddSomeCrabsBoundDescriptor {
 pub struct AddSomeCrabs {
     crabs: String,
     source: Option<AggregationSource>,
-    last_document: RawDocumentBuf,
 }
 
 impl AddSomeCrabs {
@@ -75,7 +74,6 @@ impl AddSomeCrabs {
         Self {
             crabs: String::from_iter(std::iter::repeat('🦀').take(num_crabs)),
             source: None,
-            last_document: RawDocumentBuf::new(),
         }
     }
 }
@@ -103,10 +101,11 @@ impl AggregationStage for AddSomeCrabs {
         let source_result = source.get_next()?;
         match source_result {
             GetNextResult::Advanced(input_doc) => {
-                let mut doc = Document::try_from(input_doc).unwrap();
+                let mut doc = Document::try_from(input_doc.as_ref()).unwrap();
                 doc.insert("someCrabs", self.crabs.clone());
-                self.last_document = to_raw_document_buf(&doc).unwrap();
-                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
+                Ok(GetNextResult::Advanced(
+                    to_raw_document_buf(&doc).unwrap().into(),
+                ))
             }
             _ => Ok(source_result),
         }

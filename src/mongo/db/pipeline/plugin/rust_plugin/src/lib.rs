@@ -12,11 +12,13 @@ mod search;
 mod vector;
 mod voyage;
 
+use std::borrow::Cow;
+use std::ffi::{c_int, c_void};
+use std::num::NonZero;
+
 use bson::{doc, to_vec};
 use bson::{Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid};
 use serde::{Deserialize, Serialize};
-use std::ffi::{c_int, c_void};
-use std::num::NonZero;
 
 use plugin_api_bindgen::{
     mongodb_source_get_next, MongoExtensionAggregationStage, MongoExtensionAggregationStageVTable,
@@ -134,10 +136,9 @@ unsafe fn byte_view_as_slice<'a>(buf: MongoExtensionByteView) -> &'a [u8] {
     std::slice::from_raw_parts(buf.data, buf.len)
 }
 
-// TODO: add a map() fn that only maps over the Advanced state.
 #[derive(Debug)]
 pub enum GetNextResult<'a> {
-    Advanced(&'a RawDocument),
+    Advanced(Cow<'a, RawDocument>),
     PauseExecution,
     EOF,
 }
@@ -169,7 +170,8 @@ impl AggregationSource {
                     RawDocument::from_bytes(unsafe {
                         std::slice::from_raw_parts(result_ptr, result_len)
                     })
-                    .unwrap(),
+                    .unwrap()
+                    .into(),
                 ))
             }
             _ => Err(Error::new(
@@ -381,9 +383,16 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                 plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION
             }
             Ok(GetNextResult::Advanced(doc)) => {
+                let doc_bytes = match doc {
+                    Cow::Owned(rdoc_buf) => {
+                        rust_stage.buf = rdoc_buf.into_bytes();
+                        rust_stage.buf.as_slice()
+                    }
+                    Cow::Borrowed(rdoc) => rdoc.as_bytes(),
+                };
                 *result = MongoExtensionByteView {
-                    data: doc.as_bytes().as_ptr(),
-                    len: doc.as_bytes().len(),
+                    data: doc_bytes.as_ptr(),
+                    len: doc_bytes.len(),
                 };
                 plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED
             }
@@ -480,7 +489,7 @@ impl AggregationStage for EchoOxide {
             GetNextResult::EOF
         } else {
             self.exhausted = true;
-            GetNextResult::Advanced(&self.document)
+            GetNextResult::Advanced(self.document.as_ref().into())
         })
     }
 

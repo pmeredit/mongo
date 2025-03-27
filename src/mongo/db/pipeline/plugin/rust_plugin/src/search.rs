@@ -6,7 +6,7 @@ use crate::mongot_client::{
 };
 use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf};
-use bson::{Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use bson::{Document, RawBsonRef, RawDocument};
 use tokio::runtime::Builder;
 use tokio::select;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -24,7 +24,6 @@ pub struct InternalPluginSearch {
     client: CommandServiceClient<Channel>,
     context: AggregationStageContext,
     source: Option<AggregationSource>,
-    last_document: RawDocumentBuf,
     query: Document,
     stored_source: bool,
     result_tx: Sender<Payload>,
@@ -92,7 +91,6 @@ impl AggregationStage for InternalPluginSearch {
             context,
             client,
             source: None,
-            last_document: RawDocumentBuf::new(),
             query,
             stored_source,
             result_tx,
@@ -121,8 +119,7 @@ impl AggregationStage for InternalPluginSearch {
 
         match result {
             Some(doc) => {
-                self.last_document = to_raw_document_buf(&doc).unwrap();
-                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
+                Ok(GetNextResult::Advanced(to_raw_document_buf(&doc).unwrap().into()))
             }
             None => Ok(GetNextResult::EOF),
         }

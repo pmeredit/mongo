@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use bson::{
-    doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument, RawDocumentBuf,
+    doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument,
 };
 use tokio::runtime::Builder;
 use tonic::transport::Channel;
@@ -19,7 +19,6 @@ pub struct InternalPluginVectorSearch {
     context: AggregationStageContext,
     source: Option<AggregationSource>,
     documents: Option<VecDeque<Document>>,
-    last_document: RawDocumentBuf,
     index: String,
     query_vector: RawArrayBuf,
     path: String,
@@ -97,7 +96,6 @@ impl AggregationStage for InternalPluginVectorSearch {
             context,
             source: None,
             documents: None,
-            last_document: RawDocumentBuf::new(),
             index: index.to_string(),
             query_vector,
             path,
@@ -122,8 +120,7 @@ impl AggregationStage for InternalPluginVectorSearch {
                 }
 
                 let next = documents.pop_front();
-                self.last_document = to_raw_document_buf(&next).unwrap();
-                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
+                Ok(GetNextResult::Advanced(to_raw_document_buf(&next).unwrap().into()))
             }
             None => Ok(GetNextResult::EOF),
         }
