@@ -6,6 +6,7 @@ exports_files(
     glob([
         "*.h",
         "*.cpp",
+        "*.py",
     ]) + [
         "mongo_crypt_v1.exported_symbols_list.lds",
         "mongo_crypt_v1.version_script.lds",
@@ -77,6 +78,10 @@ mongo_cc_library(
             "-Wl,-exported_symbols_list,$(location :mongo_crypt_v1.exported_symbols_list.lds)",
         ],
         "//conditions:default": [],
+    }),
+    shared_lib_name = select({
+        "@platforms//os:windows": "mongo_crypt_v1_shared_with_debug.dll",
+        "//conditions:default": "mongo_crypt_v1_shared_with_debug.so",
     }),
     tags = ["mongo_crypt"],
     target_compatible_with = select({
