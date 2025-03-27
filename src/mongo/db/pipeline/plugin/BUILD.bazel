@@ -3,9 +3,9 @@ load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_library")
 
 mongo_cc_library(
     name = "plugin",
+    srcs = ["plugin.cpp"],
+    hdrs = ["plugin.h"],
     visibility = ["//visibility:public"],
-    hdrs = [ "plugin.h" ],
-    srcs = [ "plugin.cpp" ],
     deps = [
         ":api",
         "//src/mongo/db/pipeline/plugin/rust_plugin",
@@ -14,24 +14,24 @@ mongo_cc_library(
 
 mongo_cc_library(
     name = "api",
+    hdrs = ["api.h"],
     visibility = ["//visibility:public"],
-    hdrs = [ "api.h" ],
 )
 
 rust_bindgen_library(
     name = "plugin_api_bindgen",
-    visibility = ["//visibility:public"],
-    cc_lib = ":api",
-    header = ":api.h",
     bindgen_flags = [
         # Override ABI to C-unwind.
         # This allows us to safely call back into C++ code that may throw
         "--override-abi",
         ".*=C-unwind",
     ],
+    cc_lib = ":api",
     clang_flags = [
         "-x",
         "c++",
     ],
+    header = ":api.h",
     merge_cc_lib_objects_into_rlib = False,
+    visibility = ["//visibility:public"],
 )

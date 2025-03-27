@@ -1,20 +1,23 @@
 package(default_visibility = ["//visibility:public"])
 
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_clippy")
+load("@rules_rust//rust:defs.bzl", "rust_clippy", "rust_library")
 
 rust_library(
     name = "rust_plugin",
-    srcs = glob(["src/*.rs"]),
+    srcs = glob([
+        "src/*.rs",
+        "src/**/*.rs",
+    ]),
     deps = [
+        "//src/mongo/db/pipeline/plugin:plugin_api_bindgen",
         "@plugin_crates//:bson",
+        "@plugin_crates//:bytes",
         "@plugin_crates//:once_cell",
+        "@plugin_crates//:reqwest",
+        "@plugin_crates//:serde",
         "@plugin_crates//:tokio",
         "@plugin_crates//:tonic",
-        "@plugin_crates//:serde",
-        "@plugin_crates//:bytes",
-        "@plugin_crates//:reqwest",
-        "//src/mongo/db/pipeline/plugin:plugin_api_bindgen",
-    ]
+    ],
 )
 
 # NB: this could also be done with an aspect which is a bazelrc override I just don't want to do

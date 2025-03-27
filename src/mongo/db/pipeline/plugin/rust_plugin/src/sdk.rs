@@ -1,0 +1,528 @@
+// TODO: break up sdk into sub-modules.
+
+use std::ptr::NonNull;
+
+use crate::{AggregationStage, Error, PluginAggregationStage, VecByteBuf};
+
+use bson::{to_raw_document_buf, Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use plugin_api_bindgen::{
+    MongoExtensionAggregationStage, MongoExtensionAggregationStageDescriptor,
+    MongoExtensionAggregationStageDescriptorVTable, MongoExtensionAggregationStageType,
+    MongoExtensionBoundAggregationStageDescriptor,
+    MongoExtensionBoundAggregationStageDescriptorVTable, MongoExtensionByteBuf,
+    MongoExtensionByteView, MongoExtensionPortal,
+};
+use serde::{Deserialize, Serialize};
+
+pub mod stage_constraints {
+    use serde::{Deserialize, Serialize};
+
+    /// How does this stage emit data?
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub enum StreamType {
+        /// This stage generates output document-by-document, possibly filtering some documents.
+        ///
+        /// Source stages should always be `Streaming`.
+        Streaming,
+        /// This stage must consume all input from the previous stage before emitting any output.
+        ///
+        /// Examples of this type of stage are `$sort` and `$group`.
+        Blocking,
+    }
+
+    /// Where is this stage allowed to appear in the pipeline?
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub enum PositionRequirement {
+        /// This stage may appear anywhere in the pipeline.
+        None,
+        /// This must be the first stage in the pipeline.
+        First,
+        /// This must be the last stage in the pipeline.
+        Last,
+    }
+
+    /// Where is this stage allowed to be executed?
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub enum HostTypeRequirement {
+        /// This stage may be scheduled on any host.
+        None,
+        /// This stage must run on the host to which it was originally sent and cannot be forwarded
+        /// to any remote host.
+        LocalOnly,
+        /// This stage must run exactly once but it can be forwarded to another host so long as
+        /// this invariant is maintained.
+        RunOneAnyNode,
+        /// This stage must run on a participate shard/data node.
+        AnyShard,
+        /// This stage must run in the router for the query.
+        Router,
+        /// This stage should be run on all participating data node hosts, primary and secondary.
+        AllShards,
+    }
+}
+
+/// Properties of an aggregation stage that are independent of the stage definition and pipeline
+/// context.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationStageProperties {
+    pub stream_type: stage_constraints::StreamType,
+    pub position: stage_constraints::PositionRequirement,
+    pub host_type: stage_constraints::HostTypeRequirement,
+}
+
+/// Parent trait for an aggregation stage descriptor.
+pub trait AggregationStageDescriptor {
+    /// Return the name for this stage. Must begin with '$'.
+    fn name() -> &'static str;
+
+    /// Return the properties for this desugar stage.
+    ///
+    /// This value will be cached by the SDK so calls should be idempotent.
+    fn properties() -> AggregationStageProperties;
+}
+
+/// A trait for implementing a de-sugaring stage that expands a stage into one or more other stages
+/// but does not have a concrete execution implementation of its own.
+pub trait DesugarAggregationStageDescriptor: AggregationStageDescriptor {
+    /// Desugar the stage definition into one or more stages using additional pipeline `context`.
+    // TODO: consider returning Vec<RawDocumentBuf> or otherwise allowing rawdoc!() to define expansions.
+    fn desugar(
+        stage_definition: RawBsonRef<'_>,
+        context: &RawDocument,
+    ) -> Result<Vec<Document>, Error>;
+}
+
+/// A trait for implementing a concrete source aggregation stage that does not accept input docs.
+pub trait SourceAggregationStageDescriptor: AggregationStageDescriptor {
+    /// Associated type to describe a stage bound to the stage definition and pipeline context.
+    type BoundDescriptor: SourceBoundAggregationStageDescriptor + Sized;
+
+    /// Bind this stage to a stage definition and pipeline context.
+    ///
+    /// This step should parse and validate the stage definition so that it is prepared to optimize
+    /// the query and/or create execution objects.
+    fn bind(
+        stage_definition: RawBsonRef<'_>,
+        context: &RawDocument,
+    ) -> Result<Self::BoundDescriptor, Error>;
+}
+
+/// A trait for implementing a concrete transform aggregation stage that reads input documents.
+pub trait TransformAggregationStageDescriptor: AggregationStageDescriptor {
+    /// Associated type to describe a stage bound to the stage definition and pipeline context.
+    type BoundDescriptor: TransformBoundAggregationStageDescriptor + Sized;
+
+    /// Bind this stage to a stage definition and pipeline context.
+    ///
+    /// This step should parse and validate the stage definition so that it is prepared to optimize
+    /// the query and/or create execution objects.
+    fn bind(
+        stage_definition: RawBsonRef<'_>,
+        context: &RawDocument,
+    ) -> Result<Self::BoundDescriptor, Error>;
+}
+
+/// A descriptor for a source stage bound to stage definition and pipeline context.
+pub trait SourceBoundAggregationStageDescriptor {
+    /// Associated type for the execution object.
+    ///
+    /// This object will be wrapped so that it can be used by the extension host.
+    type Executor: AggregationStage + Sized;
+
+    /// Create a new executor based on bound state from creation.
+    fn create_executor(&self) -> Result<Self::Executor, Error>;
+}
+
+/// A descriptor for a transform stage bound to stage definition and pipeline context.
+pub trait TransformBoundAggregationStageDescriptor {
+    /// Associated type for the execution object.
+    ///
+    /// This object will be wrapped so that it can be used by the extension host.
+    type Executor: AggregationStage + Sized;
+
+    /// Create a new executor based on bound state from creation.
+    // TODO: this should accept a source to read from.
+    fn create_executor(&self) -> Result<Self::Executor, Error>;
+}
+
+/// Bindings for `MongoExtensionPortal`.
+pub struct ExtensionPortal(NonNull<MongoExtensionPortal>);
+
+impl ExtensionPortal {
+    /// Create a new `ExtensionPortal` from a raw pointer. Does not take ownership of the pointer.
+    pub fn from_raw(p: *mut MongoExtensionPortal) -> Option<Self> {
+        NonNull::new(p).map(Self)
+    }
+
+    pub fn register_desugar_aggregation_stage<D: DesugarAggregationStageDescriptor>(&mut self) {
+        self.register_stage(ExtensionAggregationStageDescriptor::<D>::from_desugar_descriptor());
+    }
+
+    pub fn register_source_aggregation_stage<D: SourceAggregationStageDescriptor>(&mut self) {
+        self.register_stage(ExtensionAggregationStageDescriptor::<D>::from_source_descriptor());
+    }
+
+    pub fn register_transform_aggregation_stage<D: TransformAggregationStageDescriptor>(&mut self) {
+        self.register_stage(ExtensionAggregationStageDescriptor::<D>::from_transform_descriptor());
+    }
+
+    fn register_stage<D: AggregationStageDescriptor>(
+        &mut self,
+        descriptor: ExtensionAggregationStageDescriptor<D>,
+    ) {
+        let descriptor = Box::new(descriptor);
+        unsafe {
+            if self.0.as_ref().registerStageDescriptor.is_none() {
+                eprintln!("Host does not yet implement registerStageDescriptor()");
+                return;
+            }
+            self.0
+                .as_ref()
+                .registerStageDescriptor
+                .expect("registerStageDescriptor")(
+                MongoExtensionByteView {
+                    data: D::name().as_ptr(),
+                    len: D::name().len(),
+                },
+                Box::into_raw(descriptor) as *const MongoExtensionAggregationStageDescriptor,
+            );
+        }
+    }
+}
+
+mod ffi_utils {
+    use crate::Error;
+
+    use bson::{RawBsonRef, RawDocument};
+    use plugin_api_bindgen::MongoExtensionByteView;
+
+    pub fn view_to_raw_doc<'a>(
+        view: MongoExtensionByteView,
+        context: &str,
+    ) -> Result<&'a RawDocument, Error> {
+        // TODO: we should be able to attach context to an error at the caller.
+        RawDocument::from_bytes(unsafe { std::slice::from_raw_parts(view.data, view.len) })
+            .map_err(|e| Error::with_source(1, format!("Error parsing {} document", context), e))
+    }
+
+    pub fn view_to_raw_first_value<'a>(
+        view: MongoExtensionByteView,
+        context: &str,
+    ) -> Result<RawBsonRef<'a>, Error> {
+        let doc = view_to_raw_doc(view, context)?;
+        doc.iter()
+            .next()
+            .map(|elem| {
+                elem.map(|(_, value)| value).map_err(|e| {
+                    Error::with_source(
+                        1,
+                        format!("Error parsing first {} document element", context),
+                        e,
+                    )
+                })
+            })
+            .unwrap_or(Err(Error::new(1, format!("{} document is empty", context))))
+    }
+}
+
+// TODO: "Extension" structs are an implementation detail for ffi bindings.
+// These could be hidden in another module, which might help with the java-esque names.
+
+#[repr(C)]
+struct ExtensionAggregationStageDescriptor<D: AggregationStageDescriptor> {
+    vtable: &'static MongoExtensionAggregationStageDescriptorVTable,
+    stage_type: MongoExtensionAggregationStageType,
+    properties: RawDocumentBuf,
+    descriptor: std::marker::PhantomData<D>,
+}
+
+impl<D: AggregationStageDescriptor> ExtensionAggregationStageDescriptor<D> {
+    unsafe extern "C-unwind" fn external_stage_type(
+        descp: *const MongoExtensionAggregationStageDescriptor,
+    ) -> MongoExtensionAggregationStageType {
+        let desc = (descp as *const Self)
+            .as_ref()
+            .expect("descriptor non-null");
+        desc.stage_type
+    }
+
+    unsafe extern "C-unwind" fn external_properties(
+        descp: *const MongoExtensionAggregationStageDescriptor,
+    ) -> MongoExtensionByteView {
+        let desc = (descp as *const Self)
+            .as_ref()
+            .expect("descriptor non-null");
+        MongoExtensionByteView {
+            data: desc.properties.as_bytes().as_ptr(),
+            len: desc.properties.as_bytes().len(),
+        }
+    }
+}
+
+impl<D: DesugarAggregationStageDescriptor> ExtensionAggregationStageDescriptor<D> {
+    const DESUGAR_VTABLE: MongoExtensionAggregationStageDescriptorVTable =
+        MongoExtensionAggregationStageDescriptorVTable {
+            type_: Some(Self::external_stage_type),
+            properties: Some(Self::external_properties),
+            // TODO bind should return an unimplemented error.
+            bind: None,
+            desugar: Some(Self::external_desugar),
+        };
+
+    fn from_desugar_descriptor() -> Self {
+        Self {
+            vtable: &Self::DESUGAR_VTABLE,
+            stage_type: plugin_api_bindgen::MongoExtensionAggregationStageType_kDesugar,
+            properties: to_raw_document_buf(&D::properties())
+                .expect("stage properties serialization"),
+            descriptor: std::marker::PhantomData,
+        }
+    }
+
+    unsafe extern "C-unwind" fn external_desugar(
+        _unused: *const MongoExtensionAggregationStageDescriptor,
+        stage_bson: MongoExtensionByteView,
+        context_bson: MongoExtensionByteView,
+        result: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        let (buf, code) = match Self::desugar_internal(stage_bson, context_bson) {
+            Ok(d) => (VecByteBuf::from_vec(d.into_bytes()), 0),
+            Err(e) => (VecByteBuf::from_string(e.to_string()), e.code.into()),
+        };
+        *result = buf.into_byte_buf();
+        code
+    }
+
+    fn desugar_internal(
+        stage_bson: MongoExtensionByteView,
+        context_bson: MongoExtensionByteView,
+    ) -> Result<RawDocumentBuf, Error> {
+        let name = D::name();
+        let stage_bson = ffi_utils::view_to_raw_first_value(stage_bson, "stage definition")?;
+        let context_bson = ffi_utils::view_to_raw_doc(context_bson, "context")?;
+        let mut desugared_stages = D::desugar(stage_bson, context_bson)?;
+        let desugared_doc = match desugared_stages.len() {
+            0 => Err(Error::new(
+                1,
+                format!("desugaring stage [{}] resulted in empty expansion", name),
+            )),
+            1 => Ok(Document::from_iter([(
+                name.into(),
+                desugared_stages.pop().unwrap().into(),
+            )])),
+            _ => Ok(Document::from_iter([(
+                name.into(),
+                Bson::Array(desugared_stages.into_iter().map(Bson::from).collect()),
+            )])),
+        }?;
+        to_raw_document_buf(&desugared_doc).map_err(|e| {
+            Error::with_source(
+                1,
+                format!("Error serializing desugared stages from {}", name),
+                e,
+            )
+        })
+    }
+}
+
+impl<D: SourceAggregationStageDescriptor> ExtensionAggregationStageDescriptor<D> {
+    const SOURCE_VTABLE: MongoExtensionAggregationStageDescriptorVTable =
+        MongoExtensionAggregationStageDescriptorVTable {
+            type_: Some(Self::external_stage_type),
+            properties: Some(Self::external_properties),
+            bind: Some(Self::external_bind_source),
+            // TODO: desugar should return an unimplemented error.
+            desugar: None,
+        };
+
+    fn from_source_descriptor() -> Self {
+        Self {
+            vtable: &Self::SOURCE_VTABLE,
+            stage_type: plugin_api_bindgen::MongoExtensionAggregationStageType_kSource,
+            properties: to_raw_document_buf(&D::properties())
+                .expect("stage properties serialization"),
+            descriptor: std::marker::PhantomData,
+        }
+    }
+
+    unsafe extern "C-unwind" fn external_bind_source(
+        _unused: *const MongoExtensionAggregationStageDescriptor,
+        stage_bson: MongoExtensionByteView,
+        context_bson: MongoExtensionByteView,
+        bound_stage: *mut *mut MongoExtensionBoundAggregationStageDescriptor,
+        error: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        match Self::bind_source_internal(stage_bson, context_bson) {
+            Ok(d) => {
+                *bound_stage = Box::new(ExtensionSourceBoundAggregationStageDescriptor::new(d))
+                    .into_raw_interface();
+                0
+            }
+            Err(e) => {
+                *error = VecByteBuf::from_string(e.to_string()).into_byte_buf();
+                e.code.into()
+            }
+        }
+    }
+
+    fn bind_source_internal(
+        stage_bson: MongoExtensionByteView,
+        context_bson: MongoExtensionByteView,
+    ) -> Result<D::BoundDescriptor, Error> {
+        let stage_bson = ffi_utils::view_to_raw_first_value(stage_bson, "stage definition")?;
+        let context_bson = ffi_utils::view_to_raw_doc(context_bson, "context")?;
+        D::bind(stage_bson, context_bson)
+    }
+}
+
+impl<D: TransformAggregationStageDescriptor> ExtensionAggregationStageDescriptor<D> {
+    const TRANSFORM_VTABLE: MongoExtensionAggregationStageDescriptorVTable =
+        MongoExtensionAggregationStageDescriptorVTable {
+            type_: Some(Self::external_stage_type),
+            properties: Some(Self::external_properties),
+            bind: Some(Self::external_bind_transform),
+            // TODO: desugar should return an unimplemented error.
+            desugar: None,
+        };
+
+    fn from_transform_descriptor() -> Self {
+        Self {
+            vtable: &Self::TRANSFORM_VTABLE,
+            stage_type: plugin_api_bindgen::MongoExtensionAggregationStageType_kTransform,
+            properties: to_raw_document_buf(&D::properties())
+                .expect("stage properties serialization"),
+            descriptor: std::marker::PhantomData,
+        }
+    }
+
+    unsafe extern "C-unwind" fn external_bind_transform(
+        _unused: *const MongoExtensionAggregationStageDescriptor,
+        stage_bson: MongoExtensionByteView,
+        context_bson: MongoExtensionByteView,
+        bound_stage: *mut *mut MongoExtensionBoundAggregationStageDescriptor,
+        error: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        match Self::bind_transform_internal(stage_bson, context_bson) {
+            Ok(d) => {
+                *bound_stage = Box::new(ExtensionTransformBoundAggregationStageDescriptor::new(d))
+                    .into_raw_interface();
+                0
+            }
+            Err(e) => {
+                *error = VecByteBuf::from_string(e.to_string()).into_byte_buf();
+                e.code.into()
+            }
+        }
+    }
+
+    fn bind_transform_internal(
+        stage_bson: MongoExtensionByteView,
+        context_bson: MongoExtensionByteView,
+    ) -> Result<D::BoundDescriptor, Error> {
+        let stage_bson = ffi_utils::view_to_raw_first_value(stage_bson, "stage definition")?;
+        let context_bson = ffi_utils::view_to_raw_doc(context_bson, "context")?;
+        D::bind(stage_bson, context_bson)
+    }
+}
+
+#[repr(C)]
+struct ExtensionSourceBoundAggregationStageDescriptor<D> {
+    vtable: &'static MongoExtensionBoundAggregationStageDescriptorVTable,
+    descriptor: D,
+}
+
+impl<D: SourceBoundAggregationStageDescriptor + Sized>
+    ExtensionSourceBoundAggregationStageDescriptor<D>
+{
+    const VTABLE: MongoExtensionBoundAggregationStageDescriptorVTable =
+        MongoExtensionBoundAggregationStageDescriptorVTable {
+            drop: Some(Self::drop),
+            createExecutor: Some(Self::create_executor),
+        };
+
+    fn new(descriptor: D) -> Self {
+        Self {
+            vtable: &Self::VTABLE,
+            descriptor,
+        }
+    }
+
+    fn into_raw_interface(self: Box<Self>) -> *mut MongoExtensionBoundAggregationStageDescriptor {
+        Box::into_raw(self) as *mut MongoExtensionBoundAggregationStageDescriptor
+    }
+
+    unsafe extern "C-unwind" fn drop(descp: *mut MongoExtensionBoundAggregationStageDescriptor) {
+        let _ = Box::from_raw(descp as *mut Self);
+    }
+
+    unsafe extern "C-unwind" fn create_executor(
+        descp: *mut MongoExtensionBoundAggregationStageDescriptor,
+        executor: *mut *mut MongoExtensionAggregationStage,
+        error: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        let ffi_desc = (descp as *mut Self).as_mut().expect("descriptor non-null");
+        match ffi_desc.descriptor.create_executor() {
+            Ok(e) => {
+                *executor = Box::new(PluginAggregationStage::new(e)).into_raw_interface();
+                0
+            }
+            Err(e) => {
+                *error = VecByteBuf::from_string(e.to_string()).into_byte_buf();
+                e.code.into()
+            }
+        }
+    }
+}
+
+#[repr(C)]
+struct ExtensionTransformBoundAggregationStageDescriptor<D> {
+    vtable: &'static MongoExtensionBoundAggregationStageDescriptorVTable,
+    descriptor: D,
+}
+
+impl<D: TransformBoundAggregationStageDescriptor + Sized>
+    ExtensionTransformBoundAggregationStageDescriptor<D>
+{
+    const VTABLE: MongoExtensionBoundAggregationStageDescriptorVTable =
+        MongoExtensionBoundAggregationStageDescriptorVTable {
+            drop: Some(Self::drop),
+            createExecutor: Some(Self::create_executor),
+        };
+
+    fn new(descriptor: D) -> Self {
+        Self {
+            vtable: &Self::VTABLE,
+            descriptor,
+        }
+    }
+
+    fn into_raw_interface(self: Box<Self>) -> *mut MongoExtensionBoundAggregationStageDescriptor {
+        Box::into_raw(self) as *mut MongoExtensionBoundAggregationStageDescriptor
+    }
+
+    unsafe extern "C-unwind" fn drop(descp: *mut MongoExtensionBoundAggregationStageDescriptor) {
+        let _ = Box::from_raw(descp as *mut Self);
+    }
+
+    unsafe extern "C-unwind" fn create_executor(
+        descp: *mut MongoExtensionBoundAggregationStageDescriptor,
+        executor: *mut *mut MongoExtensionAggregationStage,
+        error: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        let ext_desc = (descp as *mut Self).as_mut().expect("descriptor non-null");
+        match ext_desc.descriptor.create_executor() {
+            Ok(e) => {
+                *executor = Box::new(PluginAggregationStage::new(e)).into_raw_interface();
+                0
+            }
+            Err(e) => {
+                *error = VecByteBuf::from_string(e.to_string()).into_byte_buf();
+                e.code.into()
+            }
+        }
+    }
+}

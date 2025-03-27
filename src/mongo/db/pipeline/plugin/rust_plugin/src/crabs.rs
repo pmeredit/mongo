@@ -1,0 +1,114 @@
+use crate::sdk::{
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+};
+use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
+
+use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument, RawDocumentBuf};
+
+/// Descriptor for the `$addSomeCrabs` transform stage.
+///
+/// The stage definition is just a number that can be losslessly converted to a non-zero integer, eg
+///   {$addSomeCrabs: 2}
+/// The stage will then add a "someCrabs" field containing that number of crab emojis.
+pub struct AddSomeCrabsDescriptor;
+
+impl AggregationStageDescriptor for AddSomeCrabsDescriptor {
+    fn name() -> &'static str {
+        "$addSomeCrabs"
+    }
+
+    fn properties() -> AggregationStageProperties {
+        AggregationStageProperties {
+            stream_type: stage_constraints::StreamType::Streaming,
+            position: stage_constraints::PositionRequirement::None,
+            host_type: stage_constraints::HostTypeRequirement::None,
+        }
+    }
+}
+
+impl TransformAggregationStageDescriptor for AddSomeCrabsDescriptor {
+    type BoundDescriptor = AddSomeCrabsBoundDescriptor;
+
+    fn bind(
+        stage_definition: RawBsonRef<'_>,
+        _context: &RawDocument,
+    ) -> Result<Self::BoundDescriptor, Error> {
+        Ok(AddSomeCrabsBoundDescriptor {
+            num_crabs: AddSomeCrabs::parse_stage_definition(stage_definition)?,
+        })
+    }
+}
+
+pub struct AddSomeCrabsBoundDescriptor {
+    num_crabs: usize,
+}
+
+impl TransformBoundAggregationStageDescriptor for AddSomeCrabsBoundDescriptor {
+    type Executor = AddSomeCrabs;
+
+    fn create_executor(&self) -> Result<Self::Executor, Error> {
+        Ok(AddSomeCrabs::with_crabs(self.num_crabs))
+    }
+}
+
+pub struct AddSomeCrabs {
+    crabs: String,
+    source: Option<AggregationSource>,
+    last_document: RawDocumentBuf,
+}
+
+impl AddSomeCrabs {
+    fn parse_stage_definition(stage_definition: RawBsonRef<'_>) -> Result<usize, Error> {
+        match stage_definition {
+            RawBsonRef::Int32(i) if i > 0 => Ok(i as usize),
+            RawBsonRef::Int64(i) if i > 0 => Ok(i as usize),
+            RawBsonRef::Double(i) if i >= 1.0 && i.fract() == 0.0 => Ok(i as usize),
+            _ => Err(Error::new(
+                1,
+                "$addSomeCrabs should be followed with a positive integer value.",
+            )),
+        }
+    }
+
+    fn with_crabs(num_crabs: usize) -> Self {
+        Self {
+            crabs: String::from_iter(std::iter::repeat('🦀').take(num_crabs)),
+            source: None,
+            last_document: RawDocumentBuf::new(),
+        }
+    }
+}
+
+impl AggregationStage for AddSomeCrabs {
+    fn name() -> &'static str {
+        "$addSomeCrabs"
+    }
+
+    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
+        Ok(Self::with_crabs(Self::parse_stage_definition(
+            stage_definition,
+        )?))
+    }
+
+    fn set_source(&mut self, source: AggregationSource) {
+        self.source = Some(source);
+    }
+
+    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
+        let source = self
+            .source
+            .as_mut()
+            .expect("intermediate stage must have source");
+        let source_result = source.get_next()?;
+        match source_result {
+            GetNextResult::Advanced(input_doc) => {
+                let mut doc = Document::try_from(input_doc).unwrap();
+                doc.insert("someCrabs", self.crabs.clone());
+                self.last_document = to_raw_document_buf(&doc).unwrap();
+                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
+            }
+            _ => Ok(source_result),
+        }
+    }
+}

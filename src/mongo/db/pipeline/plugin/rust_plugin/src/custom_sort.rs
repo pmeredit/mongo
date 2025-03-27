@@ -22,11 +22,14 @@ impl AggregationStage for PluginSort {
         let field = match stage_definition {
             RawBsonRef::String(i) => i.to_string(),
             _ => {
-                return Err(Error::new(1, "$pluginSort should be followed with a string.",))
+                return Err(Error::new(
+                    1,
+                    "$pluginSort should be followed with a string.",
+                ))
             }
         };
         Ok(Self {
-            field: field,
+            field,
             source: None,
             docs: None,
             last_document: RawDocumentBuf::new(),
@@ -57,9 +60,7 @@ impl AggregationStage for PluginSort {
     }
 
     fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        Ok(vec![
-            doc! {"$sort": {self.field.clone(): 1}}
-        ])
+        Ok(vec![doc! {"$sort": {self.field.clone(): 1}}])
     }
 }
 

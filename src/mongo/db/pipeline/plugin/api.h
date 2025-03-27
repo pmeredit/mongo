@@ -4,7 +4,13 @@
 
 extern "C" {
 
-struct MongoExtensionByteBuf;
+struct MongoExtensionByteBufVTable;
+struct MongoExtensionAggregationStage;
+struct MongoExtensionAggregationStageVTable;
+struct MongoExtensionAggregationStageDescriptor;
+struct MongoExtensionAggregationStageDescriptorVTable;
+struct MongoExtensionBoundAggregationStageDescriptor;
+struct MongoExtensionBoundAggregationStageDescriptorVTable;
 
 enum MongoDBPluginVersion {
     MONGODB_PLUGIN_VERSION_0 = 0,
@@ -25,6 +31,15 @@ struct MongoExtensionByteView {
 };
 
 /**
+ * Prototype for an extension byte array buffer.
+ *
+ * MongoExtensionByteBuf owns the underlying buffer
+ */
+struct MongoExtensionByteBuf {
+    const MongoExtensionByteBufVTable* vtable;
+};
+
+/**
  * Virtual function table for MongoExtensionByteBuf.
  */
 struct MongoExtensionByteBufVTable {
@@ -40,12 +55,142 @@ struct MongoExtensionByteBufVTable {
 };
 
 /**
- * Prototype for an extension byte array buffer.
- *
- * MongoExtensionByteBuf owns the underlying buffer
+ * Types of aggregation stages that can be implemented as an extension.
  */
-struct MongoExtensionByteBuf {
-    const MongoExtensionByteBufVTable* vtable;
+enum MongoExtensionAggregationStageType {
+    /**
+     * Source stages create documents by reading them from local or remote storage.
+     */
+    kSource = 0,
+    /**
+     * Transform stages consume input from another stage and transforms it.
+     *
+     * The definition of "transform" is quite loose: the transforms need not be 1-to-1, they could
+     * summarize the input as a single document, filter, or re-order the input stream.
+     */
+    kTransform = 1,
+    /**
+     * Desugaring stages decompose into a pipeline of 1 or more stages.
+     *
+     * The stages generated from desugaring may reference stages that appear in the public
+     * aggregation stage documentation or from other extensions.
+     */
+    kDesugar = 2,
+};
+
+/**
+ * An AggregationStageDescriptor describes features of a stage that are not bound to the stage
+ * definition. This object functions as a factory to create bound stage definitions.
+ *
+ * These objects are owned by extensions so no method is provided to free them.
+ */
+struct MongoExtensionAggregationStageDescriptor {
+    const MongoExtensionAggregationStageDescriptorVTable* vtable;
+};
+
+/**
+ * Virtual function table for MongoExtensionAggregationStageDescriptor.
+ */
+struct MongoExtensionAggregationStageDescriptorVTable {
+    /**
+     * Return the type for this stage.
+     */
+    MongoExtensionAggregationStageType (*type)(const MongoExtensionAggregationStageDescriptor*);
+
+    /**
+     * Return properties of this stage as a binary coded BSON document.
+     * Properties are static -- a descriptor is expected to return the same pointer on every call.
+     * The extension host may cache data structures derived from the properties.
+     *
+     * This corresponds roughly to the enums that appear in StageConstraints.
+     * TODO: add message definition, ideally in the form of an IDL type.
+     */
+    MongoExtensionByteView (*properties)(const MongoExtensionAggregationStageDescriptor*);
+
+    /**
+     * Bind this descriptor to a stage definition and pipeline context.
+     *
+     * stageBson contains a BSON document with a single (stageName, stageDefinition) element tuple.
+     * contextBson contains a BSON document with additional context:
+     * - namespace (object)
+     *   - db ("string"; serialized NamespaceString)
+     *   - collection (string; optional)
+     *   - collectionUUID (UUID; optional)
+     * - inRouter (bool)
+     *
+     * If the return code is zero, fills *boundStage, else fills *error. Returned objects are owned
+     * by the caller.
+     *
+     * REQUIRES: type() returns kSource or kTransform.
+     */
+    int (*bind)(const MongoExtensionAggregationStageDescriptor* descriptor,
+                MongoExtensionByteView stageBson,
+                MongoExtensionByteView contextBson,
+                MongoExtensionBoundAggregationStageDescriptor** boundStage,
+                MongoExtensionByteBuf** error);
+
+    /**
+     * Desugar this stage into one or more other stages.
+     *
+     * stageBson contains a BSON document with a single (stageName, stageDefinition) element tuple.
+     * contextBson contains a BSON document with additional context:
+     * - namespace (object)
+     *   - db ("string"; serialized NamespaceString)
+     *   - collection (string; optional)
+     *   - collectionUUID (UUID; optional)
+     * - inRouter (bool)
+     *
+     * On a return code of zero *result contains a new BSON document with a single element tuple.
+     * The tuple is keyed by the input stage name; the value is a stage definition or array of stage
+     * definitions that will be created. On a non-zero return code *result contains a string
+     * describing the error.
+     *
+     * REQUIRES: type() returns kDesugar.
+     */
+    int (*desugar)(const MongoExtensionAggregationStageDescriptor* descriptor,
+                   MongoExtensionByteView stageBson,
+                   MongoExtensionByteView contextBson,
+                   MongoExtensionByteBuf** result);
+};
+
+/**
+ * A BoundAggregationStageDescriptor describes a stage that has been bound to instance specific
+ * context -- the stage definition and other context data from the pipeline. These objects are
+ * suitable for pipeline optimization. Once optimization is complete they can be used to generate
+ * objects for execution.
+ */
+struct MongoExtensionBoundAggregationStageDescriptor {
+    const MongoExtensionBoundAggregationStageDescriptorVTable* vtable;
+};
+
+
+/**
+ * Virtual function table for MongoExtensionBoundAggregationStageDescriptor.
+ */
+struct MongoExtensionBoundAggregationStageDescriptorVTable {
+    /**
+     * Drop `descriptor` and free any related resources.
+     */
+    void (*drop)(MongoExtensionBoundAggregationStageDescriptor* descriptor);
+
+    /**
+     * Create an executor for this stage.
+     *
+     * If return code is 0, *executor will be filled with an execution instance.
+     * Otherwise, *error will be returned with an error string.
+     *
+     * This may only be called once per instance, subsequent calls may return an error.
+     */
+    // TODO: we may want this method to consume `descriptor` like in a builder pattern.
+    // This would be unpleasant for the plugin host to deal with
+    int (*createExecutor)(MongoExtensionBoundAggregationStageDescriptor* descriptor,
+                          MongoExtensionAggregationStage** executor,
+                          MongoExtensionByteBuf** error);
+
+    // TODO: a method for querying optimization properties, in particular:
+    // * boolean StageConstraints. Many of these are non-static/bound to stage definition.
+    // * modified paths for transform stages.
+    // Like descriptor properties() this would be returned as a BSON message.
 };
 
 // A function to get data from a source stage.
@@ -146,6 +291,14 @@ typedef int (*MongoExtensionParseAggregationStage)(MongoExtensionByteView stageB
 struct MongoExtensionPortal {
     // Supported version of the plugin API.
     int version;
+
+    /**
+     * Register an AggregationStageDescriptor.
+     *
+     * `descriptor`s is expected to have a process lifetime.
+     */
+    void (*registerStageDescriptor)(MongoExtensionByteView name,
+                                    const MongoExtensionAggregationStageDescriptor* descriptor);
 
     // Register a de-sugaring stage.
     //

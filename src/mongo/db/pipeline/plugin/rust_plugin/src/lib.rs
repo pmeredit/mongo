@@ -3,18 +3,20 @@
 #![allow(dead_code)]
 
 mod command_service;
+mod crabs;
+mod custom_sort;
 mod desugar;
 mod mongot_client;
+pub mod sdk;
 mod search;
 mod vector;
 mod voyage;
-mod custom_sort;
 
-use std::ffi::{c_int, c_void};
-use std::num::NonZero;
-use bson::{doc, to_raw_document_buf, to_vec};
+use bson::{doc, to_vec};
 use bson::{Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid};
 use serde::{Deserialize, Serialize};
+use std::ffi::{c_int, c_void};
+use std::num::NonZero;
 
 use plugin_api_bindgen::{
     mongodb_source_get_next, MongoExtensionAggregationStage, MongoExtensionAggregationStageVTable,
@@ -22,11 +24,13 @@ use plugin_api_bindgen::{
     MongoExtensionPortal,
 };
 
+use crate::crabs::{AddSomeCrabs, AddSomeCrabsDescriptor};
+use crate::custom_sort::PluginSort;
 use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
+use crate::sdk::ExtensionPortal;
 use crate::search::{InternalPluginSearch, PluginSearch};
 use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
 use crate::voyage::VoyageRerank;
-use crate::custom_sort::{PluginSort};
 
 #[derive(Debug)]
 pub struct Error {
@@ -228,7 +232,7 @@ pub trait AggregationStage: Sized {
     // by which to merge streams during distributed query execution. This is only called if query
     // planning would like to attempt to push the plugin stage to the shards.
     // The default implementation is an empty vector, meaing no merging logic is necessary.
-    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error>  {
+    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
         Ok(vec![])
     }
 }
@@ -276,6 +280,18 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                 Some(Self::parse_external),
             );
         }
+    }
+
+    pub fn new(stage: S) -> Self {
+        Self {
+            vtable: &Self::VTABLE,
+            stage_impl: stage,
+            buf: vec![],
+        }
+    }
+
+    pub fn into_raw_interface(self: Box<Self>) -> *mut MongoExtensionAggregationStage {
+        Box::into_raw(self) as *mut MongoExtensionAggregationStage
     }
 
     unsafe extern "C-unwind" fn parse_external(
@@ -402,29 +418,26 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
             .expect("non-null stage pointer");
         let merging_stages = rust_stage.get_merging_stages().unwrap();
         let merging_stages_doc = doc! {
-            "mergingStages": 
+            "mergingStages":
             Bson::Array(
                 merging_stages
                     .into_iter()
-                    .map(|s| Bson::from(s))
+                    .map(Bson::from)
                     .collect(),
             ),
         };
-        match to_vec(&merging_stages_doc).map(|b| VecByteBuf::from_vec(b)).map_err(|e| {
-            Error::with_source(
-                1,
-                format!("Error parsing merging stages for stage {}", S::name()),
-                e,
-            )
-        }) {
-            Ok(buf) => {
-                *result = buf.into_byte_buf()
-            }
-            Err(e) => {
-                *result = VecByteBuf::from_string(e.to_string()).into_byte_buf()
-            }
+        match to_vec(&merging_stages_doc)
+            .map(VecByteBuf::from_vec)
+            .map_err(|e| {
+                Error::with_source(
+                    1,
+                    format!("Error parsing merging stages for stage {}", S::name()),
+                    e,
+                )
+            }) {
+            Ok(buf) => *result = buf.into_byte_buf(),
+            Err(e) => *result = VecByteBuf::from_string(e.to_string()).into_byte_buf(),
         }
-
     }
 
     unsafe extern "C-unwind" fn close(stage: *mut MongoExtensionAggregationStage) {
@@ -473,63 +486,9 @@ impl AggregationStage for EchoOxide {
 
     fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
         // TODO This stage should be able to flag that it should be run on the node that received
-        // the command (HostTypeRequirement::kLocalOnly). This {$limit: 1} merging pipeline works 
+        // the command (HostTypeRequirement::kLocalOnly). This {$limit: 1} merging pipeline works
         // as a hack in the meantime.
         Ok(vec![doc! {"$limit": 1}])
-    }
-
-}
-
-struct AddSomeCrabs {
-    crabs: String,
-    source: Option<AggregationSource>,
-    last_document: RawDocumentBuf,
-}
-
-impl AggregationStage for AddSomeCrabs {
-    fn name() -> &'static str {
-        "$addSomeCrabs"
-    }
-
-    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
-        let num_crabs = match stage_definition {
-            RawBsonRef::Int32(i) if i > 0 => i as usize,
-            RawBsonRef::Int64(i) if i > 0 => i as usize,
-            RawBsonRef::Double(i) if i >= 1.0 && i.fract() == 0.0 => i as usize,
-            _ => {
-                return Err(Error::new(
-                    1,
-                    "$addSomeCrabs should be followed with a positive integer value.",
-                ))
-            }
-        };
-        Ok(Self {
-            crabs: String::from_iter(std::iter::repeat('🦀').take(num_crabs)),
-            source: None,
-            last_document: RawDocumentBuf::new(),
-        })
-    }
-
-    fn set_source(&mut self, source: AggregationSource) {
-        self.source = Some(source);
-    }
-
-    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
-        let source = self
-            .source
-            .as_mut()
-            .expect("intermediate stage must have source");
-        let source_result = source.get_next()?;
-        match source_result {
-            GetNextResult::Advanced(input_doc) => {
-                let mut doc = Document::try_from(input_doc).unwrap();
-                // TODO: you should be able to control the number of crabs.
-                doc.insert("someCrabs", self.crabs.clone());
-                self.last_document = to_raw_document_buf(&doc).unwrap();
-                Ok(GetNextResult::Advanced(self.last_document.as_ref()))
-            }
-            _ => Ok(source_result),
-        }
     }
 }
 
@@ -548,4 +507,8 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtens
     PluginDesugarAggregationStage::<PluginVectorSearch>::register(portal);
     PluginAggregationStage::<VoyageRerank>::register(portal);
     PluginAggregationStage::<PluginSort>::register(portal);
+
+    let mut sdk_portal =
+        ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
+    sdk_portal.register_transform_aggregation_stage::<AddSomeCrabsDescriptor>();
 }

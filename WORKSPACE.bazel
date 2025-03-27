@@ -363,23 +363,23 @@ crates_repository(
             version = "0.12.3",
         ),
         "tonic": crate.spec(
+            features = ["default"],
             version = "0.12.3",
-            features = ["default"]
         ),
         "tokio": crate.spec(
+            features = ["full"],
             version = "1.43.0",
-            features = ["full"]
         ),
         "serde": crate.spec(
+            features = ["derive"],
             version = "1.0.217",
-            features = ["derive"]
         ),
         "reqwest": crate.spec(
+            features = ["json"],
             version = "0.11",
-            features = ["json"]
-        )
+        ),
     },
-    render_config = render_config(default_package_name = "")
+    render_config = render_config(default_package_name = ""),
 )
 
 load("@plugin_crates//:defs.bzl", "crate_repositories")
