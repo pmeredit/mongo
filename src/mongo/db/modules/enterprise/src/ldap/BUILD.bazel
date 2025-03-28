@@ -138,7 +138,6 @@ mongo_cc_library(
         "//src/mongo/executor:connection_pool_executor",
         "//src/mongo/util:alarm",
         "//src/mongo/util:dns_query",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util/concurrency:thread_pool",
         "//src/mongo/util/net:network",
     ],
