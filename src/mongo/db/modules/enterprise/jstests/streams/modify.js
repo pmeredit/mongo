@@ -928,8 +928,16 @@ const testCases = [
             {push: {"fullDocument": {"a": 2}, "operationType": "insert"}}
         ],
         expectedTotalInputMessages: 3,
-        fieldsToSkip:
-            ["_stream_meta", "_id", "clusterTime", "wallTime", "ns", "documentKey", "_ts"]
+        fieldsToSkip: [
+            "_stream_meta",
+            "_id",
+            "clusterTime",
+            "wallTime",
+            "ns",
+            "documentKey",
+            "collectionUUID",
+            "_ts"
+        ]
     },
 ];
 

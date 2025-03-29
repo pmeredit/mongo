@@ -143,7 +143,7 @@ function runTest({
     }
 
     if (expectedInputSize > 0) {
-        assert(sp.stats()["inputMessageSize"] === expectedInputSize);
+        assert.eq(expectedInputSize, sp.stats()["inputMessageSize"]);
     }
 
     for (let i = 0; i < expectedRequests.length; i++) {
@@ -256,7 +256,7 @@ const testCases = [
                 httpStatusCode: 200,
             }},
             response: {inner: {method: "POST", path: "/echo/tc2", headers: {...basicHeaders,
-            "Content-Length" : "533", "Content-Type": "application/json"}, query: {},
+            "Content-Length" : "599", "Content-Type": "application/json"}, query: {},
             body: {fullDocument: {a: 1}}}}
         }],
         allowAllTraffic: true,
@@ -352,7 +352,7 @@ const testCases = [
                 headers: {
                         ...basicHeaders,
                         "Content-Type": "application/json",
-                        "Content-Length" : "554",
+                        "Content-Length" : "620",
                         "FieldPathHeader": "DynamicValue",
                         "StrHeader": "foo"
                 }
@@ -405,7 +405,7 @@ const testCases = [
                 path: "/echo/tc4",
                 headers: {
                     ...basicHeaders,
-                    "Content-Length" : "554",
+                    "Content-Length" : "620",
                     "Content-Type" : "application/json"
                 },
                 query: {
@@ -757,7 +757,7 @@ const testCases = [
                 }
             }
         ],
-        expectedInputSize: 10445,
+        expectedInputSize: 10482,
         expectedOutput: [{
             _stream_meta: {
                  https: {
