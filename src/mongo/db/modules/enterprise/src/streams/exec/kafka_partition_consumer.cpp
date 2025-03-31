@@ -42,7 +42,6 @@ using namespace mongo;
 // allowed sink configurations that you may need to synchronize with as well.
 // The UI logic was added in this PR https://github.com/10gen/mms/pull/117213
 mongo::stdx::unordered_set<std::string> allowedSourcePartitionConfigurations = {
-    "max.poll.records",
     "max.poll.interval.ms",
     "fetch.min.bytes",
     "fetch.max.bytes",
@@ -51,7 +50,6 @@ mongo::stdx::unordered_set<std::string> allowedSourcePartitionConfigurations = {
     "client.dns.lookup",
     "max.partition.fetch.bytes",
     "connections.max.idle.ms",
-    "exclude.internal.topics",
     "request.timeout.ms",
     // configurations shared with allowedSourceConfigurations
     "session.timeout.ms",

@@ -144,4 +144,16 @@ boost::optional<int64_t> getKafkaMessageMaxBytes(
     return val.coerceToLong();
 }
 
+boost::optional<mongo::Milliseconds> getKafkaEmitMessageTimeoutMillis(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    auto val =
+        featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitMessageTimeoutMillis).getValue();
+    if (val.missing()) {
+        return boost::none;
+    }
+
+    return mongo::Milliseconds{val.coerceToLong()};
+}
+
+
 }  // namespace streams

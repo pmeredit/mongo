@@ -76,6 +76,7 @@ public:
     static const FeatureFlagDefinition kEnableExternalFunctionOperator;
     static const FeatureFlagDefinition kExternalFunctionRateLimitPerSecond;
     static const FeatureFlagDefinition kKafkaEmitMessageMaxBytes;
+    static const FeatureFlagDefinition kKafkaEmitMessageTimeoutMillis;
     static const FeatureFlagDefinition kMaxMergeParallelism;
     static const FeatureFlagDefinition kEnableInMemoryConstantMessage;
     static const FeatureFlagDefinition kPerTargetStats;

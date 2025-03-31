@@ -303,6 +303,11 @@ const FeatureFlagDefinition FeatureFlags::kPerTargetStats{
     "If true, per collection and per topic stats will be collected.",
     mongo::Value(false)};
 
+const FeatureFlagDefinition FeatureFlags::kKafkaEmitMessageTimeoutMillis{
+    "kafkaEmitMessageTimeoutMillis",
+    "Message delivery is considered to have failed if ack is not received from broker in time",
+    mongo::Value(30'000)};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -331,7 +336,10 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kExternalFunctionRateLimitPerSecond.name,
      FeatureFlags::kExternalFunctionRateLimitPerSecond},
     {FeatureFlags::kKafkaEmitMessageMaxBytes.name, FeatureFlags::kKafkaEmitMessageMaxBytes},
-    {FeatureFlags::kPerTargetStats.name, FeatureFlags::kPerTargetStats}};
+    {FeatureFlags::kPerTargetStats.name, FeatureFlags::kPerTargetStats},
+    {FeatureFlags::kKafkaEmitMessageTimeoutMillis.name,
+     FeatureFlags::kKafkaEmitMessageTimeoutMillis},
+};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);

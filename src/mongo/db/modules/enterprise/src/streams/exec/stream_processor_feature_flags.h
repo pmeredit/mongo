@@ -9,6 +9,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/feature_flag.h"
 
 namespace streams {
@@ -60,6 +61,8 @@ int64_t getHttpsRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> fea
 int64_t getExternalFunctionRateLimitPerSec(
     boost::optional<StreamProcessorFeatureFlags> featureFlags);
 boost::optional<int64_t> getKafkaMessageMaxBytes(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
+boost::optional<mongo::Milliseconds> getKafkaEmitMessageTimeoutMillis(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 
 }  // namespace streams

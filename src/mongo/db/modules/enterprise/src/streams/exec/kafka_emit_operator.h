@@ -46,6 +46,7 @@ public:
         int queueBufferingMaxMessages{100000};
         // message.max.bytes setting.
         boost::optional<int> messageMaxBytes;
+        mongo::Milliseconds messageTimeoutMs{30'000};
         // Partition to write to. If not specified, PARTITION_UA is supplied to librdkafka,
         // which will write to random partitions. Explicit partition is currently only
         // used in testing.

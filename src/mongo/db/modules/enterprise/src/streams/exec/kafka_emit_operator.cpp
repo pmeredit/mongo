@@ -45,17 +45,17 @@ mongo::stdx::unordered_set<std::string> allowedSinkConfigurations = {
     "compression.type",
     "batch.size",
     "linger.ms",
-    "buffer.memory",
     "retries",
     "delivery.timeout.ms",
     "client.id",
-    "max.request.size",
+    "message.max.bytes",
     "request.timeout.ms",
     "max.in.flight.requests.per.connection",
     "enable.idempotence",
     "transactional.id",
     "client.dns.lookup",
     "connections.max.idle.ms",
+    "queue.buffering.max.messages",
 };
 
 KafkaEmitOperator::Connector::Connector(Options options) : _options(std::move(options)) {
@@ -238,6 +238,17 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         setConf(config.first, config.second);
     }
 
+    // This is the maximum time librdkafka may use to deliver a message (including retries).
+    setConf("delivery.timeout.ms", std::to_string(_options.messageTimeoutMs.count()));
+
+    // Configure the underlying kafka producer queue with sensible defaults. In particular:
+    // - We want to have a relatively low memory footprint, so allow our queue to buffer up to 16MB
+    // of data (or, 16384KB).
+    // - Finally, we configure the maximum number of documents to the default, which is 100k. We
+    // don't expect to hit this as this is relatively high compared to the maximum memory limit.
+    setConf("queue.buffering.max.kbytes", std::to_string(_options.queueBufferingMaxKBytes));
+    setConf("queue.buffering.max.messages", std::to_string(_options.queueBufferingMaxMessages));
+
     // These are the configurations that the user manually specified in the kafka connection.
     if (_options.configurations) {
         setKafkaConnectionConfigurations(
@@ -253,16 +264,6 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         setConf("acks", KafkaAcks_serializer(_options.acks).toString());
     }
 
-    // Configure the underlying kafka producer queue with sensible defaults. In particular:
-    // - We want to have a relatively low memory footprint, so allow our queue to buffer up to 16MB
-    // of data (or, 16384KB).
-    // - Finally, we configure the maximum number of documents to the default, which is 100k. We
-    // don't expect to hit this as this is relatively high compared to the maximum memory limit.
-    setConf("queue.buffering.max.kbytes", std::to_string(_options.queueBufferingMaxKBytes));
-    setConf("queue.buffering.max.messages", std::to_string(_options.queueBufferingMaxMessages));
-    // This is the maximum time librdkafka may use to deliver a message (including retries).
-    // Set to 10 seconds.
-    setConf("message.timeout.ms", "30000");
     return conf;
 }
 

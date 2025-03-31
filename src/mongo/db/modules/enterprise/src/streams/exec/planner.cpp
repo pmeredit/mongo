@@ -40,6 +40,7 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/serialization_context.h"
@@ -1106,6 +1107,12 @@ void Planner::planEmitSink(const BSONObj& spec) {
                 ? getKafkaMessageMaxBytes(_context->featureFlags)
                 : boost::none;
             kafkaEmitOptions.messageMaxBytes = maybeMessageMaxBytes;
+
+            if (_context->featureFlags) {
+                if (auto val = getKafkaEmitMessageTimeoutMillis(_context->featureFlags); val) {
+                    kafkaEmitOptions.messageTimeoutMs = *val;
+                }
+            }
 
             if (auto auth = baseOptions.getAuth(); auth) {
                 kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
