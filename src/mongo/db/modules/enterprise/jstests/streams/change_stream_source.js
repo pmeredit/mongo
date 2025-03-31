@@ -99,13 +99,18 @@ function clearState() {
     db.getSiblingDB(writeDBOne).dropDatabase();
     db.getSiblingDB(writeDBTwo).dropDatabase();
     db.getSiblingDB("test").dropDatabase();
+    db.getSiblingDB("replace_with").dropDatabase();
+    db.getSiblingDB(outputDB).dropDatabase();
     outputColl.drop();
 }
 
 function changeStreamSourceCollectionStatsTest() {
     clearState();
 
-    let sourceSpec = {connectionName: connectionName};
+    let sourceSpec = {
+        connectionName: connectionName,
+        config: {startAtOperationTime: db.hello().$clusterTime.clusterTime}
+    };
 
     const processorName = "collectionStatsProcessor";
     sp.createStreamProcessor(processorName, [
@@ -131,6 +136,11 @@ function changeStreamSourceCollectionStatsTest() {
     performWrites();
 
     sampleUntil(cursorId, 18, processorName);
+    waitForCount(db.getSiblingDB(writeDBOne)[writeCollOne], 2);
+    waitForCount(db.getSiblingDB(writeDBOne)[writeCollTwo], 2);
+    waitForCount(db.getSiblingDB(writeDBTwo)[writeCollOne], 5);
+    waitForCount(db.getSiblingDB(writeDBTwo)[writeCollTwo], 6);
+    waitForCount(db.getSiblingDB(writeDBTwo)[writeCollThree], 3);
     let verboseStats = getStats(processorName);
     assert(operatorStatsFieldName in verboseStats);
     const operatorStats = verboseStats[operatorStatsFieldName];
@@ -140,6 +150,7 @@ function changeStreamSourceCollectionStatsTest() {
 
     assert(targetStatsFieldName in changeStreamConsumerOperatorStats);
     let collectionStats = changeStreamConsumerOperatorStats[targetStatsFieldName];
+    jsTestLog(`collectionStats for processor ${processorName} *********` + tojson(collectionStats));
     assert.eq(collectionStats.length, 5);
 
     for (const collectionStat of collectionStats) {
@@ -162,7 +173,7 @@ function changeStreamSourceCollectionStatsTest() {
     const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
     assert.commandWorked(writeColl.updateOne({a: 88}, {$set: {a: 4}}));
     assert.commandWorked(writeColl.deleteMany({}));
-    sampleUntil(cursorId, 1, processorName);
+    sampleUntil(cursorId, 2, processorName);
     verboseStats = getStats(processorName);
     collectionStats = verboseStats[operatorStatsFieldName][0][targetStatsFieldName];
 
