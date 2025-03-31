@@ -5,7 +5,6 @@
 mod command_service;
 mod crabs;
 mod custom_sort;
-mod desugar;
 mod echo;
 mod mongot_client;
 pub mod sdk;
@@ -27,13 +26,12 @@ use plugin_api_bindgen::{
     MongoExtensionPortal,
 };
 
-use crate::crabs::AddSomeCrabsDescriptor;
+use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
-use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
 use crate::echo::EchoOxideDescriptor;
 use crate::sdk::ExtensionPortal;
-use crate::search::{InternalPluginSearch, PluginSearch};
-use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
+use crate::search::{InternalPluginSearch, PluginSearchDescriptor};
+use crate::vector::{InternalPluginVectorSearch, PluginVectorSearchDescriptor};
 use crate::voyage::VoyageRerank;
 
 #[derive(Debug)]
@@ -462,16 +460,16 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtens
     let portal = portal_ptr
         .as_mut()
         .expect("extension portal pointer may not be null!");
-    PluginDesugarAggregationStage::<EchoWithSomeCrabs>::register(portal);
     PluginAggregationStage::<InternalPluginSearch>::register(portal);
-    PluginDesugarAggregationStage::<PluginSearch>::register(portal);
     PluginAggregationStage::<InternalPluginVectorSearch>::register(portal);
-    PluginDesugarAggregationStage::<PluginVectorSearch>::register(portal);
     PluginAggregationStage::<VoyageRerank>::register(portal);
 
     let mut sdk_portal =
         ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
     sdk_portal.register_source_aggregation_stage::<EchoOxideDescriptor>();
     sdk_portal.register_transform_aggregation_stage::<AddSomeCrabsDescriptor>();
+    sdk_portal.register_desugar_aggregation_stage::<EchoWithSomeCrabsDescriptor>();
     sdk_portal.register_transform_aggregation_stage::<PluginSortDescriptor>();
+    sdk_portal.register_desugar_aggregation_stage::<PluginSearchDescriptor>();
+    sdk_portal.register_desugar_aggregation_stage::<PluginVectorSearchDescriptor>();
 }

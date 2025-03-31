@@ -1,18 +1,18 @@
 use std::collections::VecDeque;
 
+use crate::command_service::command_service_client::CommandServiceClient;
+use crate::mongot_client::{
+    MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
+};
+use crate::sdk::{AggregationStageDescriptor, AggregationStageProperties, DesugarAggregationStageDescriptor, stage_constraints};
+use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+
 use bson::{
     doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument,
 };
 use tokio::runtime::Builder;
 use tonic::transport::Channel;
 use tonic::{Request, Response};
-
-use crate::command_service::command_service_client::CommandServiceClient;
-use crate::desugar::DesugarAggregationStage;
-use crate::mongot_client::{
-    MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
-};
-use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 pub struct InternalPluginVectorSearch {
     client: CommandServiceClient<Channel>,
@@ -197,14 +197,25 @@ impl InternalPluginVectorSearch {
     }
 }
 
-pub struct PluginVectorSearch;
+pub struct PluginVectorSearchDescriptor;
 
-impl DesugarAggregationStage for PluginVectorSearch {
+impl AggregationStageDescriptor for PluginVectorSearchDescriptor {
     fn name() -> &'static str {
         "$pluginVectorSearch"
     }
 
-    fn desugar(stage_definition: RawBsonRef<'_>) -> Result<Vec<Document>, Error> {
+    fn properties() -> AggregationStageProperties {
+        // TODO: this should return the value value as the internal remote stage.
+        AggregationStageProperties {
+            stream_type: stage_constraints::StreamType::Streaming,
+            position: stage_constraints::PositionRequirement::First,
+            host_type: stage_constraints::HostTypeRequirement::AnyShard,
+        }
+    }
+}
+
+impl DesugarAggregationStageDescriptor for PluginVectorSearchDescriptor {
+    fn desugar(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Vec<Document>, Error> {
         let query = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {

@@ -290,15 +290,19 @@ StageConstraints::HostTypeRequirement propertiesHostType(const BSONObj& properti
 
 StageConstraints DocumentSourceExtension::constraints(Pipeline::SplitState pipeState) const {
     auto properties = bsonObjFromByteView(_descriptor->vtable->properties(_descriptor));
-    return StageConstraints(propertiesStreamType(properties),
-                            propertiesPosition(properties),
-                            propertiesHostType(properties),
-                            DiskUseRequirement::kNoDiskUse,
-                            FacetRequirement::kNotAllowed,
-                            TransactionRequirement::kNotAllowed,
-                            LookupRequirement::kNotAllowed,
-                            UnionRequirement::kNotAllowed,
-                            ChangeStreamRequirement::kDenylist);
+    auto constraints = StageConstraints(propertiesStreamType(properties),
+                                        propertiesPosition(properties),
+                                        propertiesHostType(properties),
+                                        DiskUseRequirement::kNoDiskUse,
+                                        FacetRequirement::kNotAllowed,
+                                        TransactionRequirement::kNotAllowed,
+                                        LookupRequirement::kNotAllowed,
+                                        UnionRequirement::kNotAllowed,
+                                        ChangeStreamRequirement::kDenylist);
+    if (_descriptor->vtable->type(_descriptor) == MongoExtensionAggregationStageType::kSource) {
+        constraints.requiresInputDocSource = false;
+    }
+    return constraints;
 }
 
 }  // namespace mongo

@@ -1,10 +1,12 @@
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+    DesugarAggregationStageDescriptor, TransformAggregationStageDescriptor,
+    TransformBoundAggregationStageDescriptor,
 };
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 
-use bson::{to_raw_document_buf, Document, RawBsonRef, RawDocument};
+use bson::{doc, to_raw_document_buf, Document, RawBsonRef, RawDocument};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Descriptor for the `$addSomeCrabs` transform stage.
 ///
@@ -109,5 +111,57 @@ impl AggregationStage for AddSomeCrabs {
             }
             _ => Ok(source_result),
         }
+    }
+}
+
+pub struct EchoWithSomeCrabsDescriptor;
+
+impl AggregationStageDescriptor for EchoWithSomeCrabsDescriptor {
+    fn name() -> &'static str {
+        "$echoWithSomeCrabs"
+    }
+
+    fn properties() -> AggregationStageProperties {
+        crate::echo::EchoOxideDescriptor::properties()
+    }
+}
+
+impl DesugarAggregationStageDescriptor for EchoWithSomeCrabsDescriptor {
+    fn desugar(
+        stage_definition: RawBsonRef<'_>,
+        _context: &RawDocument,
+    ) -> Result<Vec<Document>, Error> {
+        let input_stage_def: EchoWithSomeCrabsStageDefinition =
+            bson::from_bson(stage_definition.try_into().map_err(|e| {
+                Error::with_source(1, "Could not convert $echoWithSomeCrabs to bson", e)
+            })?)
+            .map_err(|e| Error::with_source(1, "Could not parse $echoWithSomeCrabs", e))?;
+
+        let mut stages = vec![doc! { "$echoOxide": input_stage_def.document.clone() }];
+        if input_stage_def.num_crabs > 0 {
+            stages.push(doc! { "$addSomeCrabs": input_stage_def.num_crabs as i64 });
+        }
+        Ok(stages)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EchoWithSomeCrabsStageDefinition {
+    document: Document,
+    #[serde(deserialize_with = "numeric_to_usize")]
+    num_crabs: usize,
+}
+
+fn numeric_to_usize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<usize, D::Error> {
+    let value = f64::deserialize(deserializer)?;
+    if value >= 0.0 && value.fract() == 0.0 && value < usize::MAX as f64 {
+        Ok(value as usize)
+    } else {
+        use serde::de::Error;
+        Err(D::Error::custom(format!(
+            "Could not coerce float value {} to usize",
+            value
+        )))
     }
 }

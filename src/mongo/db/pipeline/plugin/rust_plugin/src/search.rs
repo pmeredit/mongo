@@ -1,10 +1,11 @@
 use crate::command_service::command_service_client::CommandServiceClient;
-use crate::desugar::DesugarAggregationStage;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotCursorBatch, SearchCommand,
     MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
 };
+use crate::sdk::{AggregationStageDescriptor, AggregationStageProperties, DesugarAggregationStageDescriptor, stage_constraints};
 use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+
 use bson::{doc, to_raw_document_buf};
 use bson::{Document, RawBsonRef, RawDocument};
 use tokio::runtime::Builder;
@@ -247,14 +248,28 @@ impl InternalPluginSearch {
     }
 }
 
-pub struct PluginSearch;
+pub struct PluginSearchDescriptor;
 
-impl DesugarAggregationStage for PluginSearch {
+impl AggregationStageDescriptor for PluginSearchDescriptor {
     fn name() -> &'static str {
         "$pluginSearch"
     }
 
-    fn desugar(stage_definition: RawBsonRef<'_>) -> Result<Vec<Document>, Error> {
+    fn properties() -> AggregationStageProperties {
+        // TODO: this should return the value value as the internal remote stage.
+        AggregationStageProperties {
+            stream_type: stage_constraints::StreamType::Streaming,
+            position: stage_constraints::PositionRequirement::First,
+            host_type: stage_constraints::HostTypeRequirement::AnyShard,
+        }
+    }
+}
+
+impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
+    fn desugar(
+        stage_definition: RawBsonRef<'_>,
+        _context: &RawDocument,
+    ) -> Result<Vec<Document>, Error> {
         let query = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
