@@ -54,8 +54,7 @@ const kafkaSourceSpec = [{
 const emitSpec = {
     $merge: {into: {connectionName: connName, db: "outputDB", coll: outputCollName}}
 };
-const fieldsToSkip =
-    ["_id", "clusterTime", "wallTime", "_ts", "_stream_meta", "documentKey", "collectionUUID"];
+const fieldsToSkip = ["_id", "clusterTime", "wallTime", "_ts", "_stream_meta", "documentKey"];
 
 function testCheckpointing() {
     commonTest({
