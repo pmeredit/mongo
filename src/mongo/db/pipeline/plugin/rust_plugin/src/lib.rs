@@ -6,6 +6,7 @@ mod command_service;
 mod crabs;
 mod custom_sort;
 mod desugar;
+mod echo;
 mod mongot_client;
 pub mod sdk;
 mod search;
@@ -17,7 +18,7 @@ use std::ffi::{c_int, c_void};
 use std::num::NonZero;
 
 use bson::{doc, to_vec};
-use bson::{Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid};
+use bson::{Bson, Document, RawBsonRef, RawDocument, Uuid};
 use serde::{Deserialize, Serialize};
 
 use plugin_api_bindgen::{
@@ -26,9 +27,10 @@ use plugin_api_bindgen::{
     MongoExtensionPortal,
 };
 
-use crate::crabs::{AddSomeCrabs, AddSomeCrabsDescriptor};
-use crate::custom_sort::PluginSort;
+use crate::crabs::AddSomeCrabsDescriptor;
+use crate::custom_sort::PluginSortDescriptor;
 use crate::desugar::{EchoWithSomeCrabs, PluginDesugarAggregationStage};
+use crate::echo::EchoOxideDescriptor;
 use crate::sdk::ExtensionPortal;
 use crate::search::{InternalPluginSearch, PluginSearch};
 use crate::vector::{InternalPluginVectorSearch, PluginVectorSearch};
@@ -454,70 +456,22 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     }
 }
 
-struct EchoOxide {
-    document: RawDocumentBuf,
-    exhausted: bool,
-}
-
-impl AggregationStage for EchoOxide {
-    fn name() -> &'static str {
-        "$echoOxide"
-    }
-
-    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
-        let document = match stage_definition {
-            RawBsonRef::Document(doc) => doc.to_owned(),
-            _ => {
-                return Err(Error::new(
-                    1,
-                    "$echoOxide stage definition must contain a document.",
-                ))
-            }
-        };
-        Ok(Self {
-            document,
-            exhausted: false,
-        })
-    }
-
-    fn set_source(&mut self, _source: AggregationSource) {
-        // Do nothing
-    }
-
-    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
-        Ok(if self.exhausted {
-            GetNextResult::EOF
-        } else {
-            self.exhausted = true;
-            GetNextResult::Advanced(self.document.as_ref().into())
-        })
-    }
-
-    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        // TODO This stage should be able to flag that it should be run on the node that received
-        // the command (HostTypeRequirement::kLocalOnly). This {$limit: 1} merging pipeline works
-        // as a hack in the meantime.
-        Ok(vec![doc! {"$limit": 1}])
-    }
-}
-
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
     let portal = portal_ptr
         .as_mut()
         .expect("extension portal pointer may not be null!");
-    PluginAggregationStage::<EchoOxide>::register(portal);
-    PluginAggregationStage::<AddSomeCrabs>::register(portal);
     PluginDesugarAggregationStage::<EchoWithSomeCrabs>::register(portal);
     PluginAggregationStage::<InternalPluginSearch>::register(portal);
     PluginDesugarAggregationStage::<PluginSearch>::register(portal);
     PluginAggregationStage::<InternalPluginVectorSearch>::register(portal);
     PluginDesugarAggregationStage::<PluginVectorSearch>::register(portal);
     PluginAggregationStage::<VoyageRerank>::register(portal);
-    PluginAggregationStage::<PluginSort>::register(portal);
 
     let mut sdk_portal =
         ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
+    sdk_portal.register_source_aggregation_stage::<EchoOxideDescriptor>();
     sdk_portal.register_transform_aggregation_stage::<AddSomeCrabsDescriptor>();
+    sdk_portal.register_transform_aggregation_stage::<PluginSortDescriptor>();
 }

@@ -5,6 +5,7 @@
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/pipeline/document_source_extension.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/serialization_context.h"
@@ -127,6 +128,7 @@ MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
 (InitializerContext*) {
     MongoExtensionPortal portal;
     portal.version = MONGODB_PLUGIN_VERSION_0;
+    portal.registerStageDescriptor = &DocumentSourceExtension::registerStageDescriptor;
     portal.add_desugar_stage = &addDesugarStage;
     portal.add_aggregation_stage = &addAggregationStage;
     mongodb_initialize_plugin(&portal);

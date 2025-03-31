@@ -182,7 +182,8 @@ struct MongoExtensionBoundAggregationStageDescriptorVTable {
      * This may only be called once per instance, subsequent calls may return an error.
      */
     // TODO: we may want this method to consume `descriptor` like in a builder pattern.
-    // This would be unpleasant for the plugin host to deal with
+    // This would be unpleasant for the plugin host to deal with, but logically there's no need for
+    // the bound descriptor after the executor is created.
     int (*createExecutor)(MongoExtensionBoundAggregationStageDescriptor* descriptor,
                           MongoExtensionAggregationStage** executor,
                           MongoExtensionByteBuf** error);

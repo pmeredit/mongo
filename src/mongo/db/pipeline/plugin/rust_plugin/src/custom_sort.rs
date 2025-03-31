@@ -1,12 +1,72 @@
+use crate::sdk::{
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+};
 use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf};
 use bson::{Document, RawBsonRef, RawDocument};
 use std::collections::VecDeque;
 
+pub struct PluginSortDescriptor;
+
+impl AggregationStageDescriptor for PluginSortDescriptor {
+    fn name() -> &'static str {
+        "$pluginSort"
+    }
+
+    fn properties() -> AggregationStageProperties {
+        AggregationStageProperties {
+            stream_type: stage_constraints::StreamType::Blocking,
+            position: stage_constraints::PositionRequirement::None,
+            host_type: stage_constraints::HostTypeRequirement::None,
+        }
+    }
+}
+
+impl TransformAggregationStageDescriptor for PluginSortDescriptor {
+    type BoundDescriptor = PluginSortBoundDescriptor;
+
+    fn bind(
+        stage_definition: RawBsonRef<'_>,
+        _context: &RawDocument,
+    ) -> Result<Self::BoundDescriptor, Error> {
+        let field = match stage_definition {
+            RawBsonRef::String(i) => i.to_string(),
+            _ => {
+                return Err(Error::new(
+                    1,
+                    "$pluginSort should be followed with a string.",
+                ))
+            }
+        };
+        Ok(PluginSortBoundDescriptor(field))
+    }
+}
+
+pub struct PluginSortBoundDescriptor(String);
+
+impl TransformBoundAggregationStageDescriptor for PluginSortBoundDescriptor {
+    type Executor = PluginSort;
+
+    fn create_executor(&self) -> Result<Self::Executor, Error> {
+        Ok(PluginSort::from_bound_descriptor(self))
+    }
+}
+
 pub struct PluginSort {
     field: String,
     source: Option<AggregationSource>,
     docs: Option<VecDeque<Document>>,
+}
+
+impl PluginSort {
+    fn from_bound_descriptor(descriptor: &PluginSortBoundDescriptor) -> Self {
+        PluginSort {
+            field: descriptor.0.clone(),
+            source: None,
+            docs: None,
+        }
+    }
 }
 
 /**

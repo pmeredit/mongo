@@ -54,7 +54,7 @@ pub mod stage_constraints {
         LocalOnly,
         /// This stage must run exactly once but it can be forwarded to another host so long as
         /// this invariant is maintained.
-        RunOneAnyNode,
+        RunOnceAnyNode,
         /// This stage must run on a participate shard/data node.
         AnyShard,
         /// This stage must run in the router for the query.
@@ -176,10 +176,6 @@ impl ExtensionPortal {
     ) {
         let descriptor = Box::new(descriptor);
         unsafe {
-            if self.0.as_ref().registerStageDescriptor.is_none() {
-                eprintln!("Host does not yet implement registerStageDescriptor()");
-                return;
-            }
             self.0
                 .as_ref()
                 .registerStageDescriptor
