@@ -47,10 +47,13 @@ public:
                 uassertStatusOK(idpManager->refreshIDPs(opCtx,
                                                         requestedIdPs,
                                                         IDPJWKSRefresher::RefreshOption::kNow,
-                                                        requestedInvalidateOnFailure));
+                                                        requestedInvalidateOnFailure,
+                                                        true /* ignoreQuiescePeriod */));
             } else {
-                uassertStatusOK(idpManager->refreshAllIDPs(
-                    opCtx, IDPJWKSRefresher::RefreshOption::kNow, requestedInvalidateOnFailure));
+                uassertStatusOK(idpManager->refreshAllIDPs(opCtx,
+                                                           IDPJWKSRefresher::RefreshOption::kNow,
+                                                           requestedInvalidateOnFailure,
+                                                           true /* ignoreQuiescePeriod */));
             }
         }
 

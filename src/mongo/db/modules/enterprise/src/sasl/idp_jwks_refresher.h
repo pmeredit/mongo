@@ -41,7 +41,8 @@ public:
         kNow,    // Just-in-time refresh, on unknown key.
     };
     StatusWith<bool> refreshKeys(const JWKSFetcherFactory& factory,
-                                 RefreshOption option = RefreshOption::kIfDue);
+                                 RefreshOption option = RefreshOption::kIfDue,
+                                 bool ignoreQuiescePeriod = false);
 
     /**
      * Flushes keys and validators by creating a new instance of the keyManager.

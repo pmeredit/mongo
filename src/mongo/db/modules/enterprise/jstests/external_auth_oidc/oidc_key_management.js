@@ -145,6 +145,28 @@ function compareKeys(actualKeys, expectedKeys) {
     }
 }
 
+function assertHasLogAfterDate(conn, msg, after) {
+    const kUnsuccessfulRefreshID = 7119501;
+    let ret = undefined;
+    assert.soon(function() {
+        const log = checkLog.getFilteredLogMessages(conn, kUnsuccessfulRefreshID);
+        let line;
+        for (line of log) {
+            if (!line.attr.error || !line.attr.error.includes(msg)) {
+                continue;
+            }
+
+            const lineTime = Date.parse(line.t['$date']);
+            if (lineTime >= after) {
+                ret = line;
+                break;
+            }
+        }
+        return ret !== undefined;
+    });
+    return ret;
+}
+
 function testAddKey(hostname, quiescePeriodSecs) {
     // Initially, the key server for issuerOne has only custom-key-1. Tokens signed with that should
     // succeed auth but tokens signed with custom-key-2 should fail.
@@ -513,6 +535,70 @@ function runUnresponsiveIdPTest(conn) {
     assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
 }
 
+// Test that running oidcRefreshKeys multiple times will ignore the JWKSMinimumQuiescePeriodSecs.
+function runJWKRefreshKeysQuiesceTest(conn) {
+    const keyShell = new Mongo(conn.host);
+    const externalDB = keyShell.getDB('$external');
+
+    const quiescePeriodSecs = 5;
+    assert.commandWorked(
+        conn.adminCommand({setParameter: 1, JWKSMinimumQuiescePeriodSecs: quiescePeriodSecs}));
+
+    keyMap.issuer1 = singleKey;
+    rotateKeys(keyMap);
+
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+    KeyServer.stop();
+
+    // Refreshing multiple times should ignore the quiescePeriod and try to fetch the IDP since the
+    // oidcRefreshKeys command is not affected by JWKSMinimumQuiescePeriodSecs.
+    for (let index = 0; index < 3; index++) {
+        const res = conn.adminCommand({oidcRefreshKeys: 1});
+        assert(res.code == 96);
+        assert(
+            res.errmsg.includes("Bad HTTP response from API server: Couldn't connect to server"));
+    }
+
+    // Cleanup.
+    KeyServer.start();
+    assert.commandWorked(conn.adminCommand({setParameter: 1, JWKSMinimumQuiescePeriodSecs: 0}));
+}
+
+// Test that when KeyServer is down and the server runs a JWKSetRefreshJob, it will first try to
+// fetch the server and subsequent retries will fail due to the quiesce period.
+function runJWKRefreshJobQuiesceTest(conn) {
+    const keyShell = new Mongo(conn.host);
+    const externalDB = keyShell.getDB('$external');
+
+    const quiescePeriodSecs = 5;
+    assert.commandWorked(
+        conn.adminCommand({setParameter: 1, JWKSMinimumQuiescePeriodSecs: quiescePeriodSecs}));
+
+    keyMap.issuer1 = singleKey;
+    rotateKeys(keyMap);
+
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+    // Stop the KeyServer so during refresh the JWKManager unsuccessfully fetches
+    // the new keys.
+    KeyServer.stop();
+    const startTime = Date.now();
+
+    // Assert that during the next JWKSetRefreshJobs, failures will happen.
+    // First an unsuccessful fetch will happen due to the KeyServer being down, followed by an
+    // unsuccessful refresh due quiesce period.
+    const log = assertHasLogAfterDate(
+        conn, "Bad HTTP response from API server: Couldn't connect to server", startTime);
+    assertHasLogAfterDate(conn, "Skipping refresh due to IdP quiesce", Date.parse(log.t['$date']));
+
+    // Cleanup.
+    KeyServer.start();
+    assert.commandWorked(conn.adminCommand({setParameter: 1, JWKSMinimumQuiescePeriodSecs: 0}));
+}
+
 // Separate, dedicated mongod that's used to run httpClientRequest against the KeyServer for
 // key rotation. This command requires authentication and is unsupported on mongos, so it's easier
 // to centralize all the requests via this mongod rather than interleaving it in test logic.
@@ -532,6 +618,8 @@ function rotateKeys(keyMap) {
     runKeyManagementCommandsTest(mongod);
     runJWKModifiedKeyRefreshTest(mongod);
     runJWKSetForceRefreshFailureTest(mongod);
+    runJWKRefreshKeysQuiesceTest(mongod);
+    runJWKRefreshJobQuiesceTest(mongod);
     MongoRunner.stopMongod(mongod);
 
     // Rotate keys on the key server so that issuer1 is no longer exposed.
@@ -561,6 +649,8 @@ rotateKeys(keyMap);
     runKeyManagementCommandsTest(shardedCluster.s0);
     runJWKModifiedKeyRefreshTest(shardedCluster.s0);
     runJWKSetForceRefreshFailureTest(shardedCluster.s0);
+    runJWKRefreshKeysQuiesceTest(shardedCluster.s0);
+    runJWKRefreshJobQuiesceTest(shardedCluster.s0);
     shardedCluster.stop();
 
     // Rotate keys on the key server so that issuer1 is no longer exposed.

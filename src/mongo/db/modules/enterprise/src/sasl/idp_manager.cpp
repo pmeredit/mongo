@@ -151,21 +151,24 @@ void IDPManager::_flushIDPSJWKS() {
 
 Status IDPManager::refreshAllIDPs(OperationContext* opCtx,
                                   RefreshOption option,
-                                  bool invalidateOnFailure) {
-    return _doRefreshIDPs(opCtx, boost::none, option, invalidateOnFailure);
+                                  bool invalidateOnFailure,
+                                  bool ignoreQuiescePeriod) {
+    return _doRefreshIDPs(opCtx, boost::none, option, invalidateOnFailure, ignoreQuiescePeriod);
 }
 
 Status IDPManager::refreshIDPs(OperationContext* opCtx,
                                const std::set<StringData>& issuerNames,
                                RefreshOption option,
-                               bool invalidateOnFailure) {
-    return _doRefreshIDPs(opCtx, issuerNames, option, invalidateOnFailure);
+                               bool invalidateOnFailure,
+                               bool ignoreQuiescePeriod) {
+    return _doRefreshIDPs(opCtx, issuerNames, option, invalidateOnFailure, ignoreQuiescePeriod);
 }
 
 Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
                                   const boost::optional<std::set<StringData>>& issuerNames,
                                   RefreshOption option,
-                                  bool invalidateOnFailure) {
+                                  bool invalidateOnFailure,
+                                  bool ignoreQuiescePeriod) {
     std::vector<std::pair<StringData, Status>> statuses;
 
     ScopeGuard userInvalidation([&] {
@@ -181,8 +184,8 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
             continue;
         }
 
-        auto swInvalidate =
-            providers.begin()->second->getKeyRefresher()->refreshKeys(*_typeFactory, option);
+        auto swInvalidate = providers.begin()->second->getKeyRefresher()->refreshKeys(
+            *_typeFactory, option, ignoreQuiescePeriod);
         if (!swInvalidate.isOK()) {
             statuses.emplace_back(issuer, swInvalidate.getStatus());
 

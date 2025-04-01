@@ -73,12 +73,14 @@ public:
     using RefreshOption = IDPJWKSRefresher::RefreshOption;
     Status refreshAllIDPs(OperationContext* opCtx,
                           RefreshOption option = RefreshOption::kIfDue,
-                          bool invalidateOnFailure = false);
+                          bool invalidateOnFailure = false,
+                          bool ignoreQuiescePeriod = false);
 
     Status refreshIDPs(OperationContext* opCtx,
                        const std::set<StringData>& issuerNames,
                        RefreshOption option = RefreshOption::kIfDue,
-                       bool invalidateOnFailure = false);
+                       bool invalidateOnFailure = false,
+                       bool ignoreQuiescePeriod = false);
 
     /**
      * Select an appropriate IDP based on advertised principalName.
@@ -115,7 +117,8 @@ private:
     Status _doRefreshIDPs(OperationContext*,
                           const boost::optional<std::set<StringData>>& issuerNames,
                           RefreshOption option,
-                          bool invalidateOnFailure);
+                          bool invalidateOnFailure,
+                          bool ignoreQuiescePeriod);
 
     /**
      * Flushes keys and validators from all IDPS.
