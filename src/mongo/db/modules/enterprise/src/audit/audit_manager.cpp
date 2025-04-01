@@ -19,7 +19,6 @@
 #include "audit_log.h"
 #include "mongo/base/init.h"
 #include "mongo/db/exec/matcher/matcher.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/logv2/log.h"

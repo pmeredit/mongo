@@ -11,7 +11,6 @@
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/catalog/collection_options.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_engine_impl.h"
 #include "mongo/db/storage/storage_engine_init.h"
