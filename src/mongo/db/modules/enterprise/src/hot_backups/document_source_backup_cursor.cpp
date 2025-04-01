@@ -131,7 +131,8 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
                           << " value must be an object. Found: " << typeName(spec.type()),
             spec.type() == BSONType::Object);
 
-    if (replica_set_endpoint::isFeatureFlagEnabled()) {
+    if (replica_set_endpoint::isFeatureFlagEnabled(
+            VersionContext::getDecoration(pExpCtx->getOperationContext()))) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << kStageName << " must be run against the 'local' database",
                 pExpCtx->getNamespaceString().isLocalDB());
