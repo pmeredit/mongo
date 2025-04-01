@@ -1194,6 +1194,189 @@ TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
     ASSERT_EQ(edgesInfo.getUpperBound().getElement().Int(), 35);
 }
 
+
+TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << 6);
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6720200);
+}
+
+
+TEST_F(RangePlaceholderTest, ObjectAsValueParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSON("age" << 27));
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(
+        FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj), AssertionException, 40415);
+}
+
+TEST_F(RangePlaceholderTest, ObjectWithNumericKeyAsValueParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSON("1" << 27));
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(
+        FLE2EncryptionPlaceholder::parse(IDLParserContext("1"), obj), AssertionException, 40415);
+}
+
+TEST_F(RangePlaceholderTest, EmptyArrayAsValueParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSONObj());
+
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(
+        FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj), AssertionException, 40414);
+}
+
+TEST_F(RangePlaceholderTest, TooSmallArrayAsValueParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSON_ARRAY(2));
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(
+        FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj), AssertionException, 40415);
+}
+
+TEST_F(RangePlaceholderTest, TooLargeArrayAsValueParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSON_ARRAY(1 << 2 << 3));
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(
+        FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj), AssertionException, 40415);
+}
+
+TEST_F(RangePlaceholderTest, WithoutSparsityParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSON_ARRAY(1 << 2 << 3 << 4));
+    auto arr = elt.firstElement().Array();
+
+    FLE2RangeFindSpecEdgesInfo edgesInfo;
+    edgesInfo.setLowerBound(arr[0]);
+    edgesInfo.setLbIncluded(true);
+    edgesInfo.setUpperBound(arr[1]);
+    edgesInfo.setUbIncluded(true);
+    edgesInfo.setIndexMin(arr[2]);
+    edgesInfo.setIndexMax(arr[3]);
+    FLE2RangeFindSpec spec;
+
+    spec.setFirstOperator(Fle2RangeOperator::kGt);
+    spec.setPayloadId(1234);
+
+    auto specElt = BSON("" << spec.toBSON());
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(specElt.firstElement()),
+                                                 cm);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6832501);
+}
+
+TEST_F(RangePlaceholderTest, NonRangePlaceholderWithSparsityParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << 4);
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kEquality,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(1);
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6832500);
+
+    placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kInsert,
+                                            Fle2AlgorithmInt::kUnindexed,
+                                            ki,
+                                            ki,
+                                            IDLAnyType(elt.firstElement()),
+                                            cm);
+    placeholder.setSparsity(1);
+    obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6832500);
+}
+
 TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
     {
         auto rangeBoundBSON =
@@ -1405,6 +1588,124 @@ TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
                                  doc["ssn"],
                                  EncryptedBinDataType::kFLE2Placeholder);
     }
+}
+
+class TextSearchPlaceholderTest : public FLE2TestFixture {
+protected:
+    BSONObj makeSerializedPlaceholder(Fle2PlaceholderType type,
+                                      const FLE2TextSearchInsertSpec& spec,
+                                      bool setSparsity = false) {
+        auto backingBSON = BSON("" << spec.toBSON());
+        FLE2EncryptionPlaceholder pl(type,
+                                     Fle2AlgorithmInt::kTextSearch,
+                                     UUID::fromCDR(uuidBytes),
+                                     UUID::fromCDR(uuidBytes),
+                                     IDLAnyType(backingBSON.firstElement()),
+                                     1 /*cm*/);
+        if (setSparsity) {
+            pl.setSparsity(2);
+        }
+        return serializeFle2Placeholder("textField", pl);
+    }
+};
+
+TEST_F(TextSearchPlaceholderTest, RoundtripPlaceholder) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSuffixSpec(FLE2SuffixInsertSpec(10, 1));
+    spec.setPrefixSpec(FLE2PrefixInsertSpec(20, 2));
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(300, 30, 3));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+
+    auto parsedPlaceholder = parseFLE2Placeholder(serialized.firstElement());
+    auto parsedSpec = FLE2TextSearchInsertSpec::parse(
+        IDLParserContext("text"), parsedPlaceholder.getValue().getElement().Obj());
+
+    ASSERT_TRUE(parsedSpec.getSubstringSpec());
+    ASSERT_TRUE(parsedSpec.getSuffixSpec());
+    ASSERT_TRUE(parsedSpec.getPrefixSpec());
+    ASSERT_FALSE(parsedSpec.getCaseFold());
+    ASSERT_TRUE(parsedSpec.getDiacriticFold());
+
+    auto& suffixSpec = parsedSpec.getSuffixSpec().value();
+    ASSERT_EQ(suffixSpec.getMaxQueryLength(), 10);
+    ASSERT_EQ(suffixSpec.getMinQueryLength(), 1);
+    auto& prefixSpec = parsedSpec.getPrefixSpec().value();
+    ASSERT_EQ(prefixSpec.getMaxQueryLength(), 20);
+    ASSERT_EQ(prefixSpec.getMinQueryLength(), 2);
+    auto& substrSpec = parsedSpec.getSubstringSpec().value();
+    ASSERT_EQ(substrSpec.getMaxLength(), 300);
+    ASSERT_EQ(substrSpec.getMaxQueryLength(), 30);
+    ASSERT_EQ(substrSpec.getMinQueryLength(), 3);
+}
+
+TEST_F(TextSearchPlaceholderTest, FindPlaceholderNotYetSupported) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(100, 10, 1));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kFind, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783506);
+}
+
+TEST_F(TextSearchPlaceholderTest, ScalarAsValueParseFails) {
+    auto elt = BSON("" << 6);
+    FLE2EncryptionPlaceholder pl(Fle2PlaceholderType::kInsert,
+                                 Fle2AlgorithmInt::kTextSearch,
+                                 UUID::fromCDR(uuidBytes),
+                                 UUID::fromCDR(uuidBytes),
+                                 IDLAnyType(elt.firstElement()),
+                                 1);
+    auto serialized = serializeFle2Placeholder("textField", pl);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783505);
+}
+
+TEST_F(TextSearchPlaceholderTest, TextPlaceholderHasSparsity) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(100, 10, 1));
+    auto serialized =
+        makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec, true /*setSparsity*/);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 6832500);
+}
+
+TEST_F(TextSearchPlaceholderTest, MissingSubspec) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    auto serialized =
+        makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec, true /*setSparsity*/);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783500);
+}
+
+TEST_F(TextSearchPlaceholderTest, SubstringSpecUpperBoundLessThanLowerBound) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(100, 1 /*ub*/, 10 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783501);
+}
+
+TEST_F(TextSearchPlaceholderTest, SubstringSpecUpperBoundGreaterThanMaxLen) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSubstringSpec(FLE2SubstringInsertSpec(10 /*mlen*/, 100 /*ub*/, 1 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783502);
+}
+
+TEST_F(TextSearchPlaceholderTest, SuffixSpecUpperBoundLessThanLowerBound) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setSuffixSpec(FLE2SuffixInsertSpec(1 /*ub*/, 10 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783503);
+}
+
+TEST_F(TextSearchPlaceholderTest, PrefixSpecUpperBoundLessThanLowerBound) {
+    FLE2TextSearchInsertSpec spec("foo", false /*casefold*/, true /*diacriticfold*/);
+    spec.setPrefixSpec(FLE2PrefixInsertSpec(1 /*ub*/, 10 /*lb*/));
+    auto serialized = makeSerializedPlaceholder(Fle2PlaceholderType::kInsert, spec);
+    ASSERT_THROWS_CODE(
+        parseFLE2Placeholder(serialized.firstElement()), AssertionException, 9783504);
 }
 
 using TextSearchInsertTest = FLE2TestFixture;
