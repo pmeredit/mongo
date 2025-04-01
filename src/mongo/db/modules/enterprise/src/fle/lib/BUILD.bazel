@@ -81,6 +81,7 @@ mongo_cc_library(
     }),
     shared_lib_name = select({
         "@platforms//os:windows": "mongo_crypt_v1_shared_with_debug.dll",
+        "@platforms//os:macos": "mongo_crypt_v1_shared_with_debug.dylib",
         "//conditions:default": "mongo_crypt_v1_shared_with_debug.so",
     }),
     tags = ["mongo_crypt"],
