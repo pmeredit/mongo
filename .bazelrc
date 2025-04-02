@@ -476,6 +476,7 @@ try-import %workspace%/.bazelrc.local
 # Flag as built with bazelisk
 try-import %workspace%/.bazelrc.bazelisk
 
+build --host_cxxopt=-fPIC
 build --action_env=OPENSSL_DIR=/usr
 build --config=linux_x86_64 # default, on ARM run `bazel build --config=linux_aarch64 ...``
 build:linux_aarch64 --action_env=OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu
